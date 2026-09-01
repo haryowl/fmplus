@@ -108,8 +108,8 @@ export function TrackMap({ data }: Props) {
         <div>
           <h2>Track map</h2>
           <p>
-            OpenStreetMap only — drawn like Armada: time gaps stay on the line.
-            A huge GPS teleport still breaks it. Distance and fuel keep the stricter 5 min / 1.5 km rules.
+            OpenStreetMap only — every GPS sample is joined in time order, like Armada.
+            A long straight stretch means no points were recorded in between (often tens of km). Distance still ignores jumps over 1.5 km.
           </p>
         </div>
         <div className="field">

@@ -110,7 +110,7 @@ describe("buildTrackMap", () => {
     expect(data.paths[0]).toHaveLength(2);
   });
 
-  it("splits a GPS jump into separate paths and drops the teleport edge", () => {
+  it("joins consecutive samples even across a large geographic jump", () => {
     const trips: Trip[] = [
       {
         trackInfoId: 1,
@@ -129,11 +129,9 @@ describe("buildTrackMap", () => {
       dateTo: "2025-04-01",
       timezone: "+00:00",
     });
-    expect(data.paths).toHaveLength(2);
+    expect(data.paths).toHaveLength(1);
+    expect(data.paths[0]).toHaveLength(4);
     expect(data.hasAltitude).toBe(true);
-    const segs = colorSegments(data.paths, "path", data.altMin, data.altMax);
-    const all = segs.flatMap((s) => s.points);
-    expect(all.some((p) => Math.abs(p[0] + 6.2) < 0.01 && Math.abs(p[1] - 115.2) < 0.01)).toBe(false);
   });
 
   it("colors consecutive road edges and merges the same bucket", () => {

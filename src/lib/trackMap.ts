@@ -1,11 +1,9 @@
-import { asNumber, haversineKm } from "./geo";
+import { asNumber } from "./geo";
 import { classifyVibration, vibrationMg } from "./road";
 import { zonedEndMs, zonedStartMs } from "./time";
 import type { TrackPoint, Trip } from "./types";
 
 export const MAX_MAP_POINTS = 8000;
-/** Map-only: connect sparse GPS like Armada. Distance still uses 1.5 km / 5 min. */
-export const MAP_MAX_JUMP_KM = 80;
 
 export const MAP_COLOR = {
   low: "#0b6b62",
@@ -59,27 +57,8 @@ function parsePoint(point: TrackPoint): MapPoint | null {
 }
 
 function splitPaths(points: MapPoint[]): MapPoint[][] {
-  const paths: MapPoint[][] = [];
-  let current: MapPoint[] = [];
-  let prev: MapPoint | null = null;
-
-  for (const point of points) {
-    if (!prev) {
-      current = [point];
-      prev = point;
-      continue;
-    }
-    const jump = haversineKm(prev.lat, prev.lon, point.lat, point.lon) > MAP_MAX_JUMP_KM;
-    if (jump) {
-      if (current.length >= 2) paths.push(current);
-      current = [point];
-    } else {
-      current.push(point);
-    }
-    prev = point;
-  }
-  if (current.length >= 2) paths.push(current);
-  return paths;
+  if (points.length === 0) return [];
+  return [points];
 }
 
 export function downsamplePath(points: MapPoint[], max: number): MapPoint[] {
