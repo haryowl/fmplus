@@ -1,22 +1,27 @@
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { handleAnalyzeRequest } from "./server/analyze.mjs";
+import { handleTracksBatchRequest } from "./server/tracks-batch.mjs";
 
 function analyzePlugin(): Plugin {
   return {
     name: "vehicle-analyze",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        void handleAnalyzeRequest(req, res).then((handled) => {
-          if (!handled) next();
-        }, next);
+        void (async () => {
+          if (await handleTracksBatchRequest(req, res)) return;
+          if (await handleAnalyzeRequest(req, res)) return;
+          next();
+        })().catch(next);
       });
     },
     configurePreviewServer(server) {
       server.middlewares.use((req, res, next) => {
-        void handleAnalyzeRequest(req, res).then((handled) => {
-          if (!handled) next();
-        }, next);
+        void (async () => {
+          if (await handleTracksBatchRequest(req, res)) return;
+          if (await handleAnalyzeRequest(req, res)) return;
+          next();
+        })().catch(next);
       });
     },
   };

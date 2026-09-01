@@ -10,6 +10,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleAnalyzeRequest } from "./server/analyze.mjs";
+import { handleTracksBatchRequest } from "./server/tracks-batch.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.join(root, "dist");
@@ -205,6 +206,7 @@ function serveStatic(req, res) {
 const server = http.createServer((req, res) => {
   void (async () => {
     const urlPath = req.url || "/";
+    if (await handleTracksBatchRequest(req, res)) return;
     if (await handleAnalyzeRequest(req, res)) return;
     if (urlPath === "/lt" || urlPath.startsWith("/lt/")) {
       await proxyLt(req, res);

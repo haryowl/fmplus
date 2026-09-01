@@ -1,4 +1,5 @@
-import { API_BASE, API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, TRACK_FETCH_CONCURRENCY, TRACK_FETCH_GAP_MS } from "./config";
+import { API_BASE, API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, TRACK_BATCH_BROWSER, TRACK_BATCH_SIZE, TRACK_FETCH_CONCURRENCY } from "./config";
+import { chunkArray, mapPool } from "./pool";
 import type { Group, LoadProgress, TrackInfo, TrackPoint, Trip, User } from "./types";
 import { formatUpdatedSince, updatedSinceWindows } from "./time";
 
@@ -160,6 +161,65 @@ async function fetchTracks(trackInfoId: number, signal?: AbortSignal): Promise<T
   return unwrap(raw);
 }
 
+type BatchTracksResponse = {
+  byId?: Record<string, TrackPoint[]>;
+  failed?: number[];
+};
+
+let batchEndpoint: "unknown" | "yes" | "no" = "unknown";
+
+const trackPointCache = new Map<number, TrackPoint[]>();
+const TRACK_CACHE_MAX = 800;
+
+function rememberTracks(id: number, points: TrackPoint[]) {
+  if (trackPointCache.has(id)) {
+    trackPointCache.delete(id);
+  } else if (trackPointCache.size >= TRACK_CACHE_MAX) {
+    const oldest = trackPointCache.keys().next().value;
+    if (oldest !== undefined) trackPointCache.delete(oldest);
+  }
+  trackPointCache.set(id, points);
+}
+
+async function fetchTracksBatch(
+  ids: number[],
+  signal?: AbortSignal,
+): Promise<{ byId: Map<number, TrackPoint[]>; failed: number[] }> {
+  const res = await fetch("/api/tracks-batch", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ ids }),
+    signal,
+  });
+  if (res.status === 404 || res.status === 405) {
+    throw Object.assign(new Error("batch unavailable"), { batchUnavailable: true as const });
+  }
+  if (!res.ok) {
+    throw new Error(`Track batch ${res.status}`);
+  }
+  const raw = (await res.json()) as BatchTracksResponse;
+  const byId = new Map<number, TrackPoint[]>();
+  for (const [key, points] of Object.entries(raw.byId ?? {})) {
+    const id = Number(key);
+    if (Number.isFinite(id) && Array.isArray(points)) byId.set(id, points);
+  }
+  const failed = (raw.failed ?? []).map(Number).filter((id) => Number.isFinite(id));
+  return { byId, failed };
+}
+
+async function loadOneTrack(info: TrackInfo, signal?: AbortSignal): Promise<{ info: TrackInfo; tracks: TrackPoint[]; ok: boolean }> {
+  const cached = trackPointCache.get(info.id);
+  if (cached) return { info, tracks: cached, ok: true };
+  try {
+    const tracks = await fetchTracks(info.id, signal);
+    rememberTracks(info.id, tracks);
+    return { info, tracks, ok: true };
+  } catch (err) {
+    if ((err as Error).name === "AbortError") throw err;
+    return { info, tracks: [], ok: false };
+  }
+}
+
 export type TripLoadResult = {
   trips: Trip[];
   skipped: number;
@@ -195,15 +255,18 @@ async function fetchTrackInfosInRange(options: {
   const windows = updatedSinceWindows(dateFrom, dateTo);
   onProgress?.({ phase: "trips", loaded: 0, total: windows.length });
 
-  const windowResults: TrackInfo[][] = [];
   let windowsDone = 0;
-  for (const day of windows) {
-    if (signal?.aborted) break;
-    const since = formatUpdatedSince(day, timezone);
-    windowResults.push(await fetchTrackInfoWindow(since, signal));
-    windowsDone += 1;
-    onProgress?.({ phase: "trips", loaded: windowsDone, total: windows.length });
-  }
+  const windowResults = await Promise.all(
+    windows.map(async (day) => {
+      const since = formatUpdatedSince(day, timezone);
+      try {
+        return await fetchTrackInfoWindow(since, signal);
+      } finally {
+        windowsDone += 1;
+        onProgress?.({ phase: "trips", loaded: windowsDone, total: windows.length });
+      }
+    }),
+  );
 
   const seen = new Set<number>();
   const infos: TrackInfo[] = [];
@@ -226,47 +289,85 @@ async function loadTracksForInfos(
 
   const trips: Trip[] = [];
   let skipped = 0;
-  const batchSize = Math.max(1, TRACK_FETCH_CONCURRENCY);
+  let loaded = 0;
 
-  for (let i = 0; i < infos.length; i += batchSize) {
-    if (signal?.aborted) break;
-    const batch = infos.slice(i, i + batchSize);
-    const results = await Promise.all(
-      batch.map(async (info) => {
-        try {
-          const tracks = await fetchTracks(info.id, signal);
-          return { info, tracks, ok: true as const };
-        } catch (err) {
-          if ((err as Error).name === "AbortError") throw err;
-          return { info, tracks: [] as TrackPoint[], ok: false as const };
-        }
-      }),
-    );
-
-    for (const result of results) {
-      if (!result.ok) {
-        skipped += 1;
-        continue;
-      }
-      if (result.tracks.length === 0) continue;
-      trips.push({
-        trackInfoId: result.info.id,
-        userId: result.info.userId,
-        created: result.info.created ? new Date(result.info.created) : null,
-        tracks: result.tracks,
-      });
+  const pushResult = (info: TrackInfo, tracks: TrackPoint[], ok: boolean) => {
+    loaded += 1;
+    if (!ok) {
+      skipped += 1;
+      return;
     }
+    rememberTracks(info.id, tracks);
+    if (tracks.length === 0) return;
+    trips.push({
+      trackInfoId: info.id,
+      userId: info.userId,
+      created: info.created ? new Date(info.created) : null,
+      tracks,
+    });
+  };
 
+  const report = () => {
     onProgress?.({
       phase: "tracks",
-      loaded: Math.min(i + batch.length, infos.length),
+      loaded,
       total: infos.length,
       skipped,
     });
+  };
 
-    if (i + batchSize < infos.length && TRACK_FETCH_GAP_MS > 0) {
-      await wait(TRACK_FETCH_GAP_MS, signal);
-    }
+  const loadDirect = async (items: TrackInfo[]) => {
+    await mapPool(items, TRACK_FETCH_CONCURRENCY, async (info) => {
+      const result = await loadOneTrack(info, signal);
+      pushResult(result.info, result.tracks, result.ok);
+      report();
+    });
+  };
+
+  const pending = infos.filter((info) => {
+    const cached = trackPointCache.get(info.id);
+    if (!cached) return true;
+    pushResult(info, cached, true);
+    return false;
+  });
+  if (pending.length < infos.length) report();
+  if (pending.length === 0) return { trips, skipped };
+
+  if (batchEndpoint !== "no") {
+    const chunks = chunkArray(pending, TRACK_BATCH_SIZE);
+    await mapPool(chunks, TRACK_BATCH_BROWSER, async (chunk) => {
+        if (batchEndpoint === "no") {
+          await loadDirect(chunk);
+          return;
+        }
+        try {
+          const { byId, failed } = await fetchTracksBatch(
+            chunk.map((info) => info.id),
+            signal,
+          );
+          batchEndpoint = "yes";
+          const failedSet = new Set(failed);
+          const missing: TrackInfo[] = [];
+          for (const info of chunk) {
+            if (failedSet.has(info.id) || !byId.has(info.id)) {
+              missing.push(info);
+              continue;
+            }
+            pushResult(info, byId.get(info.id) ?? [], true);
+          }
+          if (missing.length) await loadDirect(missing);
+          report();
+        } catch (err) {
+          if ((err as Error).name === "AbortError") throw err;
+          if ((err as { batchUnavailable?: boolean }).batchUnavailable) {
+            batchEndpoint = "no";
+          }
+          await loadDirect(chunk);
+          report();
+        }
+      });
+  } else {
+    await loadDirect(pending);
   }
 
   return { trips, skipped };
