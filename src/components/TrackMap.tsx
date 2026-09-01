@@ -5,6 +5,8 @@ import {
   colorSegments,
   defaultMapMode,
   MAP_COLOR,
+  MAX_MAP_POINTS,
+  pathsForMapView,
   type MapMode,
   type TrackMapData,
 } from "../lib/trackMap";
@@ -20,7 +22,9 @@ export function TrackMap({ data }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
+  const fittedForRef = useRef<TrackMapData | null>(null);
   const [mode, setMode] = useState<MapMode>(() => defaultMapMode(data));
+  const [drawnCount, setDrawnCount] = useState(data.pointCount);
 
   useEffect(() => {
     setMode(defaultMapMode(data));
@@ -46,29 +50,50 @@ export function TrackMap({ data }: Props) {
     const map = mapRef.current;
     const group = layerRef.current;
     if (!map || !group) return;
-    group.clearLayers();
-    const segments = colorSegments(data.paths, mode, data.altMin, data.altMax);
-    const bounds = L.latLngBounds([]);
-    for (const segment of segments) {
-      const line = L.polyline(segment.points, {
-        color: segment.color,
-        weight: 5,
-        opacity: 0.9,
-        lineJoin: "round",
-        lineCap: "round",
-      });
-      group.addLayer(line);
-      bounds.extend(line.getBounds());
-    }
-    if (bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 });
-    }
-    map.invalidateSize();
+
+    const draw = () => {
+      const b = map.getBounds();
+      const view = pathsForMapView(
+        data.paths,
+        b.isValid()
+          ? { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() }
+          : null,
+        MAX_MAP_POINTS,
+      );
+      group.clearLayers();
+      const segments = colorSegments(view, mode, data.altMin, data.altMax);
+      const bounds = L.latLngBounds([]);
+      let vertices = 0;
+      for (const path of view) vertices += path.length;
+      for (const segment of segments) {
+        const line = L.polyline(segment.points, {
+          color: segment.color,
+          weight: 5,
+          opacity: 0.9,
+          lineJoin: "round",
+          lineCap: "round",
+        });
+        group.addLayer(line);
+        bounds.extend(line.getBounds());
+      }
+      setDrawnCount(vertices);
+      if (fittedForRef.current !== data && bounds.isValid()) {
+        fittedForRef.current = data;
+        map.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 });
+      }
+      map.invalidateSize();
+    };
+
+    draw();
+    map.on("zoomend moveend", draw);
+    return () => {
+      map.off("zoomend moveend", draw);
+    };
   }, [data, mode]);
 
   const sampled =
-    data.rawCount > data.pointCount
-      ? `${data.pointCount.toLocaleString("en-US")} of ${data.rawCount.toLocaleString("en-US")} points`
+    drawnCount < data.pointCount
+      ? `Showing ${drawnCount.toLocaleString("en-US")} of ${data.pointCount.toLocaleString("en-US")} points — zoom in for full detail`
       : `${data.pointCount.toLocaleString("en-US")} points`;
 
   return (
@@ -78,7 +103,7 @@ export function TrackMap({ data }: Props) {
           <h2>Track map</h2>
           <p>
             OpenStreetMap only — GPS jumps and time gaps break the line the same way distance does.
-            Dense tracks are thinned for drawing.
+            Zoom in to see every point; the overview may simplify a long route.
           </p>
         </div>
         <div className="field">

@@ -4,7 +4,7 @@ import { classifyVibration, vibrationMg } from "./road";
 import { zonedEndMs, zonedStartMs } from "./time";
 import type { TrackPoint, Trip } from "./types";
 
-export const MAX_MAP_POINTS = 2500;
+export const MAX_MAP_POINTS = 8000;
 
 export const MAP_COLOR = {
   low: "#0b6b62",
@@ -96,13 +96,49 @@ export function downsamplePath(points: MapPoint[], max: number): MapPoint[] {
   return out;
 }
 
-function downsamplePaths(paths: MapPoint[][], maxTotal: number): MapPoint[][] {
+export function downsamplePaths(paths: MapPoint[][], maxTotal: number): MapPoint[][] {
   const total = paths.reduce((sum, path) => sum + path.length, 0);
   if (total <= maxTotal) return paths;
   return paths.map((path) => {
     const share = Math.max(2, Math.round((path.length / total) * maxTotal));
     return downsamplePath(path, share);
   });
+}
+
+export type MapBounds = {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+};
+
+/** Keep vertices in (or next to) the view, then thin if the view is still dense. */
+export function pathsForMapView(
+  paths: MapPoint[][],
+  bounds: MapBounds | null,
+  maxPoints: number,
+): MapPoint[][] {
+  let clipped = paths;
+  if (bounds) {
+    const latPad = Math.max(0.01, (bounds.north - bounds.south) * 0.2);
+    const lonPad = Math.max(0.01, (bounds.east - bounds.west) * 0.2);
+    const south = bounds.south - latPad;
+    const north = bounds.north + latPad;
+    const west = bounds.west - lonPad;
+    const east = bounds.east + lonPad;
+    const inBox = (p: MapPoint) => p.lat >= south && p.lat <= north && p.lon >= west && p.lon <= east;
+    clipped = paths
+      .map((path) => {
+        const keep = path.map(inBox);
+        const out: MapPoint[] = [];
+        for (let i = 0; i < path.length; i += 1) {
+          if (keep[i] || keep[i - 1] || keep[i + 1]) out.push(path[i]);
+        }
+        return out;
+      })
+      .filter((path) => path.length >= 2);
+  }
+  return downsamplePaths(clipped, maxPoints);
 }
 
 export function elevationColor(alt: number, min: number, max: number): string {
@@ -173,7 +209,7 @@ export function colorSegments(
 
 export function buildTrackMap(
   trips: Trip[],
-  options: { dateFrom: string; dateTo: string; timezone: string; maxPoints?: number },
+  options: { dateFrom: string; dateTo: string; timezone: string },
 ): TrackMapData {
   const startMs = zonedStartMs(options.dateFrom, options.timezone);
   const endMs = zonedEndMs(options.dateTo, options.timezone);
@@ -190,8 +226,7 @@ export function buildTrackMap(
 
   collected.sort((a, b) => a.ms - b.ms);
   const rawCount = collected.length;
-  let paths = splitPaths(collected);
-  paths = downsamplePaths(paths, options.maxPoints ?? MAX_MAP_POINTS);
+  const paths = splitPaths(collected);
 
   let altMin: number | null = null;
   let altMax: number | null = null;

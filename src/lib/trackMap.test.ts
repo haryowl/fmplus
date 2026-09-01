@@ -5,9 +5,31 @@ import {
   downsamplePath,
   elevationColor,
   MAP_COLOR,
+  pathsForMapView,
   roadColor,
 } from "./trackMap";
 import type { Trip } from "./types";
+
+describe("pathsForMapView", () => {
+  const mk = (lat: number, lon: number) => ({
+    ms: 1,
+    lat,
+    lon,
+    alt: null,
+    vibrationMg: null,
+  });
+
+  it("drops vertices well outside the current view", () => {
+    const paths = [
+      [mk(-6.2, 106.8), mk(-6.21, 106.81)],
+      [mk(1, 110), mk(1.01, 110.01)],
+    ];
+    const view = pathsForMapView(paths, { south: -6.3, west: 106.7, north: -6.1, east: 106.9 }, 8000);
+    expect(view).toHaveLength(1);
+    expect(view[0]).toHaveLength(2);
+    expect(view[0][0].lat).toBeCloseTo(-6.2);
+  });
+});
 
 describe("downsamplePath", () => {
   it("keeps endpoints when thinning a long path", () => {
@@ -49,6 +71,22 @@ describe("buildTrackMap", () => {
     utc,
     position: { latitude: lat, longitude: lon, altitude: extra.alt },
     variables: extra.axis !== undefined ? { axisX: extra.axis, axisY: 0, axisZ: 0 } : {},
+  });
+
+  it("keeps every in-range GPS point instead of thinning at build time", () => {
+    const tracks = Array.from({ length: 40 }, (_, i) =>
+      point(
+        `2025-04-01T01:${String(i).padStart(2, "0")}:00Z`,
+        -6.2,
+        106.8 + i * 0.0001,
+      ),
+    );
+    const data = buildTrackMap(
+      [{ trackInfoId: 1, userId: 9, created: null, tracks }],
+      { dateFrom: "2025-04-01", dateTo: "2025-04-01", timezone: "+00:00" },
+    );
+    expect(data.pointCount).toBe(40);
+    expect(data.rawCount).toBe(40);
   });
 
   it("splits a GPS jump into separate paths and drops the teleport edge", () => {
