@@ -30,6 +30,12 @@ export const DEFAULT_HARSH_CORNER = 0.6;
 export const DEFAULT_SPEED_LIMIT_KMH = 90;
 /** Max vehicles loaded together on the fleet pages. */
 export const FLEET_VEHICLE_CAP = 8;
+/** Parallel GPS track downloads. Retries cover drops; keep this modest. */
+export const TRACK_FETCH_CONCURRENCY = 4;
+/** Short pause between batches. Raised after 429s in apiGet. */
+export const TRACK_FETCH_GAP_MS = 50;
+export const API_RETRY_ATTEMPTS = 8;
+export const API_RETRY_CAP_MS = 12_000;
 /** Road vibration buckets in mG (1 G = 1000 mG), matching V8. */
 export const ROAD_ROUGH_MG = 150;
 export const ROAD_BUMPY_MG = 300;

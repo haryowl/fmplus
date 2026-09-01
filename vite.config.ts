@@ -34,6 +34,8 @@ export default defineConfig(({ mode }) => {
       target: "https://armada.id",
       changeOrigin: true,
       secure: true,
+      timeout: 120_000,
+      proxyTimeout: 120_000,
       headers: {
         Authorization: auth,
         accept: "application/json",

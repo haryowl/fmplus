@@ -9,6 +9,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { Agent } from "undici";
 import { handleAnalyzeRequest } from "./server/analyze.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -40,6 +41,34 @@ loadEnvFile(path.join(root, ".env.local"));
 const port = Number(process.env.PORT || 4173);
 const auth = process.env.ARMADA_AUTH_HEADER || "";
 const frameAncestors = process.env.EMBED_FRAME_ANCESTORS || "'self'";
+const PROXY_ATTEMPTS = 6;
+const PROXY_TIMEOUT_MS = 120_000;
+
+const armadaAgent = new Agent({
+  connections: 4,
+  pipelining: 0,
+  keepAliveTimeout: 10_000,
+  keepAliveMaxTimeout: 30_000,
+  connect: { timeout: 20_000 },
+});
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function proxyRetryDelayMs(attempt, retryAfter) {
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(seconds * 1000, 20_000);
+    }
+  }
+  return Math.min(400 * 2 ** attempt, 12_000);
+}
+
+function isRetryableUpstream(status) {
+  return status === 429 || status === 502 || status === 503 || status === 504;
+}
 
 const mime = {
   ".css": "text/css; charset=utf-8",
@@ -84,22 +113,75 @@ async function proxyLt(req, res) {
   }
 
   const url = `https://armada.id${req.url}`;
-  try {
-    const upstream = await fetch(url, {
-      method: "GET",
-      headers: {
-        authorization: auth,
-        accept: req.headers.accept || "application/json",
-      },
-      redirect: "follow",
-    });
-    const buf = Buffer.from(await upstream.arrayBuffer());
-    send(res, upstream.status, {
-      "Content-Type": upstream.headers.get("content-type") || "application/json",
-      "Cache-Control": "no-store",
-    }, buf);
-  } catch {
-    send(res, 502, { "Content-Type": "application/json; charset=utf-8" }, JSON.stringify({ error: "Armada proxy failed" }));
+  let lastError = "Armada proxy failed";
+
+  for (let attempt = 0; attempt < PROXY_ATTEMPTS; attempt += 1) {
+    if (req.aborted || res.writableEnded) return;
+    try {
+      const upstream = await fetch(url, {
+        method: "GET",
+        dispatcher: armadaAgent,
+        headers: {
+          authorization: auth,
+          accept: req.headers.accept || "application/json",
+        },
+        redirect: "follow",
+        signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
+      });
+
+      if (isRetryableUpstream(upstream.status) && attempt < PROXY_ATTEMPTS - 1) {
+        await upstream.body?.cancel?.();
+        await sleep(proxyRetryDelayMs(attempt, upstream.headers.get("retry-after")));
+        continue;
+      }
+
+      const headers = {
+        "Content-Type": upstream.headers.get("content-type") || "application/json",
+        "Cache-Control": "no-store",
+      };
+      const retryAfter = upstream.headers.get("retry-after");
+      if (retryAfter) headers["Retry-After"] = retryAfter;
+
+      res.writeHead(upstream.status, securityHeaders(headers));
+      if (req.method === "HEAD" || !upstream.body) {
+        res.end();
+        return;
+      }
+
+      const onAbort = () => {
+        upstream.body.cancel().catch(() => {});
+      };
+      req.once("aborted", onAbort);
+      try {
+        for await (const chunk of upstream.body) {
+          if (req.aborted || res.writableEnded) break;
+          if (!res.write(chunk)) {
+            await new Promise((resolve) => res.once("drain", resolve));
+          }
+        }
+      } finally {
+        req.off("aborted", onAbort);
+      }
+      if (!res.writableEnded) res.end();
+      return;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : "Armada proxy failed";
+      if (attempt < PROXY_ATTEMPTS - 1) {
+        await sleep(proxyRetryDelayMs(attempt, null));
+        continue;
+      }
+    }
+  }
+
+  if (!res.headersSent) {
+    send(
+      res,
+      502,
+      { "Content-Type": "application/json; charset=utf-8" },
+      JSON.stringify({ error: lastError }),
+    );
+  } else if (!res.writableEnded) {
+    res.end();
   }
 }
 
@@ -141,6 +223,11 @@ const server = http.createServer((req, res) => {
     serveStatic(req, res);
   })();
 });
+
+server.requestTimeout = 0;
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;
+server.timeout = 0;
 
 server.listen(port, () => {
   const ready = auth ? "Armada proxy enabled" : "ARMADA_AUTH_HEADER missing";

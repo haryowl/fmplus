@@ -1,4 +1,4 @@
-import { API_BASE } from "./config";
+import { API_BASE, API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, TRACK_FETCH_CONCURRENCY, TRACK_FETCH_GAP_MS } from "./config";
 import type { Group, LoadProgress, TrackInfo, TrackPoint, Trip, User } from "./types";
 import { formatUpdatedSince, updatedSinceWindows } from "./time";
 
@@ -25,40 +25,61 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-function retryDelayMs(res: Response, attempt: number): number {
-  const header = res.headers.get("Retry-After");
-  if (header) {
-    const seconds = Number(header);
-    if (Number.isFinite(seconds) && seconds >= 0) {
-      return Math.min(seconds * 1000, 4_000);
+export function retryDelayMs(res: Response | null, attempt: number): number {
+  if (res) {
+    const header = res.headers.get("Retry-After");
+    if (header) {
+      const seconds = Number(header);
+      if (Number.isFinite(seconds) && seconds >= 0) {
+        return Math.min(seconds * 1000, 20_000);
+      }
     }
   }
-  return Math.min(300 * 2 ** attempt, 2_000);
+  return Math.min(400 * 2 ** attempt, API_RETRY_CAP_MS);
+}
+
+export function isRetryableStatus(status: number): boolean {
+  return status === 429 || status === 502 || status === 503 || status === 504;
 }
 
 async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   let lastStatus = 0;
+  let lastError = "request failed";
 
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const res = await fetch(`${API_BASE}${path}`, {
-      headers: { accept: "application/json" },
-      signal,
-    });
-    lastStatus = res.status;
+  for (let attempt = 0; attempt < API_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      const res = await fetch(`${API_BASE}${path}`, {
+        headers: { accept: "application/json" },
+        signal,
+      });
+      lastStatus = res.status;
 
-    if (res.status === 429 || res.status === 503) {
-      await wait(retryDelayMs(res, attempt), signal);
-      continue;
+      if (isRetryableStatus(res.status)) {
+        lastError = `Armada ${res.status}`;
+        await wait(retryDelayMs(res, attempt), signal);
+        continue;
+      }
+
+      if (!res.ok) {
+        throw new Error(`Armada ${res.status} on ${path}`);
+      }
+
+      return (await res.json()) as T;
+    } catch (err) {
+      if ((err as Error).name === "AbortError") throw err;
+      if (err instanceof Error && err.message.startsWith("Armada ") && !err.message.includes(" after retries")) {
+        throw err;
+      }
+      lastError = err instanceof Error ? err.message : "network error";
+      if (attempt < API_RETRY_ATTEMPTS - 1) {
+        await wait(retryDelayMs(null, attempt), signal);
+        continue;
+      }
+      throw new Error(`${lastError} on ${path}`);
     }
-
-    if (!res.ok) {
-      throw new Error(`Armada ${res.status} on ${path}`);
-    }
-
-    return res.json() as Promise<T>;
   }
 
-  throw new Error(`Armada ${lastStatus} on ${path} after retries`);
+  throw new Error(`Armada ${lastStatus || lastError} on ${path} after retries`);
 }
 
 export async function fetchGroups(signal?: AbortSignal): Promise<Group[]> {
@@ -174,18 +195,15 @@ async function fetchTrackInfosInRange(options: {
   const windows = updatedSinceWindows(dateFrom, dateTo);
   onProgress?.({ phase: "trips", loaded: 0, total: windows.length });
 
+  const windowResults: TrackInfo[][] = [];
   let windowsDone = 0;
-  const windowResults = await Promise.all(
-    windows.map(async (day) => {
-      const since = formatUpdatedSince(day, timezone);
-      try {
-        return await fetchTrackInfoWindow(since, signal);
-      } finally {
-        windowsDone += 1;
-        onProgress?.({ phase: "trips", loaded: windowsDone, total: windows.length });
-      }
-    }),
-  );
+  for (const day of windows) {
+    if (signal?.aborted) break;
+    const since = formatUpdatedSince(day, timezone);
+    windowResults.push(await fetchTrackInfoWindow(since, signal));
+    windowsDone += 1;
+    onProgress?.({ phase: "trips", loaded: windowsDone, total: windows.length });
+  }
 
   const seen = new Set<number>();
   const infos: TrackInfo[] = [];
@@ -208,7 +226,7 @@ async function loadTracksForInfos(
 
   const trips: Trip[] = [];
   let skipped = 0;
-  const batchSize = 2;
+  const batchSize = Math.max(1, TRACK_FETCH_CONCURRENCY);
 
   for (let i = 0; i < infos.length; i += batchSize) {
     if (signal?.aborted) break;
@@ -245,6 +263,10 @@ async function loadTracksForInfos(
       total: infos.length,
       skipped,
     });
+
+    if (i + batchSize < infos.length && TRACK_FETCH_GAP_MS > 0) {
+      await wait(TRACK_FETCH_GAP_MS, signal);
+    }
   }
 
   return { trips, skipped };
