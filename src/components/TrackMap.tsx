@@ -33,7 +33,7 @@ export function TrackMap({ data }: Props) {
   useEffect(() => {
     const el = hostRef.current;
     if (!el || mapRef.current) return;
-    const map = L.map(el, { scrollWheelZoom: false });
+    const map = L.map(el, { scrollWheelZoom: false }).setView([-2.5, 118], 5);
     L.tileLayer(TILE_URL, { attribution: ATTRIBUTION, maxZoom: 18 }).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
@@ -52,14 +52,20 @@ export function TrackMap({ data }: Props) {
     if (!map || !group) return;
 
     const draw = () => {
-      const b = map.getBounds();
-      const view = pathsForMapView(
-        data.paths,
-        b.isValid()
-          ? { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() }
-          : null,
-        MAX_MAP_POINTS,
-      );
+      const alreadyFitted = fittedForRef.current === data;
+      let box = null;
+      if (alreadyFitted) {
+        const b = map.getBounds();
+        if (b.isValid()) {
+          box = {
+            south: b.getSouth(),
+            west: b.getWest(),
+            north: b.getNorth(),
+            east: b.getEast(),
+          };
+        }
+      }
+      const view = pathsForMapView(data.paths, box, MAX_MAP_POINTS);
       group.clearLayers();
       const segments = colorSegments(view, mode, data.altMin, data.altMax);
       const bounds = L.latLngBounds([]);
