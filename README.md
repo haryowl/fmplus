@@ -28,6 +28,28 @@ npm run build && npm start
 
 Open [http://localhost:5173/](http://localhost:5173/) for `npm run dev`, or port **4173** for `npm start`.
 
+## Run always on Linux
+
+Use **systemd**, not `npm run dev`. Build once, then let `node server.mjs` restart on crash and at boot.
+
+```bash
+cd /root/fmplus/fmplus
+npm run build
+cp deploy/fmplus.service /etc/systemd/system/fmplus.service
+systemctl daemon-reload
+systemctl enable --now fmplus
+systemctl status fmplus
+```
+
+Useful commands:
+
+```bash
+systemctl restart fmplus
+journalctl -u fmplus -f
+```
+
+If you copied the unit by hand before `git pull`, install it from this file after pulling. The app listens on port **4173**.
+
 Open [http://localhost:5173/](http://localhost:5173/).
 
 | Page | URL |
