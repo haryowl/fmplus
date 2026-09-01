@@ -9,7 +9,6 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Agent } from "undici";
 import { handleAnalyzeRequest } from "./server/analyze.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -43,14 +42,6 @@ const auth = process.env.ARMADA_AUTH_HEADER || "";
 const frameAncestors = process.env.EMBED_FRAME_ANCESTORS || "'self'";
 const PROXY_ATTEMPTS = 6;
 const PROXY_TIMEOUT_MS = 120_000;
-
-const armadaAgent = new Agent({
-  connections: 4,
-  pipelining: 0,
-  keepAliveTimeout: 10_000,
-  keepAliveMaxTimeout: 30_000,
-  connect: { timeout: 20_000 },
-});
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -120,7 +111,6 @@ async function proxyLt(req, res) {
     try {
       const upstream = await fetch(url, {
         method: "GET",
-        dispatcher: armadaAgent,
         headers: {
           authorization: auth,
           accept: req.headers.accept || "application/json",
