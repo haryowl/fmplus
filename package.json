@@ -1,0 +1,36 @@
+{
+  "name": "fms-embed",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/haryowl/fmplus.git"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "start": "node server.mjs",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
+    "leaflet": "^1.9.4",
+    "react": "^19.2.8",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "^26.4.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  }
+}

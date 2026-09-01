@@ -1,0 +1,4453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vehicle Metrics Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-weight: 500;
+            font-size: 1.5rem;
+        }
+
+        h2 {
+            font-size: 1.2rem;
+            font-weight: 500;
+            margin: 8px 0;
+            color: #2c3e50;
+        }
+
+        h3 {
+            font-size: 1rem;
+            font-weight: 500;
+            margin: 6px 0;
+            color: #7f8c8d;
+        }
+        
+		/* Add to your CSS */
+		.chart-container canvas {
+		max-height: 350px;
+		}
+
+		/* Style for max value lines */
+		.chartjs-render-monitor .border-dash {
+		border-dash: [5, 5];
+		}
+		
+        .controls {
+            margin-bottom: 15px;
+            padding: 12px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+        
+        .controls.collapsed {
+            padding: 8px 12px;
+        }
+        
+        .controls-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        
+        .controls-header h2 {
+            font-size: 1.2rem;
+            margin: 0;
+        }		
+        
+        .controls-content {
+            margin-top: 12px;
+        }
+        
+        .controls.collapsed .controls-content {
+            display: none;
+        }
+        
+        .toggle-controls {
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #7f8c8d;
+        }
+        
+        .chart-container {
+            margin-bottom: 20px;
+            padding: 12px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            height: 350px;
+            position: relative;
+        }
+        
+        select, input, button {
+            padding: 6px 8px;
+            margin-right: 4px;
+            margin-bottom: 4px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: white;
+            font-size: 13px;
+        }
+        
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: #2980b9;
+        }
+        
+        .chart-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .chart-wrapper {
+            flex: 1;
+            min-width: calc(50% - 15px);
+        }
+        
+        .loading {
+            display: none;
+            margin: 8px 0;
+            color: #666;
+            font-size: 13px;
+        }
+        
+        .date-time-controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 5px 5px 0 0;
+            cursor: default;
+            margin-bottom: 12px;
+			margin-top: 20px;
+		}
+    
+        .panel-title-container {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+    
+        .panel-title {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+    
+        .panel-date-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+    
+        .panel-date-selector label {
+            font-weight: 500;
+            color: #7f8c8d;
+            font-size: 13px;
+        }
+ 
+        .comparison-controls {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 5px;
+            margin-bottom: 12px;
+        }
+
+        .progress-container {
+            width: 100%;
+            background-color: #f1f1f1;
+            border-radius: 4px;
+            margin: 12px 0;
+            display: none;
+        }
+        
+        .progress-bar {
+            height: 18px;
+            background-color: #3498db;
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        
+        .loading-message {
+            text-align: center;
+            margin: 8px 0;
+            font-weight: bold;
+            color: #3498db;
+            display: none;
+            font-size: 13px;
+        }
+    
+        .comparison-periods {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-top: 4px;
+        }
+        
+        .comparison-period {
+            flex: 1;
+            padding: 4px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .comparison-period h3 {
+            margin: 0 0 4px 0;
+            font-size: 0.8em;
+            color: #7f8c8d;
+            font-weight: 500;
+        }
+
+        .comparison-period select {
+            width: 100%;
+            padding: 4px;
+            font-size: 0.9em;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+ 
+        .stats-panel {
+            display: flex;
+            height: calc(100% - 100px);
+            overflow: hidden;
+        }
+
+        #statsContent {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 8px;
+            width: 100%;
+            height: 100%;
+            padding: 4px;
+            box-sizing: border-box;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 4px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-weight: 500;
+            color: #7f8c8d;
+            font-size: 0.8em;
+        }
+
+        .stat-value {
+            font-family: monospace;
+            font-size: 11px;
+        }
+
+        .comparison-chart-container {
+            width: 70px;
+            height: 70px;
+            margin: 4px auto;
+        }
+        
+        .comparison-controls {
+            padding: 6px;
+            margin-bottom: 4px;
+        }
+
+        .stat-comparison {
+            font-size: 0.9em;
+            margin-left: 4px;
+        }
+
+        .positive-change {
+            color: #27ae60;
+        }
+
+        .negative-change {
+            color: #e74c3c;
+        }
+
+        .neutral-change {
+            color: #3498db;
+        }
+        
+        #exportPdfBtn {
+            background-color: #e74c3c;
+            margin-left: 8px;
+        }
+        
+        #exportPdfBtn:hover {
+            background-color: #c0392b;
+        }
+        
+        @media (max-width: 768px) {
+            #statsContent {
+                grid-template-columns: 1fr;
+                grid-template-rows: repeat(4, 1fr);
+            }
+        }
+
+        /* Enhanced Vehicle Utilization & Fuel Costs Dashboard */
+        .utilization-dashboard {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .utilization-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .utilization-panel {
+            flex: 1;
+            min-width: 280px;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+
+        .utilization-header {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .utilization-content {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .utilization-chart-container {
+            position: relative;
+            height: 180px;
+            padding: 12px;
+        }
+
+        .utilization-stats-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            padding: 12px;
+            background: #f8f9fa;
+        }
+
+        .utilization-stat {
+            display: flex;
+            flex-direction: column;
+            padding: 8px;
+            background: white;
+            border-radius: 3px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .utilization-stat-label {
+            font-size: 0.75em;
+            color: #7f8c8d;
+            margin-bottom: 4px;
+        }
+
+        .utilization-stat-value {
+            font-weight: bold;
+            font-size: 1em;
+        }
+
+        .fuel-cost-panel {
+            flex: 1;
+            min-width: 280px;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+
+        .fuel-cost-header {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .fuel-cost-content {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .fuel-cost-chart-container {
+            position: relative;
+            height: 180px;
+            padding: 12px;
+        }
+
+        .fuel-cost-stats-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            padding: 12px;
+            background: #f8f9fa;
+        }
+
+        .fuel-cost-stat {
+            display: flex;
+            flex-direction: column;
+            padding: 8px;
+            background: white;
+            border-radius: 3px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .fuel-cost-stat-label {
+            font-size: 0.75em;
+            color: #7f8c8d;
+            margin-bottom: 4px;
+        }
+
+        .fuel-cost-stat-value {
+            font-weight: bold;
+            font-size: 1em;
+        }
+
+        /* New Vehicle Utilization & Fuel Costs with Date Range */
+        .utilization-range-dashboard {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .utilization-range-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .utilization-range-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .utilization-range-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .utilization-range-chart-container {
+            flex: 1;
+            min-width: 280px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            padding: 12px;
+        }
+
+        .utilization-range-chart {
+            position: relative;
+            height: 250px;
+        }
+
+        .utilization-range-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .fuel-range-chart-container {
+            flex: 1;
+            min-width: 280px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            padding: 12px;
+        }
+
+        .fuel-range-chart {
+            position: relative;
+            height: 250px;
+        }
+
+        .fuel-range-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        /* New styles for chart date range selectors */
+        .chart-date-range {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .chart-date-range label {
+            font-weight: 500;
+            color: #7f8c8d;
+            font-size: 0.8em;
+        }
+
+        .chart-date-range input {
+            padding: 5px 6px;
+            font-size: 0.8em;
+        }
+
+        .panel-toggle {
+            background: none;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            color: #7f8c8d;
+            padding: 4px;
+            margin-left: 8px;
+        }
+		
+        .panel-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .collapsed-panel .chart-container,
+        .collapsed-panel .utilization-content,
+        .collapsed-panel .fuel-cost-content,
+        .collapsed-panel .utilization-range-container {
+            display: none;
+        }
+        
+        .collapsed-panel {
+            padding-bottom: 12px;
+        }
+        
+        .panel-header {
+            cursor: pointer;
+        }
+
+        /* Add new styles for behavior analysis */
+        .behavior-dashboard {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .behavior-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            padding: 12px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+		
+        .behavior-thresholds {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 5px;
+            margin-bottom: 12px;
+        }
+        
+        .threshold-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 8px;
+        }
+		
+        .threshold-control {
+            display: flex;
+            flex-direction: column;
+            min-width: 180px;
+        }
+		
+        .threshold-control label {
+            font-size: 0.8em;
+            color: #7f8c8d;
+            margin-bottom: 4px;
+        }
+        
+        .threshold-control input {
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .behavior-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 8px;
+            margin-top: 12px;
+        }
+        
+        .behavior-stats-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
+        }
+        
+        .behavior-stat {
+            background: white;
+            padding: 12px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+        
+        .behavior-stat-label {
+            font-size: 0.8em;
+            color: #7f8c8d;
+            margin-bottom: 4px;
+        }
+        
+        .behavior-stat-value {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        
+        .behavior-charts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .behavior-chart-container {
+            flex: 1;
+            min-width: 280px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            padding: 12px;
+        }
+        
+        .behavior-chart {
+            height: 220px;
+            position: relative;
+        }
+        
+        .behavior-summary {
+            margin-top: 12px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .behavior-summary-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+        
+        .behavior-summary-label {
+            font-weight: 500;
+            color: #7f8c8d;
+        }
+        
+        .behavior-summary-value {
+            font-weight: bold;
+        }
+        
+        .positive-change {
+            color: #27ae60;
+        }
+        
+        .negative-change {
+            color: #e74c3c;
+        }
+        
+        .neutral-change {
+            color: #3498db;
+        }
+        
+        /* New styles for fuel efficiency panel */
+        .fuel-efficiency-panel {
+            flex: 1;
+            min-width: 280px;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+
+        .fuel-efficiency-header {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .fuel-efficiency-content {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .fuel-efficiency-chart-container {
+            position: relative;
+            height: 180px;
+            padding: 12px;
+        }
+
+        .fuel-efficiency-stats-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            padding: 12px;
+            background: #f8f9fa;
+        }
+
+        .fuel-efficiency-stat {
+            display: flex;
+            flex-direction: column;
+            padding: 8px;
+            background: white;
+            border-radius: 3px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .fuel-efficiency-stat-label {
+            font-size: 0.75em;
+            color: #7f8c8d;
+            margin-bottom: 4px;
+        }
+
+        .fuel-efficiency-stat-value {
+            font-weight: bold;
+            font-size: 1em;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .behavior-stats-container {
+                grid-template-columns: 1fr 1fr;
+            }
+            
+            .behavior-chart-container {
+                min-width: 100%;
+            }
+            
+            .utilization-container,
+            .utilization-range-container {
+                flex-direction: column;
+            }
+            
+            .utilization-panel,
+            .fuel-cost-panel,
+            .fuel-efficiency-panel,
+            .utilization-range-chart-container,
+            .fuel-range-chart-container {
+                min-width: 100%;
+            }
+            
+            .utilization-stats-container,
+            .fuel-cost-stats-container,
+            .fuel-efficiency-stats-container,
+            .utilization-range-stats,
+            .fuel-range-stats {
+                grid-template-columns: 1fr;
+            }
+            
+            .panel-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+            
+            .panel-date-selector {
+                width: 100%;
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+<body>\n<div id="statusBox" style="background:#fff3cd;padding:8px;border-radius:4px;margin-bottom:8px;">V17 Groups fix - Views deprecated Jan 2026</div>\n<pre id="apiLog" style="background:#111;color:#0f0;padding:10px;font-family:monospace;font-size:11px;max-height:200px;overflow:auto;white-space:pre-wrap;border-radius:4px;margin-bottom:10px;">Log:</pre>\n
+    <div>
+	<div id="loadingMessage" class="loading-message">Loading data...</div>
+    <div id="progressContainer" class="progress-container">
+    <div id="progressBar" class="progress-bar">0%</div>
+    </div>
+	
+    <div class="controls">
+        <div class="controls-header" onclick="toggleControls()">
+            <h2>Filters</h2>
+            <button class="toggle-controls">−</button>
+        </div>
+        
+        <div class="controls-content">
+            <div>
+                <label for="viewSelect">Select View:</label>
+                <select id="viewSelect" onchange="viewSelectionChanged()">
+                    <option value="">Loading views...</option>
+                </select>
+                
+                <label for="userSelect">Select User:</label>
+                <select id="userSelect" onchange="loadTrackInfos()">
+                    <option value="">Select a view first</option>
+                </select>
+                
+                <div class="date-time-controls">
+                    <div>
+                        <label for="dateFrom">Date:</label>
+                        <input type="date" id="dateFrom" value="2025-04-01">
+                    </div>
+                    
+                    <div>
+                        <label for="timeFrom">Time:</label>
+                        <input type="time" id="timeFrom" value="00:00:00" step="1">
+                    </div>
+					<div>
+						<label for="timezoneOffset">Timezone:</label>
+						<select id="timezoneOffset" onchange="applyTimezoneToData()">
+							<option value="+00:00">UTC</option>
+							<option value="-05:00">EST (UTC-05:00)</option>
+							<option value="-08:00">PST (UTC-08:00)</option>
+							<option value="+01:00">CET (UTC+01:00)</option>
+							<option value="+05:30">IST (UTC+05:30)</option>
+							<option value="+07:00">WIB (UTC+07:00)</option>
+							<option value="+08:00" selected>WITA (UTC+08:00)</option>
+							<option value="+09:00">WIT (UTC+09:00)</option>
+						</select>
+					</div>
+					<div>
+                        <label for="period">Period:</label>
+                        <select id="period" onchange="updateCharts()">
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label for="fuelPrice">Fuel Price (per liter):</label>
+                    <input type="number" id="fuelPrice" value="10500" min="0" step="0.01">
+                                
+                    <label for="refillThreshold">Refill Threshold (liters):</label>
+                    <input type="number" id="refillThreshold" value="8" min="0" step="0.1" onchange="updateRefillThreshold()">
+                
+                    <label for="minSpeed">Minimum Moving Speed (km/h):</label>
+                    <input type="number" id="minSpeed" value="3" min="0" step="0.1">
+                </div>
+                <button onclick="loadTrackInfos()">Load Data</button>
+                <button id="exportPdfBtn" onclick="exportToPDF()">Export to PDF</button>
+                <div id="loading" class="loading">Loading data...</div>
+                <div class="comparison-controls" style="margin-top: 12px;">
+                    <label for="compareMode">Compare With:</label>
+                    <select id="compareMode" onchange="updateComparisonOptions()">
+                        <option value="none">No comparison</option>
+                        <option value="specific">Specific period</option>
+                        <option value="previous">Previous period</option>
+                    </select>
+                    
+                    <select id="comparePeriodSelect" style="display: none;">
+                        <option value="">Select period to compare</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Distance & Active Time Panel -->
+    <div class="chart-row">
+        <div class="chart-wrapper">
+            <div class="panel-header">
+                <div class="panel-title-container" onclick="togglePanel(this.closest('.chart-wrapper'))">
+                    <h2>Distance & Active Time</h2>
+                    <button class="panel-toggle">−</button>
+                </div>
+                <div class="panel-controls">
+<div class="chart-date-range">
+    <label for="distanceDateFrom">From:</label>
+    <input type="date" id="distanceDateFrom" onchange="updateDistanceChart(dataStore.getCurrentData(document.getElementById('period').value))">
+    <label for="distanceDateTo">To:</label>
+    <input type="date" id="distanceDateTo" onchange="updateDistanceChart(dataStore.getCurrentData(document.getElementById('period').value))">
+</div>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="distanceChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Speed & RPM Panel -->
+        <div class="chart-wrapper">
+            <div class="panel-header">
+                <div class="panel-title-container" onclick="togglePanel(this.closest('.chart-wrapper'))">
+                    <h2>Speed & RPM</h2>
+                    <button class="panel-toggle">−</button>
+                </div>
+                <div class="panel-controls">
+                    <div class="chart-date-range">
+    <label for="speedDateFrom">From:</label>
+    <input type="date" id="speedDateFrom" onchange="updateSpeedRpmChart(dataStore.getCurrentData(document.getElementById('period').value))">
+    <label for="speedDateTo">To:</label>
+    <input type="date" id="speedDateTo" onchange="updateSpeedRpmChart(dataStore.getCurrentData(document.getElementById('period').value))">
+</div>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="speedRpmChart"></canvas>
+            </div>
+        </div>
+    </div>
+    </div>
+    
+    <div class="chart-row">
+        <div class="chart-wrapper">
+            <div class="panel-header">
+                <div class="panel-title-container" onclick="togglePanel(this.closest('.chart-wrapper'))">
+                <h2>Fuel Consumption & Refills</h2>
+                <button class="panel-toggle">−</button>
+				</div>
+<div class="chart-date-range">
+    <label for="fuelDateFrom">From:</label>
+    <input type="date" id="fuelDateFrom" onchange="updateFuelRefillChart(dataStore.getCurrentData(document.getElementById('period').value))">
+    <label for="fuelDateTo">To:</label>
+    <input type="date" id="fuelDateTo" onchange="updateFuelRefillChart(dataStore.getCurrentData(document.getElementById('period').value))">
+</div>
+            </div>
+            <div class="chart-container">
+                <canvas id="fuelRefillChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="chart-wrapper">
+            <div class="panel-header">
+                <div class="panel-title-container" onclick="togglePanel(this.closest('.chart-wrapper'))">
+                <h2>Performance Comparison</h2>
+                <button class="panel-toggle">−</button>
+				</div>
+                <div class="panel-date-selector">
+                    <label for="compareMode">Compare:</label>
+                    <select id="compareMode" onchange="updateComparisonOptions()">
+                        <option value="specific">Two specific periods</option>
+                        <option value="previous">Previous period</option>
+                    </select>
+                </div>
+            </div>
+            <div class="chart-container">
+                <div class="comparison-controls">
+                    <div id="specificComparisonControls">
+                        <div class="comparison-periods">
+                            <div class="comparison-period">
+                                <h3>First Period</h3>
+                                <select id="comparePeriod1" onchange="updateComparisonStats()">
+                                    <option value="">Select period</option>
+                                </select>
+                            </div>
+                            <div class="comparison-period">
+                                <h3>Second Period</h3>
+                                <select id="comparePeriod2" onchange="updateComparisonStats()">
+                                    <option value="">Select period</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="previousComparisonControls" style="display: none;">
+                        <p>Comparing current period with previous period</p>
+                    </div>
+                </div>
+                <div class="stats-panel">
+                    <div id="statsContent">
+                        <div class="stat-item">
+                            <div class="stat-row">
+                                <span class="stat-label">Distance</span>
+                                <span class="stat-value" id="distanceComparison">--</span>
+                            </div>
+                            <div class="comparison-chart-container">
+                                <canvas id="distanceChartDoughnut"></canvas>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-row">
+                                <span class="stat-label">Speed</span>
+                                <span class="stat-value" id="speedComparison">--</span>
+                            </div>
+                            <div class="comparison-chart-container">
+                                <canvas id="speedChartDoughnut"></canvas>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-row">
+                                <span class="stat-label">RPM</span>
+                                <span class="stat-value" id="rpmComparison">--</span>
+                            </div>
+                            <div class="comparison-chart-container">
+                                <canvas id="rpmChartDoughnut"></canvas>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-row">
+                                <span class="stat-label">Fuel</span>
+                                <span class="stat-value" id="fuelComparison">--</span>
+                            </div>
+                            <div class="comparison-chart-container">
+                                <canvas id="fuelChartDoughnut"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Vehicle Utilization & Fuel Costs (Single Day View) in its own row -->
+    <div class="chart-row">
+        <div class="chart-wrapper">
+            <div class="panel-header">
+                <div class="panel-title-container" onclick="togglePanel(this.closest('.chart-wrapper'))">
+                <h2>Vehicle Utilization & Fuel Costs (Single Day View)</h2>
+                <button class="panel-toggle">−</button>
+                </div>
+				<div>
+                    <label for="utilizationDate">Date:</label>
+                    <input type="date" id="utilizationDate" onchange="updateUtilizationView()">
+                </div>
+            </div>
+            <div class="chart-container">
+                <div class="utilization-container">
+                    <div class="utilization-panel">
+                        <div class="utilization-header">
+                            <h3>Vehicle Utilization</h3>
+                        </div>
+                        <div class="utilization-content">
+                            <div class="utilization-chart-container">
+                                <canvas id="utilizationChart"></canvas>
+                            </div>
+                            <div class="utilization-stats-container">
+                                <div class="utilization-stat">
+                                    <span class="utilization-stat-label">Active Hours</span>
+                                    <span class="utilization-stat-value" id="activeHours">--</span>
+                                </div>
+                                <div class="utilization-stat">
+                                    <span class="utilization-stat-label">Idle Time</span>
+                                    <span class="utilization-stat-value" id="idleTime">--</span>
+                                </div>
+                                <div class="utilization-stat">
+                                    <span class="utilization-stat-label">Utilization Rate</span>
+                                    <span class="utilization-stat-value" id="utilizationRate">--</span>
+                                </div>
+                                <div class="utilization-stat">
+                                    <span class="utilization-stat-label">True Distance</span>
+                                    <span class="utilization-stat-value" id="trueDistance">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="fuel-cost-panel">
+                        <div class="fuel-cost-header">
+                            <h3>Fuel Costs</h3>
+                        </div>
+                        <div class="fuel-cost-content">
+                            <div class="fuel-cost-chart-container">
+                                <canvas id="fuelCostChart"></canvas>
+                            </div>
+                            <div class="fuel-cost-stats-container">
+                                <div class="fuel-cost-stat">
+                                    <span class="fuel-cost-stat-label">Fuel Consumption</span>
+                                    <span class="fuel-cost-stat-value" id="fuelConsumption">--</span>
+                                </div>
+                                <div class="fuel-cost-stat">
+                                    <span class="fuel-cost-stat-label">Refill Amount</span>
+                                    <span class="fuel-cost-stat-value" id="refillAmount">--</span>
+                                </div>
+                                <div class="fuel-cost-stat">
+                                    <span class="fuel-cost-stat-label">Fuel Cost</span>
+                                    <span class="fuel-cost-stat-value" id="fuelCost">--</span>
+                                </div>
+                                <div class="fuel-cost-stat">
+                                    <span class="fuel-cost-stat-label">Cost per km</span>
+                                    <span class="fuel-cost-stat-value" id="costPerKm">--</span>
+                                </div>
+                                <div class="fuel-cost-stat">
+                                    <span class="fuel-cost-stat-label">Fuel Efficiency (km/l)</span>
+                                    <span class="fuel-cost-stat-value" id="fuelEfficiencyKmPerL">--</span>
+                                </div>
+								<div class="fuel-cost-stat">
+                                    <span class="fuel-cost-stat-label">Avg Efficiency (km/l)</span>
+                                    <span class="fuel-cost-stat-value" id="avgFuelEfficiencyKmPerL">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- New Fuel Efficiency Panel -->
+                    <div class="fuel-efficiency-panel">
+                        <div class="fuel-efficiency-header">
+                            <h3>Fuel Efficiency</h3>
+                        </div>
+                        <div class="fuel-efficiency-content">
+                            <div class="fuel-efficiency-chart-container">
+                                <canvas id="fuelEfficiencyChart"></canvas>
+                            </div>
+                            <div class="fuel-efficiency-stats-container">
+                                <div class="fuel-efficiency-stat">
+                                    <span class="fuel-efficiency-stat-label">Fuel Efficiency</span>
+                                    <span class="fuel-efficiency-stat-value" id="fuelEfficiency">--</span>
+                                </div>
+                                <div class="fuel-efficiency-stat">
+                                    <span class="fuel-efficiency-stat-label">Avg Efficiency</span>
+                                    <span class="fuel-efficiency-stat-value" id="avgFuelEfficiency">--</span>
+                                </div>
+                                <div class="fuel-efficiency-stat">
+                                    <span class="fuel-efficiency-stat-label">Best Efficiency</span>
+                                    <span class="fuel-efficiency-stat-value" id="bestFuelEfficiency">--</span>
+                                </div>
+                                <div class="fuel-efficiency-stat">
+                                    <span class="fuel-efficiency-stat-label">Worst Efficiency</span>
+                                    <span class="fuel-efficiency-stat-value" id="worstFuelEfficiency">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Vehicle Utilization & Fuel Costs (Date Range) in its own row -->
+    <div class="chart-row">
+        <div class="chart-wrapper">
+            <div class="panel-header">
+                <div class="panel-title-container" onclick="togglePanel(this.closest('.chart-wrapper'))">
+                <h2>Vehicle Utilization & Fuel Costs (Date Range)</h2>
+                <button class="panel-toggle">−</button>
+				</div>
+                <div class="utilization-range-controls">
+                    <label for="utilizationRangeFrom">From:</label>
+                    <input type="date" id="utilizationRangeFrom" onchange="updateUtilizationRangeView()">
+                    <label for="utilizationRangeTo">To:</label>
+                    <input type="date" id="utilizationRangeTo" onchange="updateUtilizationRangeView()">
+                    <select id="utilizationRangePeriod" onchange="updateUtilizationRangeView()">
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                </div>
+            </div>
+            <div class="chart-container">
+                <div class="utilization-range-container">
+                    <div class="utilization-range-chart-container">
+                        <div class="utilization-range-chart">
+                            <canvas id="utilizationRangeChart"></canvas>
+                        </div>
+                        <div class="utilization-range-stats">
+                            <div class="utilization-stat">
+                                <span class="utilization-stat-label">Total Active Hours</span>
+                                <span class="utilization-stat-value" id="rangeActiveHours">--</span>
+                            </div>
+                            <div class="utilization-stat">
+                                <span class="utilization-stat-label">Avg Utilization</span>
+                                <span class="utilization-stat-value" id="rangeAvgUtilization">--</span>
+                            </div>
+                            <div class="utilization-stat">
+                                <span class="utilization-stat-label">Total Distance</span>
+                                <span class="utilization-stat-value" id="rangeTotalDistance">--</span>
+                            </div>
+                            <div class="utilization-stat">
+                                <span class="utilization-stat-label">Avg Daily Distance</span>
+                                <span class="utilization-stat-value" id="rangeAvgDistance">--</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="fuel-range-chart-container">
+                        <div class="fuel-range-chart">
+                            <canvas id="fuelRangeChart"></canvas>
+                        </div>
+                        <div class="fuel-range-stats">
+                            <div class="fuel-cost-stat">
+                                <span class="fuel-cost-stat-label">Total Fuel Used</span>
+                                <span class="fuel-cost-stat-value" id="rangeFuelUsed">--</span>
+                            </div>
+                            <div class="fuel-cost-stat">
+                                <span class="fuel-cost-stat-label">Total Refill Amount</span>
+                                <span class="fuel-cost-stat-value" id="rangeRefillAmount">--</span>
+                            </div>
+                            <div class="fuel-cost-stat">
+                                <span class="fuel-cost-stat-label">Total Fuel Cost</span>
+                                <span class="fuel-cost-stat-value" id="rangeFuelCost">--</span>
+                            </div>
+                            <div class="fuel-cost-stat">
+                                <span class="fuel-cost-stat-label">Avg Efficiency (l/km)</span>
+                                <span class="fuel-cost-stat-value" id="rangeAvgEfficiency">--</span>
+                            </div>
+                            <div class="fuel-cost-stat">
+                                <span class="fuel-cost-stat-label">Avg Cost per km</span>
+                                <span class="fuel-cost-stat-value" id="rangeAvgCostPerKm">--</span>
+                            </div>
+                            <div class="fuel-cost-stat">
+                                <span class="fuel-cost-stat-label">Avg Efficiency (km/l)</span>
+                                <span class="fuel-cost-stat-value" id="rangeAvgEfficiencyKmPerL">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- New Vehicle Behavior Analysis Section -->
+    <div class="chart-row">
+        <div class="chart-wrapper">
+            <div class="panel-header">
+                <div class="panel-title-container" onclick="togglePanel(this.closest('.chart-wrapper'))">
+                    <h2>Vehicle Behavior Analysis</h2>
+                    <button class="panel-toggle">−</button>
+                </div>
+                <div class="panel-controls">
+                    <div class="chart-date-range">
+                        <label for="behaviorDateFrom">From:</label>
+                        <input type="date" id="behaviorDateFrom" onchange="updateBehaviorAnalysis()">
+                        <label for="behaviorDateTo">To:</label>
+                        <input type="date" id="behaviorDateTo" onchange="updateBehaviorAnalysis()">
+                    </div>
+                </div>
+            </div>
+            <div class="chart-container">
+                <div class="behavior-dashboard">
+                    <div class="behavior-controls">
+                        <div class="threshold-control">
+                            <label for="harshBrakingThreshold">Harsh Braking (m/s²)</label>
+                            <input type="number" id="harshBrakingThreshold" value="6.5" step="0.1" min="0">
+                        </div>
+                        <div class="threshold-control">
+                            <label for="harshAccelerationThreshold">Harsh Acceleration (m/s²)</label>
+                            <input type="number" id="harshAccelerationThreshold" value="4.5" step="0.1" min="0">
+                        </div>
+                        <div class="threshold-control">
+                            <label for="harshCorneringThreshold">Harsh Cornering (rad/s²)</label>
+                            <input type="number" id="harshCorneringThreshold" value="0.6" step="0.01" min="0">
+                        </div>
+                        <div class="threshold-control">
+                            <label for="speedLimitThreshold">Speed Limit (km/h)</label>
+                            <input type="number" id="speedLimitThreshold" value="90" min="0">
+                        </div>
+                        <button onclick="updateBehaviorAnalysis()">Update Analysis</button>
+                    </div>
+                    
+                    <div class="behavior-stats-container">
+                        <div class="behavior-stat">
+                            <div class="behavior-stat-label">Harsh Braking Events</div>
+                            <div class="behavior-stat-value" id="harshBrakingCount">0</div>
+                        </div>
+                        <div class="behavior-stat">
+                            <div class="behavior-stat-label">Harsh Acceleration Events</div>
+                            <div class="behavior-stat-value" id="harshAccelerationCount">0</div>
+                        </div>
+                        <div class="behavior-stat">
+                            <div class="behavior-stat-label">Harsh Cornering Events</div>
+                            <div class="behavior-stat-value" id="harshCorneringCount">0</div>
+                        </div>
+                        <div class="behavior-stat">
+                            <div class="behavior-stat-label">Overspeed Events</div>
+                            <div class="behavior-stat-value" id="overspeedCount">0</div>
+                        </div>
+                        <div class="behavior-stat">
+                            <div class="behavior-stat-label">Total Distance</div>
+                            <div class="behavior-stat-value" id="totalDistance">0 km</div>
+                        </div>
+                        <div class="behavior-stat">
+                            <div class="behavior-stat-label">Events per 100km</div>
+                            <div class="behavior-stat-value" id="eventsPer100km">0</div>
+                        </div>
+                    </div>
+                    
+                    <div class="behavior-charts">
+                        <div class="behavior-chart-container">
+                            <h3>Behavior Distribution</h3>
+                            <div class="behavior-chart">
+                                <canvas id="behaviorDoughnutChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="behavior-chart-container">
+                            <h3>Events Over Time</h3>
+                            <div class="behavior-chart">
+                                <canvas id="behaviorLineChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="behavior-summary">
+                        <h3>Safety Summary</h3>
+                        <div class="behavior-summary-item">
+                            <span class="behavior-summary-label">Overall Safety Score:</span>
+                            <span class="behavior-summary-value" id="safetyScore">--</span>
+                        </div>
+                        <div class="behavior-summary-item">
+                            <span class="behavior-summary-label">Compared to Previous Period:</span>
+                            <span class="behavior-summary-value" id="safetyComparison">--</span>
+                        </div>
+                        <div class="behavior-summary-item">
+                            <span class="behavior-summary-label">Most Frequent Issue:</span>
+                            <span class="behavior-summary-value" id="mostFrequentIssue">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+	
+    <script>
+        // Global variables
+        const API_BASE = "https://armada.id/lt/api/v.1/applications/36";
+        const AUTH_HEADER = "v2:MDAwMDAwMDAwNzo2NzhmOTVmZjcyNDFhZTYwMjc2Nw==";
+        const { jsPDF } = window.jspdf;
+        
+        // Global variables for settings
+        let REFILL_THRESHOLD = 8; // Default value, can be changed via UI
+        let FUEL_PRICE = 10500; // Default fuel price per liter
+        const REFILL_TIME_WINDOW = 5; // Maximum time window for refill detection (in minutes)
+        let MIN_MOVING_SPEED = 3; // Minimum speed to consider vehicle moving (km/h)
+		
+        // Global variable to track progress
+        let loadingProgress = 0;
+        const totalLoadingSteps = 10; // Adjust based on your loading process
+
+        // Chart instances
+        let distanceChart, speedRpmChart, fuelRefillChart, fuelCostChart, fuelEfficiencyChart;
+        let distanceDoughnutChart, speedDoughnutChart, rpmDoughnutChart, fuelDoughnutChart;
+        let utilizationChart = null;
+        let utilizationRangeChart = null;
+        let fuelRangeChart = null;
+
+        // Behavior Analysis Variables
+        let behaviorDoughnutChart = null;
+        let behaviorLineChart = null;
+        const behaviorData = {
+            harshBraking: 0,
+            harshAcceleration: 0,
+            harshCornering: 0,
+            overspeed: 0,
+            dailyEvents: {} // Track events by day
+        };
+
+        // Enhanced data storage
+        const dataStore = {
+            rawTrackData: [],
+            processedData: {},
+            currentViewId: null,
+            currentUserId: null,
+            availablePeriods: [],
+            comparisonData: null,
+            
+            addTrackData: function(trackEntry) {
+                this.rawTrackData.push(trackEntry);
+            },
+            
+            clearTrackData: function() {
+                this.rawTrackData = [];
+                this.processedData = {};
+                this.availablePeriods = [];
+                this.comparisonData = null;
+            },
+            
+            processData: function(period) {
+                this.processedData[period] = this.groupDataByPeriod(period);
+                this.availablePeriods = Object.keys(this.processedData[period]).map(key => ({
+                    key: key,
+                    label: `${key} (${this.processedData[period][key].tracks.length} trips)`
+                }));
+                return this.processedData[period];
+            },
+            
+            getCurrentData: function(period) {
+                return this.processedData[period] || this.processData(period);
+            },
+            
+            getComparisonData: function(period, compareMode, selectedPeriodKey) {
+                const currentData = this.getCurrentData(period);
+                const periods = Object.keys(currentData).sort();
+                
+                if (periods.length < 1) return null;
+
+                const currentPeriod = periods[periods.length - 1];
+                const current = currentData[currentPeriod] || {};
+                
+                let comparison = null;
+                let comparisonLabel = null;
+
+                if (compareMode === 'previous' && periods.length >= 2) {
+                    const prevPeriod = periods[periods.length - 2];
+                    comparison = currentData[prevPeriod] || {};
+                    comparisonLabel = `Previous ${prevPeriod}`;
+                } 
+                else if (compareMode === 'specific' && selectedPeriodKey) {
+                    comparison = currentData[selectedPeriodKey];
+                    comparisonLabel = selectedPeriodKey;
+                }
+
+                if (!comparison || !current) return null;
+
+                this.comparisonData = {
+                    current: {
+                        totalDistance: current.totalDistance || 0,
+                        avgSpeed: current.avgSpeed || 0,
+                        avgRpm: current.avgRpm || 0,
+                        fuelConsumption: current.fuelConsumption || 0,
+                        refuelEvents: current.refuelEvents || 0,
+                        totalRefillAmount: current.totalRefillAmount || 0,
+                        activeHours: current.activeHours || 0,
+                        trueDistance: current.trueDistance || 0,
+                        fuelCost: current.fuelCost || 0,
+                        costPerKm: current.costPerKm || 0,
+                        fuelEfficiency: current.fuelEfficiency || 0,
+                        avgFuelEfficiency: current.avgFuelEfficiency || 0
+                    },
+                    comparison: {
+                        totalDistance: comparison.totalDistance || 0,
+                        avgSpeed: comparison.avgSpeed || 0,
+                        avgRpm: comparison.avgRpm || 0,
+                        fuelConsumption: comparison.fuelConsumption || 0,
+                        refuelEvents: comparison.refuelEvents || 0,
+                        totalRefillAmount: comparison.totalRefillAmount || 0,
+                        activeHours: comparison.activeHours || 0,
+                        trueDistance: comparison.trueDistance || 0,
+                        fuelCost: comparison.fuelCost || 0,
+                        costPerKm: comparison.costPerKm || 0,
+                        fuelEfficiency: comparison.fuelEfficiency || 0,
+                        avgFuelEfficiency: comparison.avgFuelEfficiency || 0
+                    },
+                    comparisonLabel
+                };
+                
+                return this.comparisonData;
+            },
+
+            groupDataByPeriod: function(period) {
+                const grouped = {};
+                const MAX_POSITION_JUMP_KM = 1.5;
+                const MAX_HOURS_PER_DAY = 24;
+                const MAX_TIME_GAP = 300000;
+                MIN_MOVING_SPEED = parseFloat(document.getElementById('minSpeed').value) || 3;
+                FUEL_PRICE = parseFloat(document.getElementById('fuelPrice').value) || 10500;
+                
+				// Get current timezone setting
+				const timezoneOffset = document.getElementById('timezoneOffset').value;
+				
+                this.rawTrackData.forEach(data => {
+                    if (!data.date) return;
+                    
+					// Convert the entry date to the selected timezone
+					const entryDate = adjustDateToTimezone(data.date, timezoneOffset);
+                    let periodKey;
+                    const date = new Date(data.date);
+                    //const timezoneOffset = document.getElementById('timezoneOffset').value;
+                    
+                    //const timezoneAdjustedDate = adjustDateToTimezone(date, timezoneOffset);
+                    
+					if (period === 'daily') {
+					periodKey = entryDate.toISOString().split('T')[0];
+					} else if (period === 'weekly') {
+					const year = entryDate.getFullYear();
+					const week = getWeekNumber(entryDate);
+					periodKey = `${year}-W${week.toString().padStart(2, '0')}`;
+					} else {
+					const year = entryDate.getFullYear();
+					const month = entryDate.getMonth() + 1;
+					periodKey = `${year}-${month.toString().padStart(2, '0')}`;
+					}
+                    
+                    if (!grouped[periodKey]) {
+                        grouped[periodKey] = {
+                            //date: data.date,
+                            tracks: [],
+                            totalDistance: 0,
+                            totalSpeed: 0,
+                            totalRpm: 0,
+                            speedCount: 0,  // Track count of non-zero speed values
+                            rpmCount: 0,    // Track count of non-zero RPM values
+                            fuelConsumedValues: [],
+                            fuelLevelValues: [],
+                            refuelEvents: 0,
+                            totalRefillAmount: 0,
+                            firstTimestamp: null,
+                            lastTimestamp: null,
+                            firstFuelConsumed: null,
+                            lastFuelConsumed: null,
+                            activeHours: 0,
+                            trueDistance: 0,
+                            ignitionCount: 0,
+                            fuelCost: 0,
+                            costPerKm: 0,
+                            maxSpeed: 0,
+							maxRpm: 0,
+							fuelEfficiency: 0,
+                            avgFuelEfficiency: 0,
+                            bestFuelEfficiency: 0,
+                            worstFuelEfficiency: Infinity,
+                            efficiencyDataPoints: [],
+							date: entryDate.toISOString(),
+							tracks: [],
+                        };
+                    }
+					
+					// Process tracks to find max values
+					data.tracks.forEach(track => {
+						if (track.variables?.speed) {
+						const speed = parseFloat(track.variables.speed) * 3.6; // Convert m/s to km/h
+						grouped[periodKey].maxSpeed = Math.max(grouped[periodKey].maxSpeed, speed);
+						}
+						if (track.variables?.caN300_EngineRPM) {
+						const rpm = parseFloat(track.variables.caN300_EngineRPM);
+						grouped[periodKey].maxRpm = Math.max(grouped[periodKey].maxRpm, rpm);
+						}
+					});
+					
+					// Process each track and adjust its timestamp
+					const timezoneAdjustedTracks = data.tracks.map(track => {
+					if (track.utc) {
+					const adjustedDate = adjustDateToTimezone(track.utc, timezoneOffset);
+					return {
+							...track,
+							utc: adjustedDate.toISOString(),
+							localTime: adjustedDate // Add local time for reference
+							};
+						}
+					return track;
+					});
+
+                    const currentGroup = grouped[periodKey];
+                    grouped[periodKey].tracks.push(...timezoneAdjustedTracks);
+                    
+                    // Collect fuel data
+                    data.tracks.forEach(track => {
+                        if (track.variables?.caN300_FuelConsumed !== undefined) {
+                            currentGroup.fuelConsumedValues.push({
+                                value: parseFloat(track.variables.caN300_FuelConsumed),
+                                timestamp: track.utc ? new Date(track.utc) : null
+                            });
+                        }
+                        
+					if (track.variables?.['fuel level'] !== undefined) {
+					const trackTime = track.localTime ? new Date(track.localTime) : adjustDateToTimezone(track.utc, timezoneOffset);
+					currentGroup.fuelLevelValues.push({
+					value: parseFloat(track.variables['fuel level']),
+					timestamp: trackTime,
+					speed: track.variables.speed ? parseFloat(track.variables.speed) * 3.6 : 0
+						});
+					}
+                        
+                        // Collect fuel efficiency data if available
+                        if (track.variables?.fuelEfficiency !== undefined) {
+                            const efficiency = parseFloat(track.variables.fuelEfficiency);
+                            if (!isNaN(efficiency)) {
+                                currentGroup.efficiencyDataPoints.push(efficiency);
+                            }
+                        }
+ 
+	
+                    });
+                    
+                    // Calculate distance and active time
+                    let prevPosition = null;
+                    let prevTimestamp = null;
+                    let totalDistance = 0;
+                    let activeSeconds = 0;
+                    let totalDistanceAll = 0;
+                    let totalDistanceIgnition = 0;
+                    let prevPosAll = null;
+                    let prevPosIgnition = null;
+		            let odometerDistance = 0;
+                    let prevOdometer = null;
+                    let prevMovingTime = null;
+                    let currentDay = null;
+                    let dailyActiveSeconds = {}; // Track active time per day
+					let wasMoving = false;
+					let odometerReadings = []; // To store all non-zero odometer readings				        
+					
+                    data.tracks.forEach(track => {
+                        // 1. Validate track data
+                        if (!track?.utc || typeof track.utc !== 'string' || !track.variables) {
+                            console.warn('Skipping invalid track:', track);
+                            return;
+                        }
+
+                        // 2. Parse and validate timestamp
+                        let trackTime;
+                        try {
+                            trackTime = new Date(track.utc).getTime();
+                            if (isNaN(trackTime)) {
+                                console.warn('Invalid timestamp:', track.utc);
+                                return;
+                            }
+                        } catch (e) {
+                            console.warn('Timestamp parsing error:', e);
+                            return;
+                        }
+
+                        // Update first/last timestamps
+                        if (!grouped[periodKey].firstTimestamp || trackTime < grouped[periodKey].firstTimestamp) {
+                            grouped[periodKey].firstTimestamp = trackTime;
+                        }
+                        if (!grouped[periodKey].lastTimestamp || trackTime > grouped[periodKey].lastTimestamp) {
+                            grouped[periodKey].lastTimestamp = trackTime;
+                        }
+
+                        // 3. Calculate movement state
+                        const currentIgnition = track.variables.ignition === true;
+                        const currentSpeed = track.variables.speed ? 
+                            parseFloat(track.variables.speed) * 3.6 : 0;
+                        const isMoving = currentIgnition && (currentSpeed > MIN_MOVING_SPEED);
+                        const trackDay = new Date(trackTime).toISOString().split('T')[0];
+
+                        // Initialize day counter if needed
+                        if (!dailyActiveSeconds[trackDay]) {
+                            dailyActiveSeconds[trackDay] = 0;
+                        }
+
+                        // 4. Handle movement state transitions
+                        if (isMoving) {
+                            if (!wasMoving) {
+                                // Just started moving
+                                prevMovingTime = trackTime;
+                                wasMoving = true;
+                            } 
+                            else if (prevMovingTime) {
+                                // Continuous movement
+                                const timeDiff = trackTime - prevMovingTime;
+                                if (timeDiff <= MAX_TIME_GAP) {
+                                    const remainingSeconds = (MAX_HOURS_PER_DAY * 3600) - dailyActiveSeconds[trackDay];
+                                    const addedSeconds = Math.min(timeDiff/1000, remainingSeconds);
+                                    activeSeconds += addedSeconds;
+                                    dailyActiveSeconds[trackDay] += addedSeconds;
+                                }
+                                prevMovingTime = trackTime;
+                            }
+                        } 
+                        else if (wasMoving) {
+                            // Just stopped moving
+                            if (prevMovingTime) {
+                                const timeDiff = trackTime - prevMovingTime;
+                                if (timeDiff <= MAX_TIME_GAP) {
+                                    const remainingSeconds = (MAX_HOURS_PER_DAY * 3600) - dailyActiveSeconds[trackDay];
+                                    const addedSeconds = Math.min(timeDiff/1000, remainingSeconds);
+                                    activeSeconds += addedSeconds;
+                                    dailyActiveSeconds[trackDay] += addedSeconds;
+                                }
+                            }
+                            prevMovingTime = null;
+                            wasMoving = false;
+                        }
+
+                        // Original distance (all points)
+                        if (track.position?.latitude && track.position?.longitude) {
+                            const currentPos = {
+                                lat: parseFloat(track.position.latitude),
+                                lon: parseFloat(track.position.longitude)
+                            };
+                            
+                            if (prevPosAll) {
+                                const dist = calculateDistance(prevPosAll.lat, prevPosAll.lon, 
+                                                            currentPos.lat, currentPos.lon);
+                                if (dist <= MAX_POSITION_JUMP_KM) {
+                                    totalDistanceAll += dist;
+                                }
+                            }
+                            prevPosAll = currentPos;
+                        }
+                        
+                        // Ignition-based calculations
+                        if (currentIgnition) {
+                            // GPS distance (ignition on)
+                            if (track.position?.latitude && track.position?.longitude) {
+                                const currentPos = {
+                                    lat: parseFloat(track.position.latitude),
+                                    lon: parseFloat(track.position.longitude)
+                                };
+                                
+                                if (prevPosIgnition) {
+                                    const dist = calculateDistance(prevPosIgnition.lat, prevPosIgnition.lon,
+                                                                currentPos.lat, currentPos.lon);
+                                    if (dist <= MAX_POSITION_JUMP_KM) {
+                                        totalDistanceIgnition += dist;
+                                    }
+                                }
+                                prevPosIgnition = currentPos;
+                            }
+    						
+                            // Odometer distance (convert meters to km)
+                            //if (track.variables?.odometerAcc !== undefined) {
+                            //    const currentOdometer = parseFloat(track.variables.odometerAcc) / 1000; // Convert to km
+                            //    if (prevOdometer !== null) {
+                            //        odometerDistance += (currentOdometer - prevOdometer);
+                            //    }
+                            //    prevOdometer = currentOdometer;
+                            //}
+							
+							// Only process if ignition is on
+							if (currentIgnition && track.variables?.odometerAcc !== undefined) {
+							const currentOdometer = parseFloat(track.variables.odometerAcc) / 1000; // Convert to km
+        
+							// Store non-zero readings
+							if (currentOdometer > 0) {
+							odometerReadings.push(currentOdometer);
+							}
+        
+							// Calculate distance if we have a previous non-zero value
+							if (prevOdometer !== null && prevOdometer > 0 && currentOdometer > 0) {
+							const distance = currentOdometer - prevOdometer;
+            
+							// Only add positive distance changes (ignore resets/errors)
+							if (distance > 0) {
+							odometerDistance += distance;
+									}
+								}
+        
+								prevOdometer = currentOdometer;
+								}
+							}
+						
+						//const currentIgnition = track.variables?.ignition === true;
+
+                    });
+					
+                    // Store both metrics
+                    const totalDays = Object.keys(dailyActiveSeconds).length || 1;
+                    grouped[periodKey].trueDistance = totalDistanceAll;
+                    grouped[periodKey].trueDistanceIgnition = totalDistanceIgnition;
+                    grouped[periodKey].odometerDistance = odometerDistance;
+                    grouped[periodKey].activeHours = Math.min(activeSeconds / 3600, totalDays * MAX_HOURS_PER_DAY);
+                });
+                
+                // Process each period's data
+                Object.keys(grouped).forEach(key => {
+                    const group = grouped[key];
+                    let validSpeedCount = 0;
+                    let validRpmCount = 0;
+                    
+                    // Calculate distance
+                    group.totalDistance = processTracksWithDistance(group.tracks);
+                    
+                    // Calculate speed and RPM averages (excluding zero values)
+                    group.tracks.forEach(track => {
+                        if (track.variables?.speed) {
+                            const speed = parseFloat(track.variables.speed) * 3.6;
+                            if (!isNaN(speed) && speed > 0) {  // Exclude zero speed
+                                group.totalSpeed += speed;
+                                group.speedCount++;
+                            }
+                        }
+                        
+                        if (track.variables?.caN300_EngineRPM) {
+                            const rpm = parseFloat(track.variables.caN300_EngineRPM);
+                            if (!isNaN(rpm) && rpm > 0) {  // Exclude zero RPM
+                                group.totalRpm += rpm;
+                                group.rpmCount++;
+                            }
+                        }
+                    });
+                    
+                    // Calculate averages (only if we have non-zero values)
+                    group.avgSpeed = group.speedCount > 0 ? group.totalSpeed / group.speedCount : 0;
+                    group.avgRpm = group.rpmCount > 0 ? group.totalRpm / group.rpmCount : 0;
+                    
+                    // Process fuel consumed values
+                    if (group.fuelConsumedValues.length > 0) {
+                        group.fuelConsumedValues.sort((a, b) => {
+                            if (!a.timestamp || !b.timestamp) return 0;
+                            return a.timestamp - b.timestamp;
+                        });
+                        
+						// Filter out 0 values and find first/last non-zero values
+						const nonZeroFuelValues = group.fuelConsumedValues.filter(v => v.value > 0);
+    
+						if (nonZeroFuelValues.length > 0) {
+						group.firstFuelConsumed = nonZeroFuelValues[0].value;
+						group.lastFuelConsumed = nonZeroFuelValues[nonZeroFuelValues.length - 1].value;
+						group.fuelConsumption = Math.max(0, group.lastFuelConsumed - group.firstFuelConsumed);
+						} else {
+						group.firstFuelConsumed = 0;
+						group.lastFuelConsumed = 0;
+						group.fuelConsumption = 0;
+						}
+						
+                        //group.firstFuelConsumed = group.fuelConsumedValues[0].value;
+                        //group.lastFuelConsumed = group.fuelConsumedValues[group.fuelConsumedValues.length - 1].value;
+                        //group.fuelConsumption = Math.max(0, group.lastFuelConsumed - group.firstFuelConsumed);
+                        
+                        // Calculate fuel costs
+                        group.fuelCost = group.fuelConsumption * FUEL_PRICE;
+                        group.costPerKm = group.trueDistance > 0 ? 
+                            (group.fuelCost / group.trueDistance) : 0;
+                            
+                        // Calculate fuel efficiency (l/km)
+                        group.fuelEfficiency = group.trueDistance > 0 ? 
+                            (group.fuelConsumption / group.trueDistance) : 0;
+                    } else {
+                        group.fuelConsumption = 0;
+                        group.fuelCost = 0;
+                        group.costPerKm = 0;
+                        group.fuelEfficiency = 0;
+                    }
+                    
+                    // Calculate fuel efficiency stats if we have data points
+                    if (group.efficiencyDataPoints.length > 0) {
+                        const sum = group.efficiencyDataPoints.reduce((a, b) => a + b, 0);
+                        group.avgFuelEfficiency = sum / group.efficiencyDataPoints.length;
+                        group.bestFuelEfficiency = Math.min(...group.efficiencyDataPoints);
+                        group.worstFuelEfficiency = Math.max(...group.efficiencyDataPoints);
+                    }
+                    
+                    // Enhanced refuel detection using fuel level with speed check
+                    if (group.fuelLevelValues.length > 1) {
+                        group.fuelLevelValues.sort((a, b) => {
+                            if (!a.timestamp || !b.timestamp) return 0;
+                            return a.timestamp - b.timestamp;
+                        });
+
+                        // Configuration for multi-point comparison
+                        const MIN_REFUEL_POINTS = 1;
+                        const MAX_REFUEL_TIME_WINDOW = 15;
+                        const FUEL_INCREASE_THRESHOLD = 0.5;
+                        
+                        let refuelSequences = [];
+                        let currentSequence = [];
+                        let prevFuelLevel = group.fuelLevelValues[0].value;
+                        let prevTime = group.fuelLevelValues[0].timestamp;
+
+                        for (let i = 1; i < group.fuelLevelValues.length; i++) {
+                            const current = group.fuelLevelValues[i];
+                            
+                            if (prevTime && current.timestamp) {
+                                const fuelDiff = current.value - prevFuelLevel;
+                                const timeDiff = (current.timestamp - prevTime) / (1000 * 60);
+                                
+                                // Only consider as potential refill if speed is <= 3 km/h
+                                if (fuelDiff >= FUEL_INCREASE_THRESHOLD && 
+                                    timeDiff < (MAX_REFUEL_TIME_WINDOW / MIN_REFUEL_POINTS) &&
+                                    current.speed <= 3) {
+                                    if (currentSequence.length === 0) {
+                                        currentSequence.push({
+                                            value: prevFuelLevel,
+                                            timestamp: prevTime,
+                                            speed: current.speed
+                                        });
+                                    }
+                                    currentSequence.push({
+                                        value: current.value,
+                                        timestamp: current.timestamp,
+                                        speed: current.speed
+                                    });
+                                } else {
+                                    if (currentSequence.length >= MIN_REFUEL_POINTS) {
+                                        const sequenceTime = (currentSequence[currentSequence.length-1].timestamp - 
+                                                          currentSequence[0].timestamp) / (1000 * 60);
+                                        if (sequenceTime < MAX_REFUEL_TIME_WINDOW) {
+                                            refuelSequences.push(currentSequence);
+                                        }
+                                    }
+                                    currentSequence = [];
+                                }
+                                
+                                prevFuelLevel = current.value;
+                                prevTime = current.timestamp;
+                            }
+                        }
+
+                        if (currentSequence.length >= MIN_REFUEL_POINTS) {
+                            const sequenceTime = (currentSequence[currentSequence.length-1].timestamp - 
+                                              currentSequence[0].timestamp) / (1000 * 60);
+                            if (sequenceTime < MAX_REFUEL_TIME_WINDOW) {
+                                refuelSequences.push(currentSequence);
+                            }
+                        }
+
+                        refuelSequences.forEach(sequence => {
+                            const startFuel = sequence[0].value;
+                            const endFuel = sequence[sequence.length - 1].value;
+                            const fuelIncrease = endFuel - startFuel;
+                            
+                            if (fuelIncrease >= REFILL_THRESHOLD) {
+                                group.refuelEvents++;
+                                group.totalRefillAmount += fuelIncrease;
+                                
+                                if (!group.refuelDetails) group.refuelDetails = [];
+                                group.refuelDetails.push({
+                                    startTime: sequence[0].timestamp,
+                                    endTime: sequence[sequence.length - 1].timestamp,
+                                    amount: fuelIncrease,
+                                    dataPoints: sequence.length,
+                                    avgSpeed: sequence.reduce((sum, point) => sum + point.speed, 0) / sequence.length
+                                });
+                            }
+                        });
+
+                        if (refuelSequences.length === 0) {
+                            let prevFuelLevel = group.fuelLevelValues[0].value;
+                            let prevTime = group.fuelLevelValues[0].timestamp;
+                            
+                            for (let i = 1; i < group.fuelLevelValues.length; i++) {
+                                const current = group.fuelLevelValues[i];
+                                if (prevTime && current.timestamp) {
+                                    const fuelDiff = current.value - prevFuelLevel;
+                                    const timeDiff = (current.timestamp - prevTime) / (1000 * 60);
+                                    
+                                    // Only count as refill if speed is <= 3 km/h
+                                    if (fuelDiff >= REFILL_THRESHOLD && 
+                                        timeDiff < REFILL_TIME_WINDOW &&
+                                        current.speed <= 3) {
+                                        group.refuelEvents++;
+                                        group.totalRefillAmount += fuelDiff;
+                                    }
+                                }
+                                prevFuelLevel = current.value;
+                                prevTime = current.timestamp;
+                            }
+                        }
+                    }
+                    
+                    // Calculate duration
+                    if (group.firstTimestamp && group.lastTimestamp) {
+                        group.durationHours = (group.lastTimestamp - group.firstTimestamp) / (1000 * 60 * 60);
+                    } else {
+                        group.durationHours = 0;
+                    }
+                });
+                
+                // For daily periods, check for refuels between days
+                if (period === 'daily') {
+                    const sortedKeys = Object.keys(grouped).sort();
+                    
+                    for (let i = 1; i < sortedKeys.length; i++) {
+                        const currentKey = sortedKeys[i];
+                        const prevKey = sortedKeys[i - 1];
+                        
+                        const currentGroup = grouped[currentKey];
+                        const prevGroup = grouped[prevKey];
+                        
+                        if (prevGroup.fuelLevelValues.length > 0 && 
+                            currentGroup.fuelLevelValues.length > 0) {
+                            
+                            const prevLastFuelLevel = prevGroup.fuelLevelValues[prevGroup.fuelLevelValues.length - 1].value;
+                            const currentFirstFuelLevel = currentGroup.fuelLevelValues[0].value;
+                            const timeDiff = (currentGroup.firstTimestamp - prevGroup.lastTimestamp) / (1000 * 60);
+                            
+                            const fuelDiff = currentFirstFuelLevel - prevLastFuelLevel;
+                            
+                            // Only count as refill if speed is <= 3 km/h
+                            if (fuelDiff >= REFILL_THRESHOLD && 
+                                timeDiff < REFILL_TIME_WINDOW &&
+                                currentGroup.fuelLevelValues[0].speed <= 3) {
+                                prevGroup.refuelEvents++;
+                                prevGroup.totalRefillAmount += fuelDiff;
+                            }
+                        }
+                    }
+                }
+                
+                return grouped;
+            }
+        };
+        
+        let users = [];
+        let views = [];
+        let trackInfos = [];
+        
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            initCharts();
+            loadViews();
+            initBehaviorCharts();
+			
+            // Set default date range to today if not set
+            if (!document.getElementById('behaviorDateFrom').value) {
+                const today = new Date();
+                const todayStr = today.toISOString().split('T')[0];
+                document.getElementById('behaviorDateFrom').value = todayStr;
+                document.getElementById('behaviorDateTo').value = todayStr;
+            }
+			
+            // Set default date to today if not set
+            if (!document.getElementById('dateFrom').value) {
+                const today = new Date();
+                const todayStr = today.toISOString().split('T')[0];
+                document.getElementById('dateFrom').value = todayStr;
+                document.getElementById('distanceDateFrom').value = todayStr;
+                document.getElementById('speedDateFrom').value = todayStr;
+                document.getElementById('fuelDateFrom').value = todayStr;
+                document.getElementById('distanceDateTo').value = todayStr;
+                document.getElementById('speedDateTo').value = todayStr;
+                document.getElementById('fuelDateTo').value = todayStr;
+                document.getElementById('utilizationDate').value = todayStr;
+                document.getElementById('utilizationRangeFrom').value = todayStr;
+                document.getElementById('utilizationRangeTo').value = todayStr;
+            }
+            
+            // Initialize comparison controls
+            updateComparisonOptions();
+            
+            // Set refill threshold from UI
+            updateRefillThreshold();
+        });
+		
+		// Add this function to handle date changes
+    function updateUtilizationView() {
+        const selectedDate = document.getElementById('utilizationDate').value;
+        const period = document.getElementById('period').value;
+        const groupedData = dataStore.getCurrentData(period);
+        
+        if (!groupedData || Object.keys(groupedData).length === 0) {
+            return;
+        }
+        
+        // Find data for the selected date
+        let selectedData = null;
+        for (const [key, data] of Object.entries(groupedData)) {
+            const dataDate = new Date(data.date).toISOString().split('T')[0];
+            if (dataDate === selectedDate) {
+                selectedData = data;
+                break;
+            }
+        }
+        
+        if (!selectedData) {
+            // If no exact match, find the closest date
+            const dates = Object.keys(groupedData).sort();
+            if (dates.length > 0) {
+                selectedData = groupedData[dates[0]];
+                document.getElementById('utilizationDate').value = dates[0];
+            }
+        }
+        
+        if (selectedData) {
+            updateUtilizationStatsForDate(selectedData);
+            updateFuelCostStatsForDate(selectedData);
+            updateFuelEfficiencyStatsForDate(selectedData);
+        }
+    }
+    
+function getFilteredDataByDateRange(groupedData, dateFrom, dateTo, period) {
+    if (!groupedData || typeof groupedData !== 'object') {
+        console.warn("Invalid groupedData provided");
+        return {};
+    }
+
+    const filteredData = {};
+    const timezoneOffset = document.getElementById('timezoneOffset').value;
+    
+    try {
+        const fromDate = dateFrom ? new Date(dateFrom) : null;
+        const toDate = dateTo ? new Date(dateTo) : null;
+
+        Object.keys(groupedData).forEach(key => {
+            const data = groupedData[key];
+            if (!data || !data.date) return;
+
+            try {
+                const dataDate = new Date(data.date);
+                const adjustedDate = adjustDateToTimezone(dataDate, timezoneOffset);
+                
+                // Check if date is within range
+                const isAfterFrom = !fromDate || adjustedDate >= fromDate;
+                const isBeforeTo = !toDate || adjustedDate <= toDate;
+                
+                if (isAfterFrom && isBeforeTo) {
+                    filteredData[key] = data;
+                }
+            } catch (e) {
+                console.error(`Error processing date for key ${key}:`, e);
+            }
+        });
+
+        return filteredData;
+    } catch (e) {
+        console.error("Error in getFilteredDataByDateRange:", e);
+        return {};
+    }
+}	
+	
+    // New function to update the range view
+    function updateUtilizationRangeView() {
+    const dateFrom = document.getElementById('utilizationRangeFrom').value;
+    const dateTo = document.getElementById('utilizationRangeTo').value;
+    const period = document.getElementById('utilizationRangePeriod').value;
+    const groupedData = dataStore.getCurrentData(period);
+    
+    if (!groupedData || Object.keys(groupedData).length === 0) {
+        resetUtilizationRangeCharts();
+        return;
+    }
+    
+    // Filter data based on date range
+    const filteredData = filterDataByDateRange(groupedData, dateFrom, dateTo);
+    const labels = Object.keys(filteredData).sort();
+    
+    if (labels.length === 0) {
+        resetUtilizationRangeCharts();
+        return;
+    }
+    
+    // Calculate totals and averages
+    let totalActiveHours = 0;
+    let totalDistance = 0;
+    let totalFuelUsed = 0;
+    let totalRefillAmount = 0;
+    let totalFuelCost = 0;
+    let dayCount = 0;
+    
+    labels.forEach(key => {
+        const data = filteredData[key];
+        totalActiveHours += data.activeHours || 0;
+        totalDistance += data.trueDistance || 0;
+        totalFuelUsed += data.fuelConsumption || 0;
+        totalRefillAmount += data.totalRefillAmount || 0;
+        totalFuelCost += (data.fuelConsumption || 0) * FUEL_PRICE;
+        dayCount++;
+    });
+    
+    const avgUtilization = (totalActiveHours / (dayCount * 24)) * 100;
+    const avgDailyDistance = totalDistance / dayCount;
+    
+    // CORRECTED CALCULATIONS:
+    // Average cost per km should be total cost divided by total distance
+    const avgCostPerKm = totalDistance > 0 ? (totalFuelCost / totalDistance) : 0;
+      
+    // Average efficiency should be total fuel used divided by total distance
+    const avgEfficiency = totalDistance > 0 ? (totalFuelUsed / totalDistance) : 0;
+	const avgEfficiencyLPerKm = totalDistance > 0 ? (totalFuelUsed / totalDistance) : 0;
+    const avgEfficiencyKmPerL = avgEfficiencyLPerKm > 0 ? (1 / avgEfficiencyLPerKm) : 0; 
+	
+    // Update stats
+    document.getElementById('rangeActiveHours').textContent = `${totalActiveHours.toFixed(1)} hrs`;
+    document.getElementById('rangeAvgUtilization').textContent = `${avgUtilization.toFixed(1)}%`;
+    document.getElementById('rangeTotalDistance').textContent = `${totalDistance.toFixed(1)} km`;
+    document.getElementById('rangeAvgDistance').textContent = `${avgDailyDistance.toFixed(1)} km/day`;
+    document.getElementById('rangeFuelUsed').textContent = `${totalFuelUsed.toFixed(2)} L`;
+    document.getElementById('rangeRefillAmount').textContent = `${totalRefillAmount.toFixed(2)} L`;
+    document.getElementById('rangeFuelCost').textContent = `Rp${Math.round(totalFuelCost).toLocaleString('id-ID')}`;
+    document.getElementById('rangeAvgCostPerKm').textContent = `Rp${Math.round(avgCostPerKm).toLocaleString('id-ID')}/km`;
+    document.getElementById('rangeAvgEfficiency').textContent = `${avgEfficiency.toFixed(4)} l/km`;
+	document.getElementById('rangeAvgEfficiency').textContent = `${avgEfficiencyLPerKm.toFixed(4)} l/km`;
+    document.getElementById('rangeAvgEfficiencyKmPerL').textContent = `${avgEfficiencyKmPerL.toFixed(2)} km/l`;
+	
+    // Update charts
+    updateUtilizationRangeChart(filteredData);
+    updateFuelRangeChart(filteredData);
+}
+    
+    function resetUtilizationRangeCharts() {
+        // Reset stats
+        document.getElementById('rangeActiveHours').textContent = '--';
+        document.getElementById('rangeAvgUtilization').textContent = '--';
+        document.getElementById('rangeTotalDistance').textContent = '--';
+        document.getElementById('rangeAvgDistance').textContent = '--';
+        document.getElementById('rangeFuelUsed').textContent = '--';
+        document.getElementById('rangeRefillAmount').textContent = '--';
+        document.getElementById('rangeFuelCost').textContent = '--';
+        document.getElementById('rangeAvgCostPerKm').textContent = '--';
+        document.getElementById('rangeAvgEfficiency').textContent = '--';
+		 document.getElementById('rangeAvgEfficiencyKmPerL').textContent = '--';
+        
+        // Reset charts
+        if (utilizationRangeChart) {
+            utilizationRangeChart.data.labels = [];
+            utilizationRangeChart.data.datasets.forEach(dataset => {
+                dataset.data = [];
+            });
+            utilizationRangeChart.update();
+        }
+        
+        if (fuelRangeChart) {
+            fuelRangeChart.data.labels = [];
+            fuelRangeChart.data.datasets.forEach(dataset => {
+                dataset.data = [];
+            });
+            fuelRangeChart.update();
+        }
+    }
+    
+    function updateUtilizationRangeChart(filteredData) {
+        const labels = Object.keys(filteredData).sort();
+        
+        if (!utilizationRangeChart) {
+            initUtilizationRangeChart();
+        }
+        
+        utilizationRangeChart.data.labels = labels;
+        utilizationRangeChart.data.datasets[0].data = labels.map(label => filteredData[label].activeHours || 0);
+        utilizationRangeChart.data.datasets[1].data = labels.map(label => filteredData[label].trueDistance || 0);
+        utilizationRangeChart.update();
+    }
+    
+    function updateFuelRangeChart(filteredData) {
+        const labels = Object.keys(filteredData).sort();
+        
+        if (!fuelRangeChart) {
+            initFuelRangeChart();
+        }
+        
+        fuelRangeChart.data.labels = labels;
+        fuelRangeChart.data.datasets[0].data = labels.map(label => filteredData[label].fuelConsumption || 0);
+        fuelRangeChart.data.datasets[1].data = labels.map(label => filteredData[label].totalRefillAmount || 0);
+        fuelRangeChart.update();
+    }
+	
+    function updateUtilizationStatsForDate(data) {
+        // Calculate metrics
+        const activeHours = data.activeHours || 0;
+        const idleHours = activeHours * 0.2;
+        const maintenanceHours = Math.max(0, 24 - activeHours - idleHours);
+        
+        // Update chart
+        if (utilizationChart) {
+            utilizationChart.data.datasets[0].data = [
+                activeHours,
+                idleHours,
+                maintenanceHours
+            ];
+            utilizationChart.update();
+        }
+
+        // Update stats display
+        document.getElementById('activeHours').textContent = `${activeHours.toFixed(1)} hrs`;
+        document.getElementById('idleTime').textContent = `${idleHours.toFixed(1)} hrs`;
+        document.getElementById('utilizationRate').textContent = 
+            `${((activeHours / 24) * 100).toFixed(1)}% of day`;
+        document.getElementById('trueDistance').textContent = 
+            `${(data.trueDistance || 0).toFixed(1)} km (Total) / ${
+            (data.trueDistanceIgnition || 0).toFixed(1)} km (Ignition)`;
+    }
+    
+// Update the updateFuelEfficiencyStatsForDate function
+function updateFuelEfficiencyStatsForDate(data) {
+    // Calculate l/km values
+    const fuelEfficiencyLPerKm = data.fuelEfficiency || 0;
+    const avgFuelEfficiencyLPerKm = data.avgFuelEfficiency || 0;
+    const bestFuelEfficiencyLPerKm = data.bestFuelEfficiency || 0;
+    const worstFuelEfficiencyLPerKm = data.worstFuelEfficiency === Infinity ? 0 : data.worstFuelEfficiency || 0;
+    
+    // Calculate km/l values (handle division by zero)
+    const fuelEfficiencyKmPerL = fuelEfficiencyLPerKm > 0 ? (1 / fuelEfficiencyLPerKm) : 0;
+    const avgFuelEfficiencyKmPerL = avgFuelEfficiencyLPerKm > 0 ? (1 / avgFuelEfficiencyLPerKm) : 0;
+    const bestFuelEfficiencyKmPerL = bestFuelEfficiencyLPerKm > 0 ? (1 / bestFuelEfficiencyLPerKm) : 0;
+    const worstFuelEfficiencyKmPerL = worstFuelEfficiencyLPerKm > 0 ? (1 / worstFuelEfficiencyLPerKm) : 0;
+
+    // Update chart (still shows l/km)
+    if (fuelEfficiencyChart) {
+        fuelEfficiencyChart.data.datasets[0].data = [
+            fuelEfficiencyLPerKm,
+            avgFuelEfficiencyLPerKm,
+            bestFuelEfficiencyLPerKm,
+            worstFuelEfficiencyLPerKm
+        ];
+        fuelEfficiencyChart.update();
+    }
+
+    // Update stats display (l/km)
+    document.getElementById('fuelEfficiency').textContent = fuelEfficiencyLPerKm ? 
+        `${fuelEfficiencyLPerKm.toFixed(4)} l/km` : '--';
+    document.getElementById('avgFuelEfficiency').textContent = avgFuelEfficiencyLPerKm ? 
+        `${avgFuelEfficiencyLPerKm.toFixed(4)} l/km` : '--';
+    document.getElementById('bestFuelEfficiency').textContent = bestFuelEfficiencyLPerKm ? 
+        `${bestFuelEfficiencyLPerKm.toFixed(4)} l/km` : '--';
+    document.getElementById('worstFuelEfficiency').textContent = 
+        worstFuelEfficiencyLPerKm !== Infinity && worstFuelEfficiencyLPerKm ? 
+        `${worstFuelEfficiencyLPerKm.toFixed(4)} l/km` : '--';
+        
+    // Update stats display (km/l)
+    document.getElementById('fuelEfficiencyKmPerL').textContent = fuelEfficiencyKmPerL ? 
+        `${fuelEfficiencyKmPerL.toFixed(2)} km/l` : '--';
+    document.getElementById('avgFuelEfficiencyKmPerL').textContent = avgFuelEfficiencyKmPerL ? 
+        `${avgFuelEfficiencyKmPerL.toFixed(2)} km/l` : '--';
+}
+		
+    // Update fuel cost stats for specific date
+    function updateFuelCostStatsForDate(data) {
+        // Calculate fuel costs based on current fuel price
+        const fuelPrice = parseFloat(document.getElementById('fuelPrice').value) || 10500;
+        const fuelCost = (data.fuelConsumption || 0) * fuelPrice;
+        const costPerKm = data.trueDistance > 0 ? 
+            (fuelCost / data.trueDistance) : 0;
+        
+        // Update chart
+        if (fuelCostChart) {
+            fuelCostChart.data.datasets[0].data = [
+                fuelCost,
+                costPerKm
+            ];
+            fuelCostChart.update();
+        }
+
+        // Update stats display
+        document.getElementById('fuelConsumption').textContent = `${(data.fuelConsumption || 0).toFixed(2)} L`;
+        document.getElementById('refillAmount').textContent = `${(data.totalRefillAmount || 0).toFixed(2)} L`;
+        document.getElementById('fuelCost').textContent = `Rp${Math.round(fuelCost).toLocaleString('id-ID')}`;
+        document.getElementById('costPerKm').textContent = data.trueDistance > 0 ? 
+        `Rp${Math.round(costPerKm).toLocaleString('id-ID')}/km` : '--';
+    }
+
+    // Initialize utilization range chart
+    function initUtilizationRangeChart() {
+        const ctx = document.getElementById('utilizationRangeChart');
+        if (!ctx) return;
+        
+        utilizationRangeChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Active Hours',
+                        data: [],
+                        backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1,
+                        yAxisID: 'y-hours'
+                    },
+                    {
+                        label: 'Distance (km)',
+                        data: [],
+                        backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1,
+                        yAxisID: 'y-distance'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.dataset.label || '';
+                                const value = context.raw;
+                                if (label.includes('Hours')) {
+                                    return `${label}: ${value.toFixed(1)} hrs`;
+                                } else {
+                                    return `${label}: ${value.toFixed(1)} km`;
+                                }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    'y-hours': {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Active Hours'
+                        },
+                        grid: {
+                            drawOnChartArea: true
+                        }
+                    },
+                    'y-distance': {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Distance (km)'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Initialize fuel range chart
+    function initFuelRangeChart() {
+        const ctx = document.getElementById('fuelRangeChart');
+        if (!ctx) return;
+        
+        fuelRangeChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Fuel Consumption (L)',
+                        data: [],
+                        backgroundColor: 'rgba(153, 102, 255, 0.7)',
+                        borderColor: 'rgba(153, 102, 255, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Refill Amount (L)',
+                        data: [],
+                        backgroundColor: 'rgba(255, 159, 64, 0.7)',
+                        borderColor: 'rgba(255, 159, 64, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Liters'
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Initialize fuel efficiency chart
+    function initFuelEfficiencyChart() {
+        const ctx = document.getElementById('fuelEfficiencyChart');
+        if (!ctx) return;
+        
+        fuelEfficiencyChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Current Efficiency', 'Avg Efficiency', 'Best Efficiency', 'Worst Efficiency'],
+                datasets: [{
+                    label: 'Fuel Efficiency (l/km)',
+                    data: [0, 0, 0, 0],
+                    backgroundColor: [
+                        'rgba(54, 162, 235, 0.7)',
+                        'rgba(75, 192, 192, 0.7)',
+                        'rgba(75, 192, 192, 0.7)',
+                        'rgba(255, 99, 132, 0.7)'
+                    ],
+                    borderColor: [
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(255, 99, 132, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `Fuel Efficiency: ${context.raw.toFixed(4)} l/km`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Fuel Efficiency (l/km)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+     
+        // Initialize behavior charts
+        function initBehaviorCharts() {
+            // Doughnut Chart
+            const doughnutCtx = document.getElementById('behaviorDoughnutChart');
+            behaviorDoughnutChart = new Chart(doughnutCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Harsh Braking', 'Harsh Acceleration', 'Harsh Cornering', 'Overspeed'],
+                    datasets: [{
+                        data: [0, 0, 0, 0],
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.7)',
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(255, 206, 86, 0.7)',
+                            'rgba(75, 192, 192, 0.7)'
+                        ],
+                        borderColor: [
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 206, 86, 1)',
+                            'rgba(75, 192, 192, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '70%'
+                }
+            });
+
+            // Line Chart
+            const lineCtx = document.getElementById('behaviorLineChart');
+            behaviorLineChart = new Chart(lineCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Harsh Braking',
+                            data: [],
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                            tension: 0.3,
+                            fill: true
+                        },
+                        {
+                            label: 'Harsh Acceleration',
+                            data: [],
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                            tension: 0.3,
+                            fill: true
+                        },
+                        {
+                            label: 'Harsh Cornering',
+                            data: [],
+                            borderColor: 'rgba(255, 206, 86, 1)',
+                            backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                            tension: 0.3,
+                            fill: true
+                        },
+                        {
+                            label: 'Overspeed',
+                            data: [],
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                            tension: 0.3,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Number of Events'
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+
+        // Analyze vehicle behavior with date range filtering
+        function analyzeVehicleBehavior() {
+            if (!dataStore.rawTrackData || dataStore.rawTrackData.length === 0) return;
+            
+            // Reset counters
+            behaviorData.harshBraking = 0;
+            behaviorData.harshAcceleration = 0;
+            behaviorData.harshCornering = 0;
+            behaviorData.overspeed = 0;
+            behaviorData.dailyEvents = {};
+            
+            // Get threshold values
+            const brakingThreshold = parseFloat(document.getElementById('harshBrakingThreshold').value) || 6.5;
+            const accelerationThreshold = parseFloat(document.getElementById('harshAccelerationThreshold').value) || 4.5;
+            const corneringThreshold = parseFloat(document.getElementById('harshCorneringThreshold').value) || 0.6;
+            const speedLimit = parseFloat(document.getElementById('speedLimitThreshold').value) || 90;
+            
+            // Get date range
+            const dateFrom = document.getElementById('behaviorDateFrom').value;
+            const dateTo = document.getElementById('behaviorDateTo').value;
+            
+            // Process all track data within date range
+            dataStore.rawTrackData.forEach(trackEntry => {
+                const entryDate = trackEntry.date ? new Date(trackEntry.date).toISOString().split('T')[0] : null;
+                
+                // Skip if no date or outside date range
+                if (!entryDate || 
+                    (dateFrom && entryDate < dateFrom) || 
+                    (dateTo && entryDate > dateTo)) {
+                    return;
+                }
+                
+                // Initialize daily counters if not exist
+                if (!behaviorData.dailyEvents[entryDate]) {
+                    behaviorData.dailyEvents[entryDate] = {
+                        harshBraking: 0,
+                        harshAcceleration: 0,
+                        harshCornering: 0,
+                        overspeed: 0
+                    };
+                }
+                
+                trackEntry.tracks.forEach(track => {
+                    // Check harsh braking
+                    if (track.variables?.harshBrakingDigital === true || 
+                        (track.variables?.harshBrakingValue && 
+                         track.variables.harshBrakingValue > brakingThreshold)) {
+                        behaviorData.harshBraking++;
+                        behaviorData.dailyEvents[entryDate].harshBraking++;
+                    }
+                    
+                    // Check harsh acceleration
+                    if (track.variables?.harshAccelerationDigital === true || 
+                        (track.variables?.harshAccelerationValue && 
+                         track.variables.harshAccelerationValue > accelerationThreshold)) {
+                        behaviorData.harshAcceleration++;
+                        behaviorData.dailyEvents[entryDate].harshAcceleration++;
+                    }
+                    
+                    // Check harsh cornering
+                    if (track.variables?.harshCorneringDigital === true || 
+                        (track.variables?.harshCorneringValue && 
+                         track.variables.harshCorneringValue > corneringThreshold)) {
+                        behaviorData.harshCornering++;
+                        behaviorData.dailyEvents[entryDate].harshCornering++;
+                    }
+                    
+                    // Check overspeed
+                    if (track.variables?.speed && 
+                        (track.variables.speed * 3.6) > speedLimit) { // Convert m/s to km/h
+                        behaviorData.overspeed++;
+                        behaviorData.dailyEvents[entryDate].overspeed++;
+                    }
+                });
+            });
+            
+            // Calculate total distance using the trueDistance from processed data
+            const period = document.getElementById('period').value;
+            const groupedData = dataStore.getCurrentData(period);
+            let totalDistance = 0;
+            
+            if (groupedData && Object.keys(groupedData).length > 0) {
+                Object.values(groupedData).forEach(data => {
+                    // Only include data within date range
+                    const dataDate = data.date ? new Date(data.date).toISOString().split('T')[0] : null;
+                    if ((!dateFrom || dataDate >= dateFrom) && (!dateTo || dataDate <= dateTo)) {
+                        totalDistance += data.trueDistance || 0;
+                    }
+                });
+            }
+            
+            // Calculate events per 100km
+            const totalEvents = behaviorData.harshBraking + behaviorData.harshAcceleration + 
+                              behaviorData.harshCornering + behaviorData.overspeed;
+            const eventsPer100km = totalDistance > 0 ? (totalEvents / totalDistance * 100).toFixed(2) : 0;
+            
+            // Calculate safety score (0-100, higher is better)
+            const maxEvents = Math.max(1, totalEvents); // Prevent division by zero
+            const safetyScore = Math.max(0, 100 - (totalEvents / maxEvents * 50)); // Cap at 50% reduction
+            
+            // Update UI
+            document.getElementById('harshBrakingCount').textContent = behaviorData.harshBraking;
+            document.getElementById('harshAccelerationCount').textContent = behaviorData.harshAcceleration;
+            document.getElementById('harshCorneringCount').textContent = behaviorData.harshCornering;
+            document.getElementById('overspeedCount').textContent = behaviorData.overspeed;
+            document.getElementById('totalDistance').textContent = `${totalDistance.toFixed(2)} km`;
+            document.getElementById('eventsPer100km').textContent = eventsPer100km;
+            document.getElementById('safetyScore').textContent = `${safetyScore.toFixed(0)}/100`;
+            
+            // Determine most frequent issue
+            const issues = [
+                { name: 'Harsh Braking', count: behaviorData.harshBraking },
+                { name: 'Harsh Acceleration', count: behaviorData.harshAcceleration },
+                { name: 'Harsh Cornering', count: behaviorData.harshCornering },
+                { name: 'Overspeed', count: behaviorData.overspeed }
+            ];
+            issues.sort((a, b) => b.count - a.count);
+            document.getElementById('mostFrequentIssue').textContent = 
+                issues[0].count > 0 ? `${issues[0].name} (${issues[0].count})` : 'No issues detected';
+            
+            // Update charts
+            updateBehaviorCharts();
+            
+            // Update comparison (if available)
+            updateBehaviorComparison();
+        }
+		
+        // Update behavior charts with current data
+        function updateBehaviorCharts() {
+            // Update doughnut chart
+            if (behaviorDoughnutChart) {
+                behaviorDoughnutChart.data.datasets[0].data = [
+                    behaviorData.harshBraking,
+                    behaviorData.harshAcceleration,
+                    behaviorData.harshCornering,
+                    behaviorData.overspeed
+                ];
+                behaviorDoughnutChart.update();
+            }
+            
+            // Update line chart with daily data
+            if (behaviorLineChart) {
+                const dates = Object.keys(behaviorData.dailyEvents).sort();
+                const brakingData = [];
+                const accelerationData = [];
+                const corneringData = [];
+                const overspeedData = [];
+                
+                dates.forEach(date => {
+                    brakingData.push(behaviorData.dailyEvents[date].harshBraking);
+                    accelerationData.push(behaviorData.dailyEvents[date].harshAcceleration);
+                    corneringData.push(behaviorData.dailyEvents[date].harshCornering);
+                    overspeedData.push(behaviorData.dailyEvents[date].overspeed);
+                });
+                
+                behaviorLineChart.data.labels = dates;
+                behaviorLineChart.data.datasets[0].data = brakingData;
+                behaviorLineChart.data.datasets[1].data = accelerationData;
+                behaviorLineChart.data.datasets[2].data = corneringData;
+                behaviorLineChart.data.datasets[3].data = overspeedData;
+                behaviorLineChart.update();
+            }
+        }
+
+        // Update behavior comparison with previous period
+        function updateBehaviorComparison() {
+            const period = document.getElementById('period').value;
+            const groupedData = dataStore.getCurrentData(period);
+            
+            if (!groupedData || Object.keys(groupedData).length < 2) {
+                document.getElementById('safetyComparison').textContent = 'No comparison data available';
+                document.getElementById('safetyComparison').className = 'behavior-summary-value neutral-change';
+                return;
+            }
+            
+            const periods = Object.keys(groupedData).sort();
+            const currentPeriod = periods[periods.length - 1];
+            const prevPeriod = periods[periods.length - 2];
+            
+            const currentData = groupedData[currentPeriod];
+            const prevData = groupedData[prevPeriod];
+            
+            if (!currentData || !prevData) {
+                document.getElementById('safetyComparison').textContent = 'No comparison data available';
+                document.getElementById('safetyComparison').className = 'behavior-summary-value neutral-change';
+                return;
+            }
+            
+            // Calculate safety scores for both periods
+            const currentEvents = (currentData.harshBraking || 0) + (currentData.harshAcceleration || 0) + 
+                                 (currentData.harshCornering || 0) + (currentData.overspeed || 0);
+            const prevEvents = (prevData.harshBraking || 0) + (prevData.harshAcceleration || 0) + 
+                              (prevData.harshCornering || 0) + (prevData.overspeed || 0);
+            
+            const currentScore = currentEvents > 0 ? Math.max(0, 100 - (currentEvents / currentEvents * 50)) : 100;
+            const prevScore = prevEvents > 0 ? Math.max(0, 100 - (prevEvents / prevEvents * 50)) : 100;
+            
+            const difference = currentScore - prevScore;
+            const absDifference = Math.abs(difference);
+            
+            let comparisonText, comparisonClass;
+            if (difference > 0) {
+                comparisonText = `↑ ${absDifference.toFixed(0)} (Improved)`;
+                comparisonClass = 'positive-change';
+            } else if (difference < 0) {
+                comparisonText = `↓ ${absDifference.toFixed(0)} (Worsened)`;
+                comparisonClass = 'negative-change';
+            } else {
+                comparisonText = '→ No change';
+                comparisonClass = 'neutral-change';
+            }
+            
+            document.getElementById('safetyComparison').textContent = comparisonText;
+            document.getElementById('safetyComparison').className = `behavior-summary-value ${comparisonClass}`;
+        }
+
+        // Update behavior analysis when thresholds change
+        function updateBehaviorAnalysis() {
+            analyzeVehicleBehavior();
+        }		
+
+    // Update refill threshold from UI input
+        function updateRefillThreshold() {
+            const thresholdInput = document.getElementById('refillThreshold');
+            REFILL_THRESHOLD = parseFloat(thresholdInput.value) || 8;
+            
+            // If we have data, update the charts
+            if (dataStore.rawTrackData.length > 0) {
+                updateCharts();
+            }
+        }
+        
+        // Adjust date to selected timezone
+	function adjustDateToTimezone(date, timezoneOffset) {
+    if (!date) return null;
+    
+    try {
+        // Parse input date (handles both strings and Date objects)
+        const inputDate = new Date(date);
+        if (isNaN(inputDate.getTime())) {
+            console.warn("Invalid date provided to adjustDateToTimezone:", date);
+            return null;
+        }
+
+        if (!timezoneOffset) return inputDate;
+        
+        // Parse the timezone offset (e.g., "+08:00" or "-05:00")
+        const sign = timezoneOffset[0] === '+' ? 1 : -1;
+        const hours = parseInt(timezoneOffset.substring(1, 3));
+        const minutes = parseInt(timezoneOffset.substring(4, 6));
+        const offsetMinutes = sign * (hours * 60 + minutes);
+        
+        // Adjust by the timezone offset
+        const adjustedDate = new Date(inputDate.getTime() + (offsetMinutes - inputDate.getTimezoneOffset()) * 60000);
+        
+        return adjustedDate;
+		} catch (e) {
+        console.error("Error in adjustDateToTimezone:", e);
+        return null;
+		}
+	}
+        
+        // Toggle controls visibility
+        function toggleControls() {
+            const controls = document.querySelector('.controls');
+            controls.classList.toggle('collapsed');
+            const toggleBtn = document.querySelector('.toggle-controls');
+            toggleBtn.textContent = controls.classList.contains('collapsed') ? '+' : '−';
+        }
+        
+        // Load views from API
+        
+        async function loadViews(){
+          const sel=document.getElementById('viewSelect');
+          const status=document.getElementById('statusBox');
+          if(!sel) return;
+          sel.innerHTML='<option>Loading groups...</option>';
+          const NL=String.fromCharCode(10);
+          const logEl=document.getElementById('apiLog');
+          function l(m){ if(logEl) logEl.textContent+=NL+m; console.log(m); }
+          l("Loading groups via /groups?FromIndex=0&PageSize=1000");
+          const urls=["https://armada.id/lt/api/v.1/applications/36/groups?FromIndex=0&PageSize=1000","https://armada.id/lt/api/v.1/applications/36/groups"];
+          for(let i=0;i<urls.length;i++){
+            try{
+              l("TRY "+urls[i]);
+              const xhr=await new Promise(function(res,rej){
+                const x=new XMLHttpRequest(); x.open("GET",urls[i],true);
+                x.setRequestHeader("accept","application/json"); x.setRequestHeader("Authorization","v2:MDAwMDAwMDAwNzo2NzhmOTVmZjcyNDFhZTYwMjc2Nw==");
+                x.onload=function(){ if(x.status>=200&&x.status<300){ try{res(JSON.parse(x.responseText));}catch(e){rej(new Error("Parse"));}}else{rej(new Error("HTTP "+x.status));}};
+                x.onerror=function(){rej(new Error("Network"));}; x.send();
+              });
+              const raw=xhr.items||xhr||[];
+              l("Got "+(Array.isArray(raw)?raw.length:1)+" groups");
+              const list=(Array.isArray(raw)?raw:[raw]).map(function(g){return {id:g.id||g.groupId, name:g.name||"Group "+g.id, usersIds:g.usersIds||[]};}).filter(function(g){return g.id;});
+              if(list.length>0){
+                window.views=list; window.groupsData=list;
+                sel.innerHTML='<option value="">Select a group</option>';
+                list.forEach(function(g){ const o=document.createElement('option'); o.value=g.id; o.textContent=g.name+" (ID:"+g.id+") - "+g.usersIds.length+" users"; sel.appendChild(o); });
+                const status=document.getElementById('statusBox'); if(status){ status.textContent="Loaded "+list.length+" groups"; status.style.background='#d4edda'; }
+                return;
+              }
+            }catch(e){ l("FAIL: "+e.message); }
+          }
+        }
+
+        
+        function populateViewDropdown() {
+            const viewSelect = document.getElementById('viewSelect');
+            viewSelect.innerHTML = '<option value="">Select a view</option>';
+            
+            if (views.length === 0) {
+                const option = document.createElement('option');
+                option.value = "";
+                option.textContent = "No views found";
+                viewSelect.appendChild(option);
+                return;
+            }
+            
+            views.forEach(view => {
+                const viewName = view.name || `View ${view.id}`;
+                const viewId = view.id;
+                
+                if (viewId) {
+                    const option = document.createElement('option');
+                    option.value = viewId;
+                    option.textContent = viewName;
+                    viewSelect.appendChild(option);
+                }
+            });
+        }
+        
+        function showViewError(message) {
+            const viewSelect = document.getElementById('viewSelect');
+            viewSelect.innerHTML = '';
+            const option = document.createElement('option');
+            option.value = "";
+            option.textContent = message;
+            viewSelect.appendChild(option);
+        }
+        
+        // When view selection changes
+        function viewSelectionChanged() {
+            const viewSelect = document.getElementById('viewSelect');
+            dataStore.currentViewId = viewSelect.value;
+            
+            if (!dataStore.currentViewId) {
+                const userSelect = document.getElementById('userSelect');
+                userSelect.innerHTML = '<option value="">Select a view first</option>';
+                return;
+            }
+            
+            // Load users for the selected view
+            loadUsers();
+        }
+        
+        // Initialize all charts
+        function initCharts() {
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                }
+            };
+            
+            // Distance chart
+            distanceChart = new Chart(
+                document.getElementById('distanceChart'),
+                {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            {
+                                label: 'GPS Distance (all points)',
+                                data: [],
+                                backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                                borderColor: 'rgba(54, 162, 235, 1)',
+                                borderWidth: 1,
+                                yAxisID: 'y-distance'
+                            },
+                            {
+                                label: 'GPS Distance (ignition on)',
+                                data: [],
+                                backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 1,
+                                yAxisID: 'y-distance'
+                            },
+                            {
+                                label: 'Odometer Distance',
+                                data: [],
+                                backgroundColor: 'rgba(153, 102, 255, 0.7)',
+                                borderColor: 'rgba(153, 102, 255, 1)',
+                                borderWidth: 1,
+                                yAxisID: 'y-distance'
+                            },
+                            {
+                                label: 'Active Hours',
+                                data: [],
+                                type: 'line',
+                                borderColor: 'rgba(255, 159, 64, 1)',
+                                backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                                borderWidth: 2,
+                                yAxisID: 'y-hours'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.dataset.label || '';
+                                        const value = context.raw;
+                                        if (label.includes('Distance')) {
+                                            return `${label}: ${value.toFixed(2)} km`;
+                                        } else {
+                                            return `${label}: ${value.toFixed(2)} hours`;
+                                        }
+                                    },
+                                    footer: function(tooltipItems) {
+                                        const odometerItem = tooltipItems.find(item => item.dataset.label === 'Odometer Distance');
+                                        const gpsItem = tooltipItems.find(item => item.dataset.label === 'GPS Distance (ignition on)');
+                                        
+                                        if (odometerItem && gpsItem) {
+                                            const diff = odometerItem.raw - gpsItem.raw;
+                                            const diffPercent = (diff / gpsItem.raw) * 100;
+                                            return [
+                                                `Odometer vs GPS difference: ${diff.toFixed(2)} km`,
+                                                `(${diffPercent.toFixed(1)}%)`
+                                            ];
+                                        }
+                                        return '';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            'y-distance': {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: 'Distance (km)'
+                                },
+                                grid: {
+                                    drawOnChartArea: true
+                                }
+                            },
+                            'y-hours': {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'Active Hours'
+                                },
+                                grid: {
+                                    drawOnChartArea: false
+                                },
+                                min: 0
+                            }
+                        }
+                    }
+                }
+            );
+            
+            // Combined Speed & RPM chart
+speedRpmChart = new Chart(
+    document.getElementById('speedRpmChart'),
+    {
+        type: 'line',
+        data: { 
+            labels: [], 
+            datasets: [
+                { 
+                    label: 'Avg Speed (km/h)', 
+                    data: [], 
+                    borderColor: 'rgba(255, 99, 132, 1)', 
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    borderWidth: 2,
+                    yAxisID: 'y'
+                },
+                { 
+                    label: 'Max Speed (km/h)', 
+                    data: [], 
+                    borderColor: 'rgba(255, 99, 132, 1)', 
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    yAxisID: 'y'
+                },
+                { 
+                    label: 'Avg RPM', 
+                    data: [], 
+                    borderColor: 'rgba(75, 192, 192, 1)', 
+                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                    borderWidth: 2,
+                    yAxisID: 'y1'
+                },
+                { 
+                    label: 'Max RPM', 
+                    data: [], 
+                    borderColor: 'rgba(75, 192, 192, 1)', 
+                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    yAxisID: 'y1'
+                }
+            ] 
+        },
+        options: {
+                        ...chartOptions,
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: 'Speed (km/h)'
+                                }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'RPM'
+                                },
+                                grid: {
+                                    drawOnChartArea: false
+                                }
+                            }
+                        }
+                    }
+                }
+            );
+            
+            // Combined Fuel Consumption & Refill chart
+            fuelRefillChart = new Chart(
+                document.getElementById('fuelRefillChart'),
+                {
+                    type: 'bar',
+                    data: { 
+                        labels: [], 
+                        datasets: [
+                            { 
+                                label: 'Fuel Consumption (L)', 
+                                data: [], 
+                                backgroundColor: 'rgba(153, 102, 255, 0.7)',
+                                borderColor: 'rgba(153, 102, 255, 1)',
+                                borderWidth: 1,
+                                yAxisID: 'y'
+                            },
+                            { 
+                                label: 'Refill Amount (L)', 
+                                data: [], 
+                                backgroundColor: 'rgba(255, 159, 64, 0.7)',
+                                borderColor: 'rgba(255, 159, 64, 1)',
+                                borderWidth: 1,
+                                yAxisID: 'y'
+                            }
+                        ] 
+                    },
+                    options: chartOptions
+                }
+            );
+            
+            // Initialize doughnut charts for comparison
+            initDoughnutCharts();
+            
+            // Initialize utilization chart
+            initUtilizationChart();
+            
+            // Initialize fuel cost chart
+            initFuelCostChart();
+            
+            // Initialize fuel efficiency chart
+            initFuelEfficiencyChart();
+        }
+        
+        // Initialize doughnut charts for comparison
+        function initDoughnutCharts() {
+const doughnutOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '60%', // Increased cutout to make the center smaller
+    plugins: {
+        legend: {
+            display: false
+        },
+        tooltip: {
+            enabled: false
+        }
+    }
+};
+            
+            // Distance doughnut chart
+            distanceDoughnutChart = new Chart(
+                document.getElementById('distanceChartDoughnut'),
+                {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Current', 'Comparison'],
+                        datasets: [{
+                            data: [50, 50],
+                            backgroundColor: ['#3498db', '#e0e0e0'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: doughnutOptions
+                }
+            );
+            
+            // Speed doughnut chart
+            speedDoughnutChart = new Chart(
+                document.getElementById('speedChartDoughnut'),
+                {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Current', 'Comparison'],
+                        datasets: [{
+                            data: [50, 50],
+                            backgroundColor: ['#3498db', '#e0e0e0'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: doughnutOptions
+                }
+            );
+            
+            // RPM doughnut chart
+            rpmDoughnutChart = new Chart(
+                document.getElementById('rpmChartDoughnut'),
+                {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Current', 'Comparison'],
+                        datasets: [{
+                            data: [50, 50],
+                            backgroundColor: ['#3498db', '#e0e0e0'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: doughnutOptions
+                }
+            );
+            
+            // Fuel doughnut chart
+            fuelDoughnutChart = new Chart(
+                document.getElementById('fuelChartDoughnut'),
+                {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Current', 'Comparison'],
+                        datasets: [{
+                            data: [50, 50],
+                            backgroundColor: ['#3498db', '#e0e0e0'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: doughnutOptions
+                }
+            );
+        }
+        
+        // Initialize utilization chart
+        function initUtilizationChart() {
+            const ctx = document.getElementById('utilizationChart');
+            if (!ctx) {
+                console.error("Utilization chart canvas not found");
+                return;
+            }
+
+            utilizationChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Active', 'Idle', 'Maintenance'],
+                    datasets: [{
+                        data: [0, 0, 24], // Default to full maintenance
+                        backgroundColor: [
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(255, 206, 86, 0.7)',
+                            'rgba(255, 99, 132, 0.7)'
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'right' },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.label}: ${context.raw.toFixed(1)} hrs`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Initialize fuel cost chart
+        function initFuelCostChart() {
+            const ctx = document.getElementById('fuelCostChart');
+            if (!ctx) {
+                console.error("Fuel cost chart canvas not found");
+                return;
+            }
+
+            fuelCostChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Fuel Cost', 'Cost per km'],
+                    datasets: [{
+                        label: 'Cost (currency)',
+                        data: [0, 0],
+                        backgroundColor: [
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(75, 192, 192, 0.7)'
+                        ],
+                        borderColor: [
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(75, 192, 192, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Cost'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load users from API for the selected view
+        
+        async function loadUsers(){
+          const gid=document.getElementById('viewSelect').value;
+          const sel=document.getElementById('userSelect');
+          if(!gid){ if(sel) sel.innerHTML='<option>Select a group first</option>'; return; }
+          sel.innerHTML='<option>Loading users...</option>';
+          const NL=String.fromCharCode(10);
+          const logEl=document.getElementById('apiLog');
+          function l(m){ if(logEl) logEl.textContent+=NL+m; console.log(m); }
+          const groupsData=window.groupsData||[];
+          const g = groupsData.find(function(x){return String(x.id)===String(gid);});
+          if(g && g.usersIds && g.usersIds.length>0){
+            l("Using usersIds from group: "+g.usersIds.length);
+            try{
+              const all=await new Promise(function(res,rej){
+                const x=new XMLHttpRequest(); x.open("GET","https://armada.id/lt/api/v.1/applications/36/users?FromIndex=0&PageSize=1000",true);
+                x.setRequestHeader("accept","application/json"); x.setRequestHeader("Authorization","v2:MDAwMDAwMDAwNzo2NzhmOTVmZjcyNDFhZTYwMjc2Nw==");
+                x.onload=function(){ if(x.status>=200&&x.status<300){ try{res(JSON.parse(x.responseText));}catch(e){rej(e);}}else{rej(new Error("HTTP "+x.status));}};
+                x.onerror=function(){rej(new Error("Network"));}; x.send();
+              });
+              const allUsers=all.items||all||[];
+              const filtered=allUsers.filter(function(u){ return g.usersIds.indexOf(u.id)>=0; });
+              if(filtered.length>0){
+                sel.innerHTML='<option value="">Select User</option>';
+                filtered.forEach(function(u){ const o=document.createElement('option'); o.value=u.id; o.textContent=u.name||u.username||"User "+o.value; sel.appendChild(o); });
+                return;
+              }
+            }catch(e){}
+            sel.innerHTML='<option value="">Select User</option>';
+            g.usersIds.forEach(function(uid){ const o=document.createElement('option'); o.value=uid; o.textContent="User "+uid; sel.appendChild(o); });
+            return;
+          }
+          try{
+            const url="https://armada.id/lt/api/v.1/applications/36/groups/"+gid+"/users?FromIndex=0&PageSize=1000";
+            l("TRY "+url);
+            const json=await new Promise(function(res,rej){
+              const x=new XMLHttpRequest(); x.open("GET",url,true);
+              x.setRequestHeader("accept","application/json"); x.setRequestHeader("Authorization","v2:MDAwMDAwMDAwNzo2NzhmOTVmZjcyNDFhZTYwMjc2Nw==");
+              x.onload=function(){ if(x.status>=200&&x.status<300){ try{res(JSON.parse(x.responseText));}catch(e){rej(e);}}else{rej(new Error("HTTP "+x.status));}};
+              x.onerror=function(){rej(new Error("Network"));}; x.send();
+            });
+            const users=json.items||json||[];
+            sel.innerHTML='<option value="">Select User</option>';
+            users.forEach(function(u){ const o=document.createElement('option'); o.value=u.id||u.userId; o.textContent=u.name||u.username||"User "+o.value; sel.appendChild(o); });
+          }catch(e){ l("loadUsers failed: "+e.message); sel.innerHTML='<option>Failed</option>'; }
+        }
+
+
+        function populateUserDropdown() {
+            const userSelect = document.getElementById('userSelect');
+            userSelect.innerHTML = '<option value="">Select a user</option>';
+            
+            if (users.length === 0) {
+                const option = document.createElement('option');
+                option.value = "";
+                option.textContent = "No users found in selected view";
+                userSelect.appendChild(option);
+                return;
+            }
+            
+            users.forEach(user => {
+                const userName = user.name || `User ${user.id}`;
+                const userId = user.id;
+                
+                if (userId) {
+                    const option = document.createElement('option');
+                    option.value = userId;
+                    option.textContent = userName;
+                    userSelect.appendChild(option);
+                }
+            });
+        }
+
+        function showError(message) {
+            const userSelect = document.getElementById('userSelect');
+            userSelect.innerHTML = '';
+            const option = document.createElement('option');
+            option.value = "";
+            option.textContent = message;
+            userSelect.appendChild(option);
+        }
+		
+		if (!isNaN(speed) && speed > 0) {  // Exclude zero speed
+            group.totalSpeed += speed;
+            group.speedCount++;
+          }
+		if (!isNaN(rpm) && rpm > 0) {  // Exclude zero RPM
+            group.totalRpm += rpm;
+            group.rpmCount++;
+           }
+        
+        // Modify the loadTrackInfos function to include progress updates
+        function loadTrackInfos() {
+            showLoading();
+            
+            const userSelect = document.getElementById('userSelect');
+            dataStore.currentUserId = userSelect.value;
+            
+            if (!dataStore.currentUserId) {
+                alert("Please select a user first");
+                return;
+            }
+            
+            dataStore.clearTrackData();
+            
+            const dateFrom = document.getElementById('dateFrom').value;
+            const timeFrom = document.getElementById('timeFrom').value;
+            const timezoneOffset = document.getElementById('timezoneOffset').value;
+            
+            const baseDateTime = `${dateFrom}T${timeFrom}${timezoneOffset}`;
+            const encodedDateTime = encodeURIComponent(baseDateTime);
+            
+            // Calculate +14 days
+            const dateTime2 = new Date(baseDateTime);
+            dateTime2.setDate(dateTime2.getDate() + 14);
+            const encodedDateTime2 = encodeURIComponent(formatDateTime(dateTime2, timezoneOffset));
+            
+            // Calculate +28 days
+            const dateTime3 = new Date(baseDateTime);
+            dateTime3.setDate(dateTime3.getDate() + 28);
+            const encodedDateTime3 = encodeURIComponent(formatDateTime(dateTime3, timezoneOffset));
+            
+            let allTrackInfos = [];
+            let requestsCompleted = 0;
+            const totalRequests = 3;
+            
+            function formatDateTime(date, offset) {
+                const isoString = date.toISOString().replace('Z', '');
+                return isoString.split('.')[0] + offset;
+            }
+            
+            function makeRequest(dateTimeParam, requestNumber) {
+                const xhr = new XMLHttpRequest();
+                xhr.open("GET", API_BASE + `/trackinfos?UpdatedSince=${dateTimeParam}&FromIndex=0&PageSize=10000000`, true);
+                xhr.setRequestHeader("accept", "application/json");
+                xhr.setRequestHeader("Authorization", AUTH_HEADER);
+                
+                xhr.onload = function() {
+                    if (xhr.status === 200) {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            const filtered = (response.items || response || []).filter(item => {
+                                return item.userId == dataStore.currentUserId;
+                            });
+                            allTrackInfos = allTrackInfos.concat(filtered);
+                            
+                            // Update progress (33% for each request)
+                            updateProgress((requestsCompleted + 1) * 33);
+                        } catch (e) {
+                            console.error(`Error processing request ${requestNumber}:`, e);
+                        }
+                    }
+                    
+                    requestsCompleted++;
+                    if (requestsCompleted === totalRequests) {
+                        trackInfos = allTrackInfos;
+                        if (trackInfos.length === 0) {
+                            document.getElementById('loading').style.display = 'none';
+                            alert(`No trips found for user ${dataStore.currentUserId} in selected date ranges`);
+                            return;
+                        }
+                        loadTracksForTrackInfos();
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    console.error(`Request ${requestNumber} network error`);
+                    requestsCompleted++;
+                    if (requestsCompleted === totalRequests) {
+                        trackInfos = allTrackInfos;
+                        if (trackInfos.length === 0) {
+                            document.getElementById('loading').style.display = 'none';
+                            alert(`No trips found for user ${dataStore.currentUserId} in selected date ranges`);
+                            return;
+                        }
+                        loadTracksForTrackInfos();
+                    }
+                };
+                
+                xhr.send();
+            }
+            
+            makeRequest(encodedDateTime, 1);
+            makeRequest(encodedDateTime2, 2);
+            makeRequest(encodedDateTime3, 3);
+        }
+        
+	function applyTimezoneToData() {
+    try {
+        if (!dataStore.rawTrackData || dataStore.rawTrackData.length === 0) {
+            console.log("No data loaded to apply timezone to");
+            return;
+        }
+        
+        const timezoneOffset = document.getElementById('timezoneOffset').value;
+        const period = document.getElementById('period').value;
+        
+        // Process data with new timezone
+        const groupedData = dataStore.processData(period);
+        
+        if (!groupedData || Object.keys(groupedData).length === 0) {
+            console.warn("No data available after timezone conversion");
+            return;
+        }
+        
+        // Update all charts
+        updateCharts();
+		} catch (e) {
+        console.error("Error applying timezone to data:", e);
+		}
+	}
+			
+
+		
+        // Modify the loadTracksForTrackInfos function to include progress updates
+        function loadTracksForTrackInfos() {
+            let completedRequests = 0;
+            const totalTracks = trackInfos.length;
+            
+            function processTrackInfo(trackInfo, index) {
+                return new Promise((resolve) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open("GET", `${API_BASE}/trackinfos/${trackInfo.id}/tracks?Filtered=true`, true);
+                    xhr.setRequestHeader("accept", "application/json");
+                    xhr.setRequestHeader("Authorization", AUTH_HEADER);
+                    
+                    xhr.onload = function() {
+                        if (xhr.status === 200) {
+                            try {
+                                const response = JSON.parse(xhr.responseText);
+                                const tracks = response.items || response || [];
+                                if (tracks.length > 0) {
+                                    dataStore.addTrackData({
+                                        trackInfoId: trackInfo.id,
+                                        userId: trackInfo.userId,
+                                        date: trackInfo.created ? new Date(trackInfo.created) : null,
+                                        tracks: tracks
+                                    });
+                                }
+                            } catch (e) {
+                                console.error(`Error parsing tracks for ${trackInfo.id}:`, e);
+                            }
+                        }
+                        completedRequests++;
+                        
+                        // Update progress (33% initial + 67% for tracks loading)
+                        const trackProgress = 33 + (completedRequests / totalTracks * 67);
+                        updateProgress(trackProgress);
+                        
+                        resolve();
+                    };
+                    
+                    xhr.onerror = function() {
+                        completedRequests++;
+                        resolve();
+                    };
+                    
+                    xhr.send();
+                });
+            }
+            
+            async function processAllTrackInfos() {
+                const BATCH_SIZE = 2;
+                for (let i = 0; i < trackInfos.length; i += BATCH_SIZE) {
+                    const batch = trackInfos.slice(i, i + BATCH_SIZE);
+                    await Promise.all(batch.map((trackInfo, idx) => processTrackInfo(trackInfo, i + idx)));
+                }
+
+                if (dataStore.rawTrackData.length > 0) {
+                    updateCharts();
+                } else {
+                    alert("Received track data but none matched the criteria");
+                }
+            }
+
+            processAllTrackInfos();
+        }
+        
+        // Add this function to calculate distance between track points
+	function processTracksWithDistance(tracks) {
+    if (!tracks || tracks.length < 2) return 0;
+
+    let totalDistance = 0;
+    let prevPos = null;
+    let prevIgnitionState = false;
+    const timezoneOffset = document.getElementById('timezoneOffset').value;
+
+    tracks.forEach(track => {
+        const currentIgnition = track.variables?.ignition === true;
+        
+        // Only process position if ignition is on
+        if (currentIgnition && track.position?.latitude && track.position?.longitude) {
+            const currentPos = {
+                lat: parseFloat(track.position.latitude),
+                lon: parseFloat(track.position.longitude)
+            };
+            
+            // If we have a previous position (and it was with ignition on)
+            if (prevPos && prevIgnitionState) {
+                // Check if the time difference is reasonable (same day in local time)
+                const currentTime = track.localTime ? new Date(track.localTime) : adjustDateToTimezone(track.utc, timezoneOffset);
+                const prevTime = prevPos.localTime ? new Date(prevPos.localTime) : adjustDateToTimezone(prevPos.utc, timezoneOffset);
+                
+                // Only calculate distance if timestamps are on the same local day
+                if (currentTime.toDateString() === prevTime.toDateString()) {
+                    totalDistance += calculateDistance(
+                        prevPos.lat, prevPos.lon,
+                        currentPos.lat, currentPos.lon
+                    );
+                }
+            }
+            prevPos = {
+                ...track,
+                lat: currentPos.lat,
+                lon: currentPos.lon
+            };
+        }
+    
+        prevIgnitionState = currentIgnition;
+    });
+
+    return totalDistance;
+	}
+
+        // Helper function to calculate distance between two coordinates
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Earth radius in km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+        
+        
+		function updateCharts() {
+		// First ensure we have data
+		if (!dataStore.rawTrackData || dataStore.rawTrackData.length === 0) {
+        console.log("No data available to update charts");
+        resetAllCharts();
+        return;
+		}
+
+		const period = document.getElementById('period').value;
+		const groupedData = dataStore.processData(period);
+    
+		if (!groupedData || Object.keys(groupedData).length === 0) {
+        console.log("No grouped data available after processing");
+        resetAllCharts();
+        return;
+		}
+    
+		// Update all charts with proper error handling
+		try {
+        updateDistanceChart(groupedData);
+        updateSpeedRpmChart(groupedData);
+        updateFuelRefillChart(groupedData);
+        updateComparisonStats();
+        updateUtilizationRangeView();
+        analyzeVehicleBehavior();
+		} catch (e) {
+        console.error("Error updating charts:", e);
+		}
+		}
+
+		function resetAllCharts() {
+		resetDistanceChart();
+		resetSpeedRpmChart();
+		resetFuelRefillChart();
+		// Add other chart reset functions as needed
+		}
+		// Update the updateCharts function to call updateComparisonStats
+        //function updateCharts() {
+        //    const period = document.getElementById('period').value;
+        //    const groupedData = dataStore.processData(period);
+            
+        //    if (Object.keys(groupedData).length === 0) {
+        //        alert("No data available for the selected filters");
+        //        return;
+        //    }
+            
+            // Update the date selector options
+        //    const dates = Object.keys(groupedData).sort();
+        //    const dateSelect = document.getElementById('utilizationDate');
+            
+            // Set default to most recent date
+        //    if (dates.length > 0) {
+        //        const defaultDate = dates[dates.length - 1];
+        //        dateSelect.value = defaultDate;
+        //        updateUtilizationView();
+        //    }
+            
+            // Update other charts
+        //    updateDistanceChart(groupedData);
+        //    updateSpeedRpmChart(groupedData);
+        //    updateFuelRefillChart(groupedData);
+            
+            // Update comparison
+        //    updateComparisonStats();
+            
+            // Populate comparison periods if in specific mode
+       //     if (document.getElementById('compareMode').value === 'specific') {
+                populateComparisonPeriods();
+        //    }
+            
+            // Update the range view
+        //    updateUtilizationRangeView();
+			
+		//	analyzeVehicleBehavior();
+        //}
+
+    // Update distance chart with date range filtering
+function updateDistanceChart(groupedData) {
+    try {
+        if (!distanceChart) return;
+        
+        const dateFrom = document.getElementById('distanceDateFrom').value;
+        const dateTo = document.getElementById('distanceDateTo').value;
+        const period = document.getElementById('period').value;
+        
+        const filteredData = getFilteredDataByDateRange(groupedData, dateFrom, dateTo, period);
+        const labels = Object.keys(filteredData).sort();
+        
+        distanceChart.data.labels = labels;
+        distanceChart.data.datasets[0].data = labels.map(label => filteredData[label].trueDistance || 0);
+        distanceChart.data.datasets[1].data = labels.map(label => filteredData[label].trueDistanceIgnition || 0);
+        distanceChart.data.datasets[2].data = labels.map(label => filteredData[label].odometerDistance || 0);
+        distanceChart.data.datasets[3].data = labels.map(label => filteredData[label].activeHours || 0);
+        
+        distanceChart.update();
+    } catch (e) {
+        console.error("Error updating distance chart:", e);
+        resetDistanceChart();
+    }
+}
+	
+function resetDistanceChart() {
+    if (distanceChart) {
+        distanceChart.data.labels = [];
+        distanceChart.data.datasets.forEach(dataset => {
+            dataset.data = [];
+        });
+        distanceChart.update();
+    }
+}
+
+function resetSpeedRpmChart() {
+    if (speedRpmChart) {
+        speedRpmChart.data.labels = [];
+        speedRpmChart.data.datasets[0].data = []; // Avg Speed
+        speedRpmChart.data.datasets[1].data = []; // Max Speed
+        speedRpmChart.data.datasets[2].data = []; // Avg RPM
+        speedRpmChart.data.datasets[3].data = []; // Max RPM
+        speedRpmChart.update();
+    }
+}
+
+function resetFuelRefillChart() {
+    if (fuelRefillChart) {
+        fuelRefillChart.data.labels = [];
+        fuelRefillChart.data.datasets.forEach(dataset => {
+            dataset.data = [];
+        });
+        fuelRefillChart.update();
+    }
+}
+
+    // Update speed and RPM chart with date range filtering
+function updateSpeedRpmChart(groupedData) {
+    try {
+        if (!speedRpmChart) return;
+        
+        const dateFrom = document.getElementById('speedDateFrom').value;
+        const dateTo = document.getElementById('speedDateTo').value;
+        const period = document.getElementById('period').value;
+        
+        const filteredData = getFilteredDataByDateRange(groupedData, dateFrom, dateTo, period);
+        const labels = Object.keys(filteredData).sort();
+        
+        speedRpmChart.data.labels = labels;
+        speedRpmChart.data.datasets[0].data = labels.map(label => filteredData[label].avgSpeed || 0);
+        speedRpmChart.data.datasets[1].data = labels.map(label => filteredData[label].maxSpeed || 0);
+        speedRpmChart.data.datasets[2].data = labels.map(label => filteredData[label].avgRpm || 0);
+        speedRpmChart.data.datasets[3].data = labels.map(label => filteredData[label].maxRpm || 0);
+        
+        speedRpmChart.update();
+    } catch (e) {
+        console.error("Error updating speed/rpm chart:", e);
+        resetSpeedRpmChart();
+    }
+}
+
+    // Update fuel refill chart with date range filtering
+function updateFuelRefillChart(groupedData) {
+    try {
+        if (!fuelRefillChart) return;
+        
+        const dateFrom = document.getElementById('fuelDateFrom').value;
+        const dateTo = document.getElementById('fuelDateTo').value;
+        const period = document.getElementById('period').value;
+        
+        const filteredData = getFilteredDataByDateRange(groupedData, dateFrom, dateTo, period);
+        const labels = Object.keys(filteredData).sort();
+        
+        fuelRefillChart.data.labels = labels;
+        fuelRefillChart.data.datasets[0].data = labels.map(label => filteredData[label].fuelConsumption || 0);
+        fuelRefillChart.data.datasets[1].data = labels.map(label => filteredData[label].totalRefillAmount || 0);
+        
+        fuelRefillChart.update();
+    } catch (e) {
+        console.error("Error updating fuel refill chart:", e);
+        resetFuelRefillChart();
+    }
+}
+
+function filterDataByDateRange(groupedData, dateFrom, dateTo) {
+    // Validate input
+    if (!groupedData || typeof groupedData !== 'object') {
+        console.warn("Invalid groupedData provided to filterDataByDateRange");
+        return {};
+    }
+
+    const filteredData = {};
+    const keys = Object.keys(groupedData);
+    
+    if (keys.length === 0) {
+        console.warn("Empty groupedData provided to filter");
+        return {};
+    }
+
+    // Get timezone offset
+    const timezoneOffset = document.getElementById('timezoneOffset').value;
+    
+    // Parse date range
+    let fromDate, toDate;
+    try {
+        fromDate = dateFrom ? new Date(dateFrom) : null;
+        toDate = dateTo ? new Date(dateTo) : null;
+    } catch (e) {
+        console.error("Error parsing date range:", e);
+        return {};
+    }
+
+    keys.forEach(key => {
+        const data = groupedData[key];
+        if (!data || !data.date) {
+            console.warn(`Skipping invalid data entry for key: ${key}`);
+            return;
+        }
+
+        try {
+            const dataDate = new Date(data.date);
+            const adjustedDate = adjustDateToTimezone(dataDate, timezoneOffset);
+            
+            // Check if date is within range
+            const isAfterFrom = !fromDate || adjustedDate >= fromDate;
+            const isBeforeTo = !toDate || adjustedDate <= toDate;
+            
+            if (isAfterFrom && isBeforeTo) {
+                filteredData[key] = data;
+            }
+        } catch (e) {
+            console.error(`Error processing date for key ${key}:`, e);
+        }
+    });
+
+    return filteredData;
+}
+
+    // Helper function to filter data by date range
+    function filterDataByDateRange(groupedData, dateFrom, dateTo) {
+        const filteredData = {};
+        const fromDate = dateFrom ? new Date(dateFrom) : null;
+        const toDate = dateTo ? new Date(dateTo) : null;
+        
+        // If no date range is specified, return all data
+        if (!fromDate && !toDate) {
+            return groupedData;
+        }
+        
+        Object.keys(groupedData).forEach(key => {
+            const dataDate = new Date(groupedData[key].date);
+            
+            // Check if date is within range
+            const isAfterFrom = !fromDate || dataDate >= fromDate;
+            const isBeforeTo = !toDate || dataDate <= toDate;
+            
+            if (isAfterFrom && isBeforeTo) {
+                filteredData[key] = groupedData[key];
+            }
+        });
+        
+        return filteredData;
+    }
+        
+        // Helper function to get week number
+        function getWeekNumber(date) {
+            const d = new Date(date);
+            d.setHours(0, 0, 0, 0);
+            d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+            const week1 = new Date(d.getFullYear(), 0, 4);
+            return 1 + Math.round(((d - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+        }
+        
+        // Update the updateComparisonOptions function
+        function updateComparisonOptions() {
+            const compareMode = document.getElementById('compareMode').value;
+            const specificControls = document.getElementById('specificComparisonControls');
+            const previousControls = document.getElementById('previousComparisonControls');
+            
+            if (compareMode === 'specific') {
+                specificControls.style.display = 'block';
+                previousControls.style.display = 'none';
+                populateComparisonPeriods();
+            } else {
+                specificControls.style.display = 'none';
+                previousControls.style.display = 'block';
+                updateComparisonStats();
+            }
+        }
+
+        // Update the populateComparisonPeriods function
+        function populateComparisonPeriods() {
+            const periodSelect1 = document.getElementById('comparePeriod1');
+            const periodSelect2 = document.getElementById('comparePeriod2');
+            
+            // Clear existing options
+            periodSelect1.innerHTML = '<option value="">Select period</option>';
+            periodSelect2.innerHTML = '<option value="">Select period</option>';
+            
+            // Add available periods
+            dataStore.availablePeriods.forEach(period => {
+                const option1 = document.createElement('option');
+                option1.value = period.key;
+                option1.textContent = period.label;
+                periodSelect1.appendChild(option1);
+                
+                const option2 = document.createElement('option');
+                option2.value = period.key;
+                option2.textContent = period.label;
+                periodSelect2.appendChild(option2);
+            });
+        }
+
+        // Update the updateComparisonStats function
+        function updateComparisonStats() {
+            const compareMode = document.getElementById('compareMode').value;
+            const period = document.getElementById('period').value;
+            const groupedData = dataStore.getCurrentData(period);
+            
+            if (Object.keys(groupedData).length === 0) {
+                resetComparisonStats();
+                return;
+            }
+            
+            if (compareMode === 'specific') {
+                const period1 = document.getElementById('comparePeriod1').value;
+                const period2 = document.getElementById('comparePeriod2').value;
+                
+                if (!period1 || !period2) {
+                    resetComparisonStats();
+                    return;
+                }
+                
+                const data1 = groupedData[period1];
+                const data2 = groupedData[period2];
+                
+                if (!data1 || !data2) {
+                    resetComparisonStats();
+                    return;
+                }
+                
+                updateComparisonElement('distance', data1.totalDistance, data2.totalDistance, period2);
+                updateComparisonElement('speed', data1.avgSpeed, data2.avgSpeed, period2);
+                updateComparisonElement('rpm', data1.avgRpm, data2.avgRpm, period2);
+                updateComparisonElement('fuel', data1.fuelConsumption, data2.fuelConsumption, period2);
+            } else {
+                // Previous comparison mode (existing functionality)
+                const periods = Object.keys(groupedData).sort();
+                if (periods.length < 2) {
+                    resetComparisonStats();
+                    return;
+                }
+                
+                const currentPeriod = periods[periods.length - 1];
+                const prevPeriod = periods[periods.length - 2];
+                const current = groupedData[currentPeriod] || {};
+                const comparison = groupedData[prevPeriod] || {};
+                
+                updateComparisonElement('distance', current.totalDistance, comparison.totalDistance, prevPeriod);
+                updateComparisonElement('speed', current.avgSpeed, comparison.avgSpeed, prevPeriod);
+                updateComparisonElement('rpm', current.avgRpm, comparison.avgRpm, prevPeriod);
+                updateComparisonElement('fuel', current.fuelConsumption, comparison.fuelConsumption, prevPeriod);
+            }
+        }
+		
+        function resetComparisonStats() {
+            document.getElementById('distanceComparison').textContent = '--';
+            document.getElementById('speedComparison').textContent = '--';
+            document.getElementById('rpmComparison').textContent = '--';
+            document.getElementById('fuelComparison').textContent = '--';
+            
+            updateDoughnutChart(distanceDoughnutChart, 50, 50);
+            updateDoughnutChart(speedDoughnutChart, 50, 50);
+            updateDoughnutChart(rpmDoughnutChart, 50, 50);
+            updateDoughnutChart(fuelDoughnutChart, 50, 50);
+        }
+
+        function updateComparisonElement(metric, currentValue, comparisonValue, comparisonLabel) {
+            const element = document.getElementById(`${metric}Comparison`);
+            if (!element) return;
+
+            if (currentValue === undefined || currentValue === null || isNaN(currentValue)) {
+                element.innerHTML = '<span class="neutral-change">(current data missing)</span>';
+                element.title = 'Current value not available';
+                updateDoughnutChart(getDoughnutChart(metric), 0, 100);
+                return;
+            }
+
+            if (comparisonValue === undefined || comparisonValue === null || isNaN(comparisonValue)) {
+                element.innerHTML = '<span class="neutral-change">(no comparison data)</span>';
+                element.title = 'Comparison data not available';
+                updateDoughnutChart(getDoughnutChart(metric), 100, 0);
+                return;
+            }
+
+            if (comparisonValue === 0) {
+                if (currentValue === 0) {
+                    element.innerHTML = '<span class="neutral-change">→ 0% (both values zero)</span>';
+                    element.title = 'Both current and comparison values are zero';
+                    updateDoughnutChart(getDoughnutChart(metric), 50, 50);
+                } else {
+                    element.innerHTML = '<span class="positive-change">↑ ∞% (compared to zero)</span>';
+                    element.title = `Current: ${currentValue.toFixed(2)} | Comparison: 0`;
+                    updateDoughnutChart(getDoughnutChart(metric), 100, 0);
+                }
+                return;
+            }
+
+            const percentage = ((currentValue - comparisonValue) / comparisonValue) * 100;
+            const absPercentage = Math.abs(Math.round(percentage));
+
+            // Calculate doughnut chart values (normalized to show relative performance)
+            const maxValue = Math.max(currentValue, comparisonValue);
+            const currentNormalized = (currentValue / maxValue) * 100;
+            const comparisonNormalized = (comparisonValue / maxValue) * 100;
+
+            let changeClass, changeSymbol, displayText;
+
+            if (!isFinite(percentage)) {
+                changeClass = 'positive-change';
+                changeSymbol = '↑';
+                displayText = `${changeSymbol} ∞% vs ${comparisonLabel || 'previous'}`;
+            } else if (percentage > 0) {
+                changeClass = 'positive-change';
+                changeSymbol = '↑';
+                displayText = `${changeSymbol} ${absPercentage}% vs ${comparisonLabel || 'previous'}`;
+            } else if (percentage < 0) {
+                changeClass = 'negative-change';
+                changeSymbol = '↓';
+                displayText = `${changeSymbol} ${absPercentage}% vs ${comparisonLabel || 'previous'}`;
+            } else {
+                changeClass = 'neutral-change';
+                changeSymbol = '→';
+                displayText = `${changeSymbol} 0% vs ${comparisonLabel || 'previous'}`;
+            }
+
+            element.innerHTML = `<span class="${changeClass}">${displayText}</span>`;
+            element.title = `Current: ${currentValue.toFixed(2)} | Comparison: ${comparisonValue.toFixed(2)}`;
+            
+            // Update doughnut chart
+            updateDoughnutChart(getDoughnutChart(metric), currentNormalized, comparisonNormalized);
+        }
+        
+        // Helper function to get the appropriate doughnut chart
+        function getDoughnutChart(metric) {
+            switch(metric) {
+                case 'distance': return distanceDoughnutChart;
+                case 'speed': return speedDoughnutChart;
+                case 'rpm': return rpmDoughnutChart;
+                case 'fuel': return fuelDoughnutChart;
+                default: return null;
+            }
+        }
+        
+        // Update doughnut chart data
+        function updateDoughnutChart(chart, currentValue, comparisonValue) {
+            if (!chart) return;
+            
+            chart.data.datasets[0].data = [currentValue, comparisonValue];
+            
+            // Set colors based on comparison
+            if (currentValue > comparisonValue) {
+                chart.data.datasets[0].backgroundColor = ['#27ae60', '#e0e0e0'];
+            } else if (currentValue < comparisonValue) {
+                chart.data.datasets[0].backgroundColor = ['#e74c3c', '#e0e0e0'];
+            } else {
+                chart.data.datasets[0].backgroundColor = ['#3498db', '#e0e0e0'];
+            }
+            
+            chart.update();
+        }
+        
+		        // Add this new function to toggle panel collapse/expand
+        function togglePanel(panelWrapper) {
+            panelWrapper.classList.toggle('collapsed-panel');
+            const toggleBtn = panelWrapper.querySelector('.panel-toggle');
+            toggleBtn.textContent = panelWrapper.classList.contains('collapsed-panel') ? '+' : '−';
+        }
+
+        // Initialize all panels as expanded by default
+        document.addEventListener('DOMContentLoaded', function() {
+            // [Previous initialization code remains the same]
+            
+            // Add toggle buttons to all panels with the new structure
+            const panelWrappers = document.querySelectorAll('.chart-wrapper');
+            panelWrappers.forEach(wrapper => {
+                const header = wrapper.querySelector('.panel-header');
+                const title = header.querySelector('h2');
+                
+                // Create title container if it doesn't exist
+                if (!header.querySelector('.panel-title-container')) {
+                    const titleContainer = document.createElement('div');
+                    titleContainer.className = 'panel-title-container';
+                    titleContainer.onclick = function() {
+                        togglePanel(wrapper);
+                    };
+                    
+                    // Wrap the title and add toggle button
+                    titleContainer.innerHTML = title.outerHTML + 
+                        '<button class="panel-toggle">−</button>';
+                    header.insertBefore(titleContainer, header.firstChild);
+                    title.remove();
+					}
+            });
+        });
+		
+        // Function to update progress bar
+        function updateProgress(progress) {
+            loadingProgress = Math.min(progress, 100);
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = loadingProgress + '%';
+            progressBar.textContent = loadingProgress + '%';
+            
+            if (loadingProgress >= 100) {
+                setTimeout(() => {
+                    document.getElementById('progressContainer').style.display = 'none';
+                    document.getElementById('loadingMessage').style.display = 'none';
+                }, 500);
+            }
+        }
+        
+        // Show loading state
+        function showLoading() {
+            loadingProgress = 0;
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('loadingMessage').style.display = 'block';
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('progressBar').textContent = '0%';
+        }
+
+        // Export to PDF function with restructured content
+// Export to PDF function with restructured content for A4 portrait
+function exportToPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('p', 'mm', 'a4'); // A4 portrait
+    
+    // Add title
+    doc.setFontSize(16);
+    doc.text('Vehicle Metrics Dashboard', 105, 15, { align: 'center' });
+    
+    // Add date and filters
+    doc.setFontSize(10);
+    const dateFrom = document.getElementById('dateFrom').value;
+    const userSelect = document.getElementById('userSelect');
+    const userName = userSelect.options[userSelect.selectedIndex].text;
+    doc.text(`Date: ${dateFrom} | User: ${userName}`, 105, 22, { align: 'center' });
+    
+    // Create promises for capturing all required elements
+    const capturePromises = [];
+    
+    // 1. Utilization Range Chart (full width)
+    const utilizationRangeContainer = document.querySelector('.utilization-range-chart-container');
+    capturePromises.push(
+        html2canvas(utilizationRangeContainer).then(canvas => ({
+            canvas,
+            title: 'Vehicle Utilization Metrics',
+            yPosition: 30,
+            width: 180 // A4 width minus margins
+        }))
+    );
+    
+    // 2. Fuel Range Chart (full width)
+    const fuelRangeContainer = document.querySelector('.fuel-range-chart-container');
+    capturePromises.push(
+        html2canvas(fuelRangeContainer).then(canvas => ({
+            canvas,
+            title: 'Fuel Consumption Metrics',
+            yPosition: 130, // Position after first chart
+            width: 180
+        }))
+    );
+    
+    // 3. Prepare table data
+    const period = document.getElementById('period').value;
+    const groupedData = dataStore.getCurrentData(period);
+    const dateFromInput = document.getElementById('utilizationRangeFrom').value;
+    const dateToInput = document.getElementById('utilizationRangeTo').value;
+    const filteredData = filterDataByDateRange(groupedData, dateFromInput, dateToInput);
+    
+    const tableData = [];
+tableData.push([
+    { content: 'Date', styles: { fontStyle: 'bold' } },
+    { content: 'Distance (km)', styles: { fontStyle: 'bold' } },
+    { content: 'Fuel Used (L)', styles: { fontStyle: 'bold' } },
+    { content: 'Refill (L)', styles: { fontStyle: 'bold' } },
+    { content: 'Avg RPM', styles: { fontStyle: 'bold' } },
+    { content: 'Max RPM', styles: { fontStyle: 'bold', textColor: [200, 0, 0] } },
+    { content: 'Avg Speed', styles: { fontStyle: 'bold' } },
+    { content: 'Max Speed', styles: { fontStyle: 'bold', textColor: [200, 0, 0] } },
+    { content: 'Eff. (l/km)', styles: { fontStyle: 'bold' } }
+]);
+    
+    Object.keys(filteredData).sort().forEach(key => {
+        const data = filteredData[key];
+        tableData.push([
+            key,
+            data.trueDistance ? data.trueDistance.toFixed(2) : '--',
+            data.fuelConsumption ? data.fuelConsumption.toFixed(2) : '--',
+            data.totalRefillAmount ? data.totalRefillAmount.toFixed(2) : '--',
+            data.avgRpm ? data.avgRpm.toFixed(0) : '--',
+            data.maxRpm ? data.maxRpm.toFixed(0) : '--',
+            data.avgSpeed ? data.avgSpeed.toFixed(0) : '--',
+            data.maxSpeed ? data.maxSpeed.toFixed(0) : '--',
+            data.fuelEfficiency ? data.fuelEfficiency.toFixed(4) : '--'
+        ]);
+    });
+    
+    // Wait for all captures to complete
+    Promise.all(capturePromises).then(results => {
+        let currentY = 30; // Starting Y position
+        
+        // Add the utilization chart (first row)
+        if (results[0]) {
+            const imgData = results[0].canvas.toDataURL('image/png');
+            const imgWidth = results[0].width;
+            const imgHeight = (results[0].canvas.height * imgWidth) / results[0].canvas.width;
+            
+            // Center the image on the page (A4 width is 210mm, so (210-180)/2 = 15mm margin)
+            doc.addImage(imgData, 'PNG', 15, currentY, imgWidth, imgHeight);
+            doc.setFontSize(12);
+            doc.text(results[0].title, 105, currentY - 5, { align: 'center' });
+            currentY += imgHeight + 15; // Move down for next element
+        }
+        
+        // Add the fuel chart (second row)
+        if (results[1]) {
+            const imgData = results[1].canvas.toDataURL('image/png');
+            const imgWidth = results[1].width;
+            const imgHeight = (results[1].canvas.height * imgWidth) / results[1].canvas.width;
+            
+            // Check if we need a new page
+            if (currentY + imgHeight > 280) { // A4 height is 297mm
+                doc.addPage();
+                currentY = 20;
+            }
+            
+            doc.addImage(imgData, 'PNG', 15, currentY, imgWidth, imgHeight);
+            doc.setFontSize(12);
+            doc.text(results[1].title, 105, currentY - 5, { align: 'center' });
+            currentY += imgHeight + 10; // Move down for table
+        }
+        
+        // Add the table (third section)
+        if (tableData.length > 1) {
+            // Check if we need a new page
+            if (currentY > 250) { // Leave space for table header
+                doc.addPage();
+                currentY = 20;
+            }
+            
+            doc.setFontSize(12);
+            doc.text('Detailed Metrics', 105, currentY, { align: 'center' });
+            currentY += 7;
+            
+            doc.setFontSize(8);
+            doc.autoTable({
+                startY: currentY,
+                head: [tableData[0]],
+                body: tableData.slice(1),
+                margin: { left: 15, right: 15 },
+                styles: {
+                    fontSize: 8,
+                    cellPadding: 2,
+                    overflow: 'linebreak'
+                },
+                headStyles: {
+                    fillColor: [52, 152, 219],
+                    textColor: [255, 255, 255],
+                    fontStyle: 'bold'
+                },
+                alternateRowStyles: {
+                    fillColor: [240, 240, 240]
+                },
+columnStyles: {
+    0: { cellWidth: 22 },  // Date
+    1: { cellWidth: 18 },  // Distance (km)
+    2: { cellWidth: 16 },  // Fuel Used (L)
+    3: { cellWidth: 16 },  // Refill (L)
+    4: { cellWidth: 14 },  // Avg RPM
+    5: { cellWidth: 14 },  // Max RPM
+    6: { cellWidth: 16 },  // Avg Speed (km/h)
+    7: { cellWidth: 16 },  // Max Speed (km/h)
+    8: { cellWidth: 18 }   // Efficiency (l/km)
+},
+                tableWidth: 'wrap'
+            });
+        }
+        
+        // Save the PDF
+        doc.save(`vehicle_metrics_${userName}_${dateFrom}.pdf`);
+    });
+}
+		
+    </script>
+</body>
+</html>

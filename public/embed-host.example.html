@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vehicle Metrics · embed host example</title>
+    <style>
+      :root {
+        font-family: "Segoe UI", sans-serif;
+        color: #171614;
+        background: #efece6;
+      }
+      body {
+        margin: 0;
+        padding: 20px;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 8px;
+      }
+      p,
+      li {
+        color: #5e584f;
+        font-size: 14px;
+        line-height: 1.45;
+      }
+      code {
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+        background: #f3efe7;
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+      iframe {
+        width: 100%;
+        height: 78vh;
+        border: 1px solid #d9d2c6;
+        border-radius: 12px;
+        background: #fff;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 12px 0 16px;
+      }
+      label {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #8a8378;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      input {
+        height: 34px;
+        border: 1px solid #c8bfb0;
+        border-radius: 8px;
+        padding: 0 8px;
+      }
+      button {
+        height: 34px;
+        margin-top: 16px;
+        border: 0;
+        border-radius: 8px;
+        padding: 0 14px;
+        background: #0b6b62;
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Embed host example</h1>
+    <p>
+      The iframe is the dashboard. This parent page only passes <strong>vehicle context</strong>
+      (ids and dates). The Armada token stays on the dashboard server
+      (<code>ARMADA_AUTH_HEADER</code>) and is never put in the iframe URL or in
+      <code>postMessage</code>.
+    </p>
+    <ul>
+      <li>Query: <code>?embed=1&amp;groupId=&amp;userId=&amp;from=&amp;to=&amp;tz=&amp;period=</code></li>
+      <li>Optional live update: <code>{ type: "fms-embed:set", groupId, userId, from, to }</code></li>
+      <li>Production: <code>npm run build && npm start</code>, set <code>EMBED_FRAME_ANCESTORS</code> to this origin</li>
+    </ul>
+    <form class="row" id="form">
+      <label>Group id <input name="groupId" inputmode="numeric" /></label>
+      <label>Vehicle id <input name="userId" inputmode="numeric" /></label>
+      <label>From <input name="from" type="date" /></label>
+      <label>To <input name="to" type="date" /></label>
+      <button type="submit">Load in iframe</button>
+    </form>
+    <iframe id="frame" title="Vehicle Metrics" src="/?embed=1"></iframe>
+    <script>
+      const frame = document.getElementById("frame");
+      document.getElementById("form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(event.target));
+        const params = new URLSearchParams({ embed: "1" });
+        for (const [key, value] of Object.entries(data)) {
+          if (value) params.set(key, String(value));
+        }
+        frame.src = `/?${params.toString()}`;
+      });
+      window.addEventListener("message", (event) => {
+        if (event.origin !== window.location.origin) return;
+        if (event.data && event.data.type === "fms-embed:ready") {
+          console.info("Dashboard ready for fms-embed:set");
+        }
+      });
+    </script>
+  </body>
+</html>
