@@ -108,8 +108,8 @@ export function TrackMap({ data }: Props) {
         <div>
           <h2>Track map</h2>
           <p>
-            OpenStreetMap only — GPS jumps and time gaps break the line the same way distance does.
-            Zoom in to see every point; the overview may simplify a long route.
+            OpenStreetMap only — drawn like Armada: time gaps stay on the line.
+            A huge GPS teleport still breaks it. Distance and fuel keep the stricter 5 min / 1.5 km rules.
           </p>
         </div>
         <div className="field">

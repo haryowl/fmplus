@@ -89,6 +89,27 @@ describe("buildTrackMap", () => {
     expect(data.rawCount).toBe(40);
   });
 
+  it("keeps a long time gap on one line when the vehicle only moved a few km", () => {
+    const trips: Trip[] = [
+      {
+        trackInfoId: 1,
+        userId: 9,
+        created: null,
+        tracks: [
+          point("2025-04-01T01:00:00Z", -6.2, 106.8),
+          point("2025-04-01T01:20:00Z", -6.21, 106.82),
+        ],
+      },
+    ];
+    const data = buildTrackMap(trips, {
+      dateFrom: "2025-04-01",
+      dateTo: "2025-04-01",
+      timezone: "+00:00",
+    });
+    expect(data.paths).toHaveLength(1);
+    expect(data.paths[0]).toHaveLength(2);
+  });
+
   it("splits a GPS jump into separate paths and drops the teleport edge", () => {
     const trips: Trip[] = [
       {
