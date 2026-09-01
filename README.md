@@ -2,6 +2,8 @@
 
 Armada embed dashboard for distance, utilization, fuel, terrain, road, and fleet comparison.
 
+Requires **Node.js 20.19+ or 22** (Vite 8). Node 18 will fail with `styleText` from `node:util`.
+
 ## Install from git
 
 ```bash
@@ -13,6 +15,18 @@ Edit `.env.local` and set `ARMADA_AUTH_HEADER` (server-side only — do not pref
 ```bash
 npm run dev
 ```
+
+On a server, use Node 22, then **reinstall modules** (a Node 18 `npm install` will not include the Linux Rolldown binary), then build:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs
+node -v
+rm -rf node_modules
+npm install
+npm run build && npm start
+```
+
+Open [http://localhost:5173/](http://localhost:5173/) for `npm run dev`, or port **4173** for `npm start`.
 
 Open [http://localhost:5173/](http://localhost:5173/).
 
