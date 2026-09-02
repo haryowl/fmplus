@@ -100,6 +100,8 @@ function endpointPopup(label: string, point: { ms: number; lat: number; lon: num
     <a href="${maps}" target="_blank" rel="noopener noreferrer">Open in Google Maps</a>
   </div>`;
 }
+
+function popupHtml(event: RefillEvent, timezone: string, nearby: string): string {
   const lat = event.lat as number;
   const lon = event.lon as number;
   const maps = googleMapsUrl(lat, lon);
