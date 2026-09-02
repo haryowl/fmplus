@@ -15,17 +15,13 @@ import { computePeriodMetrics, sumMetrics } from "./metrics";
 import type { InsightInput } from "./insight";
 import { addDays, todayKeyInOffset } from "./time";
 import type { Group, LoadProgress, Period, Trip, User } from "./types";
-import {
-  EMBED_READY,
-  allowedOrigins,
-  parseEmbedSearch,
-  parseHostMessage,
-  type EmbedConfig,
-} from "./embed";
+import { EMBED_READY, embedOriginAllowlist, parseHostMessage, type EmbedConfig } from "./embed";
 import { writeLastVehicle } from "./lastUsed";
+import { useEmbedTenant } from "./useEmbedTenant";
 
 export function useVehicleDashboard() {
-  const query = useMemo(() => parseEmbedSearch(window.location.search), []);
+  const { query, ready, error: tenantError, allowedUserIds, allowedGroupIds, allowsUser, allowsGroup } =
+    useEmbedTenant();
   const defaultTo = todayKeyInOffset(query.tz);
   const defaultFrom = addDays(defaultTo, -13);
 
@@ -56,6 +52,10 @@ export function useVehicleDashboard() {
   const [progress, setProgress] = useState<LoadProgress | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const autoLoaded = useRef(false);
+  const allowsUserRef = useRef(allowsUser);
+  const allowsGroupRef = useRef(allowsGroup);
+  allowsUserRef.current = allowsUser;
+  allowsGroupRef.current = allowsGroup;
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
   const selectedUser = users.find((u) => String(u.id) === userId);
@@ -125,12 +125,40 @@ export function useVehicleDashboard() {
   }, [rows.length, totals, behavior]);
 
   useEffect(() => {
+    if (tenantError) setBootError(tenantError);
+  }, [tenantError]);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (userId && !allowsUser(userId)) {
+      setUserId(allowedUserIds.length === 1 ? String(allowedUserIds[0]) : "");
+      setHostLock((prev) => ({ ...prev, user: allowedUserIds.length === 1 }));
+    }
+    if (groupId && !allowsGroup(groupId)) {
+      setGroupId(allowedGroupIds.length === 1 ? String(allowedGroupIds[0]) : "");
+      setHostLock((prev) => ({ ...prev, group: allowedGroupIds.length === 1 }));
+    }
+  }, [ready]);
+
+  useEffect(() => {
+    if (!ready) return;
     const ac = new AbortController();
     fetchGroups(ac.signal)
       .then((list) => {
-        setGroups(list);
+        const next = allowedGroupIds.length
+          ? list.filter((g) => allowsGroup(g.id))
+          : list;
+        setGroups(next);
         setBootError("");
-        if (!groupId && list.length === 1) setGroupId(String(list[0].id));
+        if (!groupId && next.length === 1) setGroupId(String(next[0].id));
+        if (allowedUserIds.length === 1) {
+          setUserId(String(allowedUserIds[0]));
+          setHostLock((prev) => ({ ...prev, user: true }));
+        }
+        if (allowedGroupIds.length === 1) {
+          setGroupId(String(allowedGroupIds[0]));
+          setHostLock((prev) => ({ ...prev, group: true }));
+        }
       })
       .catch((err: Error) => {
         if (err.name === "AbortError") return;
@@ -141,7 +169,7 @@ export function useVehicleDashboard() {
         );
       });
     return () => ac.abort();
-  }, []);
+  }, [ready]);
 
   useEffect(() => {
     if (!selectedGroup) {
@@ -151,9 +179,10 @@ export function useVehicleDashboard() {
     const ac = new AbortController();
     fetchUsersForGroup(selectedGroup, ac.signal)
       .then((list) => {
-        setUsers(list);
-        if (userId && !list.some((u) => String(u.id) === userId)) {
-          setUserId("");
+        const next = allowedUserIds.length ? list.filter((u) => allowsUser(u.id)) : list;
+        setUsers(next);
+        if (userId && !next.some((u) => String(u.id) === userId)) {
+          setUserId(next.length === 1 ? String(next[0].id) : "");
         }
       })
       .catch((err: Error) => {
@@ -172,7 +201,7 @@ export function useVehicleDashboard() {
     const from = override?.dateFrom ?? dateFrom;
     const to = override?.dateTo ?? dateTo;
     const tz = override?.timezone ?? timezone;
-    if (!uid) return;
+    if (!uid || !allowsUserRef.current(uid)) return;
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
@@ -214,14 +243,14 @@ export function useVehicleDashboard() {
 
   useEffect(() => {
     if (autoLoaded.current) return;
-    if (!query.userId || !userId) return;
+    if (!ready || !query.userId || !userId || !allowsUserRef.current(userId)) return;
     autoLoaded.current = true;
     void handleLoadRef.current();
-  }, [query.userId, userId]);
+  }, [ready, query.userId, userId]);
 
   function applyHostConfig(cfg: EmbedConfig) {
-    if (cfg.groupId) setGroupId(cfg.groupId);
-    if (cfg.userId) setUserId(cfg.userId);
+    if (cfg.groupId && allowsGroupRef.current(cfg.groupId)) setGroupId(cfg.groupId);
+    if (cfg.userId && allowsUserRef.current(cfg.userId)) setUserId(cfg.userId);
     if (cfg.from) setDateFrom(cfg.from);
     if (cfg.to) setDateTo(cfg.to);
     if (cfg.tz) setTimezone(cfg.tz);
@@ -238,7 +267,7 @@ export function useVehicleDashboard() {
   }
 
   useEffect(() => {
-    const allowlist = allowedOrigins(import.meta.env.VITE_EMBED_ORIGINS);
+    const allowlist = embedOriginAllowlist();
     if (window.parent !== window) {
       window.parent.postMessage({ type: EMBED_READY }, "*");
     }
@@ -246,7 +275,7 @@ export function useVehicleDashboard() {
       const cfg = parseHostMessage(event.data, event.origin, allowlist, window.location.origin);
       if (!cfg) return;
       applyHostConfig(cfg);
-      if (cfg.userId) {
+      if (cfg.userId && allowsUserRef.current(cfg.userId)) {
         void handleLoadRef.current({
           userId: cfg.userId,
           dateFrom: cfg.from || undefined,

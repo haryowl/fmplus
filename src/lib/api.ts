@@ -1,5 +1,6 @@
-import { API_BASE, API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, TRACK_BATCH_BROWSER, TRACK_BATCH_SIZE, TRACK_FETCH_CONCURRENCY } from "./config";
+import { API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, TRACK_BATCH_BROWSER, TRACK_BATCH_SIZE, TRACK_FETCH_CONCURRENCY } from "./config";
 import { chunkArray, mapPool } from "./pool";
+import { apiBase, tenantHeaders } from "./tenant";
 import type { Group, LoadProgress, TrackInfo, TrackPoint, Trip, User } from "./types";
 import { formatUpdatedSince, updatedSinceWindows } from "./time";
 
@@ -49,8 +50,8 @@ async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
 
   for (let attempt = 0; attempt < API_RETRY_ATTEMPTS; attempt += 1) {
     try {
-      const res = await fetch(`${API_BASE}${path}`, {
-        headers: { accept: "application/json" },
+      const res = await fetch(`${apiBase()}${path}`, {
+        headers: { accept: "application/json", ...tenantHeaders() },
         signal,
       });
       lastStatus = res.status;
@@ -187,7 +188,7 @@ async function fetchTracksBatch(
 ): Promise<{ byId: Map<number, TrackPoint[]>; failed: number[] }> {
   const res = await fetch("/api/tracks-batch", {
     method: "POST",
-    headers: { accept: "application/json", "content-type": "application/json" },
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify({ ids }),
     signal,
   });

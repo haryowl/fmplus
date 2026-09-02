@@ -6,7 +6,10 @@ import CompactDashboard from "./pages/CompactDashboard";
 import FleetCompact from "./pages/FleetCompact";
 import FleetDashboard from "./pages/FleetDashboard";
 import { viewFromPath } from "./lib/routing";
+import { bootTenantFromSearch } from "./lib/tenant";
 import "./styles.css";
+
+bootTenantFromSearch(window.location.search);
 
 const view = viewFromPath(window.location.pathname);
 const Page =

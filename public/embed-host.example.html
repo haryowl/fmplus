@@ -77,16 +77,18 @@
     <h1>Embed host example</h1>
     <p>
       The iframe is the dashboard. This parent page only passes <strong>vehicle context</strong>
-      (ids and dates). The Armada token stays on the dashboard server
-      (<code>ARMADA_AUTH_HEADER</code>) and is never put in the iframe URL or in
+      and an opaque tenant key <code>k</code>. The GpsGate token stays on the dashboard server
+      (<code>tenants.json</code> / <code>ARMADA_AUTH_HEADER</code>) and is never put in the iframe URL or in
       <code>postMessage</code>.
     </p>
     <ul>
-      <li>Query: <code>?embed=1&amp;groupId=&amp;userId=&amp;from=&amp;to=&amp;tz=&amp;period=</code></li>
+      <li>Query: <code>?embed=1&amp;k=&amp;appId=&amp;groupId=&amp;userId=&amp;from=&amp;to=&amp;tz=&amp;period=</code></li>
       <li>Optional live update: <code>{ type: "fms-embed:set", groupId, userId, from, to }</code></li>
-      <li>Production: <code>npm run build && npm start</code>, set <code>EMBED_FRAME_ANCESTORS</code> to this origin</li>
+      <li>Parents: <code>https://armada.id</code> and any <code>https://*.armada.id</code> subdomain</li>
     </ul>
     <form class="row" id="form">
+      <label>Tenant key <input name="k" placeholder="emb_siteA_x7k2" /></label>
+      <label>App id <input name="appId" inputmode="numeric" placeholder="40" /></label>
       <label>Group id <input name="groupId" inputmode="numeric" /></label>
       <label>Vehicle id <input name="userId" inputmode="numeric" /></label>
       <label>From <input name="from" type="date" /></label>

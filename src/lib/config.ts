@@ -1,7 +1,7 @@
-export const APP_ID = 36;
+export const DEFAULT_APP_ID = 36;
+export const APP_ID = DEFAULT_APP_ID;
 
-export const API_BASE =
-  import.meta.env.VITE_ARMADA_API_BASE || "/lt/api/v.1/applications/36";
+export const API_PREFIX = "/lt/api/v.1/applications";
 
 export const MAX_POSITION_JUMP_KM = 1.5;
 export const MAX_GAP_MS = 5 * 60 * 1000;

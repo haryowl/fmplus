@@ -2,9 +2,8 @@
  * Browser HTTP/1.1 only opens a handful of connections to this host.
  * This endpoint fans out many Armada track downloads on the server instead.
  */
+import { tenantFromRequest } from "./tenants.mjs";
 
-const APP_ID = 36;
-const ARMADA_TRACKS = `https://armada.id/lt/api/v.1/applications/${APP_ID}/trackinfos`;
 const MAX_IDS = 32;
 const SERVER_CONCURRENCY = 12;
 const ATTEMPTS = 6;
@@ -37,8 +36,8 @@ async function mapPool(items, concurrency, worker) {
   return results;
 }
 
-async function fetchOneTrack(id, auth, signal) {
-  const url = `${ARMADA_TRACKS}/${id}/tracks?Filtered=true`;
+async function fetchOneTrack(id, auth, appId, signal) {
+  const url = `https://armada.id/lt/api/v.1/applications/${appId}/trackinfos/${id}/tracks?Filtered=true`;
   let lastError = "request failed";
 
   for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
@@ -125,9 +124,9 @@ export async function handleTracksBatchRequest(req, res) {
     return true;
   }
 
-  const auth = process.env.ARMADA_AUTH_HEADER || "";
-  if (!auth) {
-    json(503, { error: "ARMADA_AUTH_HEADER is not set on the server" });
+  const tenant = tenantFromRequest(req);
+  if (!tenant) {
+    json(503, { error: "No tenant token. Set ARMADA_AUTH_HEADER or tenants.json." });
     return true;
   }
 
@@ -153,7 +152,7 @@ export async function handleTracksBatchRequest(req, res) {
     try {
       await mapPool(ids, SERVER_CONCURRENCY, async (id) => {
         try {
-          byId[String(id)] = await fetchOneTrack(id, auth, ac.signal);
+          byId[String(id)] = await fetchOneTrack(id, tenant.token, tenant.appId, ac.signal);
         } catch (err) {
           if (err?.name === "AbortError") throw err;
           failed.push(id);

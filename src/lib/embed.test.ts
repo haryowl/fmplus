@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMBED_SET, originAllowed, parseEmbedSearch, parseHostMessage } from "./embed";
+import { EMBED_SET, originAllowed, originMatches, parseEmbedSearch, parseHostMessage } from "./embed";
 
 describe("parseEmbedSearch", () => {
   it("reads host vehicle context and ignores auth params", () => {
@@ -8,6 +8,8 @@ describe("parseEmbedSearch", () => {
     );
     expect(cfg).toEqual({
       compact: true,
+      tenantKey: "",
+      appId: "",
       groupId: "12",
       userId: "99",
       from: "2026-08-01",
@@ -27,6 +29,21 @@ describe("parseEmbedSearch", () => {
     expect(cfg.from).toBe("");
     expect(cfg.compact).toBe(false);
     expect(cfg.lock).toEqual({ group: false, user: false, from: false, to: false, tz: false });
+    expect(cfg.tenantKey).toBe("");
+    expect(cfg.appId).toBe("");
+  });
+
+  it("reads opaque tenant key and public appId, not tokens", () => {
+    const cfg = parseEmbedSearch("?embed=1&k=emb_siteA_x7k2&appId=40&userId=99&token=v2:secret");
+    expect(cfg.tenantKey).toBe("emb_siteA_x7k2");
+    expect(cfg.appId).toBe("40");
+    expect(cfg.userId).toBe("99");
+    expect(JSON.stringify(cfg).toLowerCase()).not.toContain("secret");
+  });
+
+  it("rejects short or unsafe tenant keys", () => {
+    expect(parseEmbedSearch("?k=short").tenantKey).toBe("");
+    expect(parseEmbedSearch("?k=has space!!").tenantKey).toBe("");
   });
 });
 
@@ -51,5 +68,17 @@ describe("parseHostMessage", () => {
     expect(
       parseHostMessage({ type: EMBED_SET, userId: "1" }, "https://evil.example", [], "http://localhost:5173"),
     ).toBeNull();
+  });
+
+  it("allows armada.id apex and any https subdomain", () => {
+    const allow = ["https://armada.id", "https://*.armada.id"];
+    expect(originMatches("https://armada.id", "https://*.armada.id")).toBe(true);
+    expect(originMatches("https://ops.armada.id", "https://*.armada.id")).toBe(true);
+    expect(originMatches("https://a.b.armada.id", "https://*.armada.id")).toBe(true);
+    expect(originAllowed("https://ops.armada.id", allow, "http://localhost:5173")).toBe(true);
+    expect(originAllowed("https://armada.id", allow, "http://localhost:5173")).toBe(true);
+    expect(originAllowed("http://ops.armada.id", allow, "http://localhost:5173")).toBe(false);
+    expect(originAllowed("https://evil.example", allow, "http://localhost:5173")).toBe(false);
+    expect(originAllowed("https://armada.id.evil.example", allow, "http://localhost:5173")).toBe(false);
   });
 });

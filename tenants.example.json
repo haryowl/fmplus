@@ -1,0 +1,14 @@
+{
+  "emb_siteA_x7k2": {
+    "appId": 40,
+    "token": "v2:paste-operator-token-here",
+    "userIds": [99, 100],
+    "groupIds": [12]
+  },
+  "emb_siteB_m4n9": {
+    "appId": 41,
+    "token": "v2:paste-other-operator-token-here",
+    "userIds": [200, 201],
+    "groupIds": [30]
+  }
+}

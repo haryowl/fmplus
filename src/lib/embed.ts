@@ -8,6 +8,8 @@ const AUTH_PARAM = /^(auth|authorization|token|api[_-]?key|armada[_-]?auth|auth[
 
 export type EmbedConfig = {
   compact: boolean;
+  tenantKey: string;
+  appId: string;
   groupId: string;
   userId: string;
   from: string;
@@ -23,6 +25,13 @@ export type EmbedConfig = {
   };
 };
 
+export const DEFAULT_EMBED_ORIGINS = "https://armada.id,https://*.armada.id";
+
+export function embedOriginAllowlist(): string[] {
+  const fromEnv = allowedOrigins(import.meta.env.VITE_EMBED_ORIGINS);
+  return fromEnv.length > 0 ? fromEnv : allowedOrigins(DEFAULT_EMBED_ORIGINS);
+}
+
 export function allowedOrigins(raw: string | undefined): string[] {
   return (raw ?? "")
     .split(",")
@@ -30,14 +39,34 @@ export function allowedOrigins(raw: string | undefined): string[] {
     .filter(Boolean);
 }
 
+export function originMatches(origin: string, pattern: string): boolean {
+  if (pattern === origin) return true;
+  const wild = /^(https?:\/\/)\*\.(.+)$/i.exec(pattern);
+  if (!wild) return false;
+  try {
+    const parsed = new URL(origin);
+    if (`${parsed.protocol}//` !== wild[1]) return false;
+    const rootHost = wild[2].toLowerCase();
+    const host = parsed.hostname.toLowerCase();
+    return host === rootHost || host.endsWith(`.${rootHost}`);
+  } catch {
+    return false;
+  }
+}
+
 export function originAllowed(eventOrigin: string, allowlist: string[], selfOrigin: string): boolean {
-  if (allowlist.length > 0) return allowlist.includes(eventOrigin);
-  return eventOrigin === selfOrigin;
+  if (allowlist.length === 0) return eventOrigin === selfOrigin;
+  return allowlist.some((pattern) => originMatches(eventOrigin, pattern));
 }
 
 function idParam(value: string | null | undefined): string {
   if (!value) return "";
   return /^\d+$/.test(value) ? value : "";
+}
+
+function tenantKeyParam(value: string | null | undefined): string {
+  if (!value) return "";
+  return /^[A-Za-z0-9._-]{8,80}$/.test(value) ? value : "";
 }
 
 function dateParam(value: string | null | undefined): string {
@@ -74,6 +103,8 @@ export function parseEmbedSearch(search: string): EmbedConfig {
     if (AUTH_PARAM.test(key)) params.delete(key);
   }
 
+  const tenantKey = tenantKeyParam(params.get("k"));
+  const appId = idParam(params.get("appId"));
   const groupId = idParam(params.get("groupId"));
   const userId = idParam(params.get("userId"));
   const from = dateParam(params.get("from"));
@@ -81,6 +112,8 @@ export function parseEmbedSearch(search: string): EmbedConfig {
 
   return {
     compact: compactFlag(params.get("embed")),
+    tenantKey,
+    appId,
     groupId,
     userId,
     from,
@@ -114,6 +147,8 @@ export function parseHostMessage(
     return typeof value === "string" || typeof value === "number" ? String(value) : undefined;
   };
 
+  const tenantKey = tenantKeyParam(pick("k"));
+  const appId = idParam(pick("appId"));
   const groupId = idParam(pick("groupId"));
   const userId = idParam(pick("userId"));
   const from = dateParam(pick("from"));
@@ -122,6 +157,8 @@ export function parseHostMessage(
 
   return {
     compact: msg.embed === undefined ? true : compactFlag(msg.embed as string | boolean | undefined),
+    tenantKey,
+    appId,
     groupId,
     userId,
     from,

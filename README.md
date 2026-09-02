@@ -59,4 +59,16 @@ Open [http://localhost:5173/](http://localhost:5173/).
 | Fleet comparison | `/fleet` |
 | Fleet ranking | `/fleet/compact` |
 
-Embed query: `groupId`, `userId`, `userIds`, `from`, `to`, `tz`, `period`, `embed=1`.
+Embed query: `k`, `appId`, `groupId`, `userId`, `userIds`, `from`, `to`, `tz`, `period`, `embed=1`.
+
+## Multi-operator embed
+
+Each operator gets an opaque key `k` (not the GpsGate token). The iframe URL may include public `appId` plus vehicle/group ids. Tokens stay in server-side `tenants.json` (copy `tenants.example.json`; the real file is gitignored).
+
+```
+http://81.17.100.7:4173/?embed=1&k=emb_siteA_x7k2&appId=40&groupId=12&userId=99
+```
+
+Changing `userId` in that URL cannot open another operator’s vehicles. The server maps `k` → token, app, and allowed ids, then 403s other apps/users/groups.
+
+Parents may be several hosts. Default iframe + `postMessage` allowlist is `https://armada.id` and `https://*.armada.id` (apex plus any subdomain). Override with `EMBED_FRAME_ANCESTORS` and `VITE_EMBED_ORIGINS` if needed.
