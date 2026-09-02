@@ -237,7 +237,7 @@ export function useFleetDashboard() {
       setByUserId(result.byUserId);
       if (result.skipped > 0) {
         setLoadWarning(
-          `${result.skipped} track${result.skipped === 1 ? "" : "s"} skipped after Armada rate limits. Reload to fill gaps.`,
+          `${result.skipped} Armada request${result.skipped === 1 ? "" : "s"} skipped after rate limits. Reload to fill gaps.`,
         );
       }
       const anyTrips = [...result.byUserId.values()].some((trips) => trips.length > 0);

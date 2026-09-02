@@ -1,8 +1,9 @@
-import { API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, TRACK_BATCH_BROWSER, TRACK_BATCH_SIZE, TRACK_FETCH_CONCURRENCY } from "./config";
+import { API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, TRACK_BATCH_BROWSER, TRACK_BATCH_SIZE, TRACK_FETCH_CONCURRENCY, USER_DAY_BATCH_SIZE } from "./config";
+import { groupRowsIntoTrips, normalizeTrackList, type DayTrackRow } from "./dayTracks";
 import { chunkArray, mapPool } from "./pool";
 import { apiBase, tenantHeaders } from "./tenant";
 import type { Group, LoadProgress, TrackInfo, TrackPoint, Trip, User } from "./types";
-import { formatUpdatedSince, updatedSinceWindows } from "./time";
+import { eachDateInclusive, formatUpdatedSince, updatedSinceWindows } from "./time";
 
 type ListResponse<T> = T[] | { items?: T[] };
 
@@ -168,9 +169,26 @@ type BatchTracksResponse = {
 };
 
 let batchEndpoint: "unknown" | "yes" | "no" = "unknown";
+let dayEndpoint: "unknown" | "yes" | "no" = "unknown";
 
 const trackPointCache = new Map<number, TrackPoint[]>();
 const TRACK_CACHE_MAX = 800;
+const dayRowCache = new Map<string, DayTrackRow[]>();
+const DAY_CACHE_MAX = 400;
+
+function dayCacheKey(userId: number, date: string): string {
+  return `${userId}|${date}`;
+}
+
+function rememberDayRows(key: string, rows: DayTrackRow[]) {
+  if (dayRowCache.has(key)) {
+    dayRowCache.delete(key);
+  } else if (dayRowCache.size >= DAY_CACHE_MAX) {
+    const oldest = dayRowCache.keys().next().value;
+    if (oldest !== undefined) dayRowCache.delete(oldest);
+  }
+  dayRowCache.set(key, rows);
+}
 
 function rememberTracks(id: number, points: TrackPoint[]) {
   if (trackPointCache.has(id)) {
@@ -374,6 +392,152 @@ async function loadTracksForInfos(
   return { trips, skipped };
 }
 
+type UserDayJob = { userId: number; date: string; key: string };
+
+async function fetchUserDayDirect(userId: number, date: string, signal?: AbortSignal): Promise<DayTrackRow[]> {
+  const raw = await apiGet<unknown>(
+    `/users/${userId}/tracks?Date=${encodeURIComponent(date)}&Filtered=true`,
+    signal,
+  );
+  return normalizeTrackList(raw);
+}
+
+type BatchUserDayResponse = {
+  byKey?: Record<string, unknown>;
+  failed?: string[];
+};
+
+async function fetchUserDayBatch(
+  jobs: UserDayJob[],
+  signal?: AbortSignal,
+): Promise<{ byKey: Map<string, DayTrackRow[]>; failed: string[] }> {
+  const res = await fetch("/api/user-day-tracks", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify({
+      days: jobs.map((job) => ({ userId: job.userId, date: job.date })),
+    }),
+    signal,
+  });
+  if (res.status === 404 || res.status === 405) {
+    throw Object.assign(new Error("day batch unavailable"), { dayUnavailable: true as const });
+  }
+  if (!res.ok) {
+    throw new Error(`User-day batch ${res.status}`);
+  }
+  const raw = (await res.json()) as BatchUserDayResponse;
+  const byKey = new Map<string, DayTrackRow[]>();
+  for (const [key, points] of Object.entries(raw.byKey ?? {})) {
+    byKey.set(key, normalizeTrackList(points));
+  }
+  const failed = (raw.failed ?? []).filter((key) => typeof key === "string");
+  return { byKey, failed };
+}
+
+async function loadTripsByUserDays(
+  options: {
+    dateFrom: string;
+    dateTo: string;
+    signal?: AbortSignal;
+    onProgress?: (progress: LoadProgress) => void;
+  },
+  userIds: number[],
+): Promise<MultiTripLoadResult> {
+  const dates = eachDateInclusive(options.dateFrom, options.dateTo);
+  const jobs: UserDayJob[] = [];
+  for (const userId of userIds) {
+    for (const date of dates) {
+      jobs.push({ userId, date, key: dayCacheKey(userId, date) });
+    }
+  }
+
+  const byUserId = new Map<number, Trip[]>();
+  for (const id of userIds) byUserId.set(id, []);
+  if (jobs.length === 0) return { byUserId, skipped: 0 };
+
+  const rowsByUser = new Map<number, DayTrackRow[]>();
+  for (const id of userIds) rowsByUser.set(id, []);
+
+  let loaded = 0;
+  let skipped = 0;
+  const report = () => {
+    options.onProgress?.({ phase: "days", loaded, total: jobs.length, skipped });
+  };
+  report();
+
+  const pending: UserDayJob[] = [];
+  for (const job of jobs) {
+    const cached = dayRowCache.get(job.key);
+    if (cached) {
+      rowsByUser.get(job.userId)?.push(...cached);
+      loaded += 1;
+    } else {
+      pending.push(job);
+    }
+  }
+  if (pending.length < jobs.length) report();
+
+  const applyRows = (job: UserDayJob, rows: DayTrackRow[], ok: boolean) => {
+    loaded += 1;
+    if (!ok) {
+      skipped += 1;
+      return;
+    }
+    rememberDayRows(job.key, rows);
+    rowsByUser.get(job.userId)?.push(...rows);
+  };
+
+  const loadDirect = async (items: UserDayJob[]) => {
+    await mapPool(items, TRACK_FETCH_CONCURRENCY, async (job) => {
+      try {
+        applyRows(job, await fetchUserDayDirect(job.userId, job.date, options.signal), true);
+      } catch (err) {
+        if ((err as Error).name === "AbortError") throw err;
+        applyRows(job, [], false);
+      }
+      report();
+    });
+  };
+
+  if (pending.length > 0 && dayEndpoint !== "no") {
+    const chunks = chunkArray(pending, USER_DAY_BATCH_SIZE);
+    await mapPool(chunks, TRACK_BATCH_BROWSER, async (chunk) => {
+      try {
+        const { byKey, failed } = await fetchUserDayBatch(chunk, options.signal);
+        const failedSet = new Set(failed);
+        const missing: UserDayJob[] = [];
+        for (const job of chunk) {
+          if (failedSet.has(job.key) || !byKey.has(job.key)) {
+            missing.push(job);
+            continue;
+          }
+          applyRows(job, byKey.get(job.key) ?? [], true);
+        }
+        if (missing.length) await loadDirect(missing);
+        report();
+      } catch (err) {
+        if ((err as Error).name === "AbortError") throw err;
+        if ((err as { dayUnavailable?: boolean }).dayUnavailable) {
+          throw err;
+        }
+        await loadDirect(chunk);
+        report();
+      }
+    });
+  } else if (pending.length > 0) {
+    await loadDirect(pending);
+  }
+
+  if (loaded === skipped && skipped === jobs.length) {
+    throw Object.assign(new Error("User-day tracks unavailable"), { dayUnavailable: true as const });
+  }
+
+  for (const userId of userIds) {
+    byUserId.set(userId, groupRowsIntoTrips(userId, rowsByUser.get(userId) ?? []));
+  }
+  return { byUserId, skipped };
+}
+
 export async function loadTripsForUser(options: {
   userId: number;
   dateFrom: string;
@@ -382,9 +546,18 @@ export async function loadTripsForUser(options: {
   signal?: AbortSignal;
   onProgress?: (progress: LoadProgress) => void;
 }): Promise<TripLoadResult> {
-  const infos = await fetchTrackInfosInRange(options);
-  const forUser = selectTrackInfosForUsers(infos, [Number(options.userId)]);
-  return loadTracksForInfos(forUser, options.signal, options.onProgress);
+  const loaded = await loadTripsForUsers({
+    userIds: [Number(options.userId)],
+    dateFrom: options.dateFrom,
+    dateTo: options.dateTo,
+    timezone: options.timezone,
+    signal: options.signal,
+    onProgress: options.onProgress,
+  });
+  return {
+    trips: loaded.byUserId.get(Number(options.userId)) ?? [],
+    skipped: loaded.skipped,
+  };
 }
 
 export async function loadTripsForUsers(options: {
@@ -399,6 +572,23 @@ export async function loadTripsForUsers(options: {
   const byUserId = new Map<number, Trip[]>();
   for (const id of userIds) byUserId.set(id, []);
   if (userIds.length === 0) return { byUserId, skipped: 0 };
+
+  if (dayEndpoint !== "no") {
+    try {
+      const loaded = await loadTripsByUserDays(options, userIds);
+      dayEndpoint = "yes";
+      return loaded;
+    } catch (err) {
+      if ((err as Error).name === "AbortError") throw err;
+      if ((err as { dayUnavailable?: boolean }).dayUnavailable) {
+        dayEndpoint = "no";
+      } else if (dayEndpoint === "unknown") {
+        dayEndpoint = "no";
+      } else {
+        throw err;
+      }
+    }
+  }
 
   const infos = await fetchTrackInfosInRange(options);
   const selected = selectTrackInfosForUsers(infos, userIds);

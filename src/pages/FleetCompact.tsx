@@ -9,6 +9,7 @@ import {
   formatPct,
 } from "../lib/format";
 import { movingSharePct } from "../lib/metrics";
+import { describeLoadProgress } from "../lib/dayTracks";
 import { useFleetDashboard } from "../lib/useFleetDashboard";
 import type { Period } from "../lib/types";
 import { BrandMark } from "../components/BrandMark";
@@ -36,10 +37,7 @@ export default function FleetCompact() {
   const banner = d.loading && d.progress
     ? {
         kind: "progress" as const,
-        text:
-          d.progress.phase === "trips"
-            ? `Finding trips · ${d.progress.loaded}/${d.progress.total}`
-            : `Tracks ${d.progress.loaded}/${d.progress.total}`,
+        text: describeLoadProgress(d.progress, d.userIds.length),
       }
     : d.bootError
       ? { kind: "error" as const, text: d.bootError }

@@ -21,6 +21,7 @@ import { UtilizationChart } from "./components/UtilizationChart";
 import { BrandMark } from "./components/BrandMark";
 import { ViewNav } from "./components/ViewNav";
 import { exportMetricsPdf } from "./lib/exportPdf";
+import { describeLoadProgress } from "./lib/dayTracks";
 import { useVehicleDashboard } from "./lib/useVehicleDashboard";
 
 export default function App() {
@@ -321,11 +322,7 @@ export default function App() {
         {loading && progress && (
           <div className="banner progress">
             <span>
-              {progress.phase === "trips"
-                ? `Finding trips · window ${Math.max(1, progress.loaded)} of ${progress.total}`
-                : `Loading tracks ${progress.loaded} of ${progress.total}${
-                    progress.skipped ? ` · ${progress.skipped} skipped` : ""
-                  }`}
+              {describeLoadProgress(progress)}
             </span>
             <div className="progress-track">
               <div className="progress-fill" style={{ width: `${progressPct}%` }} />

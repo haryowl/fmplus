@@ -13,6 +13,7 @@ import {
 } from "../lib/format";
 import { buildInsights } from "../lib/insight";
 import { movingSharePct } from "../lib/metrics";
+import { describeLoadProgress } from "../lib/dayTracks";
 import { useVehicleDashboard } from "../lib/useVehicleDashboard";
 import type { Period } from "../lib/types";
 import { BrandMark } from "../components/BrandMark";
@@ -73,12 +74,7 @@ export default function CompactDashboard() {
   const banner = loading && progress
     ? {
         kind: "progress" as const,
-        text:
-          progress.phase === "trips"
-            ? `Finding trips · window ${Math.max(1, progress.loaded)} of ${progress.total}`
-            : `Loading tracks ${progress.loaded} of ${progress.total}${
-                progress.skipped ? ` · ${progress.skipped} skipped` : ""
-              }`,
+        text: describeLoadProgress(progress),
       }
     : bootError
       ? { kind: "error" as const, text: bootError }

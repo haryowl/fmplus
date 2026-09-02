@@ -32,6 +32,8 @@ export const DEFAULT_SPEED_LIMIT_KMH = 90;
 export const FLEET_VEHICLE_CAP = 8;
 /** Track ids in one POST /api/tracks-batch (server fetches them in parallel). */
 export const TRACK_BATCH_SIZE = 20;
+/** Vehicle-days in one POST /api/user-day-tracks. */
+export const USER_DAY_BATCH_SIZE = 20;
 /** How many batch POSTs the browser runs at once. */
 export const TRACK_BATCH_BROWSER = 2;
 /** Fallback if the batch endpoint is missing (direct /lt track GETs). */

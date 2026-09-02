@@ -34,6 +34,18 @@ export function addDays(dateYmd: string, days: number): string {
   return new Date(utc + days * 86_400_000).toISOString().slice(0, 10);
 }
 
+/** Inclusive YYYY-MM-DD calendar days from `dateFrom` through `dateTo`. */
+export function eachDateInclusive(dateFrom: string, dateTo: string): string[] {
+  if (!dateFrom || !dateTo || dateTo < dateFrom) return [];
+  const out: string[] = [];
+  let cursor = dateFrom;
+  while (cursor <= dateTo) {
+    out.push(cursor);
+    cursor = addDays(cursor, 1);
+  }
+  return out;
+}
+
 /**
  * V17 loads trips with three parallel UpdatedSince calls at +0 / +14 / +28 days.
  * Armada does not return an unbounded history from one timestamp — each call

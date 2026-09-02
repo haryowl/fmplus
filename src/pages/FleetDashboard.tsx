@@ -11,6 +11,7 @@ import {
   formatPct,
 } from "../lib/format";
 import { movingSharePct } from "../lib/metrics";
+import { describeLoadProgress } from "../lib/dayTracks";
 import { useFleetDashboard } from "../lib/useFleetDashboard";
 import type { Period } from "../lib/types";
 import { BrandMark } from "../components/BrandMark";
@@ -143,11 +144,7 @@ export default function FleetDashboard() {
         {d.loading && d.progress && (
           <div className="banner progress">
             <span>
-              {d.progress.phase === "trips"
-                ? `Finding trips · window ${Math.max(1, d.progress.loaded)} of ${d.progress.total}`
-                : `Loading tracks ${d.progress.loaded} of ${d.progress.total} across ${d.userIds.length} vehicles${
-                    d.progress.skipped ? ` · ${d.progress.skipped} skipped` : ""
-                  }`}
+              {describeLoadProgress(d.progress, d.userIds.length)}
             </span>
             <div className="progress-track">
               <div className="progress-fill" style={{ width: `${d.progressPct}%` }} />
