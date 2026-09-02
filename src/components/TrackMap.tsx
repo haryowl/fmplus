@@ -38,6 +38,22 @@ const refillIcon = L.divIcon({
   popupAnchor: [0, -8],
 });
 
+const startIcon = L.divIcon({
+  className: "trip-end-marker trip-end-marker-start",
+  html: '<span class="trip-end-marker-dot">S</span>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+  popupAnchor: [0, -10],
+});
+
+const endIcon = L.divIcon({
+  className: "trip-end-marker trip-end-marker-end",
+  html: '<span class="trip-end-marker-dot">E</span>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+  popupAnchor: [0, -10],
+});
+
 const fuelLookup = new Map<string, Promise<NearbyFuel>>();
 
 function fuelCacheKey(lat: number, lon: number): string {
@@ -76,7 +92,14 @@ function lookupNearbyFuel(lat: number, lon: number): Promise<NearbyFuel> {
   return req;
 }
 
-function popupHtml(event: RefillEvent, timezone: string, nearby: string): string {
+function endpointPopup(label: string, point: { ms: number; lat: number; lon: number }, timezone: string): string {
+  const maps = googleMapsUrl(point.lat, point.lon);
+  return `<div class="refill-popup">
+    <strong>${escapeHtml(label)}</strong>
+    <div>${escapeHtml(formatWhen(point.ms, timezone))}</div>
+    <a href="${maps}" target="_blank" rel="noopener noreferrer">Open in Google Maps</a>
+  </div>`;
+}
   const lat = event.lat as number;
   const lon = event.lon as number;
   const maps = googleMapsUrl(lat, lon);
@@ -173,6 +196,28 @@ export function TrackMap({ data, refills = [], timezone = "+08:00" }: Props) {
         group.addLayer(marker);
         bounds.extend([lat, lon]);
       }
+      const start = data.start;
+      const end = data.end;
+      const sameEnds =
+        start &&
+        end &&
+        Math.abs(start.lat - end.lat) < 1e-5 &&
+        Math.abs(start.lon - end.lon) < 1e-5;
+      if (start && !sameEnds) {
+        const marker = L.marker([start.lat, start.lon], { icon: startIcon, zIndexOffset: 900 });
+        marker.bindPopup(endpointPopup("Start", start, timezone), { maxWidth: 280 });
+        group.addLayer(marker);
+        bounds.extend([start.lat, start.lon]);
+      }
+      if (end) {
+        const marker = L.marker([end.lat, end.lon], { icon: endIcon, zIndexOffset: 910 });
+        marker.bindPopup(
+          endpointPopup(sameEnds ? "Start & end" : "End", end, timezone),
+          { maxWidth: 280 },
+        );
+        group.addLayer(marker);
+        bounds.extend([end.lat, end.lon]);
+      }
       setDrawnCount(vertices);
       if (fittedForRef.current !== data && bounds.isValid()) {
         fittedForRef.current = data;
@@ -200,8 +245,8 @@ export function TrackMap({ data, refills = [], timezone = "+08:00" }: Props) {
           <h2>Track map</h2>
           <p>
             OpenStreetMap only — every GPS sample is joined in time order, like Armada.
-            Orange pins are tank-rise refills (same threshold as Fuel). Click a pin for liters and Google Maps.
-            Station names are the nearest mapped fuel amenity, not a guaranteed pump name.
+            Blue S is the first point in the range, red E is the last. Orange pins are tank-rise refills.
+            Click a pin for time and Google Maps. Station names are the nearest mapped fuel amenity, not a guaranteed pump name.
           </p>
         </div>
         <div className="field">
@@ -239,13 +284,23 @@ export function TrackMap({ data, refills = [], timezone = "+08:00" }: Props) {
           </span>
         </div>
       )}
-      {refills.length > 0 && (
-        <div className="legend terrain-legend">
+      <div className="legend terrain-legend">
+        {data.start && (
+          <span>
+            <i className="swatch start-swatch" /> Start
+          </span>
+        )}
+        {data.end && (
+          <span>
+            <i className="swatch end-swatch" /> End
+          </span>
+        )}
+        {refills.length > 0 && (
           <span>
             <i className="swatch refill-swatch" /> Refill ({refills.length})
           </span>
-        </div>
-      )}
+        )}
+      </div>
       <div ref={hostRef} className="map-wrap" />
       <p className="map-caption">
         {sampled}

@@ -87,6 +87,8 @@ describe("buildTrackMap", () => {
     );
     expect(data.pointCount).toBe(40);
     expect(data.rawCount).toBe(40);
+    expect(data.start?.lon).toBeCloseTo(106.8);
+    expect(data.end?.lon).toBeCloseTo(106.8 + 39 * 0.0001);
   });
 
   it("keeps a long time gap on one line when the vehicle only moved a few km", () => {

@@ -35,6 +35,8 @@ export type TrackMapData = {
   hasRoad: boolean;
   altMin: number | null;
   altMax: number | null;
+  start: MapPoint | null;
+  end: MapPoint | null;
 };
 
 function parsePoint(point: TrackPoint): MapPoint | null {
@@ -206,6 +208,8 @@ export function buildTrackMap(
   collected.sort((a, b) => a.ms - b.ms);
   const rawCount = collected.length;
   const paths = splitPaths(collected);
+  const start = collected[0] ?? null;
+  const end = collected.at(-1) ?? null;
 
   let altMin: number | null = null;
   let altMax: number | null = null;
@@ -224,7 +228,7 @@ export function buildTrackMap(
     }
   }
 
-  return { paths, pointCount, rawCount, hasAltitude, hasRoad, altMin, altMax };
+  return { paths, pointCount, rawCount, hasAltitude, hasRoad, altMin, altMax, start, end };
 }
 
 export function defaultMapMode(data: TrackMapData): MapMode {
