@@ -18,6 +18,7 @@
   --ign: #3b4cb3;
   --odo: #9a3b12;
   --hrs: #171614;
+  --refill: #c45c16;
   --danger: #9f2a2a;
   --danger-soft: #f8e4e0;
   --shadow: 0 1px 0 rgba(23, 22, 20, 0.04);
@@ -562,12 +563,12 @@ span.btn-ghost {
   height: 14px;
   margin: 2px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--refill);
   border: 2px solid var(--surface);
 }
 
 .refill-swatch {
-  background: var(--accent);
+  background: var(--refill);
   border-radius: 50%;
 }
 
@@ -583,7 +584,7 @@ span.btn-ghost {
 }
 
 .refill-popup a {
-  color: var(--accent);
+  color: var(--refill);
   font-weight: 600;
 }
 

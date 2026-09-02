@@ -200,7 +200,7 @@ export function TrackMap({ data, refills = [], timezone = "+08:00" }: Props) {
           <h2>Track map</h2>
           <p>
             OpenStreetMap only — every GPS sample is joined in time order, like Armada.
-            Teal pins are tank-rise refills (same threshold as Fuel). Click a pin for liters and Google Maps.
+            Orange pins are tank-rise refills (same threshold as Fuel). Click a pin for liters and Google Maps.
             Station names are the nearest mapped fuel amenity, not a guaranteed pump name.
           </p>
         </div>
