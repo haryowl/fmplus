@@ -461,6 +461,13 @@ span.btn-ghost {
   margin-bottom: 12px;
 }
 
+.map-toggles {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
 .panel-head h2 {
   margin: 0;
   font-size: 18px;

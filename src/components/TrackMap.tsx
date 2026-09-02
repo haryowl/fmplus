@@ -27,8 +27,30 @@ type Props = {
   timezone?: string;
 };
 
-const TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+type Basemap = "satellite" | "streets" | "terrain";
+
+const BASEMAPS: Record<
+  Basemap,
+  { url: string; maxZoom: number; attribution: string }
+> = {
+  satellite: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    maxZoom: 19,
+    attribution:
+      'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+  },
+  streets: {
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    maxZoom: 18,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  },
+  terrain: {
+    url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+    maxZoom: 17,
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
+  },
+};
 
 const refillIcon = L.divIcon({
   className: "refill-marker",
@@ -116,9 +138,12 @@ function popupHtml(event: RefillEvent, timezone: string, nearby: string): string
 export function TrackMap({ data, refills = [], timezone = "+08:00" }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const tileRef = useRef<L.TileLayer | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
   const fittedForRef = useRef<TrackMapData | null>(null);
   const [mode, setMode] = useState<MapMode>(() => defaultMapMode(data));
+  const [basemap, setBasemap] = useState<Basemap>("streets");
+  const [mapReady, setMapReady] = useState(false);
   const [drawnCount, setDrawnCount] = useState(data.pointCount);
 
   useEffect(() => {
@@ -129,15 +154,17 @@ export function TrackMap({ data, refills = [], timezone = "+08:00" }: Props) {
     const el = hostRef.current;
     if (!el || mapRef.current) return;
     const map = L.map(el, { scrollWheelZoom: false }).setView([-2.5, 118], 5);
-    L.tileLayer(TILE_URL, { attribution: ATTRIBUTION, maxZoom: 18 }).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
+    setMapReady(true);
     const id = window.setTimeout(() => map.invalidateSize(), 80);
     return () => {
       window.clearTimeout(id);
       map.remove();
       mapRef.current = null;
+      tileRef.current = null;
       layerRef.current = null;
+      setMapReady(false);
     };
   }, []);
 
@@ -235,6 +262,19 @@ export function TrackMap({ data, refills = [], timezone = "+08:00" }: Props) {
     };
   }, [data, mode, refills, timezone]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) return;
+    const spec = BASEMAPS[basemap];
+    tileRef.current?.remove();
+    if (map.getZoom() > spec.maxZoom) map.setZoom(spec.maxZoom);
+    tileRef.current = L.tileLayer(spec.url, {
+      attribution: spec.attribution,
+      maxZoom: spec.maxZoom,
+    }).addTo(map);
+    tileRef.current.bringToBack();
+  }, [basemap, mapReady]);
+
   const sampled =
     drawnCount < data.pointCount
       ? `Showing ${drawnCount.toLocaleString("en-US")} of ${data.pointCount.toLocaleString("en-US")} points — zoom in for full detail`
@@ -246,18 +286,31 @@ export function TrackMap({ data, refills = [], timezone = "+08:00" }: Props) {
         <div>
           <h2>Track map</h2>
           <p>
-            OpenStreetMap only — every GPS sample is joined in time order, like Armada.
-            Blue S is the first point in the range, red E is the last. Orange pins are tank-rise refills.
+            Satellite, streets, or OpenTopoMap terrain under the same GPS path. Blue S is the first point in the range, red E is the last. Orange pins are tank-rise refills.
             Click a pin for time and Google Maps. Station names are the nearest mapped fuel amenity, not a guaranteed pump name.
           </p>
         </div>
-        <div className="field">
-          <label htmlFor="map-mode">Colour by</label>
-          <select id="map-mode" value={mode} onChange={(e) => setMode(e.target.value as MapMode)}>
-            <option value="path">Track</option>
-            {data.hasAltitude && <option value="elevation">Elevation</option>}
-            {data.hasRoad && <option value="road">Road condition</option>}
-          </select>
+        <div className="map-toggles">
+          <div className="field">
+            <label htmlFor="map-basemap">Basemap</label>
+            <select
+              id="map-basemap"
+              value={basemap}
+              onChange={(e) => setBasemap(e.target.value as Basemap)}
+            >
+              <option value="satellite">Satellite</option>
+              <option value="streets">Streets</option>
+              <option value="terrain">Terrain</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="map-mode">Colour by</label>
+            <select id="map-mode" value={mode} onChange={(e) => setMode(e.target.value as MapMode)}>
+              <option value="path">Track</option>
+              {data.hasAltitude && <option value="elevation">Elevation</option>}
+              {data.hasRoad && <option value="road">Road condition</option>}
+            </select>
+          </div>
         </div>
       </div>
       {mode === "elevation" && (
