@@ -4,9 +4,12 @@
  *
  *   npm run build
  *   npm start
+ *
+ * HTTPS is used when ssl/server.key and ssl/server.crt exist (or SSL_KEY / SSL_CERT).
  */
 import fs from "node:fs";
 import http from "node:http";
+import https from "node:https";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleAnalyzeRequest } from "./server/analyze.mjs";
@@ -88,7 +91,7 @@ function serveStatic(req, res) {
   }, fs.readFileSync(target));
 }
 
-const server = http.createServer((req, res) => {
+function onRequest(req, res) {
   void (async () => {
     if (await handleEmbedContextRequest(req, res)) return;
     if (await handleTracksBatchRequest(req, res)) return;
@@ -97,7 +100,24 @@ const server = http.createServer((req, res) => {
     if (await handleLtProxyRequest(req, res)) return;
     serveStatic(req, res);
   })();
-});
+}
+
+function loadSslOptions() {
+  const keyPath = process.env.SSL_KEY
+    ? path.resolve(root, process.env.SSL_KEY)
+    : path.join(root, "ssl", "server.key");
+  const certPath = process.env.SSL_CERT
+    ? path.resolve(root, process.env.SSL_CERT)
+    : path.join(root, "ssl", "server.crt");
+  if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) return null;
+  return {
+    key: fs.readFileSync(keyPath),
+    cert: fs.readFileSync(certPath),
+  };
+}
+
+const ssl = loadSslOptions();
+const server = ssl ? https.createServer(ssl, onRequest) : http.createServer(onRequest);
 
 server.requestTimeout = 0;
 server.keepAliveTimeout = 65_000;
@@ -105,6 +125,7 @@ server.headersTimeout = 66_000;
 server.timeout = 0;
 
 server.listen(port, () => {
+  const scheme = ssl ? "https" : "http";
   const ready = tenantFromRequest({ headers: {} }) ? "Armada proxy enabled" : "no default tenant token";
-  console.log(`Vehicle Metrics on http://localhost:${port} (${ready})`);
+  console.log(`Vehicle Metrics on ${scheme}://localhost:${port} (${ready})`);
 });

@@ -5,6 +5,9 @@ dist-ssr
 .env
 .env.local
 tenants.json
+ssl/*.key
+ssl/*.crt
+ssl/*.pem
 .DS_Store
 *.log
 .vscode

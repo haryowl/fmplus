@@ -48,7 +48,7 @@ systemctl restart fmplus
 journalctl -u fmplus -f
 ```
 
-If you copied the unit by hand before `git pull`, install it from this file after pulling. The app listens on port **4173**.
+If you copied the unit by hand before `git pull`, install it from this file after pulling. The app listens on port **4173**. If `ssl/server.key` and `ssl/server.crt` are present (do not commit them), `npm start` serves HTTPS.
 
 Open [http://localhost:5173/](http://localhost:5173/).
 
