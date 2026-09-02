@@ -17,6 +17,7 @@ import { handleEmbedContextRequest } from "./server/embed-context.mjs";
 import { handleLtProxyRequest, securityHeaders } from "./server/proxy-lt.mjs";
 import { handleTracksBatchRequest } from "./server/tracks-batch.mjs";
 import { handleUserDayTracksRequest } from "./server/user-day-tracks.mjs";
+import { handleNearbyFuelRequest } from "./server/nearby-fuel.mjs";
 import { tenantFromRequest } from "./server/tenants.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -96,6 +97,7 @@ function onRequest(req, res) {
     if (await handleEmbedContextRequest(req, res)) return;
     if (await handleTracksBatchRequest(req, res)) return;
     if (await handleUserDayTracksRequest(req, res)) return;
+    if (await handleNearbyFuelRequest(req, res)) return;
     if (await handleAnalyzeRequest(req, res)) return;
     if (await handleLtProxyRequest(req, res)) return;
     serveStatic(req, res);

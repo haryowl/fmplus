@@ -87,31 +87,59 @@ function addCapped(
   return add;
 }
 
+type FuelSample = {
+  ms: number;
+  level: number;
+  speed: number;
+  lat: number | null;
+  lon: number | null;
+};
+
+export type RefillEvent = {
+  ms: number;
+  liters: number;
+  lat: number | null;
+  lon: number | null;
+};
+
 /** Rising tank at low speed, including a parked jump after a longer gap. */
-function detectRefillLiters(
+function detectRefills(
   samples: Sample[],
   thresholdL: number,
   maxSpeedKmh: number,
-): { liters: number; events: number } {
-  const levels = samples
+): { liters: number; events: RefillEvent[] } {
+  const levels: FuelSample[] = samples
     .filter((s) => s.fuelLevel !== null)
-    .map((s) => ({ ms: s.ms, level: s.fuelLevel as number, speed: s.speedKmh }))
+    .map((s) => ({
+      ms: s.ms,
+      level: s.fuelLevel as number,
+      speed: s.speedKmh,
+      lat: s.lat,
+      lon: s.lon,
+    }))
     .sort((a, b) => a.ms - b.ms);
 
-  if (levels.length < 2) return { liters: 0, events: 0 };
+  if (levels.length < 2) return { liters: 0, events: [] };
 
-  let events = 0;
+  const events: RefillEvent[] = [];
   let liters = 0;
-  let seqStart: (typeof levels)[0] | null = null;
+  let seqStart: FuelSample | null = null;
   let seqLast = levels[0];
+
+  const pushEvent = (at: FuelSample, jump: number) => {
+    events.push({
+      ms: at.ms,
+      liters: jump,
+      lat: at.lat,
+      lon: at.lon,
+    });
+    liters += jump;
+  };
 
   const closeSeq = () => {
     if (!seqStart) return;
     const jump = seqLast.level - seqStart.level;
-    if (jump >= thresholdL) {
-      events += 1;
-      liters += jump;
-    }
+    if (jump >= thresholdL) pushEvent(seqLast, jump);
     seqStart = null;
   };
 
@@ -131,13 +159,21 @@ function detectRefillLiters(
     closeSeq();
 
     if (diff >= thresholdL && slow && dt > 0) {
-      events += 1;
-      liters += diff;
+      pushEvent(cur, diff);
     }
   }
 
   closeSeq();
   return { liters, events };
+}
+
+function detectRefillLiters(
+  samples: Sample[],
+  thresholdL: number,
+  maxSpeedKmh: number,
+): { liters: number; events: number } {
+  const found = detectRefills(samples, thresholdL, maxSpeedKmh);
+  return { liters: found.liters, events: found.events.length };
 }
 
 function canFuelUsedL(samples: Sample[]): number {
@@ -372,6 +408,24 @@ function withCosts(
   };
 }
 
+function samplesInRange(
+  trips: Trip[],
+  options: { dateFrom: string; dateTo: string; timezone: string },
+): Sample[] {
+  const startMs = zonedStartMs(options.dateFrom, options.timezone);
+  const endMs = zonedEndMs(options.dateTo, options.timezone);
+  const inRange: Sample[] = [];
+  for (const trip of trips) {
+    for (const point of trip.tracks) {
+      const sample = toSample(point, options.timezone, trip.trackInfoId);
+      if (!sample) continue;
+      if (sample.ms < startMs || sample.ms > endMs) continue;
+      inRange.push(sample);
+    }
+  }
+  return inRange;
+}
+
 export function computePeriodMetrics(
   trips: Trip[],
   options: {
@@ -389,18 +443,7 @@ export function computePeriodMetrics(
   const refillThreshold = options.refillThresholdL ?? DEFAULT_REFILL_THRESHOLD_L;
   const fuelPrice = options.fuelPricePerL ?? DEFAULT_FUEL_PRICE;
   const breakMs = (options.tripBreakMin ?? DEFAULT_TRIP_BREAK_MIN) * 60 * 1000;
-  const startMs = zonedStartMs(options.dateFrom, options.timezone);
-  const endMs = zonedEndMs(options.dateTo, options.timezone);
-  const inRange: Sample[] = [];
-
-  for (const trip of trips) {
-    for (const point of trip.tracks) {
-      const sample = toSample(point, options.timezone, trip.trackInfoId);
-      if (!sample) continue;
-      if (sample.ms < startMs || sample.ms > endMs) continue;
-      inRange.push(sample);
-    }
-  }
+  const inRange = samplesInRange(trips, options);
 
   const tripStarts = assignLogicalTrips(inRange, { minSpeedKmh: minSpeed, breakMs });
   const startsByPeriod = new Map<string, number>();
@@ -424,6 +467,25 @@ export function computePeriodMetrics(
       const stats = accumulate(samples, minSpeed, refillThreshold);
       return withCosts(stats, key, options.period, fuelPrice, startsByPeriod.get(key) ?? 0);
     });
+}
+
+/** Tank-rise events in range, with GPS when the sample has a fix. Same rule as the Fuel panel. */
+export function listRefillEvents(
+  trips: Trip[],
+  options: {
+    dateFrom: string;
+    dateTo: string;
+    timezone: string;
+    minSpeedKmh?: number;
+    refillThresholdL?: number;
+  },
+): RefillEvent[] {
+  const minSpeed = options.minSpeedKmh ?? DEFAULT_MIN_SPEED_KMH;
+  const refillThreshold = options.refillThresholdL ?? DEFAULT_REFILL_THRESHOLD_L;
+  const samples = samplesInRange(trips, options);
+  return detectRefills(samples, refillThreshold, minSpeed).events.filter(
+    (event) => event.lat !== null && event.lon !== null,
+  );
 }
 
 export function sumMetrics(rows: PeriodMetrics[]) {

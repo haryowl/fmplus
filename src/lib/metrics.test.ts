@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { haversineKm } from "./geo";
-import { computePeriodMetrics } from "./metrics";
+import { computePeriodMetrics, listRefillEvents } from "./metrics";
 import { dateKeyInOffset, updatedSinceWindows } from "./time";
 import type { Trip } from "./types";
 
@@ -248,6 +248,38 @@ describe("computePeriodMetrics", () => {
 
     expect(rows[0].refillEvents).toBe(1);
     expect(rows[0].refillL).toBe(12);
+  });
+
+  it("lists refill GPS for the map from the same tank-rise rule", () => {
+    const trips: Trip[] = [
+      {
+        trackInfoId: 1,
+        userId: 9,
+        created: null,
+        tracks: [
+          {
+            utc: "2025-04-01T02:00:00Z",
+            position: { latitude: -2.64, longitude: 121.6 },
+            variables: { ignition: true, speed: 0, "fuel level": 10 },
+          },
+          {
+            utc: "2025-04-01T02:02:00Z",
+            position: { latitude: -2.641, longitude: 121.601 },
+            variables: { ignition: true, speed: 0, "fuel level": 22 },
+          },
+        ],
+      },
+    ];
+    const events = listRefillEvents(trips, {
+      dateFrom: "2025-04-01",
+      dateTo: "2025-04-01",
+      timezone: "+00:00",
+      refillThresholdL: 8,
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].liters).toBe(12);
+    expect(events[0].lat).toBe(-2.641);
+    expect(events[0].lon).toBe(121.601);
   });
 
   it("averages non-zero speed and RPM and keeps the period max", () => {

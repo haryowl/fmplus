@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { userLabel } from "./lib/api";
 import { DEFAULT_TRIP_BREAK_MIN, TIMEZONES } from "./lib/config";
 import { formatHours, formatIdr, formatInt, formatKm, formatKmPerL, formatLiters, formatMeters, formatPct, formatRpm, formatSpeed, odoGpsDelta } from "./lib/format";
-import { describeFuelSource, movingSharePct } from "./lib/metrics";
+import { describeFuelSource, listRefillEvents, movingSharePct } from "./lib/metrics";
 import { buildInsights, type InsightBlock, type InsightDepth } from "./lib/insight";
 import { fetchAnalyzeStatus, requestAiInsights, type InsightSource } from "./lib/aiInsights";
 import { buildTrackMap } from "./lib/trackMap";
@@ -97,6 +97,17 @@ export default function App() {
     if (!trips) return null;
     return buildTrackMap(trips, { dateFrom, dateTo, timezone });
   }, [trips, dateFrom, dateTo, timezone]);
+
+  const refillEvents = useMemo(() => {
+    if (!trips) return [];
+    return listRefillEvents(trips, {
+      dateFrom,
+      dateTo,
+      timezone,
+      minSpeedKmh: minSpeed,
+      refillThresholdL: refillThreshold,
+    });
+  }, [trips, dateFrom, dateTo, timezone, minSpeed, refillThreshold]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -657,7 +668,9 @@ export default function App() {
           </section>
         )}
 
-        {mapData && mapData.pointCount > 0 && <TrackMap data={mapData} />}
+        {mapData && mapData.pointCount > 0 && (
+          <TrackMap data={mapData} refills={refillEvents} timezone={timezone} />
+        )}
 
         {rows.length > 0 && (
           <InsightsPanel

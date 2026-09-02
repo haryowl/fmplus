@@ -551,6 +551,42 @@ span.btn-ghost {
   color: var(--ink-faint);
 }
 
+.refill-marker {
+  background: transparent;
+  border: 0;
+}
+
+.refill-marker-dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 2px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+}
+
+.refill-swatch {
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+.refill-popup {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.refill-popup-osm {
+  color: var(--ink-soft);
+  margin: 6px 0;
+}
+
+.refill-popup a {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .panel-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
