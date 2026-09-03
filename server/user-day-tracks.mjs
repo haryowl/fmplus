@@ -198,6 +198,13 @@ export async function handleUserDayTracksRequest(req, res) {
       let cooldownUntil = 0;
       let successStreak = 0;
 
+      const heartbeat = setInterval(() => {
+        const elapsed = Math.round((Date.now() - started) / 1000);
+        console.log(
+          `[user-day-tracks] heartbeat ${elapsed}s remaining=${remaining} queue=${queue.length} active=${active} cap=${cap} cooldown=${Math.max(0, cooldownUntil - Date.now())}ms`,
+        );
+      }, 10_000);
+
       const waitCooldown = async () => {
         for (;;) {
           if (ac.signal.aborted) throw abortError();
@@ -249,6 +256,9 @@ export async function handleUserDayTracksRequest(req, res) {
               if (plan.cooldownMs > 0) {
                 cooldownUntil = Math.max(cooldownUntil, Date.now() + plan.cooldownMs);
               }
+              console.log(
+                `[user-day-tracks] retry ${day.key} status=${outcome.status} attempt=${day.attempts} cap=${cap} cooldown=${plan.cooldownMs}ms remaining=${remaining} queue=${queue.length}`,
+              );
               if (day.attempts < PER_DAY_ATTEMPTS) queue.push(day);
               else {
                 remaining -= 1;
@@ -271,12 +281,14 @@ export async function handleUserDayTracksRequest(req, res) {
       };
 
       await Promise.all(Array.from({ length: MAX_CAP }, () => worker()));
+      clearInterval(heartbeat);
       await Promise.all(slimJobs);
       flushWrites();
       await writeChain;
       res.end();
       console.log(`[user-day-tracks] done ${days.length} days in ${Date.now() - started}ms`);
     } finally {
+      clearInterval(heartbeat);
       if (flushTimer) clearTimeout(flushTimer);
       req.off("aborted", onAbort);
     }
