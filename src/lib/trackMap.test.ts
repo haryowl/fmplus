@@ -112,7 +112,7 @@ describe("buildTrackMap", () => {
     expect(data.paths[0]).toHaveLength(2);
   });
 
-  it("joins consecutive samples even across a large geographic jump", () => {
+  it("breaks the line on a GPS teleport but keeps both local clusters", () => {
     const trips: Trip[] = [
       {
         trackInfoId: 1,
@@ -131,9 +131,61 @@ describe("buildTrackMap", () => {
       dateTo: "2025-04-01",
       timezone: "+00:00",
     });
-    expect(data.paths).toHaveLength(1);
-    expect(data.paths[0]).toHaveLength(4);
+    expect(data.paths).toHaveLength(2);
+    expect(data.paths[0]).toHaveLength(2);
+    expect(data.paths[1]).toHaveLength(2);
+    expect(data.pointCount).toBe(4);
     expect(data.hasAltitude).toBe(true);
+  });
+
+  it("drops a 0,0 no-fix so the map does not stretch across the ocean", () => {
+    const trips: Trip[] = [
+      {
+        trackInfoId: 1,
+        userId: 9,
+        created: null,
+        tracks: [
+          point("2025-04-01T01:00:00Z", 0, 0),
+          point("2025-04-01T01:01:00Z", -6.2, 106.8),
+          point("2025-04-01T01:02:00Z", -6.201, 106.801),
+          point("2025-04-01T01:03:00Z", -6.202, 106.802),
+        ],
+      },
+    ];
+    const data = buildTrackMap(trips, {
+      dateFrom: "2025-04-01",
+      dateTo: "2025-04-01",
+      timezone: "+00:00",
+    });
+    expect(data.rawCount).toBe(3);
+    expect(data.pointCount).toBe(3);
+    expect(data.paths).toHaveLength(1);
+    expect(data.start?.lat).toBeCloseTo(-6.2);
+    expect(data.end?.lon).toBeCloseTo(106.802);
+  });
+
+  it("drops a lone far glitch that is not exactly 0,0", () => {
+    const trips: Trip[] = [
+      {
+        trackInfoId: 1,
+        userId: 9,
+        created: null,
+        tracks: [
+          point("2025-04-01T01:00:00Z", 1.2, -4.5),
+          point("2025-04-01T01:01:00Z", -6.2, 106.8),
+          point("2025-04-01T01:02:00Z", -6.201, 106.801),
+          point("2025-04-01T01:03:00Z", -6.202, 106.802),
+        ],
+      },
+    ];
+    const data = buildTrackMap(trips, {
+      dateFrom: "2025-04-01",
+      dateTo: "2025-04-01",
+      timezone: "+00:00",
+    });
+    expect(data.pointCount).toBe(3);
+    expect(data.paths).toHaveLength(1);
+    expect(data.start?.lat).toBeCloseTo(-6.2);
   });
 
   it("colors consecutive road edges and merges the same bucket", () => {

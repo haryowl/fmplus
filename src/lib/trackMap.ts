@@ -1,9 +1,13 @@
-import { asNumber } from "./geo";
+import { asNumber, haversineKm } from "./geo";
 import { classifyVibration, vibrationMg } from "./road";
 import { zonedEndMs, zonedStartMs } from "./time";
 import type { TrackPoint, Trip } from "./types";
 
 export const MAX_MAP_POINTS = 8000;
+/** Do not draw a straight line across a GPS teleport. Real samples stay on new segments. */
+export const MAX_MAP_TELEPORT_KM = 80;
+/** Both axes near 0,0 — the usual "no fix" dump, not the equator in Indonesia. */
+const NULL_ISLAND_DEG = 0.01;
 
 export const MAP_COLOR = {
   low: "#0b6b62",
@@ -46,6 +50,9 @@ function parsePoint(point: TrackPoint): MapPoint | null {
   const lat = asNumber(point.position?.latitude);
   const lon = asNumber(point.position?.longitude);
   if (lat === null || lon === null) return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+  if (Math.abs(lat) < NULL_ISLAND_DEG && Math.abs(lon) < NULL_ISLAND_DEG) return null;
   const x = asNumber(point.variables?.axisX ?? point.variables?.AxisX);
   const y = asNumber(point.variables?.axisY ?? point.variables?.AxisY);
   const z = asNumber(point.variables?.axisZ ?? point.variables?.AxisZ);
@@ -58,9 +65,43 @@ function parsePoint(point: TrackPoint): MapPoint | null {
   };
 }
 
-function splitPaths(points: MapPoint[]): MapPoint[][] {
+function pathCentroid(path: MapPoint[]): { lat: number; lon: number } {
+  const mid = path[Math.floor(path.length / 2)];
+  return { lat: mid.lat, lon: mid.lon };
+}
+
+/** Drop 1–2 point glitches that sit far from the longest remaining run. */
+function dropOrphanPaths(paths: MapPoint[][]): MapPoint[][] {
+  const kept = paths.filter((path) => path.length > 0);
+  if (kept.length <= 1) return kept.filter((path) => path.length >= 2);
+  const main = kept.reduce((a, b) => (a.length >= b.length ? a : b));
+  if (main.length < 3) return kept.filter((path) => path.length >= 2);
+  const origin = pathCentroid(main);
+  return kept.filter((path) => {
+    if (path.length >= 3) return true;
+    const nearest = Math.min(
+      ...path.map((p) => haversineKm(p.lat, p.lon, origin.lat, origin.lon)),
+    );
+    return nearest <= MAX_MAP_TELEPORT_KM * 2;
+  });
+}
+
+export function splitPaths(points: MapPoint[]): MapPoint[][] {
   if (points.length === 0) return [];
-  return [points];
+  const paths: MapPoint[][] = [];
+  let current: MapPoint[] = [points[0]];
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = current[current.length - 1];
+    const jump = haversineKm(prev.lat, prev.lon, points[i].lat, points[i].lon);
+    if (jump > MAX_MAP_TELEPORT_KM) {
+      paths.push(current);
+      current = [points[i]];
+    } else {
+      current.push(points[i]);
+    }
+  }
+  paths.push(current);
+  return dropOrphanPaths(paths);
 }
 
 export function downsamplePath(points: MapPoint[], max: number): MapPoint[] {
@@ -208,8 +249,9 @@ export function buildTrackMap(
   collected.sort((a, b) => a.ms - b.ms);
   const rawCount = collected.length;
   const paths = splitPaths(collected);
-  const start = collected[0] ?? null;
-  const end = collected.at(-1) ?? null;
+  const kept = paths.flat();
+  const start = kept[0] ?? null;
+  const end = kept.at(-1) ?? null;
 
   let altMin: number | null = null;
   let altMax: number | null = null;
