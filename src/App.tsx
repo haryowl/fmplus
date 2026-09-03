@@ -261,7 +261,7 @@ export default function App() {
               ))}
             </select>
           </div>
-          {!(compact && userId) && (
+          {!(compact && hostLock.user) && (
             <button className="btn btn-primary" type="button" onClick={() => void handleLoad()} disabled={!userId || loading}>
               {loading ? "Loading…" : "Load metrics"}
             </button>
@@ -881,9 +881,9 @@ export default function App() {
           <span>
             {trips
               ? `${formatInt(totals.trips)} trips · ${formatInt(totals.points)} points`
-              : compact
+              : compact && hostLock.user
                 ? "Waiting for host vehicle context"
-                : "Ready to embed via iframe · query params: groupId, userId, from, to, tz, period · embed=1"}
+                : "Ready to embed via iframe · query params: k, appId, groupId, userId, from, to, tz, period"}
           </span>
           <span>V17 kept as reference · metrics rewritten</span>
         </footer>

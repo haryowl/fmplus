@@ -273,7 +273,7 @@ span.btn-ghost {
 }
 
 .filters.compact {
-  grid-template-columns: 1.3fr 1.3fr 0.9fr 0.9fr 0.85fr;
+  grid-template-columns: 1.3fr 1.3fr 0.9fr 0.9fr 0.85fr auto;
 }
 
 .app.embed .filters-extra {
