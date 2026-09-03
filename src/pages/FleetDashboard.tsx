@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { groupOptionLabel } from "../lib/api";
 import { TIMEZONES } from "../lib/config";
-import { seriesForPeriod } from "../lib/fleet";
+import { seriesForPeriod, type FleetVehicleRow } from "../lib/fleet";
 import {
   formatHours,
   formatIdr,
@@ -22,6 +22,7 @@ import { FleetRankTable } from "../components/FleetRankTable";
 import { VehiclePicker } from "../components/VehiclePicker";
 import { ExportPdfButton } from "../components/ExportPdfButton";
 import { ViewNav } from "../components/ViewNav";
+import type { InsightBlock } from "../lib/insight";
 
 export default function FleetDashboard() {
   const d = useFleetDashboard();
@@ -202,183 +203,15 @@ export default function FleetDashboard() {
             </div>
           </section>
         ) : (
-          <>
-            <section className="panel">
-              <div className="panel-head">
-                <div>
-                  <h2>Distance by vehicle</h2>
-                  <p>GPS kilometres in the selected range. Use period grouping for the trend below.</p>
-                </div>
-                <Legend vehicles={live} />
-              </div>
-              <FleetBarChart
-                labels={live.map((v) => v.label)}
-                series={[
-                  {
-                    label: "GPS km",
-                    data: live.map((v) => v.totals.gps),
-                    color: "#0b6b62",
-                  },
-                ]}
-                unit="km"
-                yTitle="Distance (km)"
-              />
-            </section>
-
-            {d.periods.length > 0 && (
-              <section className="panel">
-                <div className="panel-head">
-                  <div>
-                    <h2>Distance over time</h2>
-                    <p>One line per vehicle. Periods with no trips for a vehicle show as zero.</p>
-                  </div>
-                  <Legend vehicles={live} />
-                </div>
-                <FleetBarChart
-                  type="line"
-                  labels={d.periods.map((p) => p.label)}
-                  series={seriesForPeriod(live, d.periods, (row) => row.gpsDistanceKm).map((data, i) => ({
-                    label: live[i].label,
-                    color: live[i].color,
-                    data,
-                  }))}
-                  unit="km"
-                  yTitle="GPS km"
-                />
-              </section>
-            )}
-
-            <div className="panel-grid">
-              <section className="panel">
-                <div className="panel-head">
-                  <div>
-                    <h2>Utilization</h2>
-                    <p>Engine-on hours split into moving versus idle.</p>
-                  </div>
-                </div>
-                <FleetBarChart
-                  labels={live.map((v) => v.label)}
-                  stacked
-                  series={[
-                    { label: "Active", data: live.map((v) => v.totals.hours), color: "#0b6b62" },
-                    { label: "Idle", data: live.map((v) => v.totals.idle), color: "#c47d3a" },
-                  ]}
-                  unit="h"
-                  yTitle="Hours"
-                />
-              </section>
-              <section className="panel">
-                <div className="panel-head">
-                  <div>
-                    <h2>Efficiency</h2>
-                    <p>GPS km per litre used for cost in this range.</p>
-                  </div>
-                </div>
-                <FleetBarChart
-                  labels={live.map((v) => v.label)}
-                  series={[
-                    {
-                      label: "km/l",
-                      data: live.map((v) => (v.totals.fuel > 0 ? v.totals.gps / v.totals.fuel : 0)),
-                      color: "#3b4cb3",
-                    },
-                  ]}
-                  unit="km/l"
-                  yTitle="km/l"
-                />
-              </section>
-            </div>
-
-            <div className="panel-grid">
-              <section className="panel">
-                <div className="panel-head">
-                  <div>
-                    <h2>Fuel used</h2>
-                    <p>CAN and tank totals side by side per vehicle.</p>
-                  </div>
-                </div>
-                <FleetBarChart
-                  labels={live.map((v) => v.label)}
-                  series={[
-                    { label: "CAN", data: live.map((v) => v.totals.canFuel), color: "#0b6b62" },
-                    { label: "Tank", data: live.map((v) => v.totals.tankFuel), color: "#9a3b12" },
-                  ]}
-                  unit="L"
-                  yTitle="Litres"
-                />
-              </section>
-              <section className="panel">
-                <div className="panel-head">
-                  <div>
-                    <h2>Safety events</h2>
-                    <p>Harsh brake, accel, corner, and overspeed counts.</p>
-                  </div>
-                </div>
-                <FleetBarChart
-                  labels={live.map((v) => v.label)}
-                  series={[
-                    {
-                      label: "Braking",
-                      data: live.map((v) => v.behavior?.harshBraking ?? 0),
-                      color: "#9a3b12",
-                    },
-                    {
-                      label: "Accel",
-                      data: live.map((v) => v.behavior?.harshAcceleration ?? 0),
-                      color: "#c47d3a",
-                    },
-                    {
-                      label: "Corner",
-                      data: live.map((v) => v.behavior?.harshCornering ?? 0),
-                      color: "#3b4cb3",
-                    },
-                    {
-                      label: "Overspeed",
-                      data: live.map((v) => v.behavior?.overspeed ?? 0),
-                      color: "#9f2a2a",
-                    },
-                  ]}
-                  unit="events"
-                  yTitle="Events"
-                />
-              </section>
-            </div>
-
-            <section className="panel">
-              <div className="panel-head">
-                <div>
-                  <h2>Ranking</h2>
-                  <p>Sort any column. Best and worst in that column are highlighted when the metric has a preferred direction.</p>
-                </div>
-              </div>
-              <FleetRankTable vehicles={d.vehicles} />
-            </section>
-
-            <FleetHeadToHead
-              vehicles={d.vehicles}
-              baselineId={baselineId}
-              compareId={compareId}
-              onBaseline={setBaselineId}
-              onCompare={setCompareId}
-            />
-
-            <section className="panel">
-              <div className="panel-head">
-                <div>
-                  <h2>Fleet analysis</h2>
-                  <p>Template sentences from the same totals. Open a vehicle for the full single-vehicle briefing.</p>
-                </div>
-              </div>
-              <div className="insight-stack">
-                {d.insights.map((block) => (
-                  <article key={block.id} className="insight-item">
-                    <h3>{block.title}</h3>
-                    <p>{block.body}</p>
-                  </article>
-                ))}
-              </div>
-            </section>
-          </>
+          <FleetCharts
+            vehicles={d.vehicles}
+            periods={d.periods}
+            insights={d.insights}
+            baselineId={baselineId}
+            compareId={compareId}
+            onBaseline={setBaselineId}
+            onCompare={setCompareId}
+          />
         )}
 
         <footer className="foot">
@@ -393,6 +226,205 @@ export default function FleetDashboard() {
     </div>
   );
 }
+
+const FleetCharts = memo(function FleetCharts({
+  vehicles,
+  periods,
+  insights,
+  baselineId,
+  compareId,
+  onBaseline,
+  onCompare,
+}: {
+  vehicles: FleetVehicleRow[];
+  periods: { key: string; label: string }[];
+  insights: InsightBlock[];
+  baselineId: number;
+  compareId: number;
+  onBaseline: (id: number) => void;
+  onCompare: (id: number) => void;
+}) {
+  const live = vehicles.filter((v) => v.hasData);
+  return (
+    <>
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2>Distance by vehicle</h2>
+            <p>GPS kilometres in the selected range. Use period grouping for the trend below.</p>
+          </div>
+          <Legend vehicles={live} />
+        </div>
+        <FleetBarChart
+          labels={live.map((v) => v.label)}
+          series={[
+            {
+              label: "GPS km",
+              data: live.map((v) => v.totals.gps),
+              color: "#0b6b62",
+            },
+          ]}
+          unit="km"
+          yTitle="Distance (km)"
+        />
+      </section>
+
+      {periods.length > 0 && (
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Distance over time</h2>
+              <p>One line per vehicle. Periods with no trips for a vehicle show as zero.</p>
+            </div>
+            <Legend vehicles={live} />
+          </div>
+          <FleetBarChart
+            type="line"
+            labels={periods.map((p) => p.label)}
+            series={seriesForPeriod(live, periods, (row) => row.gpsDistanceKm).map((data, i) => ({
+              label: live[i].label,
+              color: live[i].color,
+              data,
+            }))}
+            unit="km"
+            yTitle="GPS km"
+          />
+        </section>
+      )}
+
+      <div className="panel-grid">
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Utilization</h2>
+              <p>Engine-on hours split into moving versus idle.</p>
+            </div>
+          </div>
+          <FleetBarChart
+            labels={live.map((v) => v.label)}
+            stacked
+            series={[
+              { label: "Active", data: live.map((v) => v.totals.hours), color: "#0b6b62" },
+              { label: "Idle", data: live.map((v) => v.totals.idle), color: "#c47d3a" },
+            ]}
+            unit="h"
+            yTitle="Hours"
+          />
+        </section>
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Efficiency</h2>
+              <p>GPS km per litre used for cost in this range.</p>
+            </div>
+          </div>
+          <FleetBarChart
+            labels={live.map((v) => v.label)}
+            series={[
+              {
+                label: "km/l",
+                data: live.map((v) => (v.totals.fuel > 0 ? v.totals.gps / v.totals.fuel : 0)),
+                color: "#3b4cb3",
+              },
+            ]}
+            unit="km/l"
+            yTitle="km/l"
+          />
+        </section>
+      </div>
+
+      <div className="panel-grid">
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Fuel used</h2>
+              <p>CAN and tank totals side by side per vehicle.</p>
+            </div>
+          </div>
+          <FleetBarChart
+            labels={live.map((v) => v.label)}
+            series={[
+              { label: "CAN", data: live.map((v) => v.totals.canFuel), color: "#0b6b62" },
+              { label: "Tank", data: live.map((v) => v.totals.tankFuel), color: "#9a3b12" },
+            ]}
+            unit="L"
+            yTitle="Litres"
+          />
+        </section>
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Safety events</h2>
+              <p>Harsh brake, accel, corner, and overspeed counts.</p>
+            </div>
+          </div>
+          <FleetBarChart
+            labels={live.map((v) => v.label)}
+            series={[
+              {
+                label: "Braking",
+                data: live.map((v) => v.behavior?.harshBraking ?? 0),
+                color: "#9a3b12",
+              },
+              {
+                label: "Accel",
+                data: live.map((v) => v.behavior?.harshAcceleration ?? 0),
+                color: "#c47d3a",
+              },
+              {
+                label: "Corner",
+                data: live.map((v) => v.behavior?.harshCornering ?? 0),
+                color: "#3b4cb3",
+              },
+              {
+                label: "Overspeed",
+                data: live.map((v) => v.behavior?.overspeed ?? 0),
+                color: "#9f2a2a",
+              },
+            ]}
+            unit="events"
+            yTitle="Events"
+          />
+        </section>
+      </div>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2>Ranking</h2>
+            <p>Sort any column. Best and worst in that column are highlighted when the metric has a preferred direction.</p>
+          </div>
+        </div>
+        <FleetRankTable vehicles={vehicles} />
+      </section>
+
+      <FleetHeadToHead
+        vehicles={vehicles}
+        baselineId={baselineId}
+        compareId={compareId}
+        onBaseline={onBaseline}
+        onCompare={onCompare}
+      />
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2>Fleet analysis</h2>
+            <p>Template sentences from the same totals. Open a vehicle for the full single-vehicle briefing.</p>
+          </div>
+        </div>
+        <div className="insight-stack">
+          {insights.map((block) => (
+            <article key={block.id} className="insight-item">
+              <h3>{block.title}</h3>
+              <p>{block.body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+    </>
+  );
+});
 
 function Legend({ vehicles }: { vehicles: { label: string; color: string }[] }) {
   return (

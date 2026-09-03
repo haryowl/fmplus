@@ -3,6 +3,7 @@
  * Same Filtered=true points as /trackinfos/{id}/tracks, one HTTP call per vehicle-day.
  */
 import { armadaFetch } from "./armada-fetch.mjs";
+import { slimAsync } from "./slim-pool.mjs";
 import { tenantAllowsUser, tenantFromRequest } from "./tenants.mjs";
 
 const MAX_DAYS = 320;
@@ -13,21 +14,6 @@ const TIMEOUT_MS = 25_000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Pass Armada's JSON through. Parsing+re-stringifying a full GPS day blocks the event loop. */
-export function pointsJson(body) {
-  const text = String(body || "").trim();
-  if (!text) return "[]";
-  if (text[0] === "[") return text;
-  try {
-    const parsed = JSON.parse(text);
-    if (Array.isArray(parsed)) return text;
-    if (Array.isArray(parsed.items)) return JSON.stringify(parsed.items);
-  } catch {
-    return "[]";
-  }
-  return "[]";
 }
 
 async function mapPool(items, concurrency, worker) {
@@ -70,7 +56,7 @@ async function fetchUserDay(userId, date, auth, appId, signal) {
         signal: combined,
       });
       if (res.status === 404) {
-        return "[]";
+        return "";
       }
       if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
         lastError = `Armada ${res.status}`;
@@ -80,7 +66,7 @@ async function fetchUserDay(userId, date, auth, appId, signal) {
       if (!res.ok) {
         throw new Error(`Armada ${res.status}`);
       }
-      return pointsJson(await res.text());
+      return res.buffer || (await res.text());
     } catch (err) {
       const name = err?.name || "";
       if ((name === "AbortError" || name === "TimeoutError") && signal?.aborted) throw err;
@@ -184,32 +170,57 @@ export async function handleUserDayTracksRequest(req, res) {
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Accel-Buffering", "no");
+    if (typeof res.flushHeaders === "function") res.flushHeaders();
+
+    const started = Date.now();
+    console.log(`[user-day-tracks] start ${days.length} days concurrency=${SERVER_CONCURRENCY}`);
 
     let writeChain = Promise.resolve();
-    const writeDay = (key, pointsJsonText, failed) => {
+    let pending = "";
+    let flushTimer = null;
+    const flushWrites = () => {
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      if (!pending || res.writableEnded) {
+        pending = "";
+        return;
+      }
+      const chunk = pending;
+      pending = "";
       writeChain = writeChain.then(
         () =>
           new Promise((resolve) => {
-            setImmediate(() => {
-              if (res.writableEnded) {
-                resolve();
-                return;
-              }
-              const line = failed
-                ? `{"key":${JSON.stringify(key)},"failed":true}\n`
-                : `{"key":${JSON.stringify(key)},"points":${pointsJsonText}}\n`;
-              if (res.write(line)) resolve();
-              else res.once("drain", resolve);
-            });
+            if (res.writableEnded) {
+              resolve();
+              return;
+            }
+            if (res.write(chunk)) resolve();
+            else res.once("drain", resolve);
           }),
       );
     };
+    const writeDay = (key, pointsJsonText, failed) => {
+      pending += failed
+        ? `{"key":${JSON.stringify(key)},"failed":true}\n`
+        : `{"key":${JSON.stringify(key)},"points":${pointsJsonText}}\n`;
+      if (pending.length >= 48_000) flushWrites();
+      else if (!flushTimer) flushTimer = setTimeout(flushWrites, 8);
+    };
 
     try {
+      const slimJobs = [];
       await mapPool(days, SERVER_CONCURRENCY, async (day) => {
         try {
-          const points = await fetchUserDay(day.userId, day.date, tenant.token, tenant.appId, ac.signal);
-          writeDay(day.key, points, false);
+          const raw = await fetchUserDay(day.userId, day.date, tenant.token, tenant.appId, ac.signal);
+          slimJobs.push(
+            slimAsync(raw).then(
+              (text) => writeDay(day.key, text, false),
+              () => writeDay(day.key, "[]", true),
+            ),
+          );
         } catch (err) {
           if (err?.name === "AbortError" || err?.name === "TimeoutError") {
             if (ac.signal.aborted) throw err;
@@ -217,9 +228,13 @@ export async function handleUserDayTracksRequest(req, res) {
           writeDay(day.key, "[]", true);
         }
       });
+      await Promise.all(slimJobs);
+      flushWrites();
       await writeChain;
       res.end();
+      console.log(`[user-day-tracks] done ${days.length} days in ${Date.now() - started}ms`);
     } finally {
+      if (flushTimer) clearTimeout(flushTimer);
       req.off("aborted", onAbort);
     }
   } catch (err) {

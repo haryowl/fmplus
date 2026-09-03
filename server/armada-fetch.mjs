@@ -33,17 +33,17 @@ export function armadaFetch(url, options = {}) {
         const chunks = [];
         res.on("data", (chunk) => chunks.push(chunk));
         res.on("end", () => {
-          const body = Buffer.concat(chunks).toString("utf8");
+          const buffer = Buffer.concat(chunks);
           const status = res.statusCode || 0;
           resolve({
             status,
             ok: status >= 200 && status < 300,
-            body,
+            buffer,
             async text() {
-              return body;
+              return buffer.toString("utf8");
             },
             async json() {
-              return JSON.parse(body || "null");
+              return JSON.parse(buffer.toString("utf8") || "null");
             },
           });
         });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { fetchGroups, fetchUsersForGroup, loadTripsForUsers, userLabel } from "./api";
 import { computeBehavior } from "./behavior";
 import {
@@ -235,7 +235,8 @@ export function useFleetDashboard() {
         signal: ac.signal,
         onProgress: setProgress,
         onPartial: (next) => {
-          if (!ac.signal.aborted) setByUserId(new Map(next));
+          if (ac.signal.aborted) return;
+          startTransition(() => setByUserId(new Map(next)));
         },
       });
       setByUserId(result.byUserId);

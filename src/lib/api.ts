@@ -1,4 +1,4 @@
-import { API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, TRACK_BATCH_BROWSER, TRACK_BATCH_SIZE, TRACK_FETCH_CONCURRENCY, USER_DAY_BATCH_SIZE } from "./config";
+import { API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, DAY_PARTIAL_EVERY, DAY_PARTIAL_MS, DAY_PROGRESS_MS, TRACK_BATCH_BROWSER, TRACK_BATCH_SIZE, TRACK_FETCH_CONCURRENCY, USER_DAY_BATCH_SIZE } from "./config";
 import { groupRowsIntoTrips, interleaveUserDays, normalizeTrackList, type DayTrackRow } from "./dayTracks";
 import { normalizeUserStatusList, STATUS_PAGE_SIZE, type LastStatusRow } from "./lastStatus";
 import { chunkArray, mapPool } from "./pool";
@@ -540,20 +540,30 @@ async function loadTripsByUserDays(
 
   let loaded = 0;
   let skipped = 0;
+  let lastReport = 0;
   let lastFlush = 0;
-  const report = () => {
+  let sinceFlush = 0;
+  const dirtyUsers = new Set<number>();
+  const lastTrips = new Map<number, Trip[]>();
+  for (const id of userIds) lastTrips.set(id, []);
+
+  const report = (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastReport < DAY_PROGRESS_MS) return;
+    lastReport = now;
     options.onProgress?.({ phase: "days", loaded, total: jobs.length, skipped });
   };
   const flushPartial = (force = false) => {
     if (!options.onPartial) return;
     const now = Date.now();
-    if (!force && now - lastFlush < 400) return;
+    if (!force && sinceFlush < DAY_PARTIAL_EVERY && now - lastFlush < DAY_PARTIAL_MS) return;
     lastFlush = now;
-    const next = new Map<number, Trip[]>();
-    for (const userId of userIds) {
-      next.set(userId, groupRowsIntoTrips(userId, rowsByUser.get(userId) ?? []));
+    sinceFlush = 0;
+    for (const userId of dirtyUsers) {
+      lastTrips.set(userId, groupRowsIntoTrips(userId, rowsByUser.get(userId) ?? []));
     }
-    options.onPartial(next);
+    dirtyUsers.clear();
+    options.onPartial(new Map(lastTrips));
   };
   report();
 
@@ -563,6 +573,7 @@ async function loadTripsByUserDays(
     if (cached) {
       rowsByUser.get(job.userId)?.push(...cached);
       loaded += 1;
+      dirtyUsers.add(job.userId);
     } else {
       pending.push(job);
     }
@@ -574,12 +585,14 @@ async function loadTripsByUserDays(
 
   const applyRows = (job: UserDayJob, rows: DayTrackRow[], ok: boolean) => {
     loaded += 1;
+    sinceFlush += 1;
     if (!ok) {
       skipped += 1;
       return;
     }
     rememberDayRows(job.key, rows);
     rowsByUser.get(job.userId)?.push(...rows);
+    dirtyUsers.add(job.userId);
   };
 
   const loadDirect = async (items: UserDayJob[]) => {
@@ -635,6 +648,8 @@ async function loadTripsByUserDays(
     await loadDirect(pending);
     flushPartial(true);
   }
+
+  report(true);
 
   if (loaded === skipped && skipped === jobs.length) {
     throw Object.assign(new Error("User-day tracks unavailable"), { dayUnavailable: true as const });
