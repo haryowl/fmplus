@@ -5,9 +5,10 @@
 import { tenantAllowsUser, tenantFromRequest } from "./tenants.mjs";
 
 const MAX_DAYS = 40;
-const SERVER_CONCURRENCY = 16;
-const ATTEMPTS = 6;
-const TIMEOUT_MS = 120_000;
+/** Per POST. Browser runs several POSTs; keep this modest so Armada is not flooded. */
+const SERVER_CONCURRENCY = 8;
+const ATTEMPTS = 3;
+const TIMEOUT_MS = 25_000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -63,7 +64,7 @@ async function fetchUserDay(userId, date, auth, appId, signal) {
       }
       if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
         lastError = `Armada ${res.status}`;
-        await sleep(Math.min(400 * 2 ** attempt, 12_000));
+        await sleep(Math.min(400 * 2 ** attempt, 8_000));
         continue;
       }
       if (!res.ok) {
@@ -71,10 +72,11 @@ async function fetchUserDay(userId, date, auth, appId, signal) {
       }
       return unwrap(await res.json());
     } catch (err) {
-      if (err?.name === "AbortError") throw err;
+      const name = err?.name || "";
+      if ((name === "AbortError" || name === "TimeoutError") && signal?.aborted) throw err;
       lastError = err instanceof Error ? err.message : "network error";
       if (attempt < ATTEMPTS - 1 && !String(lastError).startsWith("Armada ")) {
-        await sleep(Math.min(400 * 2 ** attempt, 12_000));
+        await sleep(Math.min(400 * 2 ** attempt, 8_000));
         continue;
       }
       if (String(lastError).startsWith("Armada ") && !/429|502|503|504/.test(lastError)) {
@@ -169,23 +171,44 @@ export async function handleUserDayTracksRequest(req, res) {
     const onAbort = () => ac.abort();
     req.once("aborted", onAbort);
 
-    const byKey = {};
-    const failed = [];
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+
+    let writeChain = Promise.resolve();
+    const writeLine = (obj) => {
+      writeChain = writeChain.then(() => {
+        if (res.writableEnded) return;
+        const ok = res.write(`${JSON.stringify(obj)}\n`);
+        if (!ok) {
+          return new Promise((resolve) => res.once("drain", resolve));
+        }
+      });
+      return writeChain;
+    };
+
     try {
       await mapPool(days, SERVER_CONCURRENCY, async (day) => {
         try {
-          byKey[day.key] = await fetchUserDay(day.userId, day.date, tenant.token, tenant.appId, ac.signal);
+          const points = await fetchUserDay(day.userId, day.date, tenant.token, tenant.appId, ac.signal);
+          await writeLine({ key: day.key, points });
         } catch (err) {
-          if (err?.name === "AbortError") throw err;
-          failed.push(day.key);
+          if (err?.name === "AbortError" || err?.name === "TimeoutError") {
+            if (ac.signal.aborted) throw err;
+          }
+          await writeLine({ key: day.key, failed: true });
         }
       });
+      await writeChain;
+      res.end();
     } finally {
       req.off("aborted", onAbort);
     }
-
-    json(200, { byKey, failed });
   } catch (err) {
+    if (res.headersSent) {
+      if (!res.writableEnded) res.end();
+      return true;
+    }
     json(err.status || 500, { error: err.message || "User-day track batch failed" });
   }
   return true;

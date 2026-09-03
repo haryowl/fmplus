@@ -21,6 +21,7 @@ import { UtilizationChart } from "./components/UtilizationChart";
 import { BrandMark } from "./components/BrandMark";
 import { ViewNav } from "./components/ViewNav";
 import { ExportPdfButton } from "./components/ExportPdfButton";
+import { LastStatusPanel } from "./components/LastStatusPanel";
 import { describeLoadProgress } from "./lib/dayTracks";
 import { useVehicleDashboard } from "./lib/useVehicleDashboard";
 
@@ -323,6 +324,12 @@ export default function App() {
             </div>
           </div>
         )}
+
+        <LastStatusPanel
+          groupId={groupId}
+          timezone={timezone}
+          userIds={groupId && users.length ? users.map((u) => u.id) : undefined}
+        />
 
         <section className="kpis">
           <article className="kpi" style={{ ["--tick" as string]: "var(--gps)" }}>

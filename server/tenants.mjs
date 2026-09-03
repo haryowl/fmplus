@@ -181,6 +181,9 @@ export function filterArmadaList(raw, tenant, kind) {
   } else if (kind === "trackinfos" && tenant.userIds.length) {
     const allow = new Set(tenant.userIds);
     list = list.filter((item) => allow.has(Number(item?.userId)));
+  } else if (kind === "usersstatus" && tenant.userIds.length) {
+    const allow = new Set(tenant.userIds);
+    list = list.filter((item) => allow.has(Number(item?.id ?? item?.userId)));
   }
   return unpacked.wrap ? { ...raw, items: list } : list;
 }
@@ -190,5 +193,6 @@ export function listFilterKind(restPath) {
   if (p === "/users") return "users";
   if (p === "/groups") return "groups";
   if (p === "/trackinfos") return "trackinfos";
+  if (p === "/usersstatus") return "usersstatus";
   return "";
 }

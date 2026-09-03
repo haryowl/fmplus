@@ -104,6 +104,21 @@ export function groupRowsIntoTrips(userId: number, rows: DayTrackRow[]): Trip[] 
   return trips;
 }
 
+/** Date-major order so the first batch paints every vehicle instead of one truck's whole month. */
+export function interleaveUserDays<T>(
+  userIds: number[],
+  dates: string[],
+  make: (userId: number, date: string) => T,
+): T[] {
+  const out: T[] = [];
+  for (const date of dates) {
+    for (const userId of userIds) {
+      out.push(make(userId, date));
+    }
+  }
+  return out;
+}
+
 export function describeLoadProgress(
   progress: { phase: string; loaded: number; total: number; skipped?: number },
   fleetVehicleCount?: number,

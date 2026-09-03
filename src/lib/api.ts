@@ -1,5 +1,6 @@
 import { API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, TRACK_BATCH_BROWSER, TRACK_BATCH_SIZE, TRACK_FETCH_CONCURRENCY, USER_DAY_BATCH_SIZE } from "./config";
-import { groupRowsIntoTrips, normalizeTrackList, type DayTrackRow } from "./dayTracks";
+import { groupRowsIntoTrips, interleaveUserDays, normalizeTrackList, type DayTrackRow } from "./dayTracks";
+import { normalizeUserStatusList, STATUS_PAGE_SIZE, type LastStatusRow } from "./lastStatus";
 import { chunkArray, mapPool } from "./pool";
 import { apiBase, tenantHeaders } from "./tenant";
 import type { Group, LoadProgress, TrackInfo, TrackPoint, Trip, User } from "./types";
@@ -97,6 +98,33 @@ export async function fetchGroups(signal?: AbortSignal): Promise<Group[]> {
       usersIds: Array.isArray(g.usersIds) ? g.usersIds.map(Number) : [],
     }))
     .filter((g) => Number.isFinite(g.id));
+}
+
+export async function fetchUsersStatus(options?: {
+  groupId?: number;
+  signal?: AbortSignal;
+}): Promise<LastStatusRow[]> {
+  const out: LastStatusRow[] = [];
+  let fromIndex = 0;
+  for (let page = 0; page < 50; page += 1) {
+    const params = new URLSearchParams({
+      FromIndex: String(fromIndex),
+      PageSize: String(STATUS_PAGE_SIZE),
+      Kind: "Asset",
+    });
+    if (options?.groupId && options.groupId > 0) {
+      params.set("GroupId", String(options.groupId));
+    }
+    const raw = await apiGet<ListResponse<Record<string, unknown>>>(
+      `/usersstatus?${params}`,
+      options?.signal,
+    );
+    const chunk = Array.isArray(raw) ? raw : raw.items ?? [];
+    out.push(...normalizeUserStatusList(raw));
+    if (chunk.length < STATUS_PAGE_SIZE) break;
+    fromIndex += chunk.length;
+  }
+  return out;
 }
 
 export async function fetchUsersForGroup(group: Group, signal?: AbortSignal): Promise<User[]> {
@@ -410,10 +438,11 @@ type BatchUserDayResponse = {
 async function fetchUserDayBatch(
   jobs: UserDayJob[],
   signal?: AbortSignal,
+  onItem?: (key: string, rows: DayTrackRow[] | null) => void,
 ): Promise<{ byKey: Map<string, DayTrackRow[]>; failed: string[] }> {
   const res = await fetch("/api/user-day-tracks", {
     method: "POST",
-    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    headers: { accept: "application/x-ndjson, application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify({
       days: jobs.map((job) => ({ userId: job.userId, date: job.date })),
     }),
@@ -425,12 +454,63 @@ async function fetchUserDayBatch(
   if (!res.ok) {
     throw new Error(`User-day batch ${res.status}`);
   }
-  const raw = (await res.json()) as BatchUserDayResponse;
+
   const byKey = new Map<string, DayTrackRow[]>();
-  for (const [key, points] of Object.entries(raw.byKey ?? {})) {
-    byKey.set(key, normalizeTrackList(points));
+  const failed: string[] = [];
+  const take = (key: string, points: unknown, isFailed: boolean) => {
+    if (isFailed) {
+      failed.push(key);
+      onItem?.(key, null);
+      return;
+    }
+    const rows = normalizeTrackList(points);
+    byKey.set(key, rows);
+    onItem?.(key, rows);
+  };
+
+  const type = res.headers.get("content-type") || "";
+  if (type.includes("ndjson") && res.body) {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (value) buf += decoder.decode(value, { stream: true });
+      let nl = buf.indexOf("\n");
+      while (nl >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (line) {
+          try {
+            const row = JSON.parse(line) as { key?: string; points?: unknown; failed?: boolean };
+            if (typeof row.key === "string") take(row.key, row.points, row.failed === true);
+          } catch {
+            /* skip a broken stream line */
+          }
+        }
+        nl = buf.indexOf("\n");
+      }
+      if (done) break;
+    }
+    const tail = buf.trim();
+    if (tail) {
+      try {
+        const row = JSON.parse(tail) as { key?: string; points?: unknown; failed?: boolean };
+        if (typeof row.key === "string") take(row.key, row.points, row.failed === true);
+      } catch {
+        /* skip */
+      }
+    }
+    return { byKey, failed };
   }
-  const failed = (raw.failed ?? []).filter((key) => typeof key === "string");
+
+  const raw = (await res.json()) as BatchUserDayResponse;
+  for (const [key, points] of Object.entries(raw.byKey ?? {})) {
+    take(key, points, false);
+  }
+  for (const key of raw.failed ?? []) {
+    if (typeof key === "string") take(key, [], true);
+  }
   return { byKey, failed };
 }
 
@@ -445,12 +525,11 @@ async function loadTripsByUserDays(
   userIds: number[],
 ): Promise<MultiTripLoadResult> {
   const dates = eachDateInclusive(options.dateFrom, options.dateTo);
-  const jobs: UserDayJob[] = [];
-  for (const userId of userIds) {
-    for (const date of dates) {
-      jobs.push({ userId, date, key: dayCacheKey(userId, date) });
-    }
-  }
+  const jobs = interleaveUserDays(userIds, dates, (userId, date) => ({
+    userId,
+    date,
+    key: dayCacheKey(userId, date),
+  }));
 
   const byUserId = new Map<number, Trip[]>();
   for (const id of userIds) byUserId.set(id, []);
@@ -461,11 +540,15 @@ async function loadTripsByUserDays(
 
   let loaded = 0;
   let skipped = 0;
+  let lastFlush = 0;
   const report = () => {
     options.onProgress?.({ phase: "days", loaded, total: jobs.length, skipped });
   };
-  const flushPartial = () => {
+  const flushPartial = (force = false) => {
     if (!options.onPartial) return;
+    const now = Date.now();
+    if (!force && now - lastFlush < 400) return;
+    lastFlush = now;
     const next = new Map<number, Trip[]>();
     for (const userId of userIds) {
       next.set(userId, groupRowsIntoTrips(userId, rowsByUser.get(userId) ?? []));
@@ -515,10 +598,20 @@ async function loadTripsByUserDays(
     const chunks = chunkArray(pending, USER_DAY_BATCH_SIZE);
     await mapPool(chunks, TRACK_BATCH_BROWSER, async (chunk) => {
       try {
-        const { byKey, failed } = await fetchUserDayBatch(chunk, options.signal);
+        const byJob = new Map(chunk.map((job) => [job.key, job]));
+        const applied = new Set<string>();
+        const { byKey, failed } = await fetchUserDayBatch(chunk, options.signal, (key, rows) => {
+          const job = byJob.get(key);
+          if (!job || rows === null) return;
+          applied.add(key);
+          applyRows(job, rows, true);
+          report();
+          flushPartial();
+        });
         const failedSet = new Set(failed);
         const missing: UserDayJob[] = [];
         for (const job of chunk) {
+          if (applied.has(job.key)) continue;
           if (failedSet.has(job.key) || !byKey.has(job.key)) {
             missing.push(job);
             continue;
@@ -527,7 +620,7 @@ async function loadTripsByUserDays(
         }
         if (missing.length) await loadDirect(missing);
         report();
-        flushPartial();
+        flushPartial(true);
       } catch (err) {
         if ((err as Error).name === "AbortError") throw err;
         if ((err as { dayUnavailable?: boolean }).dayUnavailable) {
@@ -535,12 +628,12 @@ async function loadTripsByUserDays(
         }
         await loadDirect(chunk);
         report();
-        flushPartial();
+        flushPartial(true);
       }
     });
   } else if (pending.length > 0) {
     await loadDirect(pending);
-    flushPartial();
+    flushPartial(true);
   }
 
   if (loaded === skipped && skipped === jobs.length) {

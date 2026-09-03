@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { describeLoadProgress, groupRowsIntoTrips, normalizeTrackPoint } from "./dayTracks";
+import {
+  describeLoadProgress,
+  groupRowsIntoTrips,
+  interleaveUserDays,
+  normalizeTrackPoint,
+} from "./dayTracks";
 import { eachDateInclusive } from "./time";
 
 describe("eachDateInclusive", () => {
@@ -55,5 +60,20 @@ describe("describeLoadProgress", () => {
     expect(describeLoadProgress({ phase: "days", loaded: 12, total: 33 })).toBe(
       "Loading 12 of 33 vehicle-days",
     );
+  });
+});
+
+describe("interleaveUserDays", () => {
+  it("walks dates first so every vehicle appears in the first chunk", () => {
+    const jobs = interleaveUserDays([10, 20, 30], ["2026-08-01", "2026-08-02"], (userId, date) => ({
+      userId,
+      date,
+    }));
+    expect(jobs.slice(0, 3)).toEqual([
+      { userId: 10, date: "2026-08-01" },
+      { userId: 20, date: "2026-08-01" },
+      { userId: 30, date: "2026-08-01" },
+    ]);
+    expect(jobs).toHaveLength(6);
   });
 });

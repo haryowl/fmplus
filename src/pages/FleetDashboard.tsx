@@ -21,6 +21,7 @@ import { FleetHeadToHead } from "../components/FleetHeadToHead";
 import { FleetRankTable } from "../components/FleetRankTable";
 import { VehiclePicker } from "../components/VehiclePicker";
 import { ExportPdfButton } from "../components/ExportPdfButton";
+import { LastStatusPanel } from "../components/LastStatusPanel";
 import { ViewNav } from "../components/ViewNav";
 
 export default function FleetDashboard() {
@@ -154,6 +155,12 @@ export default function FleetDashboard() {
             </div>
           </div>
         )}
+
+        <LastStatusPanel
+          groupId={d.groupId}
+          timezone={d.timezone}
+          userIds={d.groupId && d.users.length ? d.users.map((u) => u.id) : undefined}
+        />
 
         <section className="kpis">
           <article className="kpi" style={{ ["--tick" as string]: "var(--gps)" }}>

@@ -18,6 +18,7 @@ import { FleetBarChart } from "../components/FleetBarChart";
 import { FleetRankTable } from "../components/FleetRankTable";
 import { VehiclePicker } from "../components/VehiclePicker";
 import { ExportPdfButton } from "../components/ExportPdfButton";
+import { LastStatusPanel } from "../components/LastStatusPanel";
 import { ViewNav } from "../components/ViewNav";
 
 export default function FleetCompact() {
@@ -192,6 +193,13 @@ export default function FleetCompact() {
             <div className="unit">score</div>
           </article>
         </section>
+
+        <LastStatusPanel
+          groupId={d.groupId}
+          timezone={d.timezone}
+          userIds={d.groupId && d.users.length ? d.users.map((u) => u.id) : undefined}
+          dense
+        />
 
         {live.length === 0 ? (
           <div className="empty onesheet-empty">
