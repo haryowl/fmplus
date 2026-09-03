@@ -61,7 +61,6 @@ export default function FleetDashboard() {
             <select
               id="f-group"
               value={d.groupId}
-              disabled={d.hostLock.group}
               onChange={(e) => d.changeGroup(e.target.value)}
             >
               <option value="">
@@ -88,7 +87,6 @@ export default function FleetDashboard() {
               id="f-from"
               type="date"
               value={d.dateFrom}
-              disabled={d.hostLock.from}
               onChange={(e) => d.setDateFrom(e.target.value)}
             />
           </div>
@@ -98,7 +96,6 @@ export default function FleetDashboard() {
               id="f-to"
               type="date"
               value={d.dateTo}
-              disabled={d.hostLock.to}
               onChange={(e) => d.setDateTo(e.target.value)}
             />
           </div>
@@ -107,7 +104,6 @@ export default function FleetDashboard() {
             <select
               id="f-tz"
               value={d.timezone}
-              disabled={d.hostLock.tz}
               onChange={(e) => d.setTimezone(e.target.value)}
             >
               {TIMEZONES.map((tz) => (

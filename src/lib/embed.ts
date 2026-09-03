@@ -25,6 +25,14 @@ export type EmbedConfig = {
   };
 };
 
+export const UNLOCKED_FIELDS = {
+  group: false,
+  user: false,
+  from: false,
+  to: false,
+  tz: false,
+} as const;
+
 export const DEFAULT_EMBED_ORIGINS = "https://armada.id,https://*.armada.id";
 
 export function embedOriginAllowlist(): string[] {
@@ -95,7 +103,11 @@ function compactFlag(value: string | boolean | null | undefined): boolean {
   return value === true || value === "1" || value === "true";
 }
 
-/** Host context only. Auth query keys are dropped and never returned. */
+/**
+ * Host context only. Auth query keys are dropped and never returned.
+ * Filters stay editable even inside an Armada iframe: the host may pre-fill
+ * group/user/dates, but never greys out pickers.
+ */
 export function parseEmbedSearch(search: string): EmbedConfig {
   const raw = search.startsWith("?") ? search.slice(1) : search;
   const params = new URLSearchParams(raw);
@@ -120,27 +132,7 @@ export function parseEmbedSearch(search: string): EmbedConfig {
     to,
     tz: tzParam(params.get("tz")),
     period: periodParam(params.get("period")),
-    lock: lockFromHostedSearch(compactFlag(params.get("embed")) || Boolean(tenantKey), {
-      groupId,
-      userId,
-      from,
-      to,
-      tz: params.has("tz"),
-    }),
-  };
-}
-
-/** Iframe/host picks are locked. Tab navigation writes the same ids as last-used, not as a lock. */
-function lockFromHostedSearch(
-  hosted: boolean,
-  present: { groupId: string; userId: string; from: string; to: string; tz: boolean },
-) {
-  return {
-    group: hosted && Boolean(present.groupId),
-    user: hosted && Boolean(present.userId),
-    from: hosted && Boolean(present.from),
-    to: hosted && Boolean(present.to),
-    tz: hosted && present.tz,
+    lock: { ...UNLOCKED_FIELDS },
   };
 }
 
@@ -179,12 +171,6 @@ export function parseHostMessage(
     to,
     tz: tzParam(tzRaw),
     period: periodParam(pick("period")),
-    lock: {
-      group: Boolean(groupId),
-      user: Boolean(userId),
-      from: Boolean(from),
-      to: Boolean(to),
-      tz: tzRaw !== undefined,
-    },
+    lock: { ...UNLOCKED_FIELDS },
   };
 }

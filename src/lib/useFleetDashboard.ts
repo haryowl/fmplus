@@ -33,7 +33,6 @@ export function useFleetDashboard() {
   const defaultTo = todayKeyInOffset(query.tz);
   const defaultFrom = addDays(defaultTo, -13);
 
-  const [hostLock, setHostLock] = useState(query.lock);
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [groupId, setGroupId] = useState(query.groupId);
@@ -131,10 +130,6 @@ export function useFleetDashboard() {
     });
     if (groupId && !allowsGroup(groupId)) {
       setGroupId(allowedGroupIds.length === 1 ? String(allowedGroupIds[0]) : "");
-      setHostLock((prev) => ({ ...prev, group: allowedGroupIds.length === 1 }));
-    }
-    if (allowedUserIds.length === 1) {
-      setHostLock((prev) => ({ ...prev, user: true }));
     }
   }, [ready]);
 
@@ -149,11 +144,9 @@ export function useFleetDashboard() {
         if (!groupId && next.length === 1) setGroupId(String(next[0].id));
         if (allowedGroupIds.length === 1) {
           setGroupId(String(allowedGroupIds[0]));
-          setHostLock((prev) => ({ ...prev, group: true }));
         }
         if (allowedUserIds.length === 1) {
           setUserIds([String(allowedUserIds[0])]);
-          setHostLock((prev) => ({ ...prev, user: true }));
         }
       })
       .catch((err: Error) => {
@@ -283,13 +276,6 @@ export function useFleetDashboard() {
       if (cfg.to) setDateTo(cfg.to);
       if (cfg.tz) setTimezone(cfg.tz);
       setPeriod(cfg.period);
-      setHostLock((prev) => ({
-        group: prev.group || cfg.lock.group,
-        user: prev.user || cfg.lock.user,
-        from: prev.from || cfg.lock.from,
-        to: prev.to || cfg.lock.to,
-        tz: prev.tz || cfg.lock.tz,
-      }));
       setByUserId(null);
       if (cfg.userId) {
         autoLoaded.current = false;
@@ -320,7 +306,6 @@ export function useFleetDashboard() {
 
   return {
     query,
-    hostLock,
     groups,
     users,
     groupId,

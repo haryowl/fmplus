@@ -76,7 +76,6 @@ export default function FleetCompact() {
             <select
               id="fc-group"
               value={d.groupId}
-              disabled={d.hostLock.group}
               onChange={(e) => d.changeGroup(e.target.value)}
             >
               <option value="">
@@ -104,7 +103,6 @@ export default function FleetCompact() {
               id="fc-from"
               type="date"
               value={d.dateFrom}
-              disabled={d.hostLock.from}
               onChange={(e) => d.setDateFrom(e.target.value)}
             />
           </div>
@@ -114,7 +112,6 @@ export default function FleetCompact() {
               id="fc-to"
               type="date"
               value={d.dateTo}
-              disabled={d.hostLock.to}
               onChange={(e) => d.setDateTo(e.target.value)}
             />
           </div>

@@ -27,7 +27,6 @@ export function useVehicleDashboard() {
   const defaultFrom = addDays(defaultTo, -13);
 
   const [compact, setCompact] = useState(query.compact);
-  const [hostLock, setHostLock] = useState(query.lock);
 
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -144,11 +143,9 @@ export function useVehicleDashboard() {
     if (!ready) return;
     if (userId && !allowsUser(userId)) {
       setUserId(allowedUserIds.length === 1 ? String(allowedUserIds[0]) : "");
-      setHostLock((prev) => ({ ...prev, user: allowedUserIds.length === 1 }));
     }
     if (groupId && !allowsGroup(groupId)) {
       setGroupId(allowedGroupIds.length === 1 ? String(allowedGroupIds[0]) : "");
-      setHostLock((prev) => ({ ...prev, group: allowedGroupIds.length === 1 }));
     }
   }, [ready]);
 
@@ -165,11 +162,9 @@ export function useVehicleDashboard() {
         if (!groupId && next.length === 1) setGroupId(String(next[0].id));
         if (allowedUserIds.length === 1) {
           setUserId(String(allowedUserIds[0]));
-          setHostLock((prev) => ({ ...prev, user: true }));
         }
         if (allowedGroupIds.length === 1) {
           setGroupId(String(allowedGroupIds[0]));
-          setHostLock((prev) => ({ ...prev, group: true }));
         }
       })
       .catch((err: Error) => {
@@ -268,13 +263,6 @@ export function useVehicleDashboard() {
     if (cfg.tz) setTimezone(cfg.tz);
     setPeriod(cfg.period);
     setCompact(cfg.compact);
-    setHostLock((prev) => ({
-      group: prev.group || cfg.lock.group,
-      user: prev.user || cfg.lock.user,
-      from: prev.from || cfg.lock.from,
-      to: prev.to || cfg.lock.to,
-      tz: prev.tz || cfg.lock.tz,
-    }));
     setTrips(null);
   }
 
@@ -306,7 +294,6 @@ export function useVehicleDashboard() {
   return {
     query,
     compact,
-    hostLock,
     groups,
     users,
     groupId,

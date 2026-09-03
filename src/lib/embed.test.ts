@@ -16,7 +16,7 @@ describe("parseEmbedSearch", () => {
       to: "2026-08-31",
       tz: "+07:00",
       period: "weekly",
-      lock: { group: true, user: true, from: true, to: true, tz: true },
+      lock: { group: false, user: false, from: false, to: false, tz: false },
     });
     expect(JSON.stringify(cfg).toLowerCase()).not.toContain("secret");
     expect(JSON.stringify(cfg).toLowerCase()).not.toContain("token");
@@ -52,6 +52,12 @@ describe("parseEmbedSearch", () => {
     expect(cfg.userId).toBe("99");
     expect(cfg.lock).toEqual({ group: false, user: false, from: false, to: false, tz: false });
   });
+
+  it("does not lock dates because a tenant key is in the URL", () => {
+    const cfg = parseEmbedSearch("?k=emb_siteA_x7k2&from=2026-08-21&to=2026-09-03&tz=+08:00");
+    expect(cfg.tenantKey).toBe("emb_siteA_x7k2");
+    expect(cfg.lock).toEqual({ group: false, user: false, from: false, to: false, tz: false });
+  });
 });
 
 describe("parseHostMessage", () => {
@@ -64,7 +70,27 @@ describe("parseHostMessage", () => {
     );
     expect(cfg?.userId).toBe("7");
     expect(cfg?.groupId).toBe("3");
+    expect(cfg?.lock).toEqual({ group: false, user: false, from: false, to: false, tz: false });
     expect(JSON.stringify(cfg)).not.toContain("v2:no");
+  });
+
+  it("does not lock filters when Armada posts vehicle context", () => {
+    const cfg = parseHostMessage(
+      {
+        type: EMBED_SET,
+        embed: true,
+        groupId: "12",
+        userId: "99",
+        from: "2026-08-01",
+        to: "2026-08-31",
+        tz: "+07:00",
+      },
+      "https://ops.armada.id",
+      ["https://armada.id", "https://*.armada.id"],
+      "http://localhost:5173",
+    );
+    expect(cfg?.groupId).toBe("12");
+    expect(cfg?.lock).toEqual({ group: false, user: false, from: false, to: false, tz: false });
   });
 
   it("rejects other origins when no allowlist means same-origin only", () => {

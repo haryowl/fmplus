@@ -27,7 +27,6 @@ import { useVehicleDashboard } from "./lib/useVehicleDashboard";
 export default function App() {
   const {
     compact,
-    hostLock,
     groups,
     users,
     groupId,
@@ -173,7 +172,6 @@ export default function App() {
             <select
               id="group"
               value={groupId}
-              disabled={hostLock.group}
               onChange={(e) => {
                 setGroupId(e.target.value);
                 setUserId("");
@@ -199,7 +197,7 @@ export default function App() {
                 setUserId(e.target.value);
                 setTrips(null);
               }}
-              disabled={!selectedGroup || hostLock.user}
+              disabled={!selectedGroup}
             >
               <option value="">{selectedGroup ? "Select a vehicle" : "Choose a group first"}</option>
               {users.map((user) => (
@@ -215,7 +213,6 @@ export default function App() {
               id="from"
               type="date"
               value={dateFrom}
-              disabled={hostLock.from}
               onChange={(e) => setDateFrom(e.target.value)}
             />
           </div>
@@ -225,7 +222,6 @@ export default function App() {
               id="to"
               type="date"
               value={dateTo}
-              disabled={hostLock.to}
               onChange={(e) => setDateTo(e.target.value)}
             />
           </div>
@@ -234,7 +230,6 @@ export default function App() {
             <select
               id="tz"
               value={timezone}
-              disabled={hostLock.tz}
               onChange={(e) => setTimezone(e.target.value)}
             >
               {TIMEZONES.map((tz) => (
@@ -244,11 +239,9 @@ export default function App() {
               ))}
             </select>
           </div>
-          {!(compact && hostLock.user) && (
-            <button className="btn btn-primary" type="button" onClick={() => void handleLoad()} disabled={!userId || loading}>
-              {loading ? "Loading…" : "Load metrics"}
-            </button>
-          )}
+          <button className="btn btn-primary" type="button" onClick={() => void handleLoad()} disabled={!userId || loading}>
+            {loading ? "Loading…" : "Load metrics"}
+          </button>
           <div className="field" style={{ gridColumn: compact ? "1 / -1" : "1 / span 2" }}>
             <label>Period</label>
             <div className="period-switch" role="tablist" aria-label="Period">
@@ -864,9 +857,7 @@ export default function App() {
           <span>
             {trips
               ? `${formatInt(totals.trips)} trips · ${formatInt(totals.points)} points`
-              : compact && hostLock.user
-                ? "Waiting for host vehicle context"
-                : "Ready to embed via iframe · query params: k, appId, groupId, userId, from, to, tz, period"}
+              : "Query: k, appId, groupId, userId, from, to, tz, period"}
           </span>
           <span>V17 kept as reference · metrics rewritten</span>
         </footer>

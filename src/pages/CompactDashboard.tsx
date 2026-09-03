@@ -26,7 +26,6 @@ import { ViewNav } from "../components/ViewNav";
 
 export default function CompactDashboard() {
   const {
-    hostLock,
     groups,
     users,
     groupId,
@@ -114,7 +113,6 @@ export default function CompactDashboard() {
             <select
               id="c-group"
               value={groupId}
-              disabled={hostLock.group}
               onChange={(e) => {
                 setGroupId(e.target.value);
                 setUserId("");
@@ -140,7 +138,7 @@ export default function CompactDashboard() {
                 setUserId(e.target.value);
                 setTrips(null);
               }}
-              disabled={!selectedGroup || hostLock.user}
+              disabled={!selectedGroup}
             >
               <option value="">{selectedGroup ? "Select a vehicle" : "Choose a group first"}</option>
               {users.map((user) => (
@@ -156,7 +154,6 @@ export default function CompactDashboard() {
               id="c-from"
               type="date"
               value={dateFrom}
-              disabled={hostLock.from}
               onChange={(e) => setDateFrom(e.target.value)}
             />
           </div>
@@ -166,7 +163,6 @@ export default function CompactDashboard() {
               id="c-to"
               type="date"
               value={dateTo}
-              disabled={hostLock.to}
               onChange={(e) => setDateTo(e.target.value)}
             />
           </div>

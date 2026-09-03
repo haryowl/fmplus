@@ -17,7 +17,6 @@ export default function LastStatus() {
   const [groupId, setGroupId] = useState(query.groupId);
   const [timezone, setTimezone] = useState(query.tz);
   const [bootError, setBootError] = useState("");
-  const [hostLock, setHostLock] = useState(query.lock);
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
 
@@ -44,7 +43,6 @@ export default function LastStatus() {
     if (!ready) return;
     if (groupId && !allowsGroup(groupId)) {
       setGroupId(allowedGroupIds.length === 1 ? String(allowedGroupIds[0]) : "");
-      setHostLock((prev) => ({ ...prev, group: allowedGroupIds.length === 1 }));
     }
   }, [ready]);
 
@@ -59,7 +57,6 @@ export default function LastStatus() {
         if (!groupId && next.length === 1) setGroupId(String(next[0].id));
         if (allowedGroupIds.length === 1) {
           setGroupId(String(allowedGroupIds[0]));
-          setHostLock((prev) => ({ ...prev, group: true }));
         }
       })
       .catch((err: Error) => {
@@ -116,7 +113,6 @@ export default function LastStatus() {
             <select
               id="s-group"
               value={groupId}
-              disabled={hostLock.group}
               onChange={(e) => setGroupId(e.target.value)}
             >
               <option value="">
@@ -134,7 +130,6 @@ export default function LastStatus() {
             <select
               id="s-tz"
               value={timezone}
-              disabled={hostLock.tz}
               onChange={(e) => setTimezone(e.target.value)}
             >
               {TIMEZONES.map((tz) => (
