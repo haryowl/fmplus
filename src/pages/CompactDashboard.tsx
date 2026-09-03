@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { userLabel } from "../lib/api";
+import { groupOptionLabel, userLabel, userOptionLabel } from "../lib/api";
 import {
   formatHours,
   formatIdr,
@@ -124,7 +124,7 @@ export default function CompactDashboard() {
               </option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
-                  {group.name} · {group.usersIds.length} vehicles
+                  {groupOptionLabel(group)}
                 </option>
               ))}
             </select>
@@ -143,7 +143,7 @@ export default function CompactDashboard() {
               <option value="">{selectedGroup ? "Select a vehicle" : "Choose a group first"}</option>
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
-                  {userLabel(user)}
+                  {userOptionLabel(user)}
                 </option>
               ))}
             </select>

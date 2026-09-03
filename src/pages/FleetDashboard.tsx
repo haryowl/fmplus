@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { groupOptionLabel } from "../lib/api";
 import { TIMEZONES } from "../lib/config";
 import { seriesForPeriod } from "../lib/fleet";
 import {
@@ -65,7 +66,7 @@ export default function FleetDashboard() {
               </option>
               {d.groups.map((group) => (
                 <option key={group.id} value={group.id}>
-                  {group.name} · {group.usersIds.length} vehicles
+                  {groupOptionLabel(group)}
                 </option>
               ))}
             </select>

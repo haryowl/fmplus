@@ -1,5 +1,5 @@
 import { FLEET_VEHICLE_CAP } from "../lib/config";
-import { userLabel } from "../lib/api";
+import { userOptionLabel } from "../lib/api";
 import type { User } from "../lib/types";
 
 type Props = {
@@ -45,7 +45,7 @@ export function VehiclePicker({ users, selectedIds, onChange, disabled, dense }:
           users.map((user) => {
             const id = String(user.id);
             const checked = selected.has(id);
-            const name = userLabel(user);
+            const name = userOptionLabel(user);
             return (
               <label key={id} className={checked ? "on" : ""} title={name}>
                 <input

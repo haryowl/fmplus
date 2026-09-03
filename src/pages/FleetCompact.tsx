@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { groupOptionLabel } from "../lib/api";
 import {
   formatHours,
   formatIdr,
@@ -81,7 +82,7 @@ export default function FleetCompact() {
               </option>
               {d.groups.map((group) => (
                 <option key={group.id} value={group.id}>
-                  {group.name}
+                  {groupOptionLabel(group)}
                 </option>
               ))}
             </select>

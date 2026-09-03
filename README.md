@@ -63,12 +63,35 @@ Embed query: `k`, `appId`, `groupId`, `userId`, `userIds`, `from`, `to`, `tz`, `
 
 ## Multi-operator embed
 
-Each operator gets an opaque key `k` (not the GpsGate token). The iframe URL may include public `appId` plus vehicle/group ids. Tokens stay in server-side `tenants.json` (copy `tenants.example.json`; the real file is gitignored).
+`http://81.17.100.7:4173/` with **no** `k` is the standalone app: `ARMADA_AUTH_HEADER` and **app 36** only.
+
+Any other GpsGate application (37, 40, …) needs a row in server-side `tenants.json` (copy `tenants.example.json`; gitignored). The token is per operator/app, so **`userIds` and `groupIds` are optional**.
+
+### Browse an app and read the real IDs
+
+Leave the allowlists out. Open the Full page with only `k` and `appId`. Group and vehicle dropdowns list everything that token can see, and each option ends with the numeric id.
+
+```json
+{
+  "emb_app37_browse": {
+    "appId": 37,
+    "token": "v2:app-37-token"
+  }
+}
+```
 
 ```
-http://81.17.100.7:4173/?embed=1&k=emb_siteA_x7k2&appId=40&groupId=12&userId=99
+http://81.17.100.7:4173/?k=emb_app37_browse&appId=37
 ```
 
-Changing `userId` in that URL cannot open another operator’s vehicles. The server maps `k` → token, app, and allowed ids, then 403s other apps/users/groups.
+Restart after editing the file (`systemctl restart fmplus`) — tenants are loaded once at process start.
+
+### Lock the iframe later (optional)
+
+When you know the ids, add `userIds` / `groupIds` and put them on the URL. Changing `userId` in the URL cannot open another operator’s vehicles.
+
+```
+http://81.17.100.7:4173/?embed=1&k=emb_siteA_locked&appId=40&groupId=12&userId=99
+```
 
 Parents may be several hosts. Default iframe + `postMessage` allowlist is `https://armada.id` and `https://*.armada.id` (apex plus any subdomain). Override with `EMBED_FRAME_ANCESTORS` and `VITE_EMBED_ORIGINS` if needed.

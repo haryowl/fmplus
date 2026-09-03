@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { userLabel } from "./lib/api";
+import { groupOptionLabel, userLabel, userOptionLabel } from "./lib/api";
 import { DEFAULT_TRIP_BREAK_MIN, TIMEZONES } from "./lib/config";
 import { formatHours, formatIdr, formatInt, formatKm, formatKmPerL, formatLiters, formatMeters, formatPct, formatRpm, formatSpeed, odoGpsDelta } from "./lib/format";
 import { describeFuelSource, listRefillEvents, movingSharePct } from "./lib/metrics";
@@ -202,7 +202,7 @@ export default function App() {
               </option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
-                  {group.name} · {group.usersIds.length} vehicles
+                  {groupOptionLabel(group)}
                 </option>
               ))}
             </select>
@@ -221,7 +221,7 @@ export default function App() {
               <option value="">{selectedGroup ? "Select a vehicle" : "Choose a group first"}</option>
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
-                  {userLabel(user)}
+                  {userOptionLabel(user)}
                 </option>
               ))}
             </select>

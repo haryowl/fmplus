@@ -604,3 +604,12 @@ export async function loadTripsForUsers(options: {
 export function userLabel(user: User): string {
   return user.name || user.username || `User ${user.id}`;
 }
+
+export function groupOptionLabel(group: Group): string {
+  const n = Array.isArray(group.usersIds) ? group.usersIds.length : 0;
+  return `${group.name} · ${n} vehicle${n === 1 ? "" : "s"} · ${group.id}`;
+}
+
+export function userOptionLabel(user: User): string {
+  return `${userLabel(user)} · ${user.id}`;
+}
