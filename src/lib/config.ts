@@ -33,12 +33,11 @@ export const FLEET_VEHICLE_CAP = 8;
 /** Track ids in one POST /api/tracks-batch (server fetches them in parallel). */
 export const TRACK_BATCH_SIZE = 20;
 /**
- * Vehicle-days in one POST /api/user-day-tracks (server cap is 40).
- * Keep this below the server fan-out: a 40-day POST waits for its slowest day
- * before any of those points reach the charts.
+ * Vehicle-days in one POST /api/user-day-tracks (server cap is 320).
+ * One POST for an 8-vehicle ~34-day range; the server streams days as they finish.
  */
-export const USER_DAY_BATCH_SIZE = 20;
-/** How many batch POSTs the browser runs at once. */
+export const USER_DAY_BATCH_SIZE = 320;
+/** How many batch POSTs the browser runs at once (track-id fallback path). */
 export const TRACK_BATCH_BROWSER = 8;
 /** Fallback if the batch endpoint is missing (direct /lt track GETs). */
 export const TRACK_FETCH_CONCURRENCY = 8;

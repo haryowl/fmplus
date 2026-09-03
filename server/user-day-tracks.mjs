@@ -2,11 +2,12 @@
  * Fan out GpsGate per-vehicle day tracks on the server.
  * Same Filtered=true points as /trackinfos/{id}/tracks, one HTTP call per vehicle-day.
  */
+import { armadaFetch } from "./armada-fetch.mjs";
 import { tenantAllowsUser, tenantFromRequest } from "./tenants.mjs";
 
-const MAX_DAYS = 40;
-/** Per POST. Browser runs several POSTs; keep this modest so Armada is not flooded. */
-const SERVER_CONCURRENCY = 8;
+const MAX_DAYS = 320;
+/** One POST can take a full 8-vehicle month; the Armada pool is shared. */
+const SERVER_CONCURRENCY = 32;
 const ATTEMPTS = 3;
 const TIMEOUT_MS = 25_000;
 
@@ -50,7 +51,7 @@ async function fetchUserDay(userId, date, auth, appId, signal) {
       const timed = AbortSignal.timeout(TIMEOUT_MS);
       const combined =
         signal && typeof AbortSignal.any === "function" ? AbortSignal.any([signal, timed]) : timed;
-      const res = await fetch(url, {
+      const res = await armadaFetch(url, {
         method: "GET",
         headers: {
           authorization: auth,
@@ -140,7 +141,7 @@ export async function handleUserDayTracksRequest(req, res) {
   }
 
   try {
-    const payload = await readJsonBody(req, 32 * 1024);
+    const payload = await readJsonBody(req, 64 * 1024);
     const rawDays = Array.isArray(payload?.days) ? payload.days : [];
     const days = [];
     const seen = new Set();
