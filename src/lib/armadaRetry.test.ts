@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   GATEWAY_GAP_MS,
+  MIN_429_CAP,
+  RECOVER_SUCCESS_STREAK,
   isRetryableArmadaStatus,
   planArmadaRetry,
+  reducedCapOn429,
   retryWaitMs,
 } from "../../server/armada-retry.mjs";
 
@@ -41,5 +44,24 @@ describe("planArmadaRetry", () => {
     expect(planArmadaRetry(503, null, 10)).toEqual({ dropCap: false, cooldownMs: GATEWAY_GAP_MS });
     expect(planArmadaRetry(502, "2", 1)).toEqual({ dropCap: false, cooldownMs: 2000 });
     expect(planArmadaRetry(500, null, 4).dropCap).toBe(false);
+  });
+});
+
+describe("reducedCapOn429", () => {
+  it("halves the pool instead of always dropping to 2", () => {
+    expect(reducedCapOn429(8)).toBe(4);
+    expect(reducedCapOn429(6)).toBe(3);
+  });
+
+  it("never drops below the 429 floor", () => {
+    expect(reducedCapOn429(5)).toBe(MIN_429_CAP);
+    expect(reducedCapOn429(3)).toBe(MIN_429_CAP);
+    expect(reducedCapOn429(2)).toBe(MIN_429_CAP);
+  });
+});
+
+describe("RECOVER_SUCCESS_STREAK", () => {
+  it("recovers concurrency after a short clean streak", () => {
+    expect(RECOVER_SUCCESS_STREAK).toBe(4);
   });
 });

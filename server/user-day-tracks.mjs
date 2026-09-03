@@ -3,7 +3,7 @@
  * Same Filtered=true points as /trackinfos/{id}/tracks, one HTTP call per vehicle-day.
  */
 import { armadaFetch } from "./armada-fetch.mjs";
-import { isRetryableArmadaStatus, planArmadaRetry } from "./armada-retry.mjs";
+import { RECOVER_SUCCESS_STREAK, reducedCapOn429, isRetryableArmadaStatus, planArmadaRetry } from "./armada-retry.mjs";
 import { slimAsync } from "./slim-pool.mjs";
 import { tenantAllowsUser, tenantFromRequest } from "./tenants.mjs";
 
@@ -243,7 +243,7 @@ export async function handleUserDayTracksRequest(req, res) {
             if (outcome.retry) {
               const plan = planArmadaRetry(outcome.status, outcome.retryAfter, day.attempts);
               if (plan.dropCap) {
-                cap = MIN_CAP;
+                cap = Math.max(MIN_CAP, reducedCapOn429(cap));
                 successStreak = 0;
               }
               if (plan.cooldownMs > 0) {
@@ -258,7 +258,10 @@ export async function handleUserDayTracksRequest(req, res) {
             } else {
               remaining -= 1;
               successStreak += 1;
-              if (successStreak >= 16 && cap < MAX_CAP) cap += 1;
+              if (successStreak >= RECOVER_SUCCESS_STREAK && cap < MAX_CAP) {
+                cap += 1;
+                successStreak = 0;
+              }
               queueSlim(day, outcome.raw);
             }
           } finally {

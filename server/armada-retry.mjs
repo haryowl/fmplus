@@ -9,9 +9,16 @@ export function retryWaitMs(retryAfterHeader, attempt) {
 
 /** Brief gap so a 5xx outage does not spin the pool at full concurrency. */
 export const GATEWAY_GAP_MS = 300;
+export const MIN_429_CAP = 3;
+export const RECOVER_SUCCESS_STREAK = 4;
 
 export function isRetryableArmadaStatus(status) {
   return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+export function reducedCapOn429(currentCap, minCap = MIN_429_CAP) {
+  const next = Math.floor(currentCap / 2);
+  return Math.max(minCap, next);
 }
 
 /**
