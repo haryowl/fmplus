@@ -205,7 +205,7 @@ export default function FleetCompact() {
               </h3>
               <p>
                 {d.loading
-                  ? "The ranking table fills in as vehicle-days arrive."
+                  ? "The ranking table appears when the download finishes."
                   : "Last used vehicle is pre-selected. Add others from the group, then load. Switch to Fleet for the full comparison charts."}
               </p>
             </div>

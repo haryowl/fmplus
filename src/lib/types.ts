@@ -81,7 +81,7 @@ export type PeriodMetrics = {
 };
 
 export type LoadProgress = {
-  phase: "trips" | "tracks" | "days";
+  phase: "trips" | "tracks" | "days" | "charts";
   loaded: number;
   total: number;
   skipped?: number;

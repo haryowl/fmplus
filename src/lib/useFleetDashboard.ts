@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchGroups, fetchUsersForGroup, loadTripsForUsers, userLabel } from "./api";
 import { computeBehavior } from "./behavior";
 import {
@@ -224,7 +224,7 @@ export function useFleetDashboard() {
     setLoading(true);
     setLoadError("");
     setLoadWarning("");
-    setByUserId(new Map());
+    setByUserId(null);
     setProgress({ phase: "trips", loaded: 0, total: 1 });
     try {
       const result = await loadTripsForUsers({
@@ -234,10 +234,6 @@ export function useFleetDashboard() {
         timezone,
         signal: ac.signal,
         onProgress: setProgress,
-        onPartial: (next) => {
-          if (ac.signal.aborted) return;
-          startTransition(() => setByUserId(new Map(next)));
-        },
       });
       setByUserId(result.byUserId);
       if (result.skipped > 0) {
@@ -302,7 +298,11 @@ export function useFleetDashboard() {
   }, []);
 
   const progressPct =
-    progress && progress.total > 0 ? Math.round((progress.loaded / progress.total) * 100) : 8;
+    progress?.phase === "charts"
+      ? 100
+      : progress && progress.total > 0
+        ? Math.round((progress.loaded / progress.total) * 100)
+        : 8;
 
   function changeGroup(next: string) {
     setGroupId(next);

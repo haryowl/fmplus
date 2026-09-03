@@ -1,5 +1,5 @@
-import { API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, DAY_PARTIAL_EVERY, DAY_PARTIAL_MS, DAY_PROGRESS_MS, TRACK_BATCH_BROWSER, TRACK_BATCH_SIZE, TRACK_FETCH_CONCURRENCY, USER_DAY_BATCH_SIZE } from "./config";
-import { groupRowsIntoTrips, interleaveUserDays, normalizeTrackList, type DayTrackRow } from "./dayTracks";
+import { API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, DAY_PROGRESS_MS, TRACK_BATCH_BROWSER, TRACK_BATCH_SIZE, TRACK_FETCH_CONCURRENCY, USER_DAY_BATCH_SIZE } from "./config";
+import { groupRowsIntoTrips, interleaveUserDays, normalizeTrackList, peekUserDayNdjson, type DayTrackRow } from "./dayTracks";
 import { normalizeUserStatusList, STATUS_PAGE_SIZE, type LastStatusRow } from "./lastStatus";
 import { chunkArray, mapPool } from "./pool";
 import { apiBase, tenantHeaders } from "./tenant";
@@ -438,7 +438,8 @@ type BatchUserDayResponse = {
 async function fetchUserDayBatch(
   jobs: UserDayJob[],
   signal?: AbortSignal,
-  onItem?: (key: string, rows: DayTrackRow[] | null) => void,
+  onReceive?: (key: string, failed: boolean) => void,
+  onParseProgress?: (done: number, total: number) => void,
 ): Promise<{ byKey: Map<string, DayTrackRow[]>; failed: string[] }> {
   const res = await fetch("/api/user-day-tracks", {
     method: "POST",
@@ -460,12 +461,35 @@ async function fetchUserDayBatch(
   const take = (key: string, points: unknown, isFailed: boolean) => {
     if (isFailed) {
       failed.push(key);
-      onItem?.(key, null);
       return;
     }
-    const rows = normalizeTrackList(points);
-    byKey.set(key, rows);
-    onItem?.(key, rows);
+    byKey.set(key, normalizeTrackList(points));
+  };
+
+  const parseLine = (line: string, announce: boolean) => {
+    const peek = peekUserDayNdjson(line);
+    if (peek && announce) onReceive?.(peek.key, peek.failed);
+    try {
+      const row = JSON.parse(line) as { key?: string; points?: unknown; failed?: boolean };
+      if (typeof row.key === "string") {
+        if (!peek) onReceive?.(row.key, row.failed === true);
+        take(row.key, row.points, row.failed === true);
+      }
+    } catch {
+      /* skip a broken stream line */
+    }
+  };
+
+  const parseStashed = async (lines: string[]) => {
+    for (let i = 0; i < lines.length; i += 1) {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      parseLine(lines[i], false);
+      if (i % 4 === 3) {
+        onParseProgress?.(i + 1, lines.length);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+    if (lines.length) onParseProgress?.(lines.length, lines.length);
   };
 
   const type = res.headers.get("content-type") || "";
@@ -473,6 +497,7 @@ async function fetchUserDayBatch(
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
+    const stashed: string[] = [];
     for (;;) {
       const { done, value } = await reader.read();
       if (value) buf += decoder.decode(value, { stream: true });
@@ -481,12 +506,9 @@ async function fetchUserDayBatch(
         const line = buf.slice(0, nl).trim();
         buf = buf.slice(nl + 1);
         if (line) {
-          try {
-            const row = JSON.parse(line) as { key?: string; points?: unknown; failed?: boolean };
-            if (typeof row.key === "string") take(row.key, row.points, row.failed === true);
-          } catch {
-            /* skip a broken stream line */
-          }
+          const peek = peekUserDayNdjson(line);
+          if (peek) onReceive?.(peek.key, peek.failed);
+          stashed.push(line);
         }
         nl = buf.indexOf("\n");
       }
@@ -494,22 +516,24 @@ async function fetchUserDayBatch(
     }
     const tail = buf.trim();
     if (tail) {
-      try {
-        const row = JSON.parse(tail) as { key?: string; points?: unknown; failed?: boolean };
-        if (typeof row.key === "string") take(row.key, row.points, row.failed === true);
-      } catch {
-        /* skip */
-      }
+      const peek = peekUserDayNdjson(tail);
+      if (peek) onReceive?.(peek.key, peek.failed);
+      stashed.push(tail);
     }
+    await parseStashed(stashed);
     return { byKey, failed };
   }
 
   const raw = (await res.json()) as BatchUserDayResponse;
   for (const [key, points] of Object.entries(raw.byKey ?? {})) {
+    onReceive?.(key, false);
     take(key, points, false);
   }
   for (const key of raw.failed ?? []) {
-    if (typeof key === "string") take(key, [], true);
+    if (typeof key === "string") {
+      onReceive?.(key, true);
+      take(key, [], true);
+    }
   }
   return { byKey, failed };
 }
@@ -520,7 +544,6 @@ async function loadTripsByUserDays(
     dateTo: string;
     signal?: AbortSignal;
     onProgress?: (progress: LoadProgress) => void;
-    onPartial?: (byUserId: Map<number, Trip[]>) => void;
   },
   userIds: number[],
 ): Promise<MultiTripLoadResult> {
@@ -541,29 +564,13 @@ async function loadTripsByUserDays(
   let loaded = 0;
   let skipped = 0;
   let lastReport = 0;
-  let lastFlush = 0;
-  let sinceFlush = 0;
-  const dirtyUsers = new Set<number>();
-  const lastTrips = new Map<number, Trip[]>();
-  for (const id of userIds) lastTrips.set(id, []);
+  const counted = new Set<string>();
 
-  const report = (force = false) => {
+  const report = (force = false, phase: LoadProgress["phase"] = "days") => {
     const now = Date.now();
     if (!force && now - lastReport < DAY_PROGRESS_MS) return;
     lastReport = now;
-    options.onProgress?.({ phase: "days", loaded, total: jobs.length, skipped });
-  };
-  const flushPartial = (force = false) => {
-    if (!options.onPartial) return;
-    const now = Date.now();
-    if (!force && sinceFlush < DAY_PARTIAL_EVERY && now - lastFlush < DAY_PARTIAL_MS) return;
-    lastFlush = now;
-    sinceFlush = 0;
-    for (const userId of dirtyUsers) {
-      lastTrips.set(userId, groupRowsIntoTrips(userId, rowsByUser.get(userId) ?? []));
-    }
-    dirtyUsers.clear();
-    options.onPartial(new Map(lastTrips));
+    options.onProgress?.({ phase, loaded, total: jobs.length, skipped });
   };
   report();
 
@@ -572,36 +579,40 @@ async function loadTripsByUserDays(
     const cached = dayRowCache.get(job.key);
     if (cached) {
       rowsByUser.get(job.userId)?.push(...cached);
+      counted.add(job.key);
       loaded += 1;
-      dirtyUsers.add(job.userId);
     } else {
       pending.push(job);
     }
   }
-  if (pending.length < jobs.length) {
-    report();
-    flushPartial();
-  }
+  if (pending.length < jobs.length) report();
 
-  const applyRows = (job: UserDayJob, rows: DayTrackRow[], ok: boolean) => {
-    loaded += 1;
-    sinceFlush += 1;
-    if (!ok) {
-      skipped += 1;
-      return;
+  const storeRows = (job: UserDayJob, rows: DayTrackRow[], ok: boolean) => {
+    if (!counted.has(job.key)) {
+      counted.add(job.key);
+      loaded += 1;
+      if (!ok) skipped += 1;
     }
+    if (!ok) return;
     rememberDayRows(job.key, rows);
     rowsByUser.get(job.userId)?.push(...rows);
-    dirtyUsers.add(job.userId);
+  };
+
+  const noteReceived = (key: string, failed: boolean) => {
+    if (counted.has(key)) return;
+    counted.add(key);
+    loaded += 1;
+    if (failed) skipped += 1;
+    report();
   };
 
   const loadDirect = async (items: UserDayJob[]) => {
     await mapPool(items, TRACK_FETCH_CONCURRENCY, async (job) => {
       try {
-        applyRows(job, await fetchUserDayDirect(job.userId, job.date, options.signal), true);
+        storeRows(job, await fetchUserDayDirect(job.userId, job.date, options.signal), true);
       } catch (err) {
         if ((err as Error).name === "AbortError") throw err;
-        applyRows(job, [], false);
+        storeRows(job, [], false);
       }
       report();
     });
@@ -611,42 +622,36 @@ async function loadTripsByUserDays(
     const chunks = chunkArray(pending, USER_DAY_BATCH_SIZE);
     await mapPool(chunks, TRACK_BATCH_BROWSER, async (chunk) => {
       try {
-        const byJob = new Map(chunk.map((job) => [job.key, job]));
-        const applied = new Set<string>();
-        const { byKey, failed } = await fetchUserDayBatch(chunk, options.signal, (key, rows) => {
-          const job = byJob.get(key);
-          if (!job || rows === null) return;
-          applied.add(key);
-          applyRows(job, rows, true);
-          report();
-          flushPartial();
-        });
+        const { byKey, failed } = await fetchUserDayBatch(
+          chunk,
+          options.signal,
+          (key, isFailed) => noteReceived(key, isFailed),
+          () => options.onProgress?.({ phase: "charts", loaded, total: jobs.length, skipped }),
+        );
         const failedSet = new Set(failed);
         const missing: UserDayJob[] = [];
         for (const job of chunk) {
-          if (applied.has(job.key)) continue;
           if (failedSet.has(job.key) || !byKey.has(job.key)) {
             missing.push(job);
             continue;
           }
-          applyRows(job, byKey.get(job.key) ?? [], true);
+          const rows = byKey.get(job.key) ?? [];
+          rememberDayRows(job.key, rows);
+          rowsByUser.get(job.userId)?.push(...rows);
         }
         if (missing.length) await loadDirect(missing);
-        report();
-        flushPartial(true);
+        report(true);
       } catch (err) {
         if ((err as Error).name === "AbortError") throw err;
         if ((err as { dayUnavailable?: boolean }).dayUnavailable) {
           throw err;
         }
         await loadDirect(chunk);
-        report();
-        flushPartial(true);
+        report(true);
       }
     });
   } else if (pending.length > 0) {
     await loadDirect(pending);
-    flushPartial(true);
   }
 
   report(true);
@@ -690,7 +695,6 @@ export async function loadTripsForUsers(options: {
   timezone: string;
   signal?: AbortSignal;
   onProgress?: (progress: LoadProgress) => void;
-  onPartial?: (byUserId: Map<number, Trip[]>) => void;
 }): Promise<MultiTripLoadResult> {
   const userIds = [...new Set(options.userIds.map(Number).filter((id) => Number.isFinite(id) && id > 0))];
   const byUserId = new Map<number, Trip[]>();

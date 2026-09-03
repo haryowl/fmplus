@@ -196,7 +196,7 @@ export default function FleetDashboard() {
                 </h3>
                 <p>
                   {d.loading
-                    ? "Charts fill in as each batch of vehicle-days finishes. You do not have to wait for the last day."
+                    ? "Charts appear when the download finishes."
                     : "The last vehicle you opened on Full or Compact is selected by default. Tick more vehicles from the group, then load."}
                 </p>
               </div>

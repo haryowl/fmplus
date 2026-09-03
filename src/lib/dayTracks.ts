@@ -104,6 +104,18 @@ export function groupRowsIntoTrips(userId: number, rows: DayTrackRow[]): Trip[] 
   return trips;
 }
 
+/** Read the vehicle-day key from an NDJSON line without JSON.parse of the GPS points. */
+export function peekUserDayNdjson(line: string): { key: string; failed: boolean } | null {
+  const start = '{"key":"';
+  if (!line.startsWith(start)) return null;
+  const end = line.indexOf('"', start.length);
+  if (end <= start.length) return null;
+  return {
+    key: line.slice(start.length, end),
+    failed: line.includes('"failed":true'),
+  };
+}
+
 /** Date-major order so the first batch paints every vehicle instead of one truck's whole month. */
 export function interleaveUserDays<T>(
   userIds: number[],
@@ -129,9 +141,12 @@ export function describeLoadProgress(
   }
   if (progress.phase === "days") {
     if (fleetVehicleCount && fleetVehicleCount > 1) {
-      return `Loading ${progress.loaded} of ${progress.total} vehicle-days across ${fleetVehicleCount} vehicles${skipped}`;
+      return `Downloading ${progress.loaded} of ${progress.total} vehicle-days across ${fleetVehicleCount} vehicles${skipped}`;
     }
-    return `Loading ${progress.loaded} of ${progress.total} vehicle-days${skipped}`;
+    return `Downloading ${progress.loaded} of ${progress.total} vehicle-days${skipped}`;
+  }
+  if (progress.phase === "charts") {
+    return "Preparing charts…";
   }
   const fleet = fleetVehicleCount && fleetVehicleCount > 1 ? ` across ${fleetVehicleCount} vehicles` : "";
   return `Loading tracks ${progress.loaded} of ${progress.total}${fleet}${skipped}`;

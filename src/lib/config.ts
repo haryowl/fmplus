@@ -45,9 +45,6 @@ export const API_RETRY_ATTEMPTS = 8;
 export const API_RETRY_CAP_MS = 12_000;
 /** How often the vehicle-day progress text may re-render. */
 export const DAY_PROGRESS_MS = 200;
-/** How often fleet charts may rebuild while a load is still streaming. */
-export const DAY_PARTIAL_MS = 2000;
-export const DAY_PARTIAL_EVERY = 16;
 /** Road vibration buckets in mG (1 G = 1000 mG), matching V8. */
 export const ROAD_ROUGH_MG = 150;
 export const ROAD_BUMPY_MG = 300;
