@@ -17,6 +17,7 @@ import { BrandMark } from "../components/BrandMark";
 import { FleetBarChart } from "../components/FleetBarChart";
 import { FleetRankTable } from "../components/FleetRankTable";
 import { VehiclePicker } from "../components/VehiclePicker";
+import { ExportPdfButton } from "../components/ExportPdfButton";
 import { ViewNav } from "../components/ViewNav";
 
 export default function FleetCompact() {
@@ -60,6 +61,7 @@ export default function FleetCompact() {
         </div>
         <div className="topbar-actions">
           <ViewNav current="fleetCompact" />
+          <ExportPdfButton disabled={live.length === 0} />
           <div className="vehicle-chip">
             {d.userIds.length ? `${d.userIds.length} selected` : "No vehicles"}
             {d.selectedGroup ? ` · ${d.selectedGroup.name}` : ""}

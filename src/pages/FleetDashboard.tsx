@@ -20,6 +20,7 @@ import { FleetBarChart } from "../components/FleetBarChart";
 import { FleetHeadToHead } from "../components/FleetHeadToHead";
 import { FleetRankTable } from "../components/FleetRankTable";
 import { VehiclePicker } from "../components/VehiclePicker";
+import { ExportPdfButton } from "../components/ExportPdfButton";
 import { ViewNav } from "../components/ViewNav";
 
 export default function FleetDashboard() {
@@ -42,6 +43,7 @@ export default function FleetDashboard() {
         </div>
         <div className="topbar-actions">
           <ViewNav current="fleet" />
+          <ExportPdfButton disabled={live.length === 0} />
           <div className="vehicle-chip">
             {d.userIds.length
               ? `${d.userIds.length} vehicle${d.userIds.length === 1 ? "" : "s"}`

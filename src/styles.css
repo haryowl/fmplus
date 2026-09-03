@@ -1383,3 +1383,88 @@ html.onesheet-root body {
     grid-row: auto;
   }
 }
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
+  html,
+  body,
+  #root,
+  html.onesheet-root,
+  html.onesheet-root body,
+  .app,
+  .app.onesheet {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #efece6 !important;
+  }
+
+  .view-nav,
+  .no-print,
+  .filters .btn-primary,
+  .btn-secondary,
+  .foot {
+    display: none !important;
+  }
+
+  .topbar {
+    break-after: avoid;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .shell,
+  .app.onesheet .shell {
+    overflow: visible !important;
+    max-width: none !important;
+    height: auto !important;
+    padding: 8px 0 0 !important;
+  }
+
+  .app.onesheet .onesheet-grid,
+  .app.onesheet.fleet-sheet .onesheet-grid.fleet-rank-grid {
+    display: block !important;
+    height: auto !important;
+  }
+
+  .app.onesheet .onesheet-grid > *,
+  .app.onesheet.fleet-sheet .onesheet-grid > * {
+    height: auto !important;
+    min-height: 0 !important;
+    margin-bottom: 10px;
+  }
+
+  .panel,
+  .kpi,
+  .banner,
+  .stat-strip,
+  .table-wrap {
+    break-inside: avoid;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .chart-wrap,
+  .chart-wrap-sm,
+  .map-wrap {
+    break-inside: avoid;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .map-wrap {
+    height: 140mm !important;
+  }
+
+  .map-wrap .leaflet-container {
+    height: 140mm !important;
+  }
+
+  .filters-extra {
+    display: none !important;
+  }
+}

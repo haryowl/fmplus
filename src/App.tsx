@@ -20,7 +20,7 @@ import { TrackMap } from "./components/TrackMap";
 import { UtilizationChart } from "./components/UtilizationChart";
 import { BrandMark } from "./components/BrandMark";
 import { ViewNav } from "./components/ViewNav";
-import { exportMetricsPdf } from "./lib/exportPdf";
+import { ExportPdfButton } from "./components/ExportPdfButton";
 import { describeLoadProgress } from "./lib/dayTracks";
 import { useVehicleDashboard } from "./lib/useVehicleDashboard";
 
@@ -146,21 +146,6 @@ export default function App() {
   const baselineKey = rows.some((row) => row.key === compareA) ? compareA : fallbackA;
   const compareKey = rows.some((row) => row.key === compareB) ? compareB : fallbackB;
 
-  function handleExport() {
-    if (rows.length === 0) return;
-    exportMetricsPdf({
-      vehicle: selectedUser ? userLabel(selectedUser) : "Vehicle",
-      group: selectedGroup?.name ?? "Group",
-      dateFrom,
-      dateTo,
-      timezone,
-      period,
-      rows,
-      behavior,
-      insights: displayedInsights,
-    });
-  }
-
   return (
     <div className={compact ? "app embed" : "app"}>
       <header className="topbar">
@@ -173,9 +158,7 @@ export default function App() {
         </div>
         <div className="topbar-actions">
           <ViewNav current="full" />
-          <button className="btn-ghost" type="button" onClick={handleExport} disabled={rows.length === 0}>
-            Export PDF
-          </button>
+          <ExportPdfButton disabled={rows.length === 0} />
           <div className="vehicle-chip">
             {selectedUser ? userLabel(selectedUser) : "No vehicle selected"}
             {selectedGroup ? ` · ${selectedGroup.name}` : ""}

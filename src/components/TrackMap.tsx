@@ -275,6 +275,14 @@ export function TrackMap({ data, refills = [], timezone = "+08:00" }: Props) {
     tileRef.current.bringToBack();
   }, [basemap, mapReady]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) return;
+    const onPrint = () => map.invalidateSize();
+    window.addEventListener("beforeprint", onPrint);
+    return () => window.removeEventListener("beforeprint", onPrint);
+  }, [mapReady]);
+
   const sampled =
     drawnCount < data.pointCount
       ? `Showing ${drawnCount.toLocaleString("en-US")} of ${data.pointCount.toLocaleString("en-US")} points — zoom in for full detail`

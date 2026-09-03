@@ -21,6 +21,7 @@ import { DistanceChart } from "../components/DistanceChart";
 import { FuelChart } from "../components/FuelChart";
 import { SpeedRpmChart } from "../components/SpeedRpmChart";
 import { UtilizationChart } from "../components/UtilizationChart";
+import { ExportPdfButton } from "../components/ExportPdfButton";
 import { ViewNav } from "../components/ViewNav";
 
 export default function CompactDashboard() {
@@ -98,6 +99,7 @@ export default function CompactDashboard() {
         </div>
         <div className="topbar-actions">
           <ViewNav current="compact" />
+          <ExportPdfButton disabled={!hasRows} />
           <div className="vehicle-chip">
             {selectedUser ? userLabel(selectedUser) : "No vehicle selected"}
             {selectedGroup ? ` · ${selectedGroup.name}` : ""}
