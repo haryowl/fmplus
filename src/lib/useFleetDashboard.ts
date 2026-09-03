@@ -21,6 +21,7 @@ import {
   type FleetVehicleRow,
 } from "./fleet";
 import { defaultFleetUserIds, parseUserIdsSearch, writeFleetSelection } from "./lastUsed";
+import { writeLocationSearch } from "./routing";
 import { computePeriodMetrics, sumMetrics } from "./metrics";
 import { addDays, todayKeyInOffset } from "./time";
 import type { Group, LoadProgress, Period, Trip, User } from "./types";
@@ -203,15 +204,16 @@ export function useFleetDashboard() {
   }, [groupId, userIds]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (userIds.length) params.set("userIds", userIds.join(","));
-    else params.delete("userIds");
-    if (userIds[0]) params.set("userId", userIds[0]);
-    if (groupId) params.set("groupId", groupId);
-    const next = `${window.location.pathname}?${params.toString()}`;
-    const current = `${window.location.pathname}${window.location.search}`;
-    if (next !== current) window.history.replaceState(null, "", next);
-  }, [groupId, userIds]);
+    writeLocationSearch({
+      userIds: userIds.length ? userIds.join(",") : null,
+      userId: userIds[0] || null,
+      groupId: groupId || null,
+      from: dateFrom || null,
+      to: dateTo || null,
+      tz: timezone || null,
+      period: period || null,
+    });
+  }, [groupId, userIds, dateFrom, dateTo, timezone, period]);
 
   async function handleLoad() {
     const ids = userIds

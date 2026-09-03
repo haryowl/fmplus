@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchGroups, fetchUsersForGroup, groupOptionLabel } from "../lib/api";
 import { TIMEZONES } from "../lib/config";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
+import { writeLocationSearch } from "../lib/routing";
 import type { Group, User } from "../lib/types";
 import { BrandMark } from "../components/BrandMark";
 import { ExportPdfButton } from "../components/ExportPdfButton";
@@ -19,6 +20,13 @@ export default function LastStatus() {
   const [hostLock, setHostLock] = useState(query.lock);
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
+
+  useEffect(() => {
+    writeLocationSearch({
+      groupId: groupId || null,
+      tz: timezone || null,
+    });
+  }, [groupId, timezone]);
 
   useEffect(() => {
     const previous = document.title;

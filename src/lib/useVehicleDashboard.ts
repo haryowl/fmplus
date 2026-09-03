@@ -17,6 +17,7 @@ import { addDays, todayKeyInOffset } from "./time";
 import type { Group, LoadProgress, Period, Trip, User } from "./types";
 import { EMBED_READY, embedOriginAllowlist, parseHostMessage, type EmbedConfig } from "./embed";
 import { writeLastVehicle } from "./lastUsed";
+import { writeLocationSearch } from "./routing";
 import { useEmbedTenant } from "./useEmbedTenant";
 
 export function useVehicleDashboard() {
@@ -63,6 +64,17 @@ export function useVehicleDashboard() {
   useEffect(() => {
     if (groupId && userId) writeLastVehicle(groupId, userId);
   }, [groupId, userId]);
+
+  useEffect(() => {
+    writeLocationSearch({
+      groupId: groupId || null,
+      userId: userId || null,
+      from: dateFrom || null,
+      to: dateTo || null,
+      tz: timezone || null,
+      period: period || null,
+    });
+  }, [groupId, userId, dateFrom, dateTo, timezone, period]);
 
   const rows = useMemo(() => {
     if (!trips) return [];

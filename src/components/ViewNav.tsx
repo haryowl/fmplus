@@ -3,6 +3,7 @@ import {
   fleetCompactHref,
   fleetHref,
   fullHref,
+  navigateView,
   statusHref,
   type AppView,
 } from "../lib/routing";
@@ -29,7 +30,16 @@ export function ViewNav({ current }: Props) {
             {link.label}
           </span>
         ) : (
-          <a key={link.view} className="btn-ghost" href={link.href(search)}>
+          <a
+            key={link.view}
+            className="btn-ghost"
+            href={link.href(search)}
+            onClick={(event) => {
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              navigateView(link.href(search));
+            }}
+          >
             {link.label}
           </a>
         ),

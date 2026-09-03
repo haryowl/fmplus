@@ -45,6 +45,13 @@ describe("parseEmbedSearch", () => {
     expect(parseEmbedSearch("?k=short").tenantKey).toBe("");
     expect(parseEmbedSearch("?k=has space!!").tenantKey).toBe("");
   });
+
+  it("does not lock pickers when ids are last-used tab context, not an iframe embed", () => {
+    const cfg = parseEmbedSearch("?groupId=12&userId=99&from=2026-08-01&tz=+08:00");
+    expect(cfg.groupId).toBe("12");
+    expect(cfg.userId).toBe("99");
+    expect(cfg.lock).toEqual({ group: false, user: false, from: false, to: false, tz: false });
+  });
 });
 
 describe("parseHostMessage", () => {

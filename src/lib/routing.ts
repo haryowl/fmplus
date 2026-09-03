@@ -39,3 +39,26 @@ export function fleetCompactHref(search: string): string {
 export function statusHref(search: string): string {
   return withSearch("/status", search);
 }
+
+export const VIEW_CHANGE = "fms-embed:view";
+
+/** Same-document tab switch so GPS day cache survives. */
+export function navigateView(href: string) {
+  const url = new URL(href, window.location.href);
+  const next = `${url.pathname}${url.search}`;
+  const current = `${window.location.pathname}${window.location.search}`;
+  if (next === current) return;
+  window.history.pushState(null, "", next);
+  window.dispatchEvent(new Event(VIEW_CHANGE));
+}
+
+export function writeLocationSearch(patch: Record<string, string | null | undefined>) {
+  const params = new URLSearchParams(window.location.search);
+  for (const [key, value] of Object.entries(patch)) {
+    if (value) params.set(key, value);
+    else params.delete(key);
+  }
+  const next = `${window.location.pathname}?${params.toString()}`;
+  const current = `${window.location.pathname}${window.location.search}`;
+  if (next !== current) window.history.replaceState(null, "", next);
+}

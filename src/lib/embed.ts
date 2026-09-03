@@ -120,13 +120,27 @@ export function parseEmbedSearch(search: string): EmbedConfig {
     to,
     tz: tzParam(params.get("tz")),
     period: periodParam(params.get("period")),
-    lock: {
-      group: Boolean(groupId),
-      user: Boolean(userId),
-      from: Boolean(from),
-      to: Boolean(to),
+    lock: lockFromHostedSearch(compactFlag(params.get("embed")) || Boolean(tenantKey), {
+      groupId,
+      userId,
+      from,
+      to,
       tz: params.has("tz"),
-    },
+    }),
+  };
+}
+
+/** Iframe/host picks are locked. Tab navigation writes the same ids as last-used, not as a lock. */
+function lockFromHostedSearch(
+  hosted: boolean,
+  present: { groupId: string; userId: string; from: string; to: string; tz: boolean },
+) {
+  return {
+    group: hosted && Boolean(present.groupId),
+    user: hosted && Boolean(present.userId),
+    from: hosted && Boolean(present.from),
+    to: hosted && Boolean(present.to),
+    tz: hosted && present.tz,
   };
 }
 
