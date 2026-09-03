@@ -7,9 +7,10 @@ import { slimAsync } from "./slim-pool.mjs";
 import { tenantAllowsUser, tenantFromRequest } from "./tenants.mjs";
 
 const MAX_DAYS = 320;
-/** One POST can take a full 8-vehicle month; the Armada pool is shared. */
-const SERVER_CONCURRENCY = 32;
-const ATTEMPTS = 3;
+/** High enough to overlap Armada RTT, low enough to limit 429s. Failed days get a slower second pass. */
+const SERVER_CONCURRENCY = 12;
+const RETRY_CONCURRENCY = 4;
+const ATTEMPTS = 6;
 const TIMEOUT_MS = 25_000;
 
 function sleep(ms) {
@@ -60,7 +61,7 @@ async function fetchUserDay(userId, date, auth, appId, signal) {
       }
       if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
         lastError = `Armada ${res.status}`;
-        await sleep(Math.min(400 * 2 ** attempt, 8_000));
+        await sleep(Math.min(800 * 2 ** attempt, 12_000));
         continue;
       }
       if (!res.ok) {
@@ -72,7 +73,7 @@ async function fetchUserDay(userId, date, auth, appId, signal) {
       if ((name === "AbortError" || name === "TimeoutError") && signal?.aborted) throw err;
       lastError = err instanceof Error ? err.message : "network error";
       if (attempt < ATTEMPTS - 1 && !String(lastError).startsWith("Armada ")) {
-        await sleep(Math.min(400 * 2 ** attempt, 8_000));
+        await sleep(Math.min(800 * 2 ** attempt, 12_000));
         continue;
       }
       if (String(lastError).startsWith("Armada ") && !/429|502|503|504/.test(lastError)) {
@@ -212,22 +213,38 @@ export async function handleUserDayTracksRequest(req, res) {
 
     try {
       const slimJobs = [];
+      const retry = [];
+      const queueSlim = (day, raw) => {
+        slimJobs.push(
+          slimAsync(raw).then(
+            (text) => writeDay(day.key, text, false),
+            () => writeDay(day.key, "[]", false),
+          ),
+        );
+      };
       await mapPool(days, SERVER_CONCURRENCY, async (day) => {
         try {
-          const raw = await fetchUserDay(day.userId, day.date, tenant.token, tenant.appId, ac.signal);
-          slimJobs.push(
-            slimAsync(raw).then(
-              (text) => writeDay(day.key, text, false),
-              () => writeDay(day.key, "[]", true),
-            ),
-          );
+          queueSlim(day, await fetchUserDay(day.userId, day.date, tenant.token, tenant.appId, ac.signal));
         } catch (err) {
           if (err?.name === "AbortError" || err?.name === "TimeoutError") {
             if (ac.signal.aborted) throw err;
           }
-          writeDay(day.key, "[]", true);
+          retry.push(day);
         }
       });
+      if (retry.length) {
+        console.log(`[user-day-tracks] retry ${retry.length} days concurrency=${RETRY_CONCURRENCY}`);
+        await mapPool(retry, RETRY_CONCURRENCY, async (day) => {
+          try {
+            queueSlim(day, await fetchUserDay(day.userId, day.date, tenant.token, tenant.appId, ac.signal));
+          } catch (err) {
+            if (err?.name === "AbortError" || err?.name === "TimeoutError") {
+              if (ac.signal.aborted) throw err;
+            }
+            writeDay(day.key, "[]", true);
+          }
+        });
+      }
       await Promise.all(slimJobs);
       flushWrites();
       await writeChain;

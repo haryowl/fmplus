@@ -1,5 +1,5 @@
 import { API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, DAY_PROGRESS_MS, TRACK_BATCH_BROWSER, TRACK_BATCH_SIZE, TRACK_FETCH_CONCURRENCY, USER_DAY_BATCH_SIZE } from "./config";
-import { groupRowsIntoTrips, interleaveUserDays, normalizeTrackList, peekUserDayNdjson, type DayTrackRow } from "./dayTracks";
+import { groupRowsIntoTrips, interleaveUserDays, normalizeTrackList, peekUserDayNdjson, batchDaysStillMissing, type DayTrackRow } from "./dayTracks";
 import { normalizeUserStatusList, STATUS_PAGE_SIZE, type LastStatusRow } from "./lastStatus";
 import { chunkArray, mapPool } from "./pool";
 import { apiBase, tenantHeaders } from "./tenant";
@@ -481,6 +481,7 @@ async function fetchUserDayBatch(
   };
 
   const parseStashed = async (lines: string[]) => {
+    if (lines.length) onParseProgress?.(0, lines.length);
     for (let i = 0; i < lines.length; i += 1) {
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       parseLine(lines[i], false);
@@ -628,17 +629,13 @@ async function loadTripsByUserDays(
           (key, isFailed) => noteReceived(key, isFailed),
           () => options.onProgress?.({ phase: "charts", loaded, total: jobs.length, skipped }),
         );
-        const failedSet = new Set(failed);
-        const missing: UserDayJob[] = [];
         for (const job of chunk) {
-          if (failedSet.has(job.key) || !byKey.has(job.key)) {
-            missing.push(job);
-            continue;
-          }
-          const rows = byKey.get(job.key) ?? [];
+          const rows = byKey.get(job.key);
+          if (!rows) continue;
           rememberDayRows(job.key, rows);
           rowsByUser.get(job.userId)?.push(...rows);
         }
+        const missing = batchDaysStillMissing(chunk, [...byKey.keys(), ...failed]);
         if (missing.length) await loadDirect(missing);
         report(true);
       } catch (err) {

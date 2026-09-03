@@ -221,7 +221,7 @@ export function useVehicleDashboard() {
       setTrips(result.trips);
       if (result.skipped > 0) {
         setLoadWarning(
-          `${result.skipped} Armada request${result.skipped === 1 ? "" : "s"} skipped after rate limits. Reload to fill gaps.`,
+          `${result.skipped} vehicle-day${result.skipped === 1 ? "" : "s"} had no Armada data after retries. Reload to fill gaps.`,
         );
       }
       if (result.trips.length === 0) {

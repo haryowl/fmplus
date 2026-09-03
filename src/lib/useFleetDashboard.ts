@@ -238,7 +238,7 @@ export function useFleetDashboard() {
       setByUserId(result.byUserId);
       if (result.skipped > 0) {
         setLoadWarning(
-          `${result.skipped} Armada request${result.skipped === 1 ? "" : "s"} skipped after rate limits. Reload to fill gaps.`,
+          `${result.skipped} vehicle-day${result.skipped === 1 ? "" : "s"} had no Armada data after retries. Charts use the days that arrived. Reload to fill gaps.`,
         );
       }
       const anyTrips = [...result.byUserId.values()].some((trips) => trips.length > 0);

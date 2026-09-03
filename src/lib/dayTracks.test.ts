@@ -5,6 +5,7 @@ import {
   interleaveUserDays,
   normalizeTrackPoint,
   peekUserDayNdjson,
+  batchDaysStillMissing,
 } from "./dayTracks";
 import { eachDateInclusive } from "./time";
 
@@ -92,5 +93,12 @@ describe("peekUserDayNdjson", () => {
       key: "9|2026-08-01",
       failed: true,
     });
+  });
+});
+
+describe("batchDaysStillMissing", () => {
+  it("does not retry days the server already answered", () => {
+    const chunk = [{ key: "a" }, { key: "b" }, { key: "c" }];
+    expect(batchDaysStillMissing(chunk, ["a", "c"])).toEqual([{ key: "b" }]);
   });
 });

@@ -151,3 +151,12 @@ export function describeLoadProgress(
   const fleet = fleetVehicleCount && fleetVehicleCount > 1 ? ` across ${fleetVehicleCount} vehicles` : "";
   return `Loading tracks ${progress.loaded} of ${progress.total}${fleet}${skipped}`;
 }
+
+/** Keys the batch already answered (data or explicit failure) must not be retried in the browser. */
+export function batchDaysStillMissing<T extends { key: string }>(
+  chunk: T[],
+  receivedKeys: Iterable<string>,
+): T[] {
+  const seen = new Set(receivedKeys);
+  return chunk.filter((job) => !seen.has(job.key));
+}
