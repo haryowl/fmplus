@@ -19,6 +19,7 @@ type Props = {
   timezone: string;
   userIds?: number[];
   dense?: boolean;
+  fill?: boolean;
 };
 
 function vehicleHref(userId: number): string {
@@ -29,7 +30,7 @@ function vehicleHref(userId: number): string {
   return fullHref(q ? `?${q}` : "");
 }
 
-export function LastStatusPanel({ groupId, timezone, userIds, dense }: Props) {
+export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Props) {
   const [rows, setRows] = useState<LastStatusRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -94,7 +95,9 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense }: Props) {
   }
 
   return (
-    <section className={dense ? "panel last-status-panel dense" : "panel last-status-panel"}>
+    <section
+      className={`panel last-status-panel${dense ? " dense" : ""}${fill ? " fill" : ""}`}
+    >
       <div className="panel-head">
         <div>
           <h2>Last status</h2>

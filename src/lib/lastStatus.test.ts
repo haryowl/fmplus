@@ -5,7 +5,7 @@ import {
   normalizeUserStatus,
   normalizeUserStatusList,
   sortStatusRows,
-  statusCsv,
+  statusXlsx,
 } from "./lastStatus";
 
 describe("normalizeUserStatus", () => {
@@ -75,17 +75,21 @@ describe("filter and sort", () => {
   });
 });
 
-describe("excel csv", () => {
-  it("writes a BOM so Excel opens UTF-8 names", () => {
+describe("excel xlsx", () => {
+  it("writes a ZIP workbook Excel can open", () => {
     const row = normalizeUserStatus({
       id: 9,
       name: "Truk, \"A\"",
       uTC: "2026-09-02T00:00:00Z",
     })!;
-    const csv = statusCsv([row], "+08:00", Date.parse("2026-09-02T01:00:00Z"));
-    expect(csv.startsWith("\uFEFF")).toBe(true);
-    expect(csv).toContain("\"Truk, \"\"A\"\"\"");
-    expect(csv).toContain("9");
+    const bytes = statusXlsx([row], "+08:00", Date.parse("2026-09-02T01:00:00Z"));
+    expect(bytes[0]).toBe(0x50);
+    expect(bytes[1]).toBe(0x4b);
+    const text = new TextDecoder().decode(bytes);
+    expect(text).toContain("Last status");
+    expect(text).toContain("xl/worksheets/sheet1.xml");
+    expect(text).toContain("Truk,");
+    expect(text).toContain("<v>9</v>");
   });
 });
 

@@ -1401,6 +1401,21 @@ html.onesheet-root body {
   max-height: 150px;
 }
 
+.app.status-page .shell {
+  flex: 1;
+  min-height: 0;
+}
+
+.app.status-page .last-status-panel.fill {
+  flex: 1;
+  min-height: 0;
+}
+
+.app.status-page .last-status-wrap {
+  max-height: none;
+  flex: 1;
+}
+
 .rank-name {
   display: inline-flex;
   align-items: center;

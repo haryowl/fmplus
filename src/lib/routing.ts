@@ -1,4 +1,4 @@
-export type AppView = "full" | "compact" | "fleet" | "fleetCompact";
+export type AppView = "full" | "compact" | "fleet" | "fleetCompact" | "status";
 
 export function viewFromPath(pathname: string): AppView {
   const parts = (pathname.replace(/\/+$/, "") || "/").split("/").filter(Boolean);
@@ -7,6 +7,7 @@ export function viewFromPath(pathname: string): AppView {
   if (leaf === "fleet" && (next === "compact" || next === "compact.html")) return "fleetCompact";
   if (leaf === "fleet" || leaf === "fleet.html") return "fleet";
   if (leaf === "compact" || leaf === "compact.html") return "compact";
+  if (leaf === "status" || leaf === "status.html") return "status";
   return "full";
 }
 
@@ -33,4 +34,8 @@ export function fleetHref(search: string): string {
 
 export function fleetCompactHref(search: string): string {
   return withSearch("/fleet/compact", search);
+}
+
+export function statusHref(search: string): string {
+  return withSearch("/status", search);
 }
