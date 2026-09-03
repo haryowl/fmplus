@@ -224,6 +224,7 @@ export function useFleetDashboard() {
     setLoading(true);
     setLoadError("");
     setLoadWarning("");
+    setByUserId(new Map());
     setProgress({ phase: "trips", loaded: 0, total: 1 });
     try {
       const result = await loadTripsForUsers({
@@ -233,6 +234,9 @@ export function useFleetDashboard() {
         timezone,
         signal: ac.signal,
         onProgress: setProgress,
+        onPartial: (next) => {
+          if (!ac.signal.aborted) setByUserId(new Map(next));
+        },
       });
       setByUserId(result.byUserId);
       if (result.skipped > 0) {

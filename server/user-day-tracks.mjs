@@ -5,7 +5,7 @@
 import { tenantAllowsUser, tenantFromRequest } from "./tenants.mjs";
 
 const MAX_DAYS = 40;
-const SERVER_CONCURRENCY = 12;
+const SERVER_CONCURRENCY = 16;
 const ATTEMPTS = 6;
 const TIMEOUT_MS = 120_000;
 
@@ -59,7 +59,7 @@ async function fetchUserDay(userId, date, auth, appId, signal) {
         signal: combined,
       });
       if (res.status === 404) {
-        throw new Error("Armada 404");
+        return [];
       }
       if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
         lastError = `Armada ${res.status}`;

@@ -174,7 +174,7 @@ let dayEndpoint: "unknown" | "yes" | "no" = "unknown";
 const trackPointCache = new Map<number, TrackPoint[]>();
 const TRACK_CACHE_MAX = 800;
 const dayRowCache = new Map<string, DayTrackRow[]>();
-const DAY_CACHE_MAX = 400;
+const DAY_CACHE_MAX = 1200;
 
 function dayCacheKey(userId: number, date: string): string {
   return `${userId}|${date}`;
@@ -440,6 +440,7 @@ async function loadTripsByUserDays(
     dateTo: string;
     signal?: AbortSignal;
     onProgress?: (progress: LoadProgress) => void;
+    onPartial?: (byUserId: Map<number, Trip[]>) => void;
   },
   userIds: number[],
 ): Promise<MultiTripLoadResult> {
@@ -463,6 +464,14 @@ async function loadTripsByUserDays(
   const report = () => {
     options.onProgress?.({ phase: "days", loaded, total: jobs.length, skipped });
   };
+  const flushPartial = () => {
+    if (!options.onPartial) return;
+    const next = new Map<number, Trip[]>();
+    for (const userId of userIds) {
+      next.set(userId, groupRowsIntoTrips(userId, rowsByUser.get(userId) ?? []));
+    }
+    options.onPartial(next);
+  };
   report();
 
   const pending: UserDayJob[] = [];
@@ -475,7 +484,10 @@ async function loadTripsByUserDays(
       pending.push(job);
     }
   }
-  if (pending.length < jobs.length) report();
+  if (pending.length < jobs.length) {
+    report();
+    flushPartial();
+  }
 
   const applyRows = (job: UserDayJob, rows: DayTrackRow[], ok: boolean) => {
     loaded += 1;
@@ -515,6 +527,7 @@ async function loadTripsByUserDays(
         }
         if (missing.length) await loadDirect(missing);
         report();
+        flushPartial();
       } catch (err) {
         if ((err as Error).name === "AbortError") throw err;
         if ((err as { dayUnavailable?: boolean }).dayUnavailable) {
@@ -522,10 +535,12 @@ async function loadTripsByUserDays(
         }
         await loadDirect(chunk);
         report();
+        flushPartial();
       }
     });
   } else if (pending.length > 0) {
     await loadDirect(pending);
+    flushPartial();
   }
 
   if (loaded === skipped && skipped === jobs.length) {
@@ -567,6 +582,7 @@ export async function loadTripsForUsers(options: {
   timezone: string;
   signal?: AbortSignal;
   onProgress?: (progress: LoadProgress) => void;
+  onPartial?: (byUserId: Map<number, Trip[]>) => void;
 }): Promise<MultiTripLoadResult> {
   const userIds = [...new Set(options.userIds.map(Number).filter((id) => Number.isFinite(id) && id > 0))];
   const byUserId = new Map<number, Trip[]>();

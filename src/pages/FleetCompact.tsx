@@ -196,10 +196,17 @@ export default function FleetCompact() {
         {live.length === 0 ? (
           <div className="empty onesheet-empty">
             <div>
-              <h3>{d.byUserId ? "No points in this range" : "Select vehicles to rank"}</h3>
+              <h3>
+                {d.loading
+                  ? "Loading fleet…"
+                  : d.byUserId
+                    ? "No points in this range"
+                    : "Select vehicles to rank"}
+              </h3>
               <p>
-                Last used vehicle is pre-selected. Add others from the group, then load. Switch to Fleet
-                for the full comparison charts.
+                {d.loading
+                  ? "The ranking table fills in as vehicle-days arrive."
+                  : "Last used vehicle is pre-selected. Add others from the group, then load. Switch to Fleet for the full comparison charts."}
               </p>
             </div>
           </div>

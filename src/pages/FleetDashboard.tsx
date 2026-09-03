@@ -186,10 +186,17 @@ export default function FleetDashboard() {
           <section className="panel">
             <div className="empty">
               <div>
-                <h3>{d.byUserId ? "No points in this range" : "Select vehicles to compare"}</h3>
+                <h3>
+                  {d.loading
+                    ? "Loading fleet…"
+                    : d.byUserId
+                      ? "No points in this range"
+                      : "Select vehicles to compare"}
+                </h3>
                 <p>
-                  The last vehicle you opened on Full or Compact is selected by default. Tick more
-                  vehicles from the group, then load. Track lists are fetched once and split by vehicle.
+                  {d.loading
+                    ? "Charts fill in as each batch of vehicle-days finishes. You do not have to wait for the last day."
+                    : "The last vehicle you opened on Full or Compact is selected by default. Tick more vehicles from the group, then load."}
                 </p>
               </div>
             </div>
