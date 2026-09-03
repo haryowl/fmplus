@@ -38,6 +38,10 @@ export function armadaFetch(url, options = {}) {
           resolve({
             status,
             ok: status >= 200 && status < 300,
+            body,
+            async text() {
+              return body;
+            },
             async json() {
               return JSON.parse(body || "null");
             },

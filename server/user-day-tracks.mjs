@@ -15,10 +15,19 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function unwrap(raw) {
-  if (Array.isArray(raw)) return raw;
-  if (raw && Array.isArray(raw.items)) return raw.items;
-  return [];
+/** Pass Armada's JSON through. Parsing+re-stringifying a full GPS day blocks the event loop. */
+export function pointsJson(body) {
+  const text = String(body || "").trim();
+  if (!text) return "[]";
+  if (text[0] === "[") return text;
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return text;
+    if (Array.isArray(parsed.items)) return JSON.stringify(parsed.items);
+  } catch {
+    return "[]";
+  }
+  return "[]";
 }
 
 async function mapPool(items, concurrency, worker) {
@@ -61,7 +70,7 @@ async function fetchUserDay(userId, date, auth, appId, signal) {
         signal: combined,
       });
       if (res.status === 404) {
-        return [];
+        return "[]";
       }
       if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
         lastError = `Armada ${res.status}`;
@@ -71,7 +80,7 @@ async function fetchUserDay(userId, date, auth, appId, signal) {
       if (!res.ok) {
         throw new Error(`Armada ${res.status}`);
       }
-      return unwrap(await res.json());
+      return pointsJson(await res.text());
     } catch (err) {
       const name = err?.name || "";
       if ((name === "AbortError" || name === "TimeoutError") && signal?.aborted) throw err;
@@ -177,27 +186,35 @@ export async function handleUserDayTracksRequest(req, res) {
     res.setHeader("Cache-Control", "no-store");
 
     let writeChain = Promise.resolve();
-    const writeLine = (obj) => {
-      writeChain = writeChain.then(() => {
-        if (res.writableEnded) return;
-        const ok = res.write(`${JSON.stringify(obj)}\n`);
-        if (!ok) {
-          return new Promise((resolve) => res.once("drain", resolve));
-        }
-      });
-      return writeChain;
+    const writeDay = (key, pointsJsonText, failed) => {
+      writeChain = writeChain.then(
+        () =>
+          new Promise((resolve) => {
+            setImmediate(() => {
+              if (res.writableEnded) {
+                resolve();
+                return;
+              }
+              const line = failed
+                ? `{"key":${JSON.stringify(key)},"failed":true}\n`
+                : `{"key":${JSON.stringify(key)},"points":${pointsJsonText}}\n`;
+              if (res.write(line)) resolve();
+              else res.once("drain", resolve);
+            });
+          }),
+      );
     };
 
     try {
       await mapPool(days, SERVER_CONCURRENCY, async (day) => {
         try {
           const points = await fetchUserDay(day.userId, day.date, tenant.token, tenant.appId, ac.signal);
-          await writeLine({ key: day.key, points });
+          writeDay(day.key, points, false);
         } catch (err) {
           if (err?.name === "AbortError" || err?.name === "TimeoutError") {
             if (ac.signal.aborted) throw err;
           }
-          await writeLine({ key: day.key, failed: true });
+          writeDay(day.key, "[]", true);
         }
       });
       await writeChain;
