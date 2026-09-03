@@ -3,7 +3,7 @@
  * Same Filtered=true points as /trackinfos/{id}/tracks, one HTTP call per vehicle-day.
  */
 import { armadaFetch } from "./armada-fetch.mjs";
-import { isRetryableArmadaStatus, retryWaitMs } from "./armada-retry.mjs";
+import { isRetryableArmadaStatus, planArmadaRetry } from "./armada-retry.mjs";
 import { slimAsync } from "./slim-pool.mjs";
 import { tenantAllowsUser, tenantFromRequest } from "./tenants.mjs";
 
@@ -45,7 +45,7 @@ async function fetchUserDayOnce(userId, date, auth, appId, signal) {
     throw Object.assign(new Error(`Armada ${res.status}`), { fatal: true });
   }
   if (isRetryableArmadaStatus(res.status)) {
-    return { retry: true, retryAfter: res.retryAfter };
+    return { retry: true, retryAfter: res.retryAfter, status: res.status };
   }
   if (!res.ok) {
     throw new Error(`Armada ${res.status}`);
@@ -190,6 +190,7 @@ export async function handleUserDayTracksRequest(req, res) {
         );
       };
 
+      // Failed days go to the tail. Only 429 pauses every worker.
       const queue = days.map((day) => ({ ...day, attempts: 0 }));
       let remaining = days.length;
       let cap = START_CAP;
@@ -237,15 +238,17 @@ export async function handleUserDayTracksRequest(req, res) {
               if (err?.fatal || ac.signal.aborted) throw err;
               const name = err?.name || "";
               if (name === "AbortError" && ac.signal.aborted) throw err;
-              outcome = { retry: true, retryAfter: null };
+              outcome = { retry: true, retryAfter: null, status: 0 };
             }
             if (outcome.retry) {
-              cap = MIN_CAP;
-              successStreak = 0;
-              cooldownUntil = Math.max(
-                cooldownUntil,
-                Date.now() + retryWaitMs(outcome.retryAfter, day.attempts),
-              );
+              const plan = planArmadaRetry(outcome.status, outcome.retryAfter, day.attempts);
+              if (plan.dropCap) {
+                cap = MIN_CAP;
+                successStreak = 0;
+              }
+              if (plan.cooldownMs > 0) {
+                cooldownUntil = Math.max(cooldownUntil, Date.now() + plan.cooldownMs);
+              }
               if (day.attempts < PER_DAY_ATTEMPTS) queue.push(day);
               else {
                 remaining -= 1;
