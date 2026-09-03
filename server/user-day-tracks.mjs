@@ -3,86 +3,54 @@
  * Same Filtered=true points as /trackinfos/{id}/tracks, one HTTP call per vehicle-day.
  */
 import { armadaFetch } from "./armada-fetch.mjs";
+import { isRetryableArmadaStatus, retryWaitMs } from "./armada-retry.mjs";
 import { slimAsync } from "./slim-pool.mjs";
 import { tenantAllowsUser, tenantFromRequest } from "./tenants.mjs";
 
 const MAX_DAYS = 320;
-/** High enough to overlap Armada RTT, low enough to limit 429s. Failed days get a slower second pass. */
-const SERVER_CONCURRENCY = 12;
-const RETRY_CONCURRENCY = 4;
-const ATTEMPTS = 6;
+const START_CAP = 6;
+const MIN_CAP = 2;
+const MAX_CAP = 8;
+const PER_DAY_ATTEMPTS = 40;
 const TIMEOUT_MS = 25_000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function mapPool(items, concurrency, worker) {
-  if (items.length === 0) return [];
-  const limit = Math.max(1, Math.min(concurrency, items.length));
-  const results = new Array(items.length);
-  let next = 0;
-  async function run() {
-    for (;;) {
-      const index = next;
-      next += 1;
-      if (index >= items.length) return;
-      results[index] = await worker(items[index], index);
-    }
-  }
-  await Promise.all(Array.from({ length: limit }, () => run()));
-  return results;
-}
-
 function dayKey(userId, date) {
   return `${userId}|${date}`;
 }
 
-async function fetchUserDay(userId, date, auth, appId, signal) {
-  const url = `https://armada.id/lt/api/v.1/applications/${appId}/users/${userId}/tracks?Date=${encodeURIComponent(date)}&Filtered=true`;
-  let lastError = "request failed";
+function abortError() {
+  return Object.assign(new Error("Aborted"), { name: "AbortError" });
+}
 
-  for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
-    try {
-      const timed = AbortSignal.timeout(TIMEOUT_MS);
-      const combined =
-        signal && typeof AbortSignal.any === "function" ? AbortSignal.any([signal, timed]) : timed;
-      const res = await armadaFetch(url, {
-        method: "GET",
-        headers: {
-          authorization: auth,
-          accept: "application/json",
-        },
-        redirect: "follow",
-        signal: combined,
-      });
-      if (res.status === 404) {
-        return "";
-      }
-      if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
-        lastError = `Armada ${res.status}`;
-        await sleep(Math.min(800 * 2 ** attempt, 12_000));
-        continue;
-      }
-      if (!res.ok) {
-        throw new Error(`Armada ${res.status}`);
-      }
-      return res.buffer || (await res.text());
-    } catch (err) {
-      const name = err?.name || "";
-      if ((name === "AbortError" || name === "TimeoutError") && signal?.aborted) throw err;
-      lastError = err instanceof Error ? err.message : "network error";
-      if (attempt < ATTEMPTS - 1 && !String(lastError).startsWith("Armada ")) {
-        await sleep(Math.min(800 * 2 ** attempt, 12_000));
-        continue;
-      }
-      if (String(lastError).startsWith("Armada ") && !/429|502|503|504/.test(lastError)) {
-        throw err;
-      }
-      if (attempt >= ATTEMPTS - 1) throw new Error(lastError);
-    }
+async function fetchUserDayOnce(userId, date, auth, appId, signal) {
+  const url = `https://armada.id/lt/api/v.1/applications/${appId}/users/${userId}/tracks?Date=${encodeURIComponent(date)}&Filtered=true`;
+  const timed = AbortSignal.timeout(TIMEOUT_MS);
+  const combined =
+    signal && typeof AbortSignal.any === "function" ? AbortSignal.any([signal, timed]) : timed;
+  const res = await armadaFetch(url, {
+    method: "GET",
+    headers: {
+      authorization: auth,
+      accept: "application/json",
+    },
+    redirect: "follow",
+    signal: combined,
+  });
+  if (res.status === 404) return { raw: "" };
+  if (res.status === 401 || res.status === 403) {
+    throw Object.assign(new Error(`Armada ${res.status}`), { fatal: true });
   }
-  throw new Error(lastError);
+  if (isRetryableArmadaStatus(res.status)) {
+    return { retry: true, retryAfter: res.retryAfter };
+  }
+  if (!res.ok) {
+    throw new Error(`Armada ${res.status}`);
+  }
+  return { raw: res.buffer || (await res.text()) };
 }
 
 function readJsonBody(req, maxBytes) {
@@ -175,7 +143,7 @@ export async function handleUserDayTracksRequest(req, res) {
     if (typeof res.flushHeaders === "function") res.flushHeaders();
 
     const started = Date.now();
-    console.log(`[user-day-tracks] start ${days.length} days concurrency=${SERVER_CONCURRENCY}`);
+    console.log(`[user-day-tracks] start ${days.length} days cap=${START_CAP}`);
 
     let writeChain = Promise.resolve();
     let pending = "";
@@ -213,7 +181,6 @@ export async function handleUserDayTracksRequest(req, res) {
 
     try {
       const slimJobs = [];
-      const retry = [];
       const queueSlim = (day, raw) => {
         slimJobs.push(
           slimAsync(raw).then(
@@ -222,29 +189,82 @@ export async function handleUserDayTracksRequest(req, res) {
           ),
         );
       };
-      await mapPool(days, SERVER_CONCURRENCY, async (day) => {
-        try {
-          queueSlim(day, await fetchUserDay(day.userId, day.date, tenant.token, tenant.appId, ac.signal));
-        } catch (err) {
-          if (err?.name === "AbortError" || err?.name === "TimeoutError") {
-            if (ac.signal.aborted) throw err;
-          }
-          retry.push(day);
+
+      const queue = days.map((day) => ({ ...day, attempts: 0 }));
+      let remaining = days.length;
+      let cap = START_CAP;
+      let active = 0;
+      let cooldownUntil = 0;
+      let successStreak = 0;
+
+      const waitCooldown = async () => {
+        for (;;) {
+          if (ac.signal.aborted) throw abortError();
+          const wait = cooldownUntil - Date.now();
+          if (wait <= 0) return;
+          await sleep(Math.min(wait, 200));
         }
-      });
-      if (retry.length) {
-        console.log(`[user-day-tracks] retry ${retry.length} days concurrency=${RETRY_CONCURRENCY}`);
-        await mapPool(retry, RETRY_CONCURRENCY, async (day) => {
-          try {
-            queueSlim(day, await fetchUserDay(day.userId, day.date, tenant.token, tenant.appId, ac.signal));
-          } catch (err) {
-            if (err?.name === "AbortError" || err?.name === "TimeoutError") {
-              if (ac.signal.aborted) throw err;
-            }
-            writeDay(day.key, "[]", true);
+      };
+
+      const acquire = async () => {
+        for (;;) {
+          if (ac.signal.aborted) throw abortError();
+          await waitCooldown();
+          if (active < cap) {
+            active += 1;
+            return;
           }
-        });
-      }
+          await sleep(40);
+        }
+      };
+
+      const worker = async () => {
+        for (;;) {
+          if (remaining === 0) return;
+          if (ac.signal.aborted) throw abortError();
+          const day = queue.shift();
+          if (!day) {
+            await sleep(40);
+            continue;
+          }
+          await acquire();
+          try {
+            day.attempts += 1;
+            let outcome;
+            try {
+              outcome = await fetchUserDayOnce(day.userId, day.date, tenant.token, tenant.appId, ac.signal);
+            } catch (err) {
+              if (err?.fatal || ac.signal.aborted) throw err;
+              const name = err?.name || "";
+              if (name === "AbortError" && ac.signal.aborted) throw err;
+              outcome = { retry: true, retryAfter: null };
+            }
+            if (outcome.retry) {
+              cap = MIN_CAP;
+              successStreak = 0;
+              cooldownUntil = Math.max(
+                cooldownUntil,
+                Date.now() + retryWaitMs(outcome.retryAfter, day.attempts),
+              );
+              if (day.attempts < PER_DAY_ATTEMPTS) queue.push(day);
+              else {
+                remaining -= 1;
+                writeDay(day.key, "[]", true);
+                console.log(`[user-day-tracks] gave up ${day.key} after ${day.attempts} attempts`);
+              }
+            } else {
+              remaining -= 1;
+              successStreak += 1;
+              if (successStreak >= 16 && cap < MAX_CAP) cap += 1;
+              queueSlim(day, outcome.raw);
+            }
+          } finally {
+            active -= 1;
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: MAX_CAP }, () => worker()));
       await Promise.all(slimJobs);
       flushWrites();
       await writeChain;

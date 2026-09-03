@@ -135,7 +135,7 @@ export function describeLoadProgress(
   progress: { phase: string; loaded: number; total: number; skipped?: number },
   fleetVehicleCount?: number,
 ): string {
-  const skipped = progress.skipped ? ` · ${progress.skipped} skipped` : "";
+  const skipped = progress.skipped ? ` · ${progress.skipped} missing` : "";
   if (progress.phase === "trips") {
     return `Finding trips · window ${Math.max(1, progress.loaded)} of ${progress.total}`;
   }

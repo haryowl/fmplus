@@ -39,6 +39,7 @@ export function armadaFetch(url, options = {}) {
             status,
             ok: status >= 200 && status < 300,
             buffer,
+            retryAfter: res.headers["retry-after"] || null,
             async text() {
               return buffer.toString("utf8");
             },
