@@ -1,0 +1,476 @@
+{
+  "fetchedAt": "2026-09-04T08:43:11.549Z",
+  "appId": 36,
+  "userId": 1859,
+  "results": [
+    {
+      "path": "/users/1859",
+      "status": 200,
+      "bytes": 1027,
+      "customHits": [],
+      "summary": {
+        "trackPoint": {
+          "position": {
+            "altitude": 61,
+            "longitude": 107.1308033,
+            "latitude": -6.2773266
+          },
+          "velocity": {
+            "groundSpeed": 0,
+            "heading": 284
+          },
+          "utc": "2026-09-04T08:08:38Z",
+          "valid": true
+        },
+        "calculatedSpeed": 0,
+        "deviceActivity": "2026-09-04T08:08:42Z",
+        "lastTransport": "tcp",
+        "username": "353201357461398",
+        "name": "B 1435 HOO",
+        "surname": "",
+        "description": "MHKAB1BY0RK092533",
+        "email": "",
+        "devices": "array(1)",
+        "userTemplateID": 232,
+        "originalApplicationID": 36,
+        "id": 1859
+      }
+    },
+    {
+      "path": "/users/1859?Select=customFields",
+      "status": 200,
+      "bytes": 1027,
+      "customHits": [],
+      "summary": {
+        "trackPoint": {
+          "position": {
+            "altitude": 61,
+            "longitude": 107.1308033,
+            "latitude": -6.2773266
+          },
+          "velocity": {
+            "groundSpeed": 0,
+            "heading": 284
+          },
+          "utc": "2026-09-04T08:08:38Z",
+          "valid": true
+        },
+        "calculatedSpeed": 0,
+        "deviceActivity": "2026-09-04T08:08:42Z",
+        "lastTransport": "tcp",
+        "username": "353201357461398",
+        "name": "B 1435 HOO",
+        "surname": "",
+        "description": "MHKAB1BY0RK092533",
+        "email": "",
+        "devices": "array(1)",
+        "userTemplateID": 232,
+        "originalApplicationID": 36,
+        "id": 1859
+      }
+    },
+    {
+      "path": "/users/1859?Select=*",
+      "status": 200,
+      "bytes": 1027,
+      "customHits": [],
+      "summary": {
+        "trackPoint": {
+          "position": {
+            "altitude": 61,
+            "longitude": 107.1308033,
+            "latitude": -6.2773266
+          },
+          "velocity": {
+            "groundSpeed": 0,
+            "heading": 284
+          },
+          "utc": "2026-09-04T08:08:38Z",
+          "valid": true
+        },
+        "calculatedSpeed": 0,
+        "deviceActivity": "2026-09-04T08:08:42Z",
+        "lastTransport": "tcp",
+        "username": "353201357461398",
+        "name": "B 1435 HOO",
+        "surname": "",
+        "description": "MHKAB1BY0RK092533",
+        "email": "",
+        "devices": "array(1)",
+        "userTemplateID": 232,
+        "originalApplicationID": 36,
+        "id": 1859
+      }
+    },
+    {
+      "path": "/users/1859/customfields",
+      "status": 200,
+      "bytes": 177,
+      "customHits": [],
+      "summary": [
+        {
+          "name": "Type",
+          "value": "New Avanza"
+        },
+        {
+          "name": "Chassis No.",
+          "value": "MHKAB1BY0RK092533"
+        }
+      ]
+    },
+    {
+      "path": "/users/1859/customFields",
+      "status": 200,
+      "bytes": 177,
+      "customHits": [],
+      "summary": [
+        {
+          "name": "Type",
+          "value": "New Avanza"
+        },
+        {
+          "name": "Chassis No.",
+          "value": "MHKAB1BY0RK092533"
+        }
+      ]
+    },
+    {
+      "path": "/users/1859/fields",
+      "status": 404,
+      "bytes": 430,
+      "customHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users/1859/variables",
+      "status": 404,
+      "bytes": 430,
+      "customHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/devices",
+      "status": 404,
+      "bytes": 430,
+      "customHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/devices/1859",
+      "status": 404,
+      "bytes": 430,
+      "customHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/customfields",
+      "status": 404,
+      "bytes": 430,
+      "customHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/customFields",
+      "status": 404,
+      "bytes": 430,
+      "customHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/CustomFields",
+      "status": 404,
+      "bytes": 430,
+      "customHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/variables",
+      "status": 200,
+      "bytes": 81738,
+      "customHits": [],
+      "summary": [
+        {
+          "name": "Battery Voltage",
+          "type": "number",
+          "description": "",
+          "unitName": "Volt"
+        },
+        {
+          "name": "SOS",
+          "type": "boolean",
+          "description": "",
+          "unitName": "boolean"
+        }
+      ]
+    },
+    {
+      "path": "/variabledefinitions",
+      "status": 404,
+      "bytes": 430,
+      "customHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/VariableDefinitions",
+      "status": 404,
+      "bytes": 430,
+      "customHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/fields",
+      "status": 404,
+      "bytes": 430,
+      "customHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users?Take=2",
+      "status": 200,
+      "bytes": 94061,
+      "customHits": [],
+      "summary": [
+        {
+          "trackPoint": {
+            "position": {
+              "altitude": 0,
+              "longitude": 0,
+              "latitude": 0
+            },
+            "velocity": {
+              "groundSpeed": 0,
+              "heading": 0
+            },
+            "utc": "1753-01-01T00:00:00Z",
+            "valid": false
+          },
+          "calculatedSpeed": 0,
+          "deviceActivity": "1753-01-01T00:00:00Z",
+          "username": "haryowx",
+          "name": "haryo",
+          "email": "gateway.norin@outlook.com",
+          "devices": "array(1)",
+          "userTemplateID": 0,
+          "originalApplicationID": 1,
+          "id": 7
+        },
+        {
+          "trackPoint": {
+            "position": {
+              "altitude": 131,
+              "longitude": 121.3072166,
+              "latitude": -3.85574
+            },
+            "velocity": {
+              "groundSpeed": 0,
+              "heading": 200
+            },
+            "utc": "2025-12-29T19:20:33Z",
+            "valid": true
+          },
+          "calculatedSpeed": 0,
+          "deviceActivity": "2026-06-04T14:02:45Z",
+          "username": "350317172620860",
+          "name": "B 9451 BBF",
+          "surname": "",
+          "description": "B 9451 BBF",
+          "email": "",
+          "devices": "array(1)",
+          "userTemplateID": 226,
+          "originalApplicationID": 36,
+          "id": 1816
+        }
+      ]
+    },
+    {
+      "path": "/users?Take=2&Select=customFields",
+      "status": 200,
+      "bytes": 94061,
+      "customHits": [],
+      "summary": [
+        {
+          "trackPoint": {
+            "position": {
+              "altitude": 0,
+              "longitude": 0,
+              "latitude": 0
+            },
+            "velocity": {
+              "groundSpeed": 0,
+              "heading": 0
+            },
+            "utc": "1753-01-01T00:00:00Z",
+            "valid": false
+          },
+          "calculatedSpeed": 0,
+          "deviceActivity": "1753-01-01T00:00:00Z",
+          "username": "haryowx",
+          "name": "haryo",
+          "email": "gateway.norin@outlook.com",
+          "devices": "array(1)",
+          "userTemplateID": 0,
+          "originalApplicationID": 1,
+          "id": 7
+        },
+        {
+          "trackPoint": {
+            "position": {
+              "altitude": 131,
+              "longitude": 121.3072166,
+              "latitude": -3.85574
+            },
+            "velocity": {
+              "groundSpeed": 0,
+              "heading": 200
+            },
+            "utc": "2025-12-29T19:20:33Z",
+            "valid": true
+          },
+          "calculatedSpeed": 0,
+          "deviceActivity": "2026-06-04T14:02:45Z",
+          "username": "350317172620860",
+          "name": "B 9451 BBF",
+          "surname": "",
+          "description": "B 9451 BBF",
+          "email": "",
+          "devices": "array(1)",
+          "userTemplateID": 226,
+          "originalApplicationID": 36,
+          "id": 1816
+        }
+      ]
+    },
+    {
+      "path": "/users?Take=2&Select=*",
+      "status": 200,
+      "bytes": 94061,
+      "customHits": [],
+      "summary": [
+        {
+          "trackPoint": {
+            "position": {
+              "altitude": 0,
+              "longitude": 0,
+              "latitude": 0
+            },
+            "velocity": {
+              "groundSpeed": 0,
+              "heading": 0
+            },
+            "utc": "1753-01-01T00:00:00Z",
+            "valid": false
+          },
+          "calculatedSpeed": 0,
+          "deviceActivity": "1753-01-01T00:00:00Z",
+          "username": "haryowx",
+          "name": "haryo",
+          "email": "gateway.norin@outlook.com",
+          "devices": "array(1)",
+          "userTemplateID": 0,
+          "originalApplicationID": 1,
+          "id": 7
+        },
+        {
+          "trackPoint": {
+            "position": {
+              "altitude": 131,
+              "longitude": 121.3072166,
+              "latitude": -3.85574
+            },
+            "velocity": {
+              "groundSpeed": 0,
+              "heading": 200
+            },
+            "utc": "2025-12-29T19:20:33Z",
+            "valid": true
+          },
+          "calculatedSpeed": 0,
+          "deviceActivity": "2026-06-04T14:02:45Z",
+          "username": "350317172620860",
+          "name": "B 9451 BBF",
+          "surname": "",
+          "description": "B 9451 BBF",
+          "email": "",
+          "devices": "array(1)",
+          "userTemplateID": 226,
+          "originalApplicationID": 36,
+          "id": 1816
+        }
+      ]
+    },
+    {
+      "path": "/users/1859/device",
+      "status": 404,
+      "bytes": 430,
+      "customHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users/1859/status",
+      "status": 200,
+      "bytes": 3486,
+      "customHits": [],
+      "summary": {
+        "position": {
+          "altitude": 61,
+          "longitude": 107.1308033,
+          "latitude": -6.2773266
+        },
+        "utc": "2026-09-04T08:08:38Z",
+        "deviceActivity": "2026-09-04T08:08:42Z",
+        "velocity": {
+          "groundSpeed": 0,
+          "heading": 284
+        },
+        "variables": "array(37)",
+        "username": "353201357461398",
+        "name": "B 1435 HOO",
+        "id": 1859
+      }
+    }
+  ]
+}

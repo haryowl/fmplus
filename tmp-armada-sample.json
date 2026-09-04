@@ -1,0 +1,423 @@
+{
+  "fetchedAt": "2026-09-04T08:35:42.754Z",
+  "appId": 36,
+  "date": "2026-08-15",
+  "note": "Auth token omitted. variables below are the full Armada names seen on these two vehicle-days.",
+  "vehicles": [
+    {
+      "userId": 1859,
+      "date": "2026-08-15",
+      "httpStatus": 200,
+      "pointCount": 1237,
+      "rawBytes": 1243863,
+      "topLevelKeys": [
+        [
+          "position",
+          1237
+        ],
+        [
+          "serverUtc",
+          1237
+        ],
+        [
+          "trackInfoId",
+          1237
+        ],
+        [
+          "utc",
+          1237
+        ],
+        [
+          "valid",
+          1237
+        ],
+        [
+          "variables",
+          1237
+        ],
+        [
+          "velocity",
+          1237
+        ]
+      ],
+      "positionKeys": [
+        [
+          "altitude",
+          1237
+        ],
+        [
+          "latitude",
+          1237
+        ],
+        [
+          "longitude",
+          1237
+        ]
+      ],
+      "variableNames": [
+        [
+          "avg_RPM",
+          1237
+        ],
+        [
+          "avg_speed",
+          1237
+        ],
+        [
+          "axisX",
+          1237
+        ],
+        [
+          "axisY",
+          1237
+        ],
+        [
+          "axisZ",
+          1237
+        ],
+        [
+          "batteryVoltage",
+          1237
+        ],
+        [
+          "caN_FuelLevel",
+          1237
+        ],
+        [
+          "caN300_EngineRPM",
+          1237
+        ],
+        [
+          "caN300_FuelConsumed",
+          1237
+        ],
+        [
+          "caN300_FuelLevelLiters",
+          1237
+        ],
+        [
+          "caN300_VehicleDistance",
+          1237
+        ],
+        [
+          "caN300_VehicleSpeed",
+          1237
+        ],
+        [
+          "daily_Fuel",
+          1237
+        ],
+        [
+          "distance_Today",
+          1237
+        ],
+        [
+          "engineRPM",
+          1237
+        ],
+        [
+          "eventID",
+          1237
+        ],
+        [
+          "externalVoltage",
+          1237
+        ],
+        [
+          "fuel level",
+          1237
+        ],
+        [
+          "harshAccelerationDigital",
+          1237
+        ],
+        [
+          "harshAccelerationValue",
+          1237
+        ],
+        [
+          "harshBrakingDigital",
+          1237
+        ],
+        [
+          "harshBrakingValue",
+          1237
+        ],
+        [
+          "harshCorneringDigital",
+          1237
+        ],
+        [
+          "harshCorneringValue",
+          1237
+        ],
+        [
+          "ignition",
+          1237
+        ],
+        [
+          "max_RPM",
+          1237
+        ],
+        [
+          "max_speed",
+          1237
+        ],
+        [
+          "movement",
+          1237
+        ],
+        [
+          "odometerAcc",
+          1237
+        ],
+        [
+          "satelliteCount",
+          1237
+        ],
+        [
+          "speed",
+          1237
+        ],
+        [
+          "totalOdometer",
+          1237
+        ]
+      ],
+      "sampleRawPoint": {
+        "position": {
+          "altitude": 41,
+          "longitude": 106.6376365,
+          "latitude": -6.2221083
+        },
+        "trackInfoId": 477250,
+        "utc": "2026-08-14T16:00:30Z",
+        "valid": true,
+        "velocity": {
+          "groundSpeed": 15.277799606323242,
+          "heading": 83
+        },
+        "variables": {
+          "caN300_EngineRPM": 2123,
+          "caN300_FuelLevelLiters": 10,
+          "externalVoltage": 14.233,
+          "totalOdometer": 56320003,
+          "caN300_VehicleDistance": 56323000,
+          "caN300_FuelConsumed": 3622.3,
+          "caN300_VehicleSpeed": 14.444444444444445,
+          "harshCorneringValue": 35,
+          "harshBrakingValue": 0,
+          "harshAccelerationValue": 0,
+          "movement": true,
+          "eventID": 253,
+          "batteryVoltage": 4.054,
+          "engineRPM": 2123,
+          "harshAccelerationDigital": false,
+          "satelliteCount": 15,
+          "ignition": true,
+          "speed": 15.277799606323242,
+          "odometerAcc": 56323000,
+          "harshBrakingDigital": false,
+          "harshCorneringDigital": true,
+          "caN_FuelLevel": 10,
+          "distance_Today": 25.377979,
+          "max_speed": 74,
+          "daily_Fuel": 2.70000000000027,
+          "max_RPM": 2894,
+          "avg_RPM": 1291,
+          "avg_speed": 21.1,
+          "axisX": 158,
+          "axisY": -160,
+          "axisZ": -30,
+          "fuel level": 10
+        },
+        "serverUtc": "2026-08-14T16:00:32.773Z"
+      }
+    },
+    {
+      "userId": 1860,
+      "date": "2026-08-15",
+      "httpStatus": 200,
+      "pointCount": 24,
+      "rawBytes": 14645,
+      "topLevelKeys": [
+        [
+          "position",
+          24
+        ],
+        [
+          "serverUtc",
+          24
+        ],
+        [
+          "trackInfoId",
+          24
+        ],
+        [
+          "utc",
+          24
+        ],
+        [
+          "valid",
+          24
+        ],
+        [
+          "variables",
+          24
+        ],
+        [
+          "velocity",
+          24
+        ]
+      ],
+      "positionKeys": [
+        [
+          "altitude",
+          24
+        ],
+        [
+          "latitude",
+          24
+        ],
+        [
+          "longitude",
+          24
+        ]
+      ],
+      "variableNames": [
+        [
+          "avg_RPM",
+          24
+        ],
+        [
+          "avg_speed",
+          24
+        ],
+        [
+          "axisX",
+          24
+        ],
+        [
+          "axisY",
+          24
+        ],
+        [
+          "axisZ",
+          24
+        ],
+        [
+          "batteryVoltage",
+          24
+        ],
+        [
+          "daily_Fuel",
+          24
+        ],
+        [
+          "distance_Today",
+          24
+        ],
+        [
+          "eventID",
+          24
+        ],
+        [
+          "externalVoltage",
+          24
+        ],
+        [
+          "harshAccelerationDigital",
+          24
+        ],
+        [
+          "harshBrakingDigital",
+          24
+        ],
+        [
+          "harshCorneringDigital",
+          24
+        ],
+        [
+          "ignition",
+          24
+        ],
+        [
+          "max_RPM",
+          24
+        ],
+        [
+          "max_speed",
+          24
+        ],
+        [
+          "movement",
+          24
+        ],
+        [
+          "satelliteCount",
+          24
+        ],
+        [
+          "totalOdometer",
+          24
+        ]
+      ],
+      "sampleRawPoint": {
+        "position": {
+          "altitude": 0,
+          "longitude": 106.7620783,
+          "latitude": -6.1909283
+        },
+        "trackInfoId": 477270,
+        "utc": "2026-08-14T16:13:28Z",
+        "valid": false,
+        "velocity": {
+          "groundSpeed": 0,
+          "heading": 0
+        },
+        "variables": {
+          "movement": false,
+          "eventID": 0,
+          "batteryVoltage": 3.991,
+          "harshAccelerationDigital": false,
+          "satelliteCount": 0,
+          "ignition": false,
+          "totalOdometer": 21653000,
+          "externalVoltage": 12.817,
+          "harshBrakingDigital": false,
+          "harshCorneringDigital": false,
+          "distance_Today": 0,
+          "max_speed": 0,
+          "daily_Fuel": 0,
+          "max_RPM": 0,
+          "avg_RPM": 0,
+          "avg_speed": 0,
+          "axisX": -7,
+          "axisY": 74,
+          "axisZ": -14
+        },
+        "serverUtc": "2026-08-14T16:14:49.645Z"
+      }
+    }
+  ],
+  "whatDashboardKeepsToday": {
+    "topLevel": [
+      "utc",
+      "position.latitude|longitude|altitude",
+      "trackInfoId",
+      "variables (filtered)"
+    ],
+    "variables": [
+      "speed",
+      "ignition",
+      "odometerAcc",
+      "caN300_EngineRPM",
+      "caN300_FuelConsumed",
+      "fuel level / fuelLevel / FuelLevel",
+      "axisX/Y/Z",
+      "harshBrakingDigital/Value",
+      "harshAccelerationDigital/Value",
+      "harshCorneringDigital/Value"
+    ]
+  }
+}

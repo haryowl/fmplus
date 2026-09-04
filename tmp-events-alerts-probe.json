@@ -1,0 +1,565 @@
+{
+  "fetchedAt": "2026-09-04T08:56:51.494Z",
+  "appId": 36,
+  "userId": 1859,
+  "results": [
+    {
+      "path": "/events",
+      "status": 400,
+      "bytes": 27,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": "Date parameter is missing"
+    },
+    {
+      "path": "/Events",
+      "status": 400,
+      "bytes": 27,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": "Date parameter is missing"
+    },
+    {
+      "path": "/alerts",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/Alerts",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/notifications",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/Notifications",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/eventrules",
+      "status": 200,
+      "bytes": 3102,
+      "listLen": 24,
+      "eventishHits": [],
+      "summary": [
+        {
+          "tagIDs": "array(0)",
+          "groupIDs": "array(0)",
+          "name": "SOS",
+          "description": "",
+          "applicationID": 36,
+          "disabled": true,
+          "id": 415
+        },
+        {
+          "tagIDs": "array(0)",
+          "groupIDs": "array(0)",
+          "name": "Inside Geofence",
+          "description": "",
+          "applicationID": 36,
+          "disabled": true,
+          "id": 416
+        },
+        {
+          "tagIDs": "array(0)",
+          "groupIDs": "array(0)",
+          "name": "Inside Garage",
+          "description": "",
+          "applicationID": 36,
+          "disabled": true,
+          "id": 417
+        }
+      ]
+    },
+    {
+      "path": "/EventRules",
+      "status": 200,
+      "bytes": 3102,
+      "listLen": 24,
+      "eventishHits": [],
+      "summary": [
+        {
+          "tagIDs": "array(0)",
+          "groupIDs": "array(0)",
+          "name": "SOS",
+          "description": "",
+          "applicationID": 36,
+          "disabled": true,
+          "id": 415
+        },
+        {
+          "tagIDs": "array(0)",
+          "groupIDs": "array(0)",
+          "name": "Inside Geofence",
+          "description": "",
+          "applicationID": 36,
+          "disabled": true,
+          "id": 416
+        },
+        {
+          "tagIDs": "array(0)",
+          "groupIDs": "array(0)",
+          "name": "Inside Garage",
+          "description": "",
+          "applicationID": 36,
+          "disabled": true,
+          "id": 417
+        }
+      ]
+    },
+    {
+      "path": "/eventRules",
+      "status": 200,
+      "bytes": 3102,
+      "listLen": 24,
+      "eventishHits": [],
+      "summary": [
+        {
+          "tagIDs": "array(0)",
+          "groupIDs": "array(0)",
+          "name": "SOS",
+          "description": "",
+          "applicationID": 36,
+          "disabled": true,
+          "id": 415
+        },
+        {
+          "tagIDs": "array(0)",
+          "groupIDs": "array(0)",
+          "name": "Inside Geofence",
+          "description": "",
+          "applicationID": 36,
+          "disabled": true,
+          "id": 416
+        },
+        {
+          "tagIDs": "array(0)",
+          "groupIDs": "array(0)",
+          "name": "Inside Garage",
+          "description": "",
+          "applicationID": 36,
+          "disabled": true,
+          "id": 417
+        }
+      ]
+    },
+    {
+      "path": "/exceptions",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/alarms",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/geofences",
+      "status": 200,
+      "bytes": 2,
+      "listLen": 0,
+      "eventishHits": [],
+      "summary": []
+    },
+    {
+      "path": "/Geofences",
+      "status": 200,
+      "bytes": 2,
+      "listLen": 0,
+      "eventishHits": [],
+      "summary": []
+    },
+    {
+      "path": "/users/1859/events",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users/1859/Events",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users/1859/alerts",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users/1859/Alerts",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users/1859/notifications",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users/1859/exceptions",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users/1859/eventrules",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users/1859/events?From=2026-08-15T00%3A00%3A00Z&To=2026-08-16T00%3A00%3A00Z",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users/1859/events?from=2026-08-15T00%3A00%3A00Z&to=2026-08-16T00%3A00%3A00Z",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users/1859/events?Date=2026-08-15",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users/1859/alerts?From=2026-08-15T00%3A00%3A00Z&To=2026-08-16T00%3A00%3A00Z",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/events?From=2026-08-15T00%3A00%3A00Z&To=2026-08-16T00%3A00%3A00Z",
+      "status": 400,
+      "bytes": 27,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": "Date parameter is missing"
+    },
+    {
+      "path": "/events?from=2026-08-15T00%3A00%3A00Z&to=2026-08-16T00%3A00%3A00Z",
+      "status": 400,
+      "bytes": 27,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": "Date parameter is missing"
+    },
+    {
+      "path": "/events?Date=2026-08-15",
+      "status": 400,
+      "bytes": 35,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": "Either userId or groupId required"
+    },
+    {
+      "path": "/events?UserId=1859",
+      "status": 400,
+      "bytes": 27,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": "Date parameter is missing"
+    },
+    {
+      "path": "/events?userId=1859&From=2026-08-15T00%3A00%3A00Z&To=2026-08-16T00%3A00%3A00Z",
+      "status": 400,
+      "bytes": 27,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": "Date parameter is missing"
+    },
+    {
+      "path": "/alerts?From=2026-08-15T00%3A00%3A00Z&To=2026-08-16T00%3A00%3A00Z",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/alerts?UserId=1859",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/notifications?From=2026-08-15T00%3A00%3A00Z&To=2026-08-16T00%3A00%3A00Z",
+      "status": 404,
+      "bytes": 430,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "statusCode": "NotFound",
+        "message": "The resource you have requested cannot be found.",
+        "details": "Error details are currently disabled.<br />To enable it, please set <strong>TraceConfiguration.DisplayErrorTraces</strong> to <strong>true</strong>.<br />For example by overriding your Bootstrapper's <strong>Configure</strong> method and calling<br/> <strong>environment.Tracing(enabled: false, displayErrorTraces: true);</strong>."
+      }
+    },
+    {
+      "path": "/users/1859/status",
+      "status": 200,
+      "bytes": 3486,
+      "listLen": null,
+      "eventishHits": [],
+      "summary": {
+        "position": {
+          "altitude": 61,
+          "longitude": 107.1308033,
+          "latitude": -6.2773266
+        },
+        "utc": "2026-09-04T08:08:38Z",
+        "deviceActivity": "2026-09-04T08:08:42Z",
+        "velocity": {
+          "groundSpeed": 0,
+          "heading": 284
+        },
+        "variables": "array(37)",
+        "username": "353201357461398",
+        "name": "B 1435 HOO",
+        "id": 1859
+      }
+    },
+    {
+      "path": "/users/1859/tracks?Date=2026-08-15&Filtered=true",
+      "status": 200,
+      "bytes": 1243863,
+      "listLen": 1237,
+      "eventishHits": [
+        {
+          "path": "[0].variables.eventID",
+          "sample": 253
+        },
+        {
+          "path": "[1].variables.eventID",
+          "sample": 253
+        },
+        {
+          "path": "[2].variables.eventID",
+          "sample": 0
+        },
+        {
+          "path": "[3].variables.eventID",
+          "sample": 253
+        },
+        {
+          "path": "[4].variables.eventID",
+          "sample": 253
+        },
+        {
+          "path": "[5].variables.eventID",
+          "sample": 253
+        },
+        {
+          "path": "[6].variables.eventID",
+          "sample": 0
+        },
+        {
+          "path": "[7].variables.eventID",
+          "sample": 253
+        },
+        {
+          "path": "[8].variables.eventID",
+          "sample": 0
+        },
+        {
+          "path": "[9].variables.eventID",
+          "sample": 0
+        },
+        {
+          "path": "[10].variables.eventID",
+          "sample": 0
+        },
+        {
+          "path": "[11].variables.eventID",
+          "sample": 0
+        },
+        {
+          "path": "[12].variables.eventID",
+          "sample": 0
+        },
+        {
+          "path": "[13].variables.eventID",
+          "sample": 0
+        },
+        {
+          "path": "[14].variables.eventID",
+          "sample": 239
+        },
+        {
+          "path": "[15].variables.eventID",
+          "sample": 250
+        },
+        {
+          "path": "[16].variables.eventID",
+          "sample": 239
+        },
+        {
+          "path": "[17].variables.eventID",
+          "sample": 250
+        },
+        {
+          "path": "[18].variables.eventID",
+          "sample": 0
+        },
+        {
+          "path": "[19].variables.eventID",
+          "sample": 0
+        }
+      ],
+      "summary": {
+        "pointCount": 1237,
+        "eventIDCounts": [
+          [
+            "0",
+            824
+          ],
+          [
+            "253",
+            373
+          ],
+          [
+            "239",
+            17
+          ],
+          [
+            "250",
+            17
+          ],
+          [
+            "255",
+            6
+          ]
+        ],
+        "note": "Tracks carry eventID inside variables; not a separate Events API payload."
+      }
+    }
+  ]
+}

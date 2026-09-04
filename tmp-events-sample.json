@@ -1,0 +1,101 @@
+{
+  "fetchedAt": "2026-09-04T08:58:00.992Z",
+  "appId": 36,
+  "userId": 1859,
+  "date": "2026-08-15",
+  "results": [
+    {
+      "path": "/events?Date=2026-08-15&userId=1859",
+      "status": 200,
+      "bytes": 2,
+      "sample": {
+        "count": 0,
+        "first3": [],
+        "keys": []
+      }
+    },
+    {
+      "path": "/events?Date=2026-08-15&UserId=1859",
+      "status": 200,
+      "bytes": 2,
+      "sample": {
+        "count": 0,
+        "first3": [],
+        "keys": []
+      }
+    },
+    {
+      "path": "/events?Date=2026-08-15&UserID=1859",
+      "status": 200,
+      "bytes": 2,
+      "sample": {
+        "count": 0,
+        "first3": [],
+        "keys": []
+      }
+    },
+    {
+      "path": "/Events?Date=2026-08-15&userId=1859",
+      "status": 200,
+      "bytes": 2,
+      "sample": {
+        "count": 0,
+        "first3": [],
+        "keys": []
+      }
+    },
+    {
+      "path": "/events?Date=2026-08-15&groupId=1",
+      "status": 404,
+      "bytes": 37,
+      "sample": "Asset Group with ID 1 was not found",
+      "rawText": "Asset Group with ID 1 was not found"
+    },
+    {
+      "path": "/eventrules",
+      "status": 200,
+      "bytes": 3102,
+      "sample": {
+        "count": 24,
+        "first3": [
+          {
+            "tagIDs": [],
+            "groupIDs": [],
+            "name": "SOS",
+            "description": "",
+            "applicationID": 36,
+            "disabled": true,
+            "id": 415
+          },
+          {
+            "tagIDs": [],
+            "groupIDs": [],
+            "name": "Inside Geofence",
+            "description": "",
+            "applicationID": 36,
+            "disabled": true,
+            "id": 416
+          },
+          {
+            "tagIDs": [],
+            "groupIDs": [],
+            "name": "Inside Garage",
+            "description": "",
+            "applicationID": 36,
+            "disabled": true,
+            "id": 417
+          }
+        ],
+        "keys": [
+          "tagIDs",
+          "groupIDs",
+          "name",
+          "description",
+          "applicationID",
+          "disabled",
+          "id"
+        ]
+      }
+    }
+  ]
+}
