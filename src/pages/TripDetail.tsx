@@ -38,16 +38,14 @@ type StatusFilter = Record<SegmentStatus, boolean>;
 const COLUMN_KEY = "fmplus.tripDetail.columns";
 
 type ColumnFlags = {
-  custom1: boolean;
-  custom2: boolean;
+  customFieldNames: string[];
   rpm: boolean;
   refill: boolean;
   events: boolean;
 };
 
 const DEFAULT_COLUMNS: ColumnFlags = {
-  custom1: true,
-  custom2: true,
+  customFieldNames: [],
   rpm: true,
   refill: true,
   events: true,
@@ -57,7 +55,12 @@ function readColumns(): ColumnFlags {
   try {
     const raw = localStorage.getItem(COLUMN_KEY);
     if (!raw) return { ...DEFAULT_COLUMNS };
-    return { ...DEFAULT_COLUMNS, ...(JSON.parse(raw) as Partial<ColumnFlags>) };
+    const parsed = JSON.parse(raw) as Partial<ColumnFlags>;
+    return {
+      ...DEFAULT_COLUMNS,
+      ...parsed,
+      customFieldNames: Array.isArray(parsed.customFieldNames) ? parsed.customFieldNames : [],
+    };
   } catch {
     return { ...DEFAULT_COLUMNS };
   }
@@ -105,15 +108,16 @@ export default function TripDetail() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>({ trip: true, idle: true, stop: true });
   const [columns, setColumns] = useState<ColumnFlags>(() => readColumns());
+  const [cfMenuOpen, setCfMenuOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const cfMenuRef = useRef<HTMLDivElement | null>(null);
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
   const selectedUser = users.find((u) => String(u.id) === userId);
   const dayCount = inclusiveDayCount(dateFrom, dateTo);
   const rangeTooLong = dayCount > TRIP_DETAIL_MAX_DAYS;
 
-  const cf1 = customFields[0] ?? null;
-  const cf2 = customFields[1] ?? null;
+  const selectedCustomFields = customFields.filter((cf) => columns.customFieldNames.includes(cf.name));
 
   useEffect(() => {
     writeLocationSearch({
@@ -128,6 +132,30 @@ export default function TripDetail() {
   useEffect(() => {
     localStorage.setItem(COLUMN_KEY, JSON.stringify(columns));
   }, [columns]);
+
+  useEffect(() => {
+    if (!customFields.length) return;
+    setColumns((prev) => {
+      const available = new Set(customFields.map((f) => f.name));
+      if (prev.customFieldNames.length === 0) {
+        return { ...prev, customFieldNames: customFields.map((f) => f.name) };
+      }
+      const kept = prev.customFieldNames.filter((n) => available.has(n));
+      if (kept.length === prev.customFieldNames.length) return prev;
+      return { ...prev, customFieldNames: kept };
+    });
+  }, [customFields]);
+
+  useEffect(() => {
+    if (!cfMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (cfMenuRef.current && !cfMenuRef.current.contains(event.target as Node)) {
+        setCfMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [cfMenuOpen]);
 
   useEffect(() => {
     const previous = document.title;
@@ -363,10 +391,55 @@ export default function TripDetail() {
           </div>
           <div className="trip-column-config" role="group" aria-label="Optional columns">
             <span>Optional:</span>
+            <div className="trip-cf-select" ref={cfMenuRef}>
+              <button
+                type="button"
+                className="trip-cf-select-btn"
+                disabled={customFields.length === 0}
+                aria-expanded={cfMenuOpen}
+                aria-haspopup="listbox"
+                onClick={() => setCfMenuOpen((open) => !open)}
+              >
+                Custom fields
+                {customFields.length > 0
+                  ? ` (${selectedCustomFields.length}/${customFields.length})`
+                  : ""}
+              </button>
+              {cfMenuOpen && customFields.length > 0 && (
+                <div className="trip-cf-menu" role="listbox" aria-multiselectable="true">
+                  {customFields.map((cf) => {
+                    const checked = columns.customFieldNames.includes(cf.name);
+                    return (
+                      <label key={cf.name} className="trip-cf-option">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            setColumns((prev) => {
+                              const set = new Set(prev.customFieldNames);
+                              if (set.has(cf.name)) set.delete(cf.name);
+                              else set.add(cf.name);
+                              return {
+                                ...prev,
+                                customFieldNames: customFields
+                                  .map((f) => f.name)
+                                  .filter((name) => set.has(name)),
+                              };
+                            });
+                          }}
+                        />
+                        <span className="trip-cf-option-label">
+                          <strong>{cf.name}</strong>
+                          <em>{cf.value || "—"}</em>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             {(
               [
-                ["custom1", "Custom Field1"],
-                ["custom2", "Custom Field2"],
                 ["rpm", "RPM"],
                 ["refill", "Refill"],
                 ["events", "Event Count"],
@@ -428,26 +501,23 @@ export default function TripDetail() {
               </article>
             </section>
             <p className="trip-recorded-note">
-              Recorded GPS coverage {formatHours(hours.recordedHours)} h across {dayCount} day
-              {dayCount === 1 ? "" : "s"}. Hours without track points are not counted as Stop.
+              Recorded coverage {formatHours(hours.recordedHours)} h across {dayCount} day
+              {dayCount === 1 ? "" : "s"}. Time outside Trip and Idle is treated as continuous Stop/park.
             </p>
 
             <section className="trip-detail-chart panel">
               <h2>Timeline</h2>
               <div className="trip-timeline" role="img" aria-label="Segment timeline">
-                {visible.map((seg) => {
-                  const width = Math.max(2, (seg.durationMs / Math.max(1, hours.recordedHours * 3_600_000)) * 100);
-                  return (
-                    <button
-                      key={seg.id}
-                      type="button"
-                      className={`trip-timeline-seg ${seg.status}${selectedId === seg.id ? " selected" : ""}`}
-                      style={{ width: `${Math.min(40, width)}%`, background: seg.color }}
-                      title={`${seg.status} · ${formatDuration(seg.durationMs)}`}
-                      onClick={() => setSelectedId(seg.id === selectedId ? null : seg.id)}
-                    />
-                  );
-                })}
+                {visible.map((seg) => (
+                  <button
+                    key={seg.id}
+                    type="button"
+                    className={`trip-timeline-seg ${seg.status}${selectedId === seg.id ? " selected" : ""}`}
+                    style={{ flexGrow: Math.max(seg.durationMs, 1), background: seg.color }}
+                    title={`${seg.status} · ${formatDuration(seg.durationMs)}`}
+                    onClick={() => setSelectedId(seg.id === selectedId ? null : seg.id)}
+                  />
+                ))}
               </div>
             </section>
 
@@ -469,8 +539,9 @@ export default function TripDetail() {
                     <tr>
                       <th>Vehicle Name</th>
                       <th>Group</th>
-                      {columns.custom1 && <th>{cf1?.name || "Custom Field1"}</th>}
-                      {columns.custom2 && <th>{cf2?.name || "Custom Field2"}</th>}
+                      {selectedCustomFields.map((cf) => (
+                        <th key={cf.name}>{cf.name}</th>
+                      ))}
                       <th>Trip Status</th>
                       <th>Start Time</th>
                       <th>End Time</th>
@@ -499,8 +570,9 @@ export default function TripDetail() {
                             {selectedUser ? userLabel(selectedUser) : "—"}
                           </td>
                           <td>{selectedGroup?.name || "—"}</td>
-                          {columns.custom1 && <td>{cf1?.value || "—"}</td>}
-                          {columns.custom2 && <td>{cf2?.value || "—"}</td>}
+                          {selectedCustomFields.map((cf) => (
+                            <td key={cf.name}>{cf.value || "—"}</td>
+                          ))}
                           <td className={`trip-status trip-status-${seg.status}`}>
                             {seg.status[0].toUpperCase() + seg.status.slice(1)}
                           </td>
@@ -568,7 +640,7 @@ export default function TripDetail() {
             <h3>Load a vehicle day to see trips</h3>
             <p>
               Pick one vehicle and up to {TRIP_DETAIL_MAX_DAYS} days. Trips use moving sessions; Idle is ignition-on
-              stationary; Stop is ignition-off only where GPS exists. Gaps without points are not Stop.
+              stationary; everything else between points is continuous Stop/park.
             </p>
           </section>
         )}

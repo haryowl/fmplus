@@ -107,7 +107,7 @@ describe("segmentFuel", () => {
 });
 
 describe("buildTripSegments", () => {
-  it("builds trip and stop; long GPS gaps are not filled as stop", () => {
+  it("merges parked heartbeat stops into one Stop across long gaps", () => {
     const trip: Trip = {
       trackInfoId: 1,
       userId: 9,
@@ -116,9 +116,10 @@ describe("buildTripSegments", () => {
         pt("2026-08-15T01:00:00+07:00", { ign: true, speedMs: 10, lat: -6.2, lon: 106.8 }),
         pt("2026-08-15T01:05:00+07:00", { ign: true, speedMs: 10, lat: -6.201, lon: 106.801 }),
         pt("2026-08-15T01:06:00+07:00", { ign: false, speedMs: 0, lat: -6.201, lon: 106.801 }),
-        // 2h gap — unrecorded, must not become a 2h Stop row
-        pt("2026-08-15T03:10:00+07:00", { ign: false, speedMs: 0, lat: -6.202, lon: 106.802 }),
-        pt("2026-08-15T03:12:00+07:00", { ign: false, speedMs: 0, lat: -6.202, lon: 106.802 }),
+        // Hourly park heartbeats — one Stop from first to last
+        pt("2026-08-15T02:06:00+07:00", { ign: false, speedMs: 0, lat: -6.201, lon: 106.801 }),
+        pt("2026-08-15T03:06:00+07:00", { ign: false, speedMs: 0, lat: -6.201, lon: 106.801 }),
+        pt("2026-08-15T04:06:00+07:00", { ign: false, speedMs: 0, lat: -6.201, lon: 106.801 }),
       ],
     };
 
@@ -126,9 +127,10 @@ describe("buildTripSegments", () => {
     const trips = segments.filter((s) => s.status === "trip");
     const stops = segments.filter((s) => s.status === "stop");
     expect(trips.length).toBeGreaterThanOrEqual(1);
-    expect(stops.every((s) => s.durationMs < 30 * 60_000)).toBe(true);
-    const hours = recordedHoursFromSegments(segments);
-    expect(hours.recordedHours).toBeLessThan(1.5);
+    expect(stops).toHaveLength(1);
+    // Park heartbeats from ~01:06/02:06 through 04:06 collapse to one Stop (≥2h wall clock).
+    expect(stops[0].durationMs).toBeGreaterThanOrEqual(2 * 3_600_000);
+    expect(stops[0].pointCount).toBeGreaterThanOrEqual(3);
   });
 
   it("marks ignition-on stationary outside a trip as idle", () => {

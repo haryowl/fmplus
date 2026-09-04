@@ -276,7 +276,8 @@ function buildSegment(
 
 /**
  * Build Trip / Idle / Stop rows from a vehicle's loaded trips.
- * Gaps longer than trip-break with no GPS points are unrecorded — not Stop.
+ * Consecutive Stop (or Idle) points merge across GPS heartbeat gaps until
+ * status flips or a Trip starts — time outside trip/idle is one Stop/park.
  */
 export function buildTripSegments(trips: Trip[], options: TripSegmentOptions): TripSegment[] {
   const timezone = options.timezone;
@@ -318,15 +319,14 @@ export function buildTripSegments(trips: Trip[], options: TripSegmentOptions): T
       continue;
     }
 
-    // Non-trip: Idle (ignition on) or Stop (ignition off). Split on long GPS gaps.
+    // Non-trip: Idle (ignition on) or Stop (ignition off).
+    // Merge across GPS heartbeat gaps until the next Trip or status flip —
+    // time outside trip/idle is one continuous Stop/park block.
     const status: SegmentStatus = start.ignition ? "idle" : "stop";
     const chunk: TripSegmentPoint[] = [start];
     i += 1;
     while (i < points.length && points[i].logicalTripId === null) {
-      const prev = chunk[chunk.length - 1];
       const cur = points[i];
-      const gap = cur.ms - prev.ms;
-      if (gap > breakMs) break;
       const nextStatus: SegmentStatus = cur.ignition ? "idle" : "stop";
       if (nextStatus !== status) break;
       chunk.push(cur);
