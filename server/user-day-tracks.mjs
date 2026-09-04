@@ -20,7 +20,8 @@ const START_CAP = 6;
 const MIN_CAP = 2;
 const MAX_CAP = 8;
 const PER_DAY_ATTEMPTS = 40;
-const TIMEOUT_MS = 25_000;
+/** Busy vehicle-days can be 9k–24k points; 25s was aborting the download as status=0. */
+const TIMEOUT_MS = 120_000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -47,6 +48,7 @@ async function fetchUserDayOnce(userId, date, auth, appId, signal) {
     },
     redirect: "follow",
     signal: combined,
+    timeoutMs: TIMEOUT_MS,
   });
   if (res.status === 404) return { raw: "" };
   if (res.status === 401 || res.status === 403) {

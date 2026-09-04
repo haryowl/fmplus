@@ -5,19 +5,25 @@
  */
 import https from "node:https";
 
-const TIMEOUT_MS = 25_000;
+/** Default socket inactivity timeout. Callers can pass timeoutMs for large days. */
+export const DEFAULT_ARMADA_TIMEOUT_MS = 25_000;
 
 const armadaAgent = new https.Agent({
   keepAlive: true,
   maxSockets: 48,
   maxFreeSockets: 24,
-  timeout: TIMEOUT_MS,
+  // Idle socket reuse only; per-request timeoutMs controls each call.
+  timeout: DEFAULT_ARMADA_TIMEOUT_MS,
 });
 
 export function armadaFetch(url, options = {}) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
     const headers = { ...(options.headers || {}) };
+    const timeoutMs =
+      Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+        ? options.timeoutMs
+        : DEFAULT_ARMADA_TIMEOUT_MS;
     const req = https.request(
       {
         protocol: parsed.protocol,
@@ -27,7 +33,7 @@ export function armadaFetch(url, options = {}) {
         method: options.method || "GET",
         headers,
         agent: armadaAgent,
-        timeout: TIMEOUT_MS,
+        timeout: timeoutMs,
       },
       (res) => {
         const chunks = [];
