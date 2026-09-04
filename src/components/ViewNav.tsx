@@ -5,6 +5,7 @@ import {
   fullHref,
   navigateView,
   statusHref,
+  tripsHref,
   type AppView,
 } from "../lib/routing";
 
@@ -13,6 +14,7 @@ const LINKS: { view: AppView; label: string; href: (search: string) => string }[
   { view: "compact", label: "Compact", href: compactHref },
   { view: "fleet", label: "Fleet", href: fleetHref },
   { view: "fleetCompact", label: "Ranking", href: fleetCompactHref },
+  { view: "trips", label: "Trips", href: tripsHref },
   { view: "status", label: "Status", href: statusHref },
 ];
 

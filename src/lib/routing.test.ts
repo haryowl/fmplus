@@ -6,6 +6,7 @@ import {
   fullHref,
   isCompactPath,
   statusHref,
+  tripsHref,
   viewFromPath,
   withSearch,
 } from "./routing";
@@ -19,6 +20,8 @@ describe("viewFromPath", () => {
     expect(viewFromPath("/fleet/compact/")).toBe("fleetCompact");
     expect(viewFromPath("/status")).toBe("status");
     expect(viewFromPath("/status/")).toBe("status");
+    expect(viewFromPath("/trips")).toBe("trips");
+    expect(viewFromPath("/trips/")).toBe("trips");
     expect(viewFromPath("/")).toBe("full");
   });
 });
@@ -36,6 +39,7 @@ describe("isCompactPath", () => {
     expect(isCompactPath("/fleet")).toBe(false);
     expect(isCompactPath("/fleet/compact")).toBe(false);
     expect(isCompactPath("/status")).toBe(false);
+    expect(isCompactPath("/trips")).toBe(false);
   });
 });
 
@@ -47,6 +51,7 @@ describe("withSearch", () => {
     expect(fleetHref(q)).toBe("/fleet?groupId=12&userId=99&embed=1");
     expect(fleetCompactHref(q)).toBe("/fleet/compact?groupId=12&userId=99&embed=1");
     expect(statusHref(q)).toBe("/status?groupId=12&userId=99&embed=1");
+    expect(tripsHref(q)).toBe("/trips?groupId=12&userId=99&embed=1");
     expect(withSearch("/compact", "")).toBe("/compact");
   });
 });

@@ -1,4 +1,4 @@
-export type AppView = "full" | "compact" | "fleet" | "fleetCompact" | "status";
+export type AppView = "full" | "compact" | "fleet" | "fleetCompact" | "status" | "trips";
 
 export function viewFromPath(pathname: string): AppView {
   const parts = (pathname.replace(/\/+$/, "") || "/").split("/").filter(Boolean);
@@ -8,6 +8,7 @@ export function viewFromPath(pathname: string): AppView {
   if (leaf === "fleet" || leaf === "fleet.html") return "fleet";
   if (leaf === "compact" || leaf === "compact.html") return "compact";
   if (leaf === "status" || leaf === "status.html") return "status";
+  if (leaf === "trips" || leaf === "trips.html") return "trips";
   return "full";
 }
 
@@ -38,6 +39,10 @@ export function fleetCompactHref(search: string): string {
 
 export function statusHref(search: string): string {
   return withSearch("/status", search);
+}
+
+export function tripsHref(search: string): string {
+  return withSearch("/trips", search);
 }
 
 export const VIEW_CHANGE = "fms-embed:view";

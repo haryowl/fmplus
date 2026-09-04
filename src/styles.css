@@ -1591,3 +1591,138 @@ html.onesheet-root body {
     display: none !important;
   }
 }
+
+/* —— Trip detail —— */
+.trip-detail-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  align-items: center;
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+}
+
+.trip-status-filters,
+.trip-column-config {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+}
+
+.trip-status-filter {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  cursor: pointer;
+  text-transform: capitalize;
+}
+
+.trip-detail-kpis {
+  margin-top: 8px;
+}
+
+.trip-recorded-note {
+  margin: 0 0 16px;
+  color: var(--muted, #5c5650);
+  font-size: 0.9rem;
+}
+
+.trip-detail-map-wrap .trip-map-hint {
+  margin: 0 0 8px;
+  color: var(--muted, #5c5650);
+  font-size: 0.9rem;
+}
+
+.trip-detail-map {
+  height: 420px;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #e8e4dc;
+}
+
+.trip-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 36px;
+  align-items: stretch;
+}
+
+.trip-timeline-seg {
+  border: 0;
+  border-radius: 4px;
+  min-width: 8px;
+  height: 28px;
+  cursor: pointer;
+  opacity: 0.9;
+  padding: 0;
+}
+
+.trip-timeline-seg.selected {
+  outline: 2px solid #111;
+  outline-offset: 1px;
+  opacity: 1;
+}
+
+.trip-detail-table-scroll {
+  overflow: auto;
+  max-height: 480px;
+}
+
+.trip-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.trip-detail-table th,
+.trip-detail-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #ddd6c8;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.trip-detail-table th {
+  position: sticky;
+  top: 0;
+  background: #f3efe6;
+  z-index: 1;
+}
+
+.trip-detail-table tbody tr {
+  cursor: pointer;
+}
+
+.trip-detail-table tbody tr:hover,
+.trip-detail-table tbody tr.selected {
+  background: #efe9dc;
+}
+
+.trip-detail-table a {
+  color: #0b6b62;
+}
+
+.trip-color-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.trip-status-trip {
+  color: #0b6b62;
+  font-weight: 600;
+}
+
+.trip-status-idle {
+  color: #7a5a12;
+}
+
+.trip-status-stop {
+  color: #5c5650;
+}

@@ -742,3 +742,114 @@ export function groupOptionLabel(group: Group): string {
 export function userOptionLabel(user: User): string {
   return `${userLabel(user)} · ${user.id}`;
 }
+
+export type CustomField = { name: string; value: string };
+
+export async function fetchUserCustomFields(userId: number, signal?: AbortSignal): Promise<CustomField[]> {
+  const raw = await apiGet<unknown>(`/users/${userId}/customfields`, signal);
+  const list = Array.isArray(raw) ? raw : [];
+  const out: CustomField[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const name = typeof row.name === "string" ? row.name.trim() : "";
+    if (!name) continue;
+    const value =
+      row.value === null || row.value === undefined
+        ? ""
+        : typeof row.value === "string" || typeof row.value === "number" || typeof row.value === "boolean"
+          ? String(row.value)
+          : "";
+    out.push({ name, value });
+  }
+  return out;
+}
+
+export type EventRule = { id: number; name: string; disabled: boolean };
+
+export async function fetchEventRules(signal?: AbortSignal): Promise<EventRule[]> {
+  const raw = await apiGet<unknown>(`/eventrules`, signal);
+  const list = Array.isArray(raw) ? raw : [];
+  const out: EventRule[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const id = Number(row.id);
+    if (!Number.isInteger(id) || id < 1) continue;
+    out.push({
+      id,
+      name: typeof row.name === "string" ? row.name : `Rule ${id}`,
+      disabled: row.disabled === true,
+    });
+  }
+  return out;
+}
+
+export type ArmadaEvent = {
+  id: number;
+  ruleId: number;
+  ruleName: string;
+  userId: number;
+  startMs: number;
+  endMs: number;
+};
+
+export async function fetchEventsForRule(
+  userId: number,
+  date: string,
+  ruleId: number,
+  signal?: AbortSignal,
+): Promise<ArmadaEvent[]> {
+  const raw = await apiGet<unknown>(
+    `/events?Date=${encodeURIComponent(date)}&userId=${userId}&ruleId=${ruleId}`,
+    signal,
+  );
+  const list = Array.isArray(raw) ? raw : [];
+  const out: ArmadaEvent[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const id = Number(row.id);
+    const box = row.boundingBox && typeof row.boundingBox === "object" ? (row.boundingBox as Record<string, unknown>) : null;
+    const startMs = Date.parse(String(box?.minTime || ""));
+    const endMs = Date.parse(String(box?.maxTime || row.closedTimeStamp || ""));
+    out.push({
+      id: Number.isFinite(id) ? id : 0,
+      ruleId: Number(row.expressionEvaluatorId) || ruleId,
+      ruleName: typeof row.ruleName === "string" ? row.ruleName : `Rule ${ruleId}`,
+      userId: Number(row.userId) || userId,
+      startMs: Number.isFinite(startMs) ? startMs : 0,
+      endMs: Number.isFinite(endMs) ? endMs : Number.isFinite(startMs) ? startMs : 0,
+    });
+  }
+  return out;
+}
+
+/** Enabled rules only; fan out by day × rule with a small pool. */
+export async function fetchEventsForUserDays(
+  userId: number,
+  dates: string[],
+  signal?: AbortSignal,
+): Promise<ArmadaEvent[]> {
+  const rules = (await fetchEventRules(signal)).filter((r) => !r.disabled);
+  if (rules.length === 0 || dates.length === 0) return [];
+  const jobs = dates.flatMap((date) => rules.map((rule) => ({ date, ruleId: rule.id })));
+  const batches = await mapPool(jobs, 4, async (job) => {
+    try {
+      return await fetchEventsForRule(userId, job.date, job.ruleId, signal);
+    } catch (err) {
+      if ((err as Error).name === "AbortError") throw err;
+      return [] as ArmadaEvent[];
+    }
+  });
+  return batches.flat();
+}
+
+export function countEventsInRange(events: ArmadaEvent[], startMs: number, endMs: number): number {
+  let n = 0;
+  for (const event of events) {
+    const t = event.startMs || event.endMs;
+    if (t >= startMs && t <= endMs) n += 1;
+  }
+  return n;
+}
