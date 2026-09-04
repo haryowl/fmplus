@@ -440,12 +440,14 @@ async function fetchUserDayBatch(
   signal?: AbortSignal,
   onReceive?: (key: string, failed: boolean) => void,
   onParseProgress?: (done: number, total: number) => void,
+  timezone?: string,
 ): Promise<{ byKey: Map<string, DayTrackRow[]>; failed: string[] }> {
   const res = await fetch("/api/user-day-tracks", {
     method: "POST",
     headers: { accept: "application/x-ndjson, application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify({
       days: jobs.map((job) => ({ userId: job.userId, date: job.date })),
+      tz: timezone || undefined,
     }),
     signal,
   });
@@ -543,6 +545,7 @@ async function loadTripsByUserDays(
   options: {
     dateFrom: string;
     dateTo: string;
+    timezone?: string;
     signal?: AbortSignal;
     onProgress?: (progress: LoadProgress) => void;
   },
@@ -628,6 +631,7 @@ async function loadTripsByUserDays(
           options.signal,
           (key, isFailed) => noteReceived(key, isFailed),
           () => options.onProgress?.({ phase: "charts", loaded, total: jobs.length, skipped }),
+          options.timezone,
         );
         for (const job of chunk) {
           const rows = byKey.get(job.key);

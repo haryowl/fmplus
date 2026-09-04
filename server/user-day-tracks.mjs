@@ -4,6 +4,14 @@
  */
 import { armadaFetch } from "./armada-fetch.mjs";
 import { RECOVER_SUCCESS_STREAK, reducedCapOn429, isRetryableArmadaStatus, planArmadaRetry } from "./armada-retry.mjs";
+import {
+  isPastDay,
+  maybePurgeDayCache,
+  readCachedDay,
+  tenantCacheScope,
+  todayKeyFromOffset,
+  writeCachedDay,
+} from "./day-tracks-cache.mjs";
 import { slimAsync } from "./slim-pool.mjs";
 import { tenantAllowsUser, tenantFromRequest } from "./tenants.mjs";
 
@@ -107,6 +115,9 @@ export async function handleUserDayTracksRequest(req, res) {
   try {
     const payload = await readJsonBody(req, 64 * 1024);
     const rawDays = Array.isArray(payload?.days) ? payload.days : [];
+    const tzRaw = typeof payload?.tz === "string" ? payload.tz.trim() : "";
+    const todayYmd = todayKeyFromOffset(/^[+-]\d{2}:\d{2}$/.test(tzRaw) ? tzRaw : "+00:00");
+    const cacheScope = tenantCacheScope(tenant.key);
     const days = [];
     const seen = new Set();
     for (const item of rawDays) {
@@ -143,11 +154,12 @@ export async function handleUserDayTracksRequest(req, res) {
     if (typeof res.flushHeaders === "function") res.flushHeaders();
 
     const started = Date.now();
-    console.log(`[user-day-tracks] start ${days.length} days cap=${START_CAP}`);
+    void maybePurgeDayCache();
 
     let writeChain = Promise.resolve();
     let pending = "";
     let flushTimer = null;
+    let heartbeat = null;
     const flushWrites = () => {
       if (flushTimer) {
         clearTimeout(flushTimer);
@@ -184,24 +196,60 @@ export async function handleUserDayTracksRequest(req, res) {
       const queueSlim = (day, raw) => {
         slimJobs.push(
           slimAsync(raw).then(
-            (text) => writeDay(day.key, text, false),
+            (text) => {
+              writeDay(day.key, text, false);
+              if (isPastDay(day.date, todayYmd)) {
+                void writeCachedDay(cacheScope, tenant.appId, day.userId, day.date, text).catch(() => {});
+              }
+            },
             () => writeDay(day.key, "[]", false),
           ),
         );
       };
 
+      let cacheHits = 0;
+      const missDays = [];
+      for (const day of days) {
+        if (!isPastDay(day.date, todayYmd)) {
+          missDays.push(day);
+          continue;
+        }
+        const hit = await readCachedDay(cacheScope, tenant.appId, day.userId, day.date);
+        if (hit != null) {
+          writeDay(day.key, hit, false);
+          cacheHits += 1;
+        } else {
+          missDays.push(day);
+        }
+      }
+
+      console.log(
+        `[user-day-tracks] start ${days.length} days cache_hit=${cacheHits} armada=${missDays.length} today=${todayYmd} cap=${START_CAP}`,
+      );
+
+      if (missDays.length === 0) {
+        flushWrites();
+        await writeChain;
+        res.end();
+        console.log(
+          `[user-day-tracks] done ${days.length} days in ${Date.now() - started}ms cache_hit=${cacheHits} armada=0`,
+        );
+        return true;
+      }
+
       // Failed days go to the tail. Only 429 pauses every worker.
-      const queue = days.map((day) => ({ ...day, attempts: 0 }));
-      let remaining = days.length;
+      const queue = missDays.map((day) => ({ ...day, attempts: 0 }));
+      let remaining = missDays.length;
       let cap = START_CAP;
       let active = 0;
       let cooldownUntil = 0;
       let successStreak = 0;
+      let armadaOk = 0;
 
-      const heartbeat = setInterval(() => {
+      heartbeat = setInterval(() => {
         const elapsed = Math.round((Date.now() - started) / 1000);
         console.log(
-          `[user-day-tracks] heartbeat ${elapsed}s remaining=${remaining} queue=${queue.length} active=${active} cap=${cap} cooldown=${Math.max(0, cooldownUntil - Date.now())}ms`,
+          `[user-day-tracks] heartbeat ${elapsed}s remaining=${remaining} queue=${queue.length} active=${active} cap=${cap} cooldown=${Math.max(0, cooldownUntil - Date.now())}ms cache_hit=${cacheHits}`,
         );
       }, 10_000);
 
@@ -267,6 +315,7 @@ export async function handleUserDayTracksRequest(req, res) {
               }
             } else {
               remaining -= 1;
+              armadaOk += 1;
               successStreak += 1;
               if (successStreak >= RECOVER_SUCCESS_STREAK && cap < MAX_CAP) {
                 cap += 1;
@@ -281,14 +330,19 @@ export async function handleUserDayTracksRequest(req, res) {
       };
 
       await Promise.all(Array.from({ length: MAX_CAP }, () => worker()));
-      clearInterval(heartbeat);
+      if (heartbeat) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+      }
       await Promise.all(slimJobs);
       flushWrites();
       await writeChain;
       res.end();
-      console.log(`[user-day-tracks] done ${days.length} days in ${Date.now() - started}ms`);
+      console.log(
+        `[user-day-tracks] done ${days.length} days in ${Date.now() - started}ms cache_hit=${cacheHits} armada=${armadaOk}`,
+      );
     } finally {
-      clearInterval(heartbeat);
+      if (heartbeat) clearInterval(heartbeat);
       if (flushTimer) clearTimeout(flushTimer);
       req.off("aborted", onAbort);
     }
