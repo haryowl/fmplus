@@ -1,6 +1,6 @@
 import { asNumber } from "./geo";
 import { offsetToMinutes } from "./time";
-import { colName, xmlEscape, zipStore } from "./xlsxZip";
+import { buildXlsx, downloadXlsx, excelFilename } from "./xlsxDownload";
 
 export type LastStatusRow = {
   id: number;
@@ -250,80 +250,17 @@ export function statusExcelRow(row: LastStatusRow, timezone: string, now = Date.
   ];
 }
 
-function sheetXml(rows: LastStatusRow[], timezone: string, now: number): string {
+function statusSheetRows(rows: LastStatusRow[], timezone: string, now: number): (string | number)[][] {
   const headers = statusExcelHeaders();
-  const data = [headers, ...rows.map((row) => statusExcelRow(row, timezone, now))];
-  const body = data
-    .map((line, rowIdx) => {
-      const r = rowIdx + 1;
-      const cells = line
-        .map((value, col) => {
-          const ref = `${colName(col)}${r}`;
-          if (typeof value === "number" && Number.isFinite(value)) {
-            return `<c r="${ref}"><v>${value}</v></c>`;
-          }
-          return `<c r="${ref}" t="inlineStr"><is><t>${xmlEscape(String(value))}</t></is></c>`;
-        })
-        .join("");
-      return `<row r="${r}">${cells}</row>`;
-    })
-    .join("");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
+  return [headers, ...rows.map((row) => statusExcelRow(row, timezone, now))];
 }
 
 export function statusXlsx(rows: LastStatusRow[], timezone: string, now = Date.now()): Uint8Array {
-  const utf8 = new TextEncoder();
-  return zipStore([
-    {
-      name: "[Content_Types].xml",
-      data: utf8.encode(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-<Default Extension="xml" ContentType="application/xml"/>
-<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-</Types>`),
-    },
-    {
-      name: "_rels/.rels",
-      data: utf8.encode(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
-</Relationships>`),
-    },
-    {
-      name: "xl/workbook.xml",
-      data: utf8.encode(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<sheets><sheet name="Last status" sheetId="1" r:id="rId1"/></sheets>
-</workbook>`),
-    },
-    {
-      name: "xl/_rels/workbook.xml.rels",
-      data: utf8.encode(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-</Relationships>`),
-    },
-    {
-      name: "xl/worksheets/sheet1.xml",
-      data: utf8.encode(sheetXml(rows, timezone, now)),
-    },
-  ]);
+  return buildXlsx("Last status", statusSheetRows(rows, timezone, now));
 }
 
 export function downloadStatusExcel(rows: LastStatusRow[], timezone: string): void {
-  const bytes = statusXlsx(rows, timezone);
-  const blob = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const href = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = href;
-  a.download = `last-status-${new Date().toISOString().slice(0, 10)}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(href);
+  downloadXlsx(excelFilename("last-status"), "Last status", statusSheetRows(rows, timezone, Date.now()));
 }
 
 export const STATUS_PAGE_SIZE = PAGE_SIZE;

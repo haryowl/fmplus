@@ -22,6 +22,16 @@ import { FuelChart } from "../components/FuelChart";
 import { SpeedRpmChart } from "../components/SpeedRpmChart";
 import { UtilizationChart } from "../components/UtilizationChart";
 import { ExportPdfButton } from "../components/ExportPdfButton";
+import { ExportExcelButton } from "../components/ExportExcelButton";
+import {
+  compactSnapshotSheet,
+  insightsSheet,
+  periodDistanceSheet,
+  periodFuelSheet,
+  periodSpeedRpmSheet,
+  periodUtilizationSheet,
+  vehicleKpiSheet,
+} from "../lib/panelExcel";
 import { ViewNav } from "../components/ViewNav";
 
 export default function CompactDashboard() {
@@ -202,6 +212,15 @@ export default function CompactDashboard() {
           </div>
         )}
 
+        <div className="kpi-toolbar no-print">
+          <ExportExcelButton
+            disabled={!trips || !hasRows}
+            prefix="compact-kpis"
+            sheetName="Summary"
+            getRows={() => vehicleKpiSheet(totals)}
+          />
+        </div>
+
         <section className="kpis">
           <article className="kpi" style={{ ["--tick" as string]: "var(--gps)" }}>
             <div className="label">GPS</div>
@@ -275,16 +294,24 @@ export default function CompactDashboard() {
             <section className="panel onesheet-cell">
               <div className="panel-head">
                 <h2>Distance</h2>
-                <div className="legend">
-                  <span>
-                    <i className="swatch" style={{ background: "var(--gps)" }} /> GPS
-                  </span>
-                  <span>
-                    <i className="swatch" style={{ background: "var(--ign)" }} /> Ign
-                  </span>
-                  <span>
-                    <i className="swatch" style={{ background: "var(--odo)" }} /> Odo
-                  </span>
+                <div className="panel-head-aside">
+                  <div className="legend">
+                    <span>
+                      <i className="swatch" style={{ background: "var(--gps)" }} /> GPS
+                    </span>
+                    <span>
+                      <i className="swatch" style={{ background: "var(--ign)" }} /> Ign
+                    </span>
+                    <span>
+                      <i className="swatch" style={{ background: "var(--odo)" }} /> Odo
+                    </span>
+                  </div>
+                  <ExportExcelButton
+                    disabled={rows.length === 0}
+                    prefix="compact-distance"
+                    sheetName="Distance"
+                    getRows={() => periodDistanceSheet(rows)}
+                  />
                 </div>
               </div>
               <DistanceChart rows={rows} />
@@ -293,13 +320,21 @@ export default function CompactDashboard() {
             <section className="panel onesheet-cell">
               <div className="panel-head">
                 <h2>Utilization</h2>
-                <div className="legend">
-                  <span>
-                    <i className="swatch" style={{ background: "var(--gps)" }} /> Active
-                  </span>
-                  <span>
-                    <i className="swatch" style={{ background: "#c47d3a" }} /> Idle
-                  </span>
+                <div className="panel-head-aside">
+                  <div className="legend">
+                    <span>
+                      <i className="swatch" style={{ background: "var(--gps)" }} /> Active
+                    </span>
+                    <span>
+                      <i className="swatch" style={{ background: "#c47d3a" }} /> Idle
+                    </span>
+                  </div>
+                  <ExportExcelButton
+                    disabled={rows.length === 0}
+                    prefix="compact-utilization"
+                    sheetName="Utilization"
+                    getRows={() => periodUtilizationSheet(rows)}
+                  />
                 </div>
               </div>
               <UtilizationChart rows={rows} />
@@ -308,13 +343,21 @@ export default function CompactDashboard() {
             <section className="panel onesheet-cell">
               <div className="panel-head">
                 <h2>Fuel</h2>
-                <div className="legend">
-                  <span>
-                    <i className="swatch" style={{ background: "var(--gps)" }} /> CAN
-                  </span>
-                  <span>
-                    <i className="swatch" style={{ background: "var(--odo)" }} /> Tank
-                  </span>
+                <div className="panel-head-aside">
+                  <div className="legend">
+                    <span>
+                      <i className="swatch" style={{ background: "var(--gps)" }} /> CAN
+                    </span>
+                    <span>
+                      <i className="swatch" style={{ background: "var(--odo)" }} /> Tank
+                    </span>
+                  </div>
+                  <ExportExcelButton
+                    disabled={rows.length === 0}
+                    prefix="compact-fuel"
+                    sheetName="Fuel"
+                    getRows={() => periodFuelSheet(rows)}
+                  />
                 </div>
               </div>
               <FuelChart rows={rows} />
@@ -323,6 +366,14 @@ export default function CompactDashboard() {
             <section className="panel onesheet-cell onesheet-analysis">
               <div className="panel-head">
                 <h2>Analysis</h2>
+                <div className="panel-head-aside">
+                  <ExportExcelButton
+                    disabled={insights.length === 0}
+                    prefix="compact-analysis"
+                    sheetName="Analysis"
+                    getRows={() => insightsSheet(insights)}
+                  />
+                </div>
               </div>
               <div className="insight-stack">
                 {insights.map((block) => (
@@ -337,13 +388,21 @@ export default function CompactDashboard() {
             <section className="panel onesheet-cell">
               <div className="panel-head">
                 <h2>Speed &amp; RPM</h2>
-                <div className="legend">
-                  <span>
-                    <i className="swatch line" style={{ background: "var(--gps)" }} /> Speed
-                  </span>
-                  <span>
-                    <i className="swatch line" style={{ background: "var(--odo)" }} /> RPM
-                  </span>
+                <div className="panel-head-aside">
+                  <div className="legend">
+                    <span>
+                      <i className="swatch line" style={{ background: "var(--gps)" }} /> Speed
+                    </span>
+                    <span>
+                      <i className="swatch line" style={{ background: "var(--odo)" }} /> RPM
+                    </span>
+                  </div>
+                  <ExportExcelButton
+                    disabled={rows.length === 0}
+                    prefix="compact-speed-rpm"
+                    sheetName="Speed RPM"
+                    getRows={() => periodSpeedRpmSheet(rows)}
+                  />
                 </div>
               </div>
               <SpeedRpmChart rows={rows} />
@@ -352,6 +411,28 @@ export default function CompactDashboard() {
             <section className="panel onesheet-cell onesheet-snapshot">
               <div className="panel-head">
                 <h2>Snapshot</h2>
+                <div className="panel-head-aside">
+                  <ExportExcelButton
+                    disabled={!hasRows}
+                    prefix="compact-snapshot"
+                    sheetName="Snapshot"
+                    getRows={() =>
+                      compactSnapshotSheet(totals, [
+                        ["Elevation gain m", totals.altitudeSamples > 0 ? Math.round(totals.elevationGainM) : ""],
+                        ["Elevation loss m", totals.altitudeSamples > 0 ? Math.round(totals.elevationLossM) : ""],
+                        ["Terrain impact %", totals.terrainImpactPct > 0 ? Math.round(totals.terrainImpactPct * 10) / 10 : ""],
+                        ["Flat km/l", totals.flatKmPerL > 0 ? Math.round(totals.flatKmPerL * 100) / 100 : ""],
+                        ["Road smooth %", totals.roadSamples > 0 ? Math.round(totals.roadSmoothPct * 10) / 10 : ""],
+                        ["Road bumpy %", totals.roadSamples > 0 ? Math.round(totals.roadBumpyPct * 10) / 10 : ""],
+                        ["Harsh braking", behavior?.harshBraking ?? ""],
+                        ["Harsh acceleration", behavior?.harshAcceleration ?? ""],
+                        ["Harsh cornering", behavior?.harshCornering ?? ""],
+                        ["Overspeed", behavior?.overspeed ?? ""],
+                        ["Top issue", behavior?.topIssue ?? "None"],
+                      ])
+                    }
+                  />
+                </div>
               </div>
               <div className="onesheet-tiles">
                 <div className="mini-stat">

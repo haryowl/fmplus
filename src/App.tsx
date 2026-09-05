@@ -21,6 +21,18 @@ import { UtilizationChart } from "./components/UtilizationChart";
 import { BrandMark } from "./components/BrandMark";
 import { ViewNav } from "./components/ViewNav";
 import { ExportPdfButton } from "./components/ExportPdfButton";
+import { ExportExcelButton } from "./components/ExportExcelButton";
+import {
+  behaviorEventsSheet,
+  periodDetailSheet,
+  periodDistanceSheet,
+  periodFuelSheet,
+  periodRoadSheet,
+  periodSpeedRpmSheet,
+  periodTerrainSheet,
+  periodUtilizationSheet,
+  vehicleKpiSheet,
+} from "./lib/panelExcel";
 import { describeLoadProgress } from "./lib/dayTracks";
 import { useVehicleDashboard } from "./lib/useVehicleDashboard";
 
@@ -317,6 +329,15 @@ export default function App() {
           </div>
         )}
 
+        <div className="kpi-toolbar no-print">
+          <ExportExcelButton
+            disabled={!trips || rows.length === 0}
+            prefix="vehicle-kpis"
+            sheetName="Summary"
+            getRows={() => vehicleKpiSheet(totals)}
+          />
+        </div>
+
         <section className="kpis">
           <article className="kpi" style={{ ["--tick" as string]: "var(--gps)" }}>
             <div className="label">GPS distance</div>
@@ -353,19 +374,27 @@ export default function App() {
                 when those do not apply.
               </p>
             </div>
-            <div className="legend">
-              <span>
-                <i className="swatch" style={{ background: "var(--gps)" }} /> GPS all
-              </span>
-              <span>
-                <i className="swatch" style={{ background: "var(--ign)" }} /> Ignition
-              </span>
-              <span>
-                <i className="swatch" style={{ background: "var(--odo)" }} /> Odometer
-              </span>
-              <span>
-                <i className="swatch line" style={{ background: "var(--hrs)" }} /> Hours
-              </span>
+            <div className="panel-head-aside">
+              <div className="legend">
+                <span>
+                  <i className="swatch" style={{ background: "var(--gps)" }} /> GPS all
+                </span>
+                <span>
+                  <i className="swatch" style={{ background: "var(--ign)" }} /> Ignition
+                </span>
+                <span>
+                  <i className="swatch" style={{ background: "var(--odo)" }} /> Odometer
+                </span>
+                <span>
+                  <i className="swatch line" style={{ background: "var(--hrs)" }} /> Hours
+                </span>
+              </div>
+              <ExportExcelButton
+                disabled={rows.length === 0}
+                prefix="vehicle-distance"
+                sheetName="Distance"
+                getRows={() => periodDistanceSheet(rows)}
+              />
             </div>
           </div>
 
@@ -405,19 +434,27 @@ export default function App() {
                   the highest reading in the period. Speed is GPS m/s × 3.6; RPM is CAN engine speed.
                 </p>
               </div>
-              <div className="legend">
-                <span>
-                  <i className="swatch line" style={{ background: "var(--gps)" }} /> Avg speed
-                </span>
-                <span>
-                  <i className="swatch dash" style={{ borderColor: "var(--gps)" }} /> Max speed
-                </span>
-                <span>
-                  <i className="swatch line" style={{ background: "var(--odo)" }} /> Avg RPM
-                </span>
-                <span>
-                  <i className="swatch dash" style={{ borderColor: "var(--odo)" }} /> Max RPM
-                </span>
+              <div className="panel-head-aside">
+                <div className="legend">
+                  <span>
+                    <i className="swatch line" style={{ background: "var(--gps)" }} /> Avg speed
+                  </span>
+                  <span>
+                    <i className="swatch dash" style={{ borderColor: "var(--gps)" }} /> Max speed
+                  </span>
+                  <span>
+                    <i className="swatch line" style={{ background: "var(--odo)" }} /> Avg RPM
+                  </span>
+                  <span>
+                    <i className="swatch dash" style={{ borderColor: "var(--odo)" }} /> Max RPM
+                  </span>
+                </div>
+                <ExportExcelButton
+                  disabled={rows.length === 0}
+                  prefix="vehicle-speed-rpm"
+                  sheetName="Speed RPM"
+                  getRows={() => periodSpeedRpmSheet(rows)}
+                />
               </div>
             </div>
             <div className="stat-strip four">
@@ -457,13 +494,21 @@ export default function App() {
                     below the minimum — not a fixed share of active hours.
                   </p>
                 </div>
-                <div className="legend">
-                  <span>
-                    <i className="swatch" style={{ background: "var(--gps)" }} /> Active
-                  </span>
-                  <span>
-                    <i className="swatch" style={{ background: "#c47d3a" }} /> Idle
-                  </span>
+                <div className="panel-head-aside">
+                  <div className="legend">
+                    <span>
+                      <i className="swatch" style={{ background: "var(--gps)" }} /> Active
+                    </span>
+                    <span>
+                      <i className="swatch" style={{ background: "#c47d3a" }} /> Idle
+                    </span>
+                  </div>
+                  <ExportExcelButton
+                    disabled={rows.length === 0}
+                    prefix="vehicle-utilization"
+                    sheetName="Utilization"
+                    getRows={() => periodUtilizationSheet(rows)}
+                  />
                 </div>
               </div>
               <div className="stat-strip">
@@ -493,16 +538,24 @@ export default function App() {
                     sensors.
                   </p>
                 </div>
-                <div className="legend">
-                  <span>
-                    <i className="swatch" style={{ background: "var(--gps)" }} /> CAN
-                  </span>
-                  <span>
-                    <i className="swatch" style={{ background: "var(--odo)" }} /> Tank
-                  </span>
-                  <span>
-                    <i className="swatch" style={{ background: "var(--ign)" }} /> Refill
-                  </span>
+                <div className="panel-head-aside">
+                  <div className="legend">
+                    <span>
+                      <i className="swatch" style={{ background: "var(--gps)" }} /> CAN
+                    </span>
+                    <span>
+                      <i className="swatch" style={{ background: "var(--odo)" }} /> Tank
+                    </span>
+                    <span>
+                      <i className="swatch" style={{ background: "var(--ign)" }} /> Refill
+                    </span>
+                  </div>
+                  <ExportExcelButton
+                    disabled={rows.length === 0}
+                    prefix="vehicle-fuel"
+                    sheetName="Fuel"
+                    getRows={() => periodFuelSheet(rows)}
+                  />
                 </div>
               </div>
               <div className="stat-strip four">
@@ -557,13 +610,21 @@ export default function App() {
                   so flat-terrain km/l is higher than actual.
                 </p>
               </div>
-              <div className="legend">
-                <span>
-                  <i className="swatch" style={{ background: "var(--odo)" }} /> Gain
-                </span>
-                <span>
-                  <i className="swatch" style={{ background: "var(--gps)" }} /> Loss
-                </span>
+              <div className="panel-head-aside">
+                <div className="legend">
+                  <span>
+                    <i className="swatch" style={{ background: "var(--odo)" }} /> Gain
+                  </span>
+                  <span>
+                    <i className="swatch" style={{ background: "var(--gps)" }} /> Loss
+                  </span>
+                </div>
+                <ExportExcelButton
+                  disabled={rows.length === 0}
+                  prefix="vehicle-terrain"
+                  sheetName="Terrain"
+                  getRows={() => periodTerrainSheet(rows)}
+                />
               </div>
             </div>
             <div className="stat-strip four">
@@ -609,16 +670,24 @@ export default function App() {
                   has no axisX/Y/Z.
                 </p>
               </div>
-              <div className="legend">
-                <span>
-                  <i className="swatch" style={{ background: "var(--gps)" }} /> Smooth
-                </span>
-                <span>
-                  <i className="swatch" style={{ background: "#c47d3a" }} /> Rough
-                </span>
-                <span>
-                  <i className="swatch" style={{ background: "var(--danger)" }} /> Bumpy
-                </span>
+              <div className="panel-head-aside">
+                <div className="legend">
+                  <span>
+                    <i className="swatch" style={{ background: "var(--gps)" }} /> Smooth
+                  </span>
+                  <span>
+                    <i className="swatch" style={{ background: "#c47d3a" }} /> Rough
+                  </span>
+                  <span>
+                    <i className="swatch" style={{ background: "var(--danger)" }} /> Bumpy
+                  </span>
+                </div>
+                <ExportExcelButton
+                  disabled={rows.length === 0}
+                  prefix="vehicle-road"
+                  sheetName="Road"
+                  getRows={() => periodRoadSheet(rows)}
+                />
               </div>
             </div>
             <div className="stat-strip four">
@@ -672,6 +741,14 @@ export default function App() {
                   Events are counted on the rising edge, so a stretch of overspeed is one incident, not
                   one tick per GPS point. Safety score is 100 at 0 events/100 km, 50 at 10, and 0 at 20+.
                 </p>
+              </div>
+              <div className="panel-head-aside">
+                <ExportExcelButton
+                  disabled={!behavior || behavior.rows.length === 0}
+                  prefix="vehicle-behavior"
+                  sheetName="Behavior"
+                  getRows={() => behaviorEventsSheet(behavior?.rows ?? [])}
+                />
               </div>
             </div>
             <div className="threshold-row">
@@ -784,6 +861,14 @@ export default function App() {
                     Distance, engine time, speed, RPM, fuel, and elevation for each period. Trip count
                     is sessions that started in the period.
                 </p>
+              </div>
+              <div className="panel-head-aside">
+                <ExportExcelButton
+                  disabled={rows.length === 0}
+                  prefix="vehicle-period-detail"
+                  sheetName="Detail"
+                  getRows={() => periodDetailSheet(rows)}
+                />
               </div>
             </div>
             <div className="table-wrap">

@@ -10,6 +10,8 @@ import {
   formatRpm,
   formatSpeed,
 } from "../lib/format";
+import { fleetHeadToHeadSheet } from "../lib/panelExcel";
+import { ExportExcelButton } from "./ExportExcelButton";
 
 function formatValue(id: string, n: number): string {
   if (id === "active" || id === "idle") return `${formatHours(n)} h`;
@@ -54,35 +56,45 @@ export function FleetHeadToHead({ vehicles, baselineId, compareId, onBaseline, o
           <h2>Head to head</h2>
           <p>Second vehicle versus the first. Idle, fuel, and cost are better when they fall; efficiency is better when it rises.</p>
         </div>
-        <div className="compare-picks">
-          <div className="field">
-            <label htmlFor="fleet-a">First</label>
-            <select
-              id="fleet-a"
-              value={baseline?.userId ?? ""}
-              onChange={(e) => onBaseline(Number(e.target.value))}
-            >
-              {live.map((v) => (
-                <option key={v.userId} value={v.userId}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
+        <div className="panel-head-aside">
+          <div className="compare-picks">
+            <div className="field">
+              <label htmlFor="fleet-a">First</label>
+              <select
+                id="fleet-a"
+                value={baseline?.userId ?? ""}
+                onChange={(e) => onBaseline(Number(e.target.value))}
+              >
+                {live.map((v) => (
+                  <option key={v.userId} value={v.userId}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="fleet-b">Second</label>
+              <select
+                id="fleet-b"
+                value={compare?.userId ?? ""}
+                onChange={(e) => onCompare(Number(e.target.value))}
+              >
+                {live.map((v) => (
+                  <option key={v.userId} value={v.userId}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div className="field">
-            <label htmlFor="fleet-b">Second</label>
-            <select
-              id="fleet-b"
-              value={compare?.userId ?? ""}
-              onChange={(e) => onCompare(Number(e.target.value))}
-            >
-              {live.map((v) => (
-                <option key={v.userId} value={v.userId}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ExportExcelButton
+            disabled={!baseline || !compare}
+            prefix="fleet-head-to-head"
+            sheetName="Head to head"
+            getRows={() =>
+              fleetHeadToHeadSheet(vehicles, baseline!.userId, compare!.userId)
+            }
+          />
         </div>
       </div>
       {metrics.length === 0 ? (

@@ -452,6 +452,12 @@ span.btn-ghost {
   flex-direction: column;
 }
 
+.kpi-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 8px;
+}
+
 .panel-head {
   display: flex;
   justify-content: space-between;
@@ -459,6 +465,14 @@ span.btn-ghost {
   flex-wrap: wrap;
   gap: 16px;
   margin-bottom: 12px;
+}
+
+.panel-head-aside {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+  justify-content: flex-end;
 }
 
 .map-toggles {

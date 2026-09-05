@@ -16,6 +16,7 @@ import { describeLoadProgress } from "../lib/dayTracks";
 import { useFleetDashboard } from "../lib/useFleetDashboard";
 import type { Period } from "../lib/types";
 import { BrandMark } from "../components/BrandMark";
+import { ExportExcelButton } from "../components/ExportExcelButton";
 import { FleetBarChart } from "../components/FleetBarChart";
 import { FleetHeadToHead } from "../components/FleetHeadToHead";
 import { FleetRankTable } from "../components/FleetRankTable";
@@ -23,6 +24,17 @@ import { VehiclePicker } from "../components/VehiclePicker";
 import { ExportPdfButton } from "../components/ExportPdfButton";
 import { ViewNav } from "../components/ViewNav";
 import type { InsightBlock } from "../lib/insight";
+import {
+  fleetDistanceByVehicleSheet,
+  fleetDistanceOverTimeSheet,
+  fleetEfficiencySheet,
+  fleetFuelSheet,
+  fleetKpiSheet,
+  fleetRankSheet,
+  fleetSafetySheet,
+  fleetUtilizationSheet,
+  insightsSheet,
+} from "../lib/panelExcel";
 
 export default function FleetDashboard() {
   const d = useFleetDashboard();
@@ -152,6 +164,23 @@ export default function FleetDashboard() {
           </div>
         )}
 
+        <div className="kpi-toolbar no-print">
+          <ExportExcelButton
+            disabled={!d.byUserId || live.length === 0}
+            prefix="fleet-kpi"
+            sheetName="Fleet KPI"
+            getRows={() =>
+              fleetKpiSheet({
+                vehicleCount: d.loadedCount,
+                gpsKm: d.fleetGps,
+                activeHours: d.fleetHours,
+                idleHours: d.fleetIdle,
+                fuelL: d.fleetFuel,
+                cost: d.fleetCost,
+              })
+            }
+          />
+        </div>
         <section className="kpis">
           <article className="kpi" style={{ ["--tick" as string]: "var(--gps)" }}>
             <div className="label">Vehicles loaded</div>
@@ -249,7 +278,15 @@ const FleetCharts = memo(function FleetCharts({
             <h2>Distance by vehicle</h2>
             <p>GPS kilometres in the selected range. Use period grouping for the trend below.</p>
           </div>
-          <Legend vehicles={live} />
+          <div className="panel-head-aside">
+            <Legend vehicles={live} />
+            <ExportExcelButton
+              disabled={live.length === 0}
+              prefix="fleet-distance-by-vehicle"
+              sheetName="Distance by vehicle"
+              getRows={() => fleetDistanceByVehicleSheet(live)}
+            />
+          </div>
         </div>
         <FleetBarChart
           labels={live.map((v) => v.label)}
@@ -272,7 +309,15 @@ const FleetCharts = memo(function FleetCharts({
               <h2>Distance over time</h2>
               <p>One line per vehicle. Periods with no trips for a vehicle show as zero.</p>
             </div>
-            <Legend vehicles={live} />
+            <div className="panel-head-aside">
+              <Legend vehicles={live} />
+              <ExportExcelButton
+                disabled={live.length === 0}
+                prefix="fleet-distance-over-time"
+                sheetName="Distance over time"
+                getRows={() => fleetDistanceOverTimeSheet(live)}
+              />
+            </div>
           </div>
           <FleetBarChart
             type="line"
@@ -295,6 +340,12 @@ const FleetCharts = memo(function FleetCharts({
               <h2>Utilization</h2>
               <p>Engine-on hours split into moving versus idle.</p>
             </div>
+            <ExportExcelButton
+              disabled={live.length === 0}
+              prefix="fleet-utilization"
+              sheetName="Utilization"
+              getRows={() => fleetUtilizationSheet(live)}
+            />
           </div>
           <FleetBarChart
             labels={live.map((v) => v.label)}
@@ -313,6 +364,12 @@ const FleetCharts = memo(function FleetCharts({
               <h2>Efficiency</h2>
               <p>GPS km per litre used for cost in this range.</p>
             </div>
+            <ExportExcelButton
+              disabled={live.length === 0}
+              prefix="fleet-efficiency"
+              sheetName="Efficiency"
+              getRows={() => fleetEfficiencySheet(live)}
+            />
           </div>
           <FleetBarChart
             labels={live.map((v) => v.label)}
@@ -336,6 +393,12 @@ const FleetCharts = memo(function FleetCharts({
               <h2>Fuel used</h2>
               <p>CAN and tank totals side by side per vehicle.</p>
             </div>
+            <ExportExcelButton
+              disabled={live.length === 0}
+              prefix="fleet-fuel"
+              sheetName="Fuel used"
+              getRows={() => fleetFuelSheet(live)}
+            />
           </div>
           <FleetBarChart
             labels={live.map((v) => v.label)}
@@ -353,6 +416,12 @@ const FleetCharts = memo(function FleetCharts({
               <h2>Safety events</h2>
               <p>Harsh brake, accel, corner, and overspeed counts.</p>
             </div>
+            <ExportExcelButton
+              disabled={live.length === 0}
+              prefix="fleet-safety"
+              sheetName="Safety events"
+              getRows={() => fleetSafetySheet(live)}
+            />
           </div>
           <FleetBarChart
             labels={live.map((v) => v.label)}
@@ -390,6 +459,12 @@ const FleetCharts = memo(function FleetCharts({
             <h2>Ranking</h2>
             <p>Sort any column. Best and worst in that column are highlighted when the metric has a preferred direction.</p>
           </div>
+          <ExportExcelButton
+            disabled={live.length === 0}
+            prefix="fleet-ranking"
+            sheetName="Ranking"
+            getRows={() => fleetRankSheet(live)}
+          />
         </div>
         <FleetRankTable vehicles={vehicles} />
       </section>
@@ -408,6 +483,12 @@ const FleetCharts = memo(function FleetCharts({
             <h2>Fleet analysis</h2>
             <p>Template sentences from the same totals. Open a vehicle for the full single-vehicle briefing.</p>
           </div>
+          <ExportExcelButton
+            disabled={insights.length === 0}
+            prefix="fleet-analysis"
+            sheetName="Fleet analysis"
+            getRows={() => insightsSheet(insights)}
+          />
         </div>
         <div className="insight-stack">
           {insights.map((block) => (

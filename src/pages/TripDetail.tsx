@@ -33,8 +33,10 @@ import {
 import type { Group, LoadProgress, User } from "../lib/types";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import { BrandMark } from "../components/BrandMark";
+import { ExportExcelButton } from "../components/ExportExcelButton";
 import { TripSegmentMap, type MapFocusPoint } from "../components/TripSegmentMap";
 import { ViewNav } from "../components/ViewNav";
+import { tripSegmentsSheet, tripSummarySheet, tripTimelineSheet } from "../lib/panelExcel";
 
 type StatusFilter = Record<SegmentStatus, boolean>;
 
@@ -497,6 +499,24 @@ export default function TripDetail() {
 
         {segments.length > 0 && (
           <>
+            <div className="kpi-toolbar no-print">
+              <ExportExcelButton
+                prefix="trip-summary"
+                sheetName="Trip summary"
+                getRows={() =>
+                  tripSummarySheet({
+                    trips: totals.trips,
+                    distanceKm: totals.distance,
+                    movingHours: hours.tripHours,
+                    idleStopHours: hours.idleHours + hours.stopHours,
+                    fuelL: totals.fuel,
+                    events: totals.events,
+                    recordedHours: hours.recordedHours,
+                    dayCount,
+                  })
+                }
+              />
+            </div>
             <section className="kpis trip-detail-kpis">
               <article className="kpi">
                 <div className="label">Trips</div>
@@ -535,31 +555,39 @@ export default function TripDetail() {
             <section className="trip-detail-chart panel">
               <div className="trip-timeline-header">
                 <h2>Timeline</h2>
-                {timelineDays.length > TRIP_TIMELINE_PAGE_DAYS && (
-                  <div className="trip-timeline-pager">
-                    <button
-                      type="button"
-                      className="btn"
-                      disabled={safeTimelinePage <= 0}
-                      onClick={() => setTimelinePage((p) => Math.max(0, p - 1))}
-                    >
-                      ← Prev
-                    </button>
-                    <span>
-                      Days {safeTimelinePage * TRIP_TIMELINE_PAGE_DAYS + 1}–
-                      {Math.min((safeTimelinePage + 1) * TRIP_TIMELINE_PAGE_DAYS, timelineDays.length)} of{" "}
-                      {timelineDays.length}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn"
-                      disabled={safeTimelinePage >= timelinePageCount - 1}
-                      onClick={() => setTimelinePage((p) => Math.min(timelinePageCount - 1, p + 1))}
-                    >
-                      Next →
-                    </button>
-                  </div>
-                )}
+                <div className="panel-head-aside">
+                  {timelineDays.length > TRIP_TIMELINE_PAGE_DAYS && (
+                    <div className="trip-timeline-pager">
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={safeTimelinePage <= 0}
+                        onClick={() => setTimelinePage((p) => Math.max(0, p - 1))}
+                      >
+                        ← Prev
+                      </button>
+                      <span>
+                        Days {safeTimelinePage * TRIP_TIMELINE_PAGE_DAYS + 1}–
+                        {Math.min((safeTimelinePage + 1) * TRIP_TIMELINE_PAGE_DAYS, timelineDays.length)} of{" "}
+                        {timelineDays.length}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={safeTimelinePage >= timelinePageCount - 1}
+                        onClick={() => setTimelinePage((p) => Math.min(timelinePageCount - 1, p + 1))}
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  )}
+                  <ExportExcelButton
+                    disabled={visible.length === 0}
+                    prefix="trip-timeline"
+                    sheetName="Timeline"
+                    getRows={() => tripTimelineSheet(visible, dateFrom, dateTo, timezone)}
+                  />
+                </div>
               </div>
               <div className="trip-timeline-grid" role="img" aria-label="Segment timeline by day">
                 <div className="trip-timeline-hours-row">
@@ -616,7 +644,28 @@ export default function TripDetail() {
             </section>
 
             <section className="panel trip-detail-table-wrap">
-              <h2>Segments</h2>
+              <div className="panel-head">
+                <h2>Segments</h2>
+                <ExportExcelButton
+                  disabled={visible.length === 0}
+                  prefix="trip-segments"
+                  sheetName="Segments"
+                  getRows={() =>
+                    tripSegmentsSheet({
+                      segments: visible,
+                      events,
+                      customFields,
+                      customFieldNames: columns.customFieldNames,
+                      vehicleName: selectedUser ? userLabel(selectedUser) : "",
+                      groupName: selectedGroup?.name || "",
+                      timezone,
+                      includeRpm: columns.rpm,
+                      includeRefill: columns.refill,
+                      includeEvents: columns.events,
+                    })
+                  }
+                />
+              </div>
               <div className="trip-detail-table-scroll">
                 <table className="data-table trip-detail-table">
                   <thead>

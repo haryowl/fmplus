@@ -14,11 +14,18 @@ import { describeLoadProgress } from "../lib/dayTracks";
 import { useFleetDashboard } from "../lib/useFleetDashboard";
 import type { Period } from "../lib/types";
 import { BrandMark } from "../components/BrandMark";
+import { ExportExcelButton } from "../components/ExportExcelButton";
 import { FleetBarChart } from "../components/FleetBarChart";
 import { FleetRankTable } from "../components/FleetRankTable";
 import { VehiclePicker } from "../components/VehiclePicker";
 import { ExportPdfButton } from "../components/ExportPdfButton";
 import { ViewNav } from "../components/ViewNav";
+import {
+  fleetEfficiencySheet,
+  fleetKpiSheet,
+  fleetRankSheet,
+  insightsSheet,
+} from "../lib/panelExcel";
 
 export default function FleetCompact() {
   const d = useFleetDashboard();
@@ -151,6 +158,23 @@ export default function FleetCompact() {
           </div>
         )}
 
+        <div className="kpi-toolbar no-print">
+          <ExportExcelButton
+            disabled={!d.byUserId || live.length === 0}
+            prefix="fleet-compact-kpi"
+            sheetName="Fleet KPI"
+            getRows={() =>
+              fleetKpiSheet({
+                vehicleCount: d.loadedCount,
+                gpsKm: d.fleetGps,
+                activeHours: d.fleetHours,
+                idleHours: d.fleetIdle,
+                fuelL: d.fleetFuel,
+                cost: d.fleetCost,
+              })
+            }
+          />
+        </div>
         <section className="kpis">
           <article className="kpi" style={{ ["--tick" as string]: "var(--gps)" }}>
             <div className="label">Vehicles</div>
@@ -212,12 +236,24 @@ export default function FleetCompact() {
             <section className="panel onesheet-cell fleet-rank-main">
               <div className="panel-head">
                 <h2>Ranking</h2>
+                <ExportExcelButton
+                  disabled={live.length === 0}
+                  prefix="fleet-ranking"
+                  sheetName="Ranking"
+                  getRows={() => fleetRankSheet(live)}
+                />
               </div>
               <FleetRankTable vehicles={d.vehicles} dense />
             </section>
             <section className="panel onesheet-cell">
               <div className="panel-head">
                 <h2>km/l</h2>
+                <ExportExcelButton
+                  disabled={live.length === 0}
+                  prefix="fleet-efficiency"
+                  sheetName="km/l"
+                  getRows={() => fleetEfficiencySheet(live)}
+                />
               </div>
               <FleetBarChart
                 labels={live.map((v) => v.label)}
@@ -234,6 +270,12 @@ export default function FleetCompact() {
             <section className="panel onesheet-cell onesheet-analysis">
               <div className="panel-head">
                 <h2>Analysis</h2>
+                <ExportExcelButton
+                  disabled={d.insights.length === 0}
+                  prefix="fleet-analysis"
+                  sheetName="Analysis"
+                  getRows={() => insightsSheet(d.insights)}
+                />
               </div>
               <div className="insight-stack">
                 {d.insights.map((block) => (

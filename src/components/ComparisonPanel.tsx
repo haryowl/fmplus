@@ -1,6 +1,8 @@
 import { comparePeriods, deltaTone } from "../lib/compare";
 import { formatHours, formatIdr, formatKm, formatKmPerL, formatLiters, formatMeters, formatRpm, formatSpeed } from "../lib/format";
+import { periodCompareSheet } from "../lib/panelExcel";
 import type { PeriodMetrics } from "../lib/types";
+import { ExportExcelButton } from "./ExportExcelButton";
 
 function formatValue(id: string, n: number): string {
   if (id === "active" || id === "idle") return `${formatHours(n)} h`;
@@ -44,27 +46,35 @@ export function ComparisonPanel({ rows, baselineKey, compareKey, onBaseline, onC
             is better when it rises.
           </p>
         </div>
-        <div className="compare-picks">
-          <div className="field">
-            <label htmlFor="c1">First</label>
-            <select id="c1" value={baselineKey} onChange={(e) => onBaseline(e.target.value)}>
-              {rows.map((row) => (
-                <option key={row.key} value={row.key}>
-                  {row.label}
-                </option>
-              ))}
-            </select>
+        <div className="panel-head-aside">
+          <div className="compare-picks">
+            <div className="field">
+              <label htmlFor="c1">First</label>
+              <select id="c1" value={baselineKey} onChange={(e) => onBaseline(e.target.value)}>
+                {rows.map((row) => (
+                  <option key={row.key} value={row.key}>
+                    {row.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="c2">Second</label>
+              <select id="c2" value={compareKey} onChange={(e) => onCompare(e.target.value)}>
+                {rows.map((row) => (
+                  <option key={row.key} value={row.key}>
+                    {row.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div className="field">
-            <label htmlFor="c2">Second</label>
-            <select id="c2" value={compareKey} onChange={(e) => onCompare(e.target.value)}>
-              {rows.map((row) => (
-                <option key={row.key} value={row.key}>
-                  {row.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ExportExcelButton
+            disabled={!baseline || !compare}
+            prefix="vehicle-period-compare"
+            sheetName="Compare"
+            getRows={() => periodCompareSheet(rows, baselineKey, compareKey)}
+          />
         </div>
       </div>
       {metrics.length === 0 ? (

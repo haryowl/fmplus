@@ -1,5 +1,7 @@
 import type { InsightBlock, InsightDepth } from "../lib/insight";
 import type { InsightSource } from "../lib/aiInsights";
+import { insightsSheet } from "../lib/panelExcel";
+import { ExportExcelButton } from "./ExportExcelButton";
 
 type Props = {
   blocks: InsightBlock[];
@@ -38,37 +40,45 @@ export function InsightsPanel({
               : "Template sentences from the same GPS, CAN, tank, altitude, and vibration numbers. Depth only adds extra clauses. AI is optional when a server key is set."}
           </p>
         </div>
-        <div className="insight-tools">
-          <div className="field">
-            <label htmlFor="insight-source">Source</label>
-            <select
-              id="insight-source"
-              value={source}
-              onChange={(e) => onSource(e.target.value as InsightSource)}
+        <div className="panel-head-aside">
+          <div className="insight-tools">
+            <div className="field">
+              <label htmlFor="insight-source">Source</label>
+              <select
+                id="insight-source"
+                value={source}
+                onChange={(e) => onSource(e.target.value as InsightSource)}
+              >
+                <option value="template">Template</option>
+                <option value="ai">AI</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="insight-depth">Depth</label>
+              <select
+                id="insight-depth"
+                value={depth}
+                onChange={(e) => onDepth(e.target.value as InsightDepth)}
+              >
+                <option value="standard">Standard</option>
+                <option value="detailed">Detailed</option>
+              </select>
+            </div>
+            <button
+              className="btn-secondary"
+              type="button"
+              onClick={onGenerate}
+              disabled={!aiConfigured || aiLoading}
             >
-              <option value="template">Template</option>
-              <option value="ai">AI</option>
-            </select>
+              {aiLoading ? "Generating…" : aiHasResult ? "Regenerate AI" : "Generate AI"}
+            </button>
           </div>
-          <div className="field">
-            <label htmlFor="insight-depth">Depth</label>
-            <select
-              id="insight-depth"
-              value={depth}
-              onChange={(e) => onDepth(e.target.value as InsightDepth)}
-            >
-              <option value="standard">Standard</option>
-              <option value="detailed">Detailed</option>
-            </select>
-          </div>
-          <button
-            className="btn-secondary"
-            type="button"
-            onClick={onGenerate}
-            disabled={!aiConfigured || aiLoading}
-          >
-            {aiLoading ? "Generating…" : aiHasResult ? "Regenerate AI" : "Generate AI"}
-          </button>
+          <ExportExcelButton
+            disabled={blocks.length === 0}
+            prefix="vehicle-analysis"
+            sheetName="Analysis"
+            getRows={() => insightsSheet(blocks)}
+          />
         </div>
       </div>
       {source === "ai" && !aiConfigured && (
