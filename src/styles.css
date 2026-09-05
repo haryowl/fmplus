@@ -1585,18 +1585,27 @@ html.onesheet-root body {
     margin-bottom: 8px;
   }
 
-  /* Dense packing: large panels may split; small cards stay together */
+  /* Keep each panel on one page; long tables may paginate */
   .panel {
-    break-inside: auto;
+    break-inside: avoid;
+    page-break-inside: avoid;
     padding: 8px 10px 6px !important;
     margin: 0 0 8px !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
+  .panel:has(.table-wrap),
+  .panel:has(.last-status-wrap) {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
   .panel-head {
     margin-bottom: 4px !important;
     gap: 6px !important;
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   .panel-head h2 {
@@ -1606,6 +1615,9 @@ html.onesheet-root body {
 
   .panel-head p,
   .panel-head .legend,
+  .panel-head-aside,
+  .map-toggles,
+  .compare-picks,
   .compare-hint {
     display: none !important;
   }
@@ -1613,8 +1625,10 @@ html.onesheet-root body {
   .kpi,
   .mini-stat,
   .stat-strip,
-  .banner {
+  .banner,
+  .kpis {
     break-inside: avoid;
+    page-break-inside: avoid;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -1649,44 +1663,51 @@ html.onesheet-root body {
 
   .chart-wrap,
   .chart-wrap-sm {
-    break-inside: auto;
-    height: 52mm !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    height: 48mm !important;
     min-height: 0 !important;
-    max-height: 52mm !important;
+    max-height: 48mm !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
   .chart-wrap canvas,
   .chart-wrap-sm canvas {
-    max-height: 52mm !important;
+    max-height: 48mm !important;
   }
 
   .panel-grid {
     gap: 8px !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .panel-grid > .panel .chart-wrap,
   .panel-grid > .panel .chart-wrap-sm {
     min-height: 0 !important;
-    height: 48mm !important;
-    max-height: 48mm !important;
+    height: 42mm !important;
+    max-height: 42mm !important;
   }
 
   .map-wrap {
     break-inside: avoid;
-    height: 72mm !important;
-    max-height: 72mm !important;
+    page-break-inside: avoid;
+    height: 65mm !important;
+    max-height: 65mm !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
   .map-wrap .leaflet-container {
-    height: 72mm !important;
+    height: 65mm !important;
   }
 
-  .table-wrap {
+  .table-wrap,
+  .rank-wrap,
+  .last-status-wrap {
     break-inside: auto;
+    page-break-inside: auto;
     overflow: visible !important;
     max-height: none !important;
     -webkit-print-color-adjust: exact;
@@ -1732,13 +1753,37 @@ html.onesheet-root body {
     display: none !important;
   }
 
+  /* Pack comparison / analysis cards so the whole panel fits one page */
   .compare-grid {
-    gap: 6px !important;
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 4px !important;
   }
 
   .compare-card {
     break-inside: avoid;
-    padding: 6px 8px !important;
+    page-break-inside: avoid;
+    padding: 4px 6px !important;
+    font-size: 9px !important;
+  }
+
+  .insight-stack {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .insight-item {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    padding: 4px 6px !important;
+    margin: 0 0 4px !important;
+    font-size: 10px !important;
+  }
+
+  .insight-note,
+  .insight-error,
+  .insight-tools {
+    display: none !important;
   }
 }
 
