@@ -95,3 +95,25 @@ http://81.17.100.7:4173/?embed=1&k=emb_siteA_locked&appId=40&groupId=12&userId=9
 ```
 
 Parents may be several hosts. Default iframe + `postMessage` allowlist is `https://armada.id` and `https://*.armada.id` (apex plus any subdomain). Override with `EMBED_FRAME_ANCESTORS` and `VITE_EMBED_ORIGINS` if needed.
+
+## Infra foundation (Postgres + object storage)
+
+Roadmap baseline for Admin / Maintenance / Dispatch. Optional today — without `DATABASE_URL` the app still uses `tenants.json` / `ARMADA_AUTH_HEADER` as before.
+
+```bash
+npm run db:up          # Postgres :5432 + MinIO :9000 (console :9001)
+# Add to .env.local (see .env.example):
+#   DATABASE_URL=postgres://fmplus:fmplus@127.0.0.1:5432/fmplus
+#   FMS_SECRETS_KEY=...long random...
+#   S3_ENDPOINT=http://127.0.0.1:9000
+#   S3_ACCESS_KEY=fmplus
+#   S3_SECRET_KEY=fmplussecret
+#   S3_BUCKET=fmplus-pom
+#   S3_FORCE_PATH_STYLE=1
+npm run db:migrate
+npm run probe:armada   # writes docs/armada-api-probe.md (no tokens in the file)
+```
+
+Health check: `GET /api/health` (database / secrets key / object storage status).
+
+Tenant load order: `tenants.json` → `TENANTS_JSON` → default `ARMADA_AUTH_HEADER` → **Postgres overlay** (same `k` wins from DB when enabled).

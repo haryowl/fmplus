@@ -18,7 +18,9 @@ import { handleLtProxyRequest, securityHeaders } from "./server/proxy-lt.mjs";
 import { handleTracksBatchRequest } from "./server/tracks-batch.mjs";
 import { handleUserDayTracksRequest } from "./server/user-day-tracks.mjs";
 import { handleNearbyFuelRequest } from "./server/nearby-fuel.mjs";
-import { tenantFromRequest } from "./server/tenants.mjs";
+import { handleHealthRequest } from "./server/health.mjs";
+import { initTenantVault, tenantFromRequest } from "./server/tenants.mjs";
+import { runMigrations } from "./server/db/migrate.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.join(root, "dist");
@@ -94,6 +96,7 @@ function serveStatic(req, res) {
 
 function onRequest(req, res) {
   void (async () => {
+    if (await handleHealthRequest(req, res)) return;
     if (await handleEmbedContextRequest(req, res)) return;
     if (await handleTracksBatchRequest(req, res)) return;
     if (await handleUserDayTracksRequest(req, res)) return;
@@ -126,8 +129,18 @@ server.keepAliveTimeout = 65_000;
 server.headersTimeout = 66_000;
 server.timeout = 0;
 
-server.listen(port, () => {
-  const scheme = ssl ? "https" : "http";
-  const ready = tenantFromRequest({ headers: {} }) ? "Armada proxy enabled" : "no default tenant token";
-  console.log(`Vehicle Metrics on ${scheme}://localhost:${port} (${ready})`);
-});
+async function boot() {
+  try {
+    await runMigrations();
+    await initTenantVault();
+  } catch (err) {
+    console.error("[boot] vault/db init:", err instanceof Error ? err.message : err);
+  }
+  server.listen(port, () => {
+    const scheme = ssl ? "https" : "http";
+    const ready = tenantFromRequest({ headers: {} }) ? "Armada proxy enabled" : "no default tenant token";
+    console.log(`Vehicle Metrics on ${scheme}://localhost:${port} (${ready})`);
+  });
+}
+
+void boot();

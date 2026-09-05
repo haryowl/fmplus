@@ -1,15 +1,16 @@
 /**
  * Operator vault. GpsGate tokens never leave the server.
- * tenants.json (gitignored) or TENANTS_JSON, plus optional ARMADA_AUTH_HEADER default.
+ * Sources (later wins on same key): tenants.json → TENANTS_JSON → ARMADA_AUTH_HEADER → Postgres.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadTenantsFromDatabase } from "./tenant-db.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const KEY_RE = /^[A-Za-z0-9._-]{8,80}$/;
 
-/** @typedef {{ key: string, appId: number, token: string, userIds: number[], groupIds: number[] }} Tenant */
+/** @typedef {{ key: string, appId: number, token: string, userIds: number[], groupIds: number[], entitlements?: Record<string, unknown>, displayName?: string, source?: string }} Tenant */
 
 let cache = null;
 
@@ -18,7 +19,7 @@ function asIdList(value) {
   return [...new Set(value.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
 }
 
-function asTenant(key, raw) {
+function asTenant(key, raw, source = "file") {
   if (!raw || typeof raw !== "object") return null;
   const appId = Number(raw.appId);
   const token = String(raw.token || "").trim();
@@ -29,10 +30,16 @@ function asTenant(key, raw) {
     token,
     userIds: asIdList(raw.userIds),
     groupIds: asIdList(raw.groupIds),
+    entitlements:
+      raw.entitlements && typeof raw.entitlements === "object" && !Array.isArray(raw.entitlements)
+        ? raw.entitlements
+        : {},
+    displayName: typeof raw.displayName === "string" ? raw.displayName : "",
+    source,
   };
 }
 
-function loadVault() {
+function loadVaultFromFiles() {
   /** @type {Map<string, Tenant>} */
   const map = new Map();
   const file = path.join(root, "tenants.json");
@@ -42,7 +49,7 @@ function loadVault() {
       if (parsed && typeof parsed === "object") {
         for (const [key, value] of Object.entries(parsed)) {
           if (!KEY_RE.test(key)) continue;
-          const tenant = asTenant(key, value);
+          const tenant = asTenant(key, value, "file");
           if (tenant) map.set(key, tenant);
         }
       }
@@ -57,7 +64,7 @@ function loadVault() {
       if (parsed && typeof parsed === "object") {
         for (const [key, value] of Object.entries(parsed)) {
           if (!KEY_RE.test(key)) continue;
-          const tenant = asTenant(key, value);
+          const tenant = asTenant(key, value, "env");
           if (tenant) map.set(key, tenant);
         }
       }
@@ -74,19 +81,45 @@ function loadVault() {
       token: fallbackToken,
       userIds: [],
       groupIds: [],
+      entitlements: {},
+      displayName: "",
+      source: "env",
     });
   }
   return map;
 }
 
 export function reloadTenants() {
-  cache = loadVault();
+  cache = loadVaultFromFiles();
   return cache;
 }
 
 function vault() {
-  if (!cache) cache = loadVault();
+  if (!cache) cache = loadVaultFromFiles();
   return cache;
+}
+
+/** Load file/env vault, then overlay enabled rows from Postgres when configured. */
+export async function initTenantVault() {
+  const map = loadVaultFromFiles();
+  const result = await loadTenantsFromDatabase((tenant) => {
+    if (tenant.key !== "" && !KEY_RE.test(tenant.key)) return;
+    map.set(tenant.key, {
+      key: tenant.key,
+      appId: tenant.appId,
+      token: tenant.token,
+      userIds: asIdList(tenant.userIds),
+      groupIds: asIdList(tenant.groupIds),
+      entitlements: tenant.entitlements || {},
+      displayName: tenant.displayName || "",
+      source: "database",
+    });
+  });
+  cache = map;
+  if (!result.skipped) {
+    console.log(`[tenants] loaded ${result.loaded} from database (file/env still apply as fallback)`);
+  }
+  return { size: map.size, fromDb: result.loaded || 0 };
 }
 
 export function isTenantKey(value) {
@@ -105,6 +138,8 @@ export function publicTenant(tenant) {
     appId: tenant.appId,
     userIds: tenant.userIds,
     groupIds: tenant.groupIds,
+    entitlements: tenant.entitlements && typeof tenant.entitlements === "object" ? tenant.entitlements : {},
+    displayName: tenant.displayName || "",
   };
 }
 
