@@ -66,6 +66,16 @@ export default function FleetDashboard() {
         </div>
       </header>
 
+      <p className="print-meta">
+        {d.userIds.length
+          ? `${d.userIds.length} vehicle${d.userIds.length === 1 ? "" : "s"}`
+          : "No vehicles"}
+        {d.selectedGroup ? ` · ${d.selectedGroup.name}` : ""}
+        {d.dateFrom && d.dateTo ? ` · ${d.dateFrom} → ${d.dateTo}` : ""}
+        {d.timezone ? ` · ${d.timezone}` : ""}
+        {d.period ? ` · ${d.period}` : ""}
+      </p>
+
       <main className="shell">
         <section className="filters fleet-filters">
           <div className="field">

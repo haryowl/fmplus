@@ -76,6 +76,14 @@ export default function FleetCompact() {
         </div>
       </header>
 
+      <p className="print-meta">
+        {d.userIds.length ? `${d.userIds.length} selected` : "No vehicles"}
+        {d.selectedGroup ? ` · ${d.selectedGroup.name}` : ""}
+        {d.dateFrom && d.dateTo ? ` · ${d.dateFrom} → ${d.dateTo}` : ""}
+        {d.timezone ? ` · ${d.timezone}` : ""}
+        {d.period ? ` · ${d.period}` : ""}
+      </p>
+
       <main className="shell">
         <section className="filters">
           <div className="field">

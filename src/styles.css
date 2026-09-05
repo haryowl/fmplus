@@ -1512,7 +1512,7 @@ html.onesheet-root body {
 @media print {
   @page {
     size: A4 landscape;
-    margin: 8mm;
+    margin: 6mm;
   }
 
   html,
@@ -1530,16 +1530,37 @@ html.onesheet-root body {
 
   .view-nav,
   .no-print,
+  .filters,
   .filters .btn-primary,
   .btn-secondary,
+  .kpi-toolbar,
   .foot {
     display: none !important;
   }
 
+  .print-meta {
+    display: block !important;
+    margin: 0 0 8px;
+    padding: 0;
+    font-size: 11px;
+    color: #5c5650;
+  }
+
   .topbar {
     break-after: avoid;
+    margin-bottom: 6px !important;
+    padding-bottom: 6px !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  .topbar h1 {
+    font-size: 16px !important;
+  }
+
+  .topbar p {
+    font-size: 11px !important;
+    margin: 2px 0 0 !important;
   }
 
   .shell,
@@ -1547,7 +1568,8 @@ html.onesheet-root body {
     overflow: visible !important;
     max-width: none !important;
     height: auto !important;
-    padding: 8px 0 0 !important;
+    padding: 4px 0 0 !important;
+    gap: 8px !important;
   }
 
   .app.onesheet .onesheet-grid,
@@ -1560,17 +1582,138 @@ html.onesheet-root body {
   .app.onesheet.fleet-sheet .onesheet-grid > * {
     height: auto !important;
     min-height: 0 !important;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
   }
 
-  .panel,
+  /* Dense packing: large panels may split; small cards stay together */
+  .panel {
+    break-inside: auto;
+    padding: 8px 10px 6px !important;
+    margin: 0 0 8px !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .panel-head {
+    margin-bottom: 4px !important;
+    gap: 6px !important;
+  }
+
+  .panel-head h2 {
+    font-size: 13px !important;
+    break-after: avoid;
+  }
+
+  .panel-head p,
+  .panel-head .legend,
+  .compare-hint {
+    display: none !important;
+  }
+
   .kpi,
-  .banner,
+  .mini-stat,
   .stat-strip,
-  .table-wrap {
+  .banner {
     break-inside: avoid;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  .kpis {
+    gap: 6px !important;
+    margin: 0 0 8px !important;
+  }
+
+  .kpi {
+    padding: 8px 10px 6px !important;
+  }
+
+  .kpi .value {
+    font-size: 18px !important;
+    margin-top: 4px !important;
+  }
+
+  .kpi .unit {
+    margin-top: 2px !important;
+    font-size: 10px !important;
+  }
+
+  .stat-strip {
+    gap: 6px !important;
+    margin: 0 0 6px !important;
+  }
+
+  .mini-stat {
+    padding: 4px 8px !important;
+  }
+
+  .chart-wrap,
+  .chart-wrap-sm {
+    break-inside: auto;
+    height: 52mm !important;
+    min-height: 0 !important;
+    max-height: 52mm !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .chart-wrap canvas,
+  .chart-wrap-sm canvas {
+    max-height: 52mm !important;
+  }
+
+  .panel-grid {
+    gap: 8px !important;
+  }
+
+  .panel-grid > .panel .chart-wrap,
+  .panel-grid > .panel .chart-wrap-sm {
+    min-height: 0 !important;
+    height: 48mm !important;
+    max-height: 48mm !important;
+  }
+
+  .map-wrap {
+    break-inside: avoid;
+    height: 72mm !important;
+    max-height: 72mm !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .map-wrap .leaflet-container {
+    height: 72mm !important;
+  }
+
+  .table-wrap {
+    break-inside: auto;
+    overflow: visible !important;
+    max-height: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .metrics,
+  .data-table,
+  .rank-table,
+  .last-status-table {
+    font-size: 9px !important;
+  }
+
+  .metrics th,
+  .metrics td,
+  .data-table th,
+  .data-table td,
+  .rank-table th,
+  .rank-table td {
+    padding: 3px 5px !important;
+  }
+
+  .metrics thead th,
+  .data-table thead th,
+  .rank-table thead th,
+  .last-status-table thead th {
+    position: static !important;
   }
 
   .last-status-panel,
@@ -1585,26 +1728,25 @@ html.onesheet-root body {
     break-inside: auto;
   }
 
-  .chart-wrap,
-  .chart-wrap-sm,
-  .map-wrap {
-    break-inside: avoid;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  .map-wrap {
-    height: 140mm !important;
-  }
-
-  .map-wrap .leaflet-container {
-    height: 140mm !important;
-  }
-
   .filters-extra {
     display: none !important;
   }
+
+  .compare-grid {
+    gap: 6px !important;
+  }
+
+  .compare-card {
+    break-inside: avoid;
+    padding: 6px 8px !important;
+  }
 }
+
+/* Screen: print meta hidden */
+.print-meta {
+  display: none;
+}
+
 
 /* —— Trip detail —— */
 .trip-detail-toolbar {

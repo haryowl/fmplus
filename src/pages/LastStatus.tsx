@@ -106,6 +106,12 @@ export default function LastStatus() {
         </div>
       </header>
 
+      <p className="print-meta">
+        {groupId && users.length ? `${users.length} devices` : "All devices"}
+        {selectedGroup ? ` · ${selectedGroup.name}` : ""}
+        {timezone ? ` · ${timezone}` : ""}
+      </p>
+
       <main className="shell">
         <section className="filters">
           <div className="field">

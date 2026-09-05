@@ -46,6 +46,7 @@ export default function CompactDashboard() {
     setDateFrom,
     dateTo,
     setDateTo,
+    timezone,
     period,
     setPeriod,
     setTrips,
@@ -115,6 +116,14 @@ export default function CompactDashboard() {
           </div>
         </div>
       </header>
+
+      <p className="print-meta">
+        {selectedUser ? userLabel(selectedUser) : "No vehicle"}
+        {selectedGroup ? ` · ${selectedGroup.name}` : ""}
+        {dateFrom && dateTo ? ` · ${dateFrom} → ${dateTo}` : ""}
+        {timezone ? ` · ${timezone}` : ""}
+        {period ? ` · ${period}` : ""}
+      </p>
 
       <main className="shell">
         <section className="filters">
