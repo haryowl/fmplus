@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { parseEmbedSearch } from "./embed";
+import { defaultEntitlements, type Entitlements } from "./entitlements";
 import { bootTenantFromSearch, fetchEmbedContext } from "./tenant";
 
 export function useEmbedTenant() {
@@ -8,6 +9,7 @@ export function useEmbedTenant() {
   const [error, setError] = useState("");
   const [allowedUserIds, setAllowedUserIds] = useState<number[]>([]);
   const [allowedGroupIds, setAllowedGroupIds] = useState<number[]>([]);
+  const [entitlements, setEntitlements] = useState<Entitlements>(() => defaultEntitlements());
 
   useEffect(() => {
     bootTenantFromSearch(window.location.search);
@@ -25,6 +27,7 @@ export function useEmbedTenant() {
         if (ctx) {
           setAllowedUserIds(ctx.userIds);
           setAllowedGroupIds(ctx.groupIds);
+          setEntitlements(ctx.entitlements);
         }
         setReady(true);
       })
@@ -39,5 +42,17 @@ export function useEmbedTenant() {
   const allowsGroup = (id: string | number) =>
     allowedGroupIds.length === 0 || allowedGroupIds.includes(Number(id));
 
-  return { query, ready, error, allowedUserIds, allowedGroupIds, allowsUser, allowsGroup };
+  const moduleAllowed = (key: string) => entitlements.modules[key] !== false;
+
+  return {
+    query,
+    ready,
+    error,
+    allowedUserIds,
+    allowedGroupIds,
+    entitlements,
+    allowsUser,
+    allowsGroup,
+    moduleAllowed,
+  };
 }

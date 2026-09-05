@@ -1,4 +1,5 @@
 import { API_PREFIX, DEFAULT_APP_ID } from "./config";
+import { mergeEntitlements, type Entitlements } from "./entitlements";
 
 export const TENANT_HEADER = "X-Fms-Tenant";
 const KEY_RE = /^[A-Za-z0-9._-]{8,80}$/;
@@ -37,6 +38,8 @@ export type EmbedContext = {
   appId: number;
   userIds: number[];
   groupIds: number[];
+  displayName?: string;
+  entitlements: Entitlements;
 };
 
 export async function fetchEmbedContext(signal?: AbortSignal): Promise<EmbedContext | null> {
@@ -46,13 +49,19 @@ export async function fetchEmbedContext(signal?: AbortSignal): Promise<EmbedCont
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Embed context ${res.status}`);
-  const raw = (await res.json()) as Partial<EmbedContext>;
+  const raw = (await res.json()) as Partial<EmbedContext> & { entitlements?: unknown };
   const nextApp = Number(raw.appId);
   const userIds = Array.isArray(raw.userIds) ? raw.userIds.map(Number).filter((id) => id > 0) : [];
   const groupIds = Array.isArray(raw.groupIds) ? raw.groupIds.map(Number).filter((id) => id > 0) : [];
   if (!Number.isInteger(nextApp) || nextApp < 1) return null;
   configureTenant(tenantKey, nextApp);
-  return { appId: nextApp, userIds, groupIds };
+  return {
+    appId: nextApp,
+    userIds,
+    groupIds,
+    displayName: typeof raw.displayName === "string" ? raw.displayName : "",
+    entitlements: mergeEntitlements(raw.entitlements),
+  };
 }
 
 export function bootTenantFromSearch(search: string) {

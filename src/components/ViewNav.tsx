@@ -8,6 +8,8 @@ import {
   tripsHref,
   type AppView,
 } from "../lib/routing";
+import { moduleKeyForView } from "../lib/entitlements";
+import { useEmbedTenant } from "../lib/useEmbedTenant";
 
 const LINKS: { view: AppView; label: string; href: (search: string) => string }[] = [
   { view: "full", label: "Full", href: fullHref },
@@ -24,9 +26,14 @@ type Props = {
 
 export function ViewNav({ current }: Props) {
   const search = typeof window !== "undefined" ? window.location.search : "";
+  const { ready, moduleAllowed } = useEmbedTenant();
+  const links = ready
+    ? LINKS.filter((link) => moduleAllowed(moduleKeyForView(link.view)))
+    : LINKS;
+
   return (
     <nav className="view-nav" aria-label="Dashboard views">
-      {LINKS.map((link) =>
+      {links.map((link) =>
         link.view === current ? (
           <span key={link.view} className="btn-ghost active">
             {link.label}

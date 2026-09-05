@@ -117,3 +117,16 @@ npm run probe:armada   # writes docs/armada-api-probe.md (no tokens in the file)
 Health check: `GET /api/health` (database / secrets key / object storage status).
 
 Tenant load order: `tenants.json` → `TENANTS_JSON` → default `ARMADA_AUTH_HEADER` → **Postgres overlay** (same `k` wins from DB when enabled).
+
+## Admin console
+
+Open `/admin` after Postgres + `FMS_SECRETS_KEY` are configured.
+
+1. Set bootstrap credentials once in `.env.local`:
+   ```
+   ADMIN_BOOTSTRAP_USER=admin
+   ADMIN_BOOTSTRAP_PASSWORD=change-me-now
+   ```
+2. Restart the app (`npm run dev` or `systemctl restart fmplus`). The first admin is created only when `admin_users` is empty.
+3. Sign in at `/admin`, create tenants (embed `k`, appId, Armada token, webhook secret, module visibility).
+4. Armada tokens are encrypted at rest and **never** returned to the browser.

@@ -1,4 +1,6 @@
 import { publicTenant, tenantFromRequest } from "./tenants.mjs";
+import { mergeEntitlements } from "./entitlements.mjs";
+import { securityHeaders } from "./proxy-lt.mjs";
 
 /**
  * @param {import("node:http").IncomingMessage} req
@@ -10,9 +12,10 @@ export async function handleEmbedContextRequest(req, res) {
   if (pathOnly !== "/api/embed-context") return false;
 
   const json = (status, obj) => {
-    res.statusCode = status;
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.setHeader("Cache-Control", "no-store");
+    res.writeHead(status, securityHeaders({
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    }));
     res.end(JSON.stringify(obj));
   };
 
@@ -26,6 +29,10 @@ export async function handleEmbedContextRequest(req, res) {
     json(404, { error: "Unknown embed tenant" });
     return true;
   }
-  json(200, publicTenant(tenant));
+  const pub = publicTenant(tenant);
+  json(200, {
+    ...pub,
+    entitlements: mergeEntitlements(tenant.entitlements || pub?.entitlements),
+  });
   return true;
 }

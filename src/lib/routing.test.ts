@@ -22,6 +22,8 @@ describe("viewFromPath", () => {
     expect(viewFromPath("/status/")).toBe("status");
     expect(viewFromPath("/trips")).toBe("trips");
     expect(viewFromPath("/trips/")).toBe("trips");
+    expect(viewFromPath("/admin")).toBe("admin");
+    expect(viewFromPath("/admin/")).toBe("admin");
     expect(viewFromPath("/")).toBe("full");
   });
 });

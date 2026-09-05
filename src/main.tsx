@@ -7,6 +7,7 @@ import FleetCompact from "./pages/FleetCompact";
 import FleetDashboard from "./pages/FleetDashboard";
 import LastStatus from "./pages/LastStatus";
 import TripDetail from "./pages/TripDetail";
+import AdminConsole from "./pages/AdminConsole";
 import { VIEW_CHANGE, viewFromPath, type AppView } from "./lib/routing";
 import { bootTenantFromSearch } from "./lib/tenant";
 import "./styles.css";
@@ -14,6 +15,7 @@ import "./styles.css";
 bootTenantFromSearch(window.location.search);
 
 function pageFor(view: AppView) {
+  if (view === "admin") return AdminConsole;
   if (view === "status") return LastStatus;
   if (view === "trips") return TripDetail;
   if (view === "fleetCompact") return FleetCompact;
