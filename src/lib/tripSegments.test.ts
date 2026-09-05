@@ -182,6 +182,7 @@ describe("timelineSlicesForDay", () => {
           fuelSource: "none",
           refillL: 0,
           refillEvents: [],
+          paths: [],
           path: [],
           pointCount: 2,
         },
@@ -192,5 +193,50 @@ describe("timelineSlicesForDay", () => {
     expect(slices).toHaveLength(1);
     expect(slices[0].leftPct).toBeCloseTo(25, 0);
     expect(slices[0].widthPct).toBeCloseTo(25, 0);
+  });
+});
+
+describe("trip segment map path filtering", () => {
+  it("drops a lone far glitch so the path does not span oceans", () => {
+    const trip: Trip = {
+      trackInfoId: 3,
+      userId: 9,
+      created: new Date("2026-08-15T10:00:00+07:00"),
+      tracks: [
+        // Africa glitch then Indonesia cluster
+        pt("2026-08-15T10:00:00+07:00", { ign: true, speedMs: 12, lat: 1.2, lon: -4.5 }),
+        pt("2026-08-15T10:01:00+07:00", { ign: true, speedMs: 12, lat: -6.2, lon: 106.8 }),
+        pt("2026-08-15T10:02:00+07:00", { ign: true, speedMs: 12, lat: -6.201, lon: 106.801 }),
+        pt("2026-08-15T10:03:00+07:00", { ign: true, speedMs: 12, lat: -6.202, lon: 106.802 }),
+      ],
+    };
+    const segments = buildTripSegments([trip], { timezone: "+07:00", tripBreakMin: 5, minSpeedKmh: 3 });
+    const moving = segments.filter((s) => s.status === "trip");
+    expect(moving.length).toBeGreaterThanOrEqual(1);
+    const seg = moving[0];
+    expect(seg.path.every(([lat, lon]) => !(Math.abs(lat - 1.2) < 0.01 && Math.abs(lon + 4.5) < 0.01))).toBe(
+      true,
+    );
+    expect(seg.startLat).toBeCloseTo(-6.2, 2);
+    expect(seg.endLon).toBeCloseTo(106.802, 2);
+    expect(seg.paths.length).toBe(1);
+  });
+
+  it("skips null-island (0,0) samples", () => {
+    const trip: Trip = {
+      trackInfoId: 4,
+      userId: 9,
+      created: new Date("2026-08-15T11:00:00+07:00"),
+      tracks: [
+        pt("2026-08-15T11:00:00+07:00", { ign: true, speedMs: 12, lat: 0, lon: 0 }),
+        pt("2026-08-15T11:01:00+07:00", { ign: true, speedMs: 12, lat: -6.2, lon: 106.8 }),
+        pt("2026-08-15T11:02:00+07:00", { ign: true, speedMs: 12, lat: -6.201, lon: 106.801 }),
+      ],
+    };
+    const segments = buildTripSegments([trip], { timezone: "+07:00", tripBreakMin: 5, minSpeedKmh: 3 });
+    const moving = segments.find((s) => s.status === "trip");
+    expect(moving).toBeTruthy();
+    expect(moving!.path.some(([lat, lon]) => Math.abs(lat) < 0.01 && Math.abs(lon) < 0.01)).toBe(false);
+    expect(moving!.startLat).toBeCloseTo(-6.2, 2);
   });
 });

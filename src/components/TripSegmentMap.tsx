@@ -54,7 +54,10 @@ export function TripSegmentMap({ segments, selectedId, focusPoint = null, onSele
   const focusLayerRef = useRef<L.LayerGroup | null>(null);
   const fittedKeyRef = useRef("");
 
-  const trips = useMemo(() => segments.filter((s) => s.status === "trip" && s.path.length >= 2), [segments]);
+  const trips = useMemo(
+    () => segments.filter((s) => s.status === "trip" && s.paths.some((p) => p.length >= 2)),
+    [segments],
+  );
   const markers = useMemo(
     () =>
       segments.filter(
@@ -94,14 +97,17 @@ export function TripSegmentMap({ segments, selectedId, focusPoint = null, onSele
 
     for (const seg of trips) {
       const selected = seg.id === selectedId;
-      const line = L.polyline(seg.path, {
-        color: seg.color,
-        weight: selected ? 8 : 4,
-        opacity: selected ? 1 : 0.72,
-      });
-      line.on("click", () => onSelect(seg.id));
-      line.addTo(layer);
-      for (const pt of seg.path) bounds.push(pt);
+      for (const piece of seg.paths) {
+        if (piece.length < 2) continue;
+        const line = L.polyline(piece, {
+          color: seg.color,
+          weight: selected ? 8 : 4,
+          opacity: selected ? 1 : 0.72,
+        });
+        line.on("click", () => onSelect(seg.id));
+        line.addTo(layer);
+        for (const pt of piece) bounds.push(pt);
+      }
       if (seg.startLat !== null && seg.startLon !== null) {
         L.marker([seg.startLat, seg.startLon], { icon: startIcon }).addTo(layer);
       }

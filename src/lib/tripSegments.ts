@@ -10,6 +10,7 @@ import {
 import { FLEET_COLORS } from "./fleet";
 import { asNumber, haversineKm } from "./geo";
 import { dateKeyInOffset } from "./time";
+import { splitPaths, type MapPoint } from "./trackMap";
 import { assignLogicalTrips, type MotionPoint } from "./trips";
 import type { TrackPoint, Trip } from "./types";
 
@@ -56,6 +57,9 @@ export type TripSegment = {
   fuelSource: SegmentFuelSource;
   refillL: number;
   refillEvents: SegmentRefill[];
+  /** Drawable GPS runs after teleport/orphan filtering (no ocean-spanning lines). */
+  paths: [number, number][][];
+  /** Flattened kept points (bounds / legacy). */
   path: [number, number][];
   pointCount: number;
 };
@@ -212,20 +216,59 @@ export function segmentFuel(
   return { fuelUsedL: 0, fuelSource: "none", refillL: 0, refillEvents: [] };
 }
 
-function pathAndDistance(points: TripSegmentPoint[]): { path: [number, number][]; distanceKm: number } {
-  const path: [number, number][] = [];
+function isDrawableCoord(lat: number, lon: number): boolean {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return false;
+  // Usual "no fix" dump near Null Island — not a real equator stop in Indonesia.
+  if (Math.abs(lat) < 0.01 && Math.abs(lon) < 0.01) return false;
+  return true;
+}
+
+function pathAndDistance(points: TripSegmentPoint[]): {
+  paths: [number, number][][];
+  path: [number, number][];
+  distanceKm: number;
+  startLat: number | null;
+  startLon: number | null;
+  endLat: number | null;
+  endLon: number | null;
+} {
   let distanceKm = 0;
-  let prev: TripSegmentPoint | null = null;
+  let prevLat: number | null = null;
+  let prevLon: number | null = null;
+  const mapPoints: MapPoint[] = [];
+
   for (const point of points) {
     if (point.lat === null || point.lon === null) continue;
-    path.push([point.lat, point.lon]);
-    if (prev?.lat !== null && prev?.lon !== null && prev) {
-      const dist = haversineKm(prev.lat, prev.lon, point.lat, point.lon);
+    if (!isDrawableCoord(point.lat, point.lon)) {
+      prevLat = null;
+      prevLon = null;
+      continue;
+    }
+    if (prevLat !== null && prevLon !== null) {
+      const dist = haversineKm(prevLat, prevLon, point.lat, point.lon);
       if (dist <= MAX_POSITION_JUMP_KM) distanceKm += dist;
     }
-    prev = point;
+    prevLat = point.lat;
+    prevLon = point.lon;
+    mapPoints.push({
+      ms: point.ms,
+      lat: point.lat,
+      lon: point.lon,
+      alt: null,
+      vibrationMg: null,
+    });
   }
-  return { path, distanceKm };
+
+  // Same teleport + orphan rules as the Full dashboard map.
+  const kept = splitPaths(mapPoints);
+  const paths = kept.map((run) => run.map((p) => [p.lat, p.lon] as [number, number]));
+  const path = paths.flat();
+  const startLat = path.length ? path[0][0] : null;
+  const startLon = path.length ? path[0][1] : null;
+  const endLat = path.length ? path[path.length - 1][0] : null;
+  const endLon = path.length ? path[path.length - 1][1] : null;
+  return { paths, path, distanceKm, startLat, startLon, endLat, endLon };
 }
 
 function metricsOf(points: TripSegmentPoint[]) {
@@ -255,23 +298,6 @@ function metricsOf(points: TripSegmentPoint[]) {
   };
 }
 
-function firstLastCoords(points: TripSegmentPoint[]) {
-  let startLat: number | null = null;
-  let startLon: number | null = null;
-  let endLat: number | null = null;
-  let endLon: number | null = null;
-  for (const point of points) {
-    if (point.lat === null || point.lon === null) continue;
-    if (startLat === null) {
-      startLat = point.lat;
-      startLon = point.lon;
-    }
-    endLat = point.lat;
-    endLon = point.lon;
-  }
-  return { startLat, startLon, endLat, endLon };
-}
-
 function buildSegment(
   status: SegmentStatus,
   points: TripSegmentPoint[],
@@ -283,10 +309,9 @@ function buildSegment(
   const startMs = points[0].ms;
   const endMs = points[points.length - 1].ms;
   if (endMs < startMs) return null;
-  const { path, distanceKm } = pathAndDistance(points);
+  const { path, paths, distanceKm, startLat, startLon, endLat, endLon } = pathAndDistance(points);
   const fuel = segmentFuel(points, refillThresholdL);
   const metrics = metricsOf(points);
-  const coords = firstLastCoords(points);
   return {
     id: `${status}-${startMs}-${logicalTripId ?? "x"}`,
     status,
@@ -295,13 +320,17 @@ function buildSegment(
     startMs,
     endMs,
     durationMs: Math.max(0, endMs - startMs),
-    ...coords,
+    startLat,
+    startLon,
+    endLat,
+    endLon,
     distanceKm,
     ...metrics,
     fuelUsedL: fuel.fuelUsedL,
     fuelSource: fuel.fuelSource,
     refillL: fuel.refillL,
     refillEvents: fuel.refillEvents,
+    paths,
     path,
     pointCount: points.length,
   };
