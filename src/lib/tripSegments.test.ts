@@ -4,6 +4,7 @@ import {
   inclusiveDayCount,
   recordedHoursFromSegments,
   segmentFuel,
+  timelineSlicesForDay,
   TRIP_DETAIL_MAX_DAYS,
   type TripSegmentPoint,
 } from "./tripSegments";
@@ -38,11 +39,11 @@ function pt(
 }
 
 describe("inclusiveDayCount / max days", () => {
-  it("counts inclusive calendar days and exposes the 3-day cap", () => {
+  it("counts inclusive calendar days and exposes the 31-day cap", () => {
     expect(inclusiveDayCount("2026-08-01", "2026-08-01")).toBe(1);
     expect(inclusiveDayCount("2026-08-01", "2026-08-03")).toBe(3);
     expect(inclusiveDayCount("2026-08-01", "2026-08-04")).toBe(4);
-    expect(TRIP_DETAIL_MAX_DAYS).toBe(3);
+    expect(TRIP_DETAIL_MAX_DAYS).toBe(31);
   });
 });
 
@@ -72,7 +73,12 @@ describe("segmentFuel", () => {
         logicalTripId: 1,
       },
     ];
-    expect(segmentFuel(points)).toEqual({ fuelUsedL: 2.5, fuelSource: "can", refillL: 0 });
+    expect(segmentFuel(points)).toEqual({
+      fuelUsedL: 2.5,
+      fuelSource: "can",
+      refillL: 0,
+      refillEvents: [],
+    });
   });
 
   it("falls back to tank fuel level when CAN does not move", () => {
@@ -148,5 +154,43 @@ describe("buildTripSegments", () => {
     const segments = buildTripSegments([trip], { timezone: "+07:00", tripBreakMin: 5, minSpeedKmh: 3 });
     expect(segments.some((s) => s.status === "idle")).toBe(true);
     expect(segments.some((s) => s.status === "trip")).toBe(true);
+  });
+});
+
+describe("timelineSlicesForDay", () => {
+  it("places a segment as a percentage of the day", () => {
+    const slices = timelineSlicesForDay(
+      [
+        {
+          id: "trip-1",
+          status: "trip",
+          logicalTripId: 1,
+          color: "#0b6b62",
+          startMs: Date.parse("2026-08-15T06:00:00+07:00"),
+          endMs: Date.parse("2026-08-15T12:00:00+07:00"),
+          durationMs: 6 * 3_600_000,
+          startLat: -6.2,
+          startLon: 106.8,
+          endLat: -6.3,
+          endLon: 106.9,
+          distanceKm: 10,
+          avgSpeedKmh: 40,
+          maxSpeedKmh: 60,
+          avgRpm: 0,
+          maxRpm: 0,
+          fuelUsedL: 0,
+          fuelSource: "none",
+          refillL: 0,
+          refillEvents: [],
+          path: [],
+          pointCount: 2,
+        },
+      ],
+      "2026-08-15",
+      "+07:00",
+    );
+    expect(slices).toHaveLength(1);
+    expect(slices[0].leftPct).toBeCloseTo(25, 0);
+    expect(slices[0].widthPct).toBeCloseTo(25, 0);
   });
 });

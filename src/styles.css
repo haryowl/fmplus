@@ -1718,24 +1718,89 @@ html.onesheet-root body {
   background: #e8e4dc;
 }
 
-.trip-timeline {
+.trip-timeline-header {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 1px;
-  min-height: 14px;
-  align-items: stretch;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.trip-timeline-header h2 {
+  margin: 0;
+}
+
+.trip-timeline-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: var(--muted, #5c5650);
+}
+
+.trip-timeline-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trip-timeline-hours-row,
+.trip-timeline-day-row {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.trip-timeline-day-label {
+  font-size: 0.78rem;
+  color: var(--muted, #5c5650);
+  font-variant-numeric: tabular-nums;
+}
+
+.trip-timeline-hours {
+  position: relative;
+  height: 16px;
+  border-bottom: 1px solid #ddd6c8;
+}
+
+.trip-timeline-hours span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 0.68rem;
+  color: var(--muted, #5c5650);
+  white-space: nowrap;
+}
+
+.trip-timeline-hours span:first-child {
+  transform: translateX(0);
+}
+
+.trip-timeline-hours span:last-child {
+  transform: translateX(-100%);
+}
+
+.trip-timeline-track {
+  position: relative;
+  height: 10px;
+  background: #ebe6dc;
+  border-radius: 3px;
+  overflow: hidden;
 }
 
 .trip-timeline-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
   border: 0;
   border-radius: 2px;
   min-width: 2px;
-  height: 12px;
-  flex-shrink: 1;
-  flex-basis: 0;
+  height: 10px;
   cursor: pointer;
-  opacity: 0.9;
+  opacity: 0.92;
   padding: 0;
 }
 
@@ -1743,6 +1808,87 @@ html.onesheet-root body {
   outline: 2px solid #111;
   outline-offset: 1px;
   opacity: 1;
+  z-index: 1;
+}
+
+.trip-linkish {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  color: #0b6b62;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.trip-linkish:disabled {
+  color: inherit;
+  text-decoration: none;
+  cursor: default;
+}
+
+.trip-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(30, 24, 16, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.trip-modal {
+  width: min(480px, 100%);
+  max-height: min(70vh, 560px);
+  overflow: auto;
+  background: var(--surface, #fff);
+  border-radius: 10px;
+  border: 1px solid var(--line, #d5cdc0);
+  box-shadow: 0 16px 40px rgba(30, 24, 16, 0.2);
+  padding: 16px 18px;
+}
+
+.trip-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.trip-modal-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.trip-event-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.trip-event-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #f5f1e8;
+}
+
+.trip-event-list strong {
+  font-size: 0.9rem;
+}
+
+.trip-event-list span {
+  font-size: 0.8rem;
+  color: var(--muted, #5c5650);
 }
 
 .trip-detail-table-scroll {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   countEventsInRange,
+  eventsInRange,
   fetchEventsForUserDays,
   fetchGroups,
   fetchUserCustomFields,
@@ -23,19 +24,22 @@ import {
   googleMapsUrl,
   inclusiveDayCount,
   recordedHoursFromSegments,
+  timelineSlicesForDay,
   TRIP_DETAIL_MAX_DAYS,
+  TRIP_TIMELINE_PAGE_DAYS,
   type SegmentStatus,
   type TripSegment,
 } from "../lib/tripSegments";
 import type { Group, LoadProgress, User } from "../lib/types";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import { BrandMark } from "../components/BrandMark";
-import { TripSegmentMap } from "../components/TripSegmentMap";
+import { TripSegmentMap, type MapFocusPoint } from "../components/TripSegmentMap";
 import { ViewNav } from "../components/ViewNav";
 
 type StatusFilter = Record<SegmentStatus, boolean>;
 
 const COLUMN_KEY = "fmplus.tripDetail.columns";
+const HOUR_TICKS = [0, 3, 6, 9, 12, 15, 18, 21, 24];
 
 type ColumnFlags = {
   customFieldNames: string[];
@@ -85,6 +89,10 @@ function latLonLabel(lat: number | null, lon: number | null): string {
   return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
 }
 
+function hourLabel(hour: number): string {
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
 export default function TripDetail() {
   const { query, ready, error: tenantError, allowedUserIds, allowedGroupIds, allowsUser, allowsGroup } =
     useEmbedTenant();
@@ -106,6 +114,9 @@ export default function TripDetail() {
   const [events, setEvents] = useState<ArmadaEvent[]>([]);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focusPoint, setFocusPoint] = useState<MapFocusPoint | null>(null);
+  const [eventPopup, setEventPopup] = useState<{ title: string; items: ArmadaEvent[] } | null>(null);
+  const [timelinePage, setTimelinePage] = useState(0);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>({ trip: true, idle: true, stop: true });
   const [columns, setColumns] = useState<ColumnFlags>(() => readColumns());
   const [cfMenuOpen, setCfMenuOpen] = useState(false);
@@ -221,6 +232,14 @@ export default function TripDetail() {
     [segments, statusFilter],
   );
 
+  const timelineDays = useMemo(() => eachDateInclusive(dateFrom, dateTo), [dateFrom, dateTo]);
+  const timelinePageCount = Math.max(1, Math.ceil(timelineDays.length / TRIP_TIMELINE_PAGE_DAYS));
+  const safeTimelinePage = Math.min(timelinePage, timelinePageCount - 1);
+  const pagedTimelineDays = timelineDays.slice(
+    safeTimelinePage * TRIP_TIMELINE_PAGE_DAYS,
+    safeTimelinePage * TRIP_TIMELINE_PAGE_DAYS + TRIP_TIMELINE_PAGE_DAYS,
+  );
+
   const hours = useMemo(() => recordedHoursFromSegments(segments), [segments]);
   const totals = useMemo(() => {
     let distance = 0;
@@ -238,6 +257,11 @@ export default function TripDetail() {
     return { distance, fuel, refill, trips, events: events.length };
   }, [segments, events]);
 
+  function selectSegment(id: string | null) {
+    setFocusPoint(null);
+    setSelectedId((prev) => (id && id === prev ? null : id));
+  }
+
   async function handleLoad() {
     const id = Number(userId);
     if (!Number.isFinite(id) || id < 1) return;
@@ -253,6 +277,9 @@ export default function TripDetail() {
     setSegments([]);
     setEvents([]);
     setSelectedId(null);
+    setFocusPoint(null);
+    setEventPopup(null);
+    setTimelinePage(0);
     setProgress({ phase: "days", loaded: 0, total: 1 });
     try {
       const [tripResult, fields, dayEvents] = await Promise.all([
@@ -506,28 +533,85 @@ export default function TripDetail() {
             </p>
 
             <section className="trip-detail-chart panel">
-              <h2>Timeline</h2>
-              <div className="trip-timeline" role="img" aria-label="Segment timeline">
-                {visible.map((seg) => (
-                  <button
-                    key={seg.id}
-                    type="button"
-                    className={`trip-timeline-seg ${seg.status}${selectedId === seg.id ? " selected" : ""}`}
-                    style={{ flexGrow: Math.max(seg.durationMs, 1), background: seg.color }}
-                    title={`${seg.status} · ${formatDuration(seg.durationMs)}`}
-                    onClick={() => setSelectedId(seg.id === selectedId ? null : seg.id)}
-                  />
-                ))}
+              <div className="trip-timeline-header">
+                <h2>Timeline</h2>
+                {timelineDays.length > TRIP_TIMELINE_PAGE_DAYS && (
+                  <div className="trip-timeline-pager">
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={safeTimelinePage <= 0}
+                      onClick={() => setTimelinePage((p) => Math.max(0, p - 1))}
+                    >
+                      ← Prev
+                    </button>
+                    <span>
+                      Days {safeTimelinePage * TRIP_TIMELINE_PAGE_DAYS + 1}–
+                      {Math.min((safeTimelinePage + 1) * TRIP_TIMELINE_PAGE_DAYS, timelineDays.length)} of{" "}
+                      {timelineDays.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={safeTimelinePage >= timelinePageCount - 1}
+                      onClick={() => setTimelinePage((p) => Math.min(timelinePageCount - 1, p + 1))}
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="trip-timeline-grid" role="img" aria-label="Segment timeline by day">
+                <div className="trip-timeline-hours-row">
+                  <div className="trip-timeline-day-label" aria-hidden="true" />
+                  <div className="trip-timeline-hours">
+                    {HOUR_TICKS.map((hour) => (
+                      <span key={hour} style={{ left: `${(hour / 24) * 100}%` }}>
+                        {hourLabel(hour)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                {pagedTimelineDays.map((day) => {
+                  const slices = timelineSlicesForDay(visible, day, timezone);
+                  return (
+                    <div key={day} className="trip-timeline-day-row">
+                      <div className="trip-timeline-day-label">{day.slice(5)}</div>
+                      <div className="trip-timeline-track">
+                        {slices.map((slice) => (
+                          <button
+                            key={`${day}-${slice.segmentId}-${slice.leftPct}`}
+                            type="button"
+                            className={`trip-timeline-seg ${slice.status}${
+                              selectedId === slice.segmentId ? " selected" : ""
+                            }`}
+                            style={{
+                              left: `${slice.leftPct}%`,
+                              width: `${slice.widthPct}%`,
+                              background: slice.color,
+                            }}
+                            title={slice.title}
+                            onClick={() => selectSegment(slice.segmentId)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </section>
 
             <section className="trip-detail-map-wrap panel">
               <h2>Map</h2>
-              <p className="trip-map-hint">Each trip has its own colour. Click a row or polyline to highlight.</p>
+              <p className="trip-map-hint">
+                Click a timeline bar or segment row to highlight and zoom. Click refill liters to jump to the fill
+                point.
+              </p>
               <TripSegmentMap
                 segments={visible}
                 selectedId={selectedId}
-                onSelect={(id) => setSelectedId(id === selectedId ? null : id)}
+                focusPoint={focusPoint}
+                onSelect={selectSegment}
               />
             </section>
 
@@ -549,8 +633,10 @@ export default function TripDetail() {
                       <th>Start Lat Lon</th>
                       <th>End Lat Lon</th>
                       <th>Distance</th>
-                      <th>Speed</th>
-                      {columns.rpm && <th>RPM</th>}
+                      <th>Speed Avg</th>
+                      <th>Speed Max</th>
+                      {columns.rpm && <th>RPM Avg</th>}
+                      {columns.rpm && <th>RPM Max</th>}
                       <th>Fuel Consumption</th>
                       {columns.refill && <th>Refill</th>}
                       {columns.events && <th>Event Count</th>}
@@ -559,11 +645,14 @@ export default function TripDetail() {
                   <tbody>
                     {visible.map((seg) => {
                       const eventCount = countEventsInRange(events, seg.startMs, seg.endMs);
+                      const refillWithCoords = seg.refillEvents.find(
+                        (r) => r.lat !== null && r.lon !== null,
+                      );
                       return (
                         <tr
                           key={seg.id}
                           className={selectedId === seg.id ? "selected" : ""}
-                          onClick={() => setSelectedId(seg.id === selectedId ? null : seg.id)}
+                          onClick={() => selectSegment(seg.id)}
                         >
                           <td>
                             <span className="trip-color-dot" style={{ background: seg.color }} />
@@ -608,23 +697,71 @@ export default function TripDetail() {
                             )}
                           </td>
                           <td>{seg.status === "trip" ? `${formatKm(seg.distanceKm)} km` : "—"}</td>
-                          <td>
-                            {seg.status === "trip"
-                              ? `${formatSpeed(seg.avgSpeedKmh)} avg · ${formatSpeed(seg.maxSpeedKmh)} max`
-                              : "—"}
-                          </td>
-                          {columns.rpm && (
-                            <td>
-                              {seg.avgRpm > 0 ? `${formatRpm(seg.avgRpm)} · max ${formatRpm(seg.maxRpm)}` : "—"}
-                            </td>
-                          )}
+                          <td>{seg.status === "trip" ? formatSpeed(seg.avgSpeedKmh) : "—"}</td>
+                          <td>{seg.status === "trip" ? formatSpeed(seg.maxSpeedKmh) : "—"}</td>
+                          {columns.rpm && <td>{seg.avgRpm > 0 ? formatRpm(seg.avgRpm) : "—"}</td>}
+                          {columns.rpm && <td>{seg.maxRpm > 0 ? formatRpm(seg.maxRpm) : "—"}</td>}
                           <td>
                             {seg.fuelUsedL > 0
                               ? `${formatLiters(seg.fuelUsedL)} L (${seg.fuelSource})`
                               : "—"}
                           </td>
-                          {columns.refill && <td>{seg.refillL > 0 ? `${formatLiters(seg.refillL)} L` : "—"}</td>}
-                          {columns.events && <td>{eventCount || "—"}</td>}
+                          {columns.refill && (
+                            <td>
+                              {seg.refillL > 0 ? (
+                                <button
+                                  type="button"
+                                  className="trip-linkish"
+                                  disabled={!refillWithCoords}
+                                  title={
+                                    refillWithCoords
+                                      ? "Zoom map to refill location"
+                                      : "Refill liters recorded without GPS"
+                                  }
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!refillWithCoords || refillWithCoords.lat === null || refillWithCoords.lon === null) {
+                                      return;
+                                    }
+                                    setSelectedId(seg.id);
+                                    setFocusPoint({
+                                      lat: refillWithCoords.lat,
+                                      lon: refillWithCoords.lon,
+                                      label: `Refill ${formatLiters(refillWithCoords.liters)} L`,
+                                    });
+                                  }}
+                                >
+                                  {formatLiters(seg.refillL)} L
+                                </button>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                          )}
+                          {columns.events && (
+                            <td>
+                              {eventCount > 0 ? (
+                                <button
+                                  type="button"
+                                  className="trip-linkish"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEventPopup({
+                                      title: `Events · ${formatWhen(seg.startMs, timezone)} – ${formatWhen(
+                                        seg.endMs,
+                                        timezone,
+                                      )}`,
+                                      items: eventsInRange(events, seg.startMs, seg.endMs),
+                                    });
+                                  }}
+                                >
+                                  {eventCount}
+                                </button>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -645,6 +782,43 @@ export default function TripDetail() {
           </section>
         )}
       </main>
+
+      {eventPopup && (
+        <div
+          className="trip-modal-backdrop"
+          role="presentation"
+          onClick={() => setEventPopup(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setEventPopup(null);
+          }}
+        >
+          <div
+            className="trip-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="trip-events-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="trip-modal-head">
+              <h3 id="trip-events-title">{eventPopup.title}</h3>
+              <button type="button" className="btn" onClick={() => setEventPopup(null)}>
+                Close
+              </button>
+            </div>
+            <ul className="trip-event-list">
+              {eventPopup.items.map((ev) => (
+                <li key={`${ev.id}-${ev.ruleId}-${ev.startMs}`}>
+                  <strong>{ev.ruleName || `Rule ${ev.ruleId}`}</strong>
+                  <span>
+                    {ev.startMs ? formatWhen(ev.startMs, timezone) : "—"}
+                    {ev.endMs && ev.endMs !== ev.startMs ? ` → ${formatWhen(ev.endMs, timezone)}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -846,10 +846,12 @@ export async function fetchEventsForUserDays(
 }
 
 export function countEventsInRange(events: ArmadaEvent[], startMs: number, endMs: number): number {
-  let n = 0;
-  for (const event of events) {
+  return eventsInRange(events, startMs, endMs).length;
+}
+
+export function eventsInRange(events: ArmadaEvent[], startMs: number, endMs: number): ArmadaEvent[] {
+  return events.filter((event) => {
     const t = event.startMs || event.endMs;
-    if (t >= startMs && t <= endMs) n += 1;
-  }
-  return n;
+    return t >= startMs && t <= endMs;
+  });
 }

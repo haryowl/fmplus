@@ -16,6 +16,13 @@ import type { TrackPoint, Trip } from "./types";
 export type SegmentStatus = "trip" | "idle" | "stop";
 export type SegmentFuelSource = "can" | "tank" | "none";
 
+export type SegmentRefill = {
+  ms: number;
+  liters: number;
+  lat: number | null;
+  lon: number | null;
+};
+
 export type TripSegmentPoint = {
   ms: number;
   lat: number | null;
@@ -48,6 +55,7 @@ export type TripSegment = {
   fuelUsedL: number;
   fuelSource: SegmentFuelSource;
   refillL: number;
+  refillEvents: SegmentRefill[];
   path: [number, number][];
   pointCount: number;
 };
@@ -59,7 +67,8 @@ export type TripSegmentOptions = {
   refillThresholdL?: number;
 };
 
-export const TRIP_DETAIL_MAX_DAYS = 3;
+export const TRIP_DETAIL_MAX_DAYS = 31;
+export const TRIP_TIMELINE_PAGE_DAYS = 7;
 
 export function tripSegmentColor(index: number): string {
   return FLEET_COLORS[index % FLEET_COLORS.length];
@@ -104,26 +113,42 @@ function flattenTrips(trips: Trip[]): TripSegmentPoint[] {
   return out;
 }
 
-function detectRefillLiters(
+function detectSegmentRefills(
   points: TripSegmentPoint[],
   thresholdL: number,
   maxSpeedKmh: number,
-): number {
+): { liters: number; events: SegmentRefill[] } {
   const levels = points
     .filter((p) => p.fuelLevel !== null)
-    .map((p) => ({ ms: p.ms, level: p.fuelLevel as number, speed: p.speedKmh }))
+    .map((p) => ({
+      ms: p.ms,
+      level: p.fuelLevel as number,
+      speed: p.speedKmh,
+      lat: p.lat,
+      lon: p.lon,
+    }))
     .sort((a, b) => a.ms - b.ms);
-  if (levels.length < 2) return 0;
+  if (levels.length < 2) return { liters: 0, events: [] };
 
   let liters = 0;
+  const events: SegmentRefill[] = [];
   let pending = 0;
   let pendingStart = 0;
   let lastAccepted = levels[0].level;
+  let pendingAt = levels[0];
 
   const flush = () => {
     if (pending >= thresholdL) {
       const rounded = Math.round(pending / REFILL_STEP_L) * REFILL_STEP_L;
-      if (rounded >= thresholdL) liters += rounded;
+      if (rounded >= thresholdL) {
+        liters += rounded;
+        events.push({
+          ms: pendingAt.ms,
+          liters: rounded,
+          lat: pendingAt.lat,
+          lon: pendingAt.lon,
+        });
+      }
     }
     pending = 0;
     pendingStart = 0;
@@ -140,11 +165,13 @@ function detectRefillLiters(
       if (dt > MAX_GAP_MS && rise >= thresholdL && cur.speed <= maxSpeedKmh) {
         pending = rise;
         pendingStart = cur.ms;
+        pendingAt = cur;
         lastAccepted = cur.level;
         flush();
         continue;
       }
       pending += rise;
+      pendingAt = cur;
       lastAccepted = cur.level;
     } else if (cur.level + 0.2 < lastAccepted) {
       flush();
@@ -152,32 +179,37 @@ function detectRefillLiters(
     }
   }
   flush();
-  return liters;
+  return { liters, events };
 }
 
 export function segmentFuel(
   points: TripSegmentPoint[],
   refillThresholdL = DEFAULT_REFILL_THRESHOLD_L,
-): { fuelUsedL: number; fuelSource: SegmentFuelSource; refillL: number } {
+): { fuelUsedL: number; fuelSource: SegmentFuelSource; refillL: number; refillEvents: SegmentRefill[] } {
   const can = points.map((p) => p.fuelConsumed).filter((v): v is number => v !== null && v > 0);
   if (can.length >= 2) {
     const delta = can[can.length - 1] - can[0];
     if (delta > 0.05) {
-      return { fuelUsedL: delta, fuelSource: "can", refillL: 0 };
+      return { fuelUsedL: delta, fuelSource: "can", refillL: 0, refillEvents: [] };
     }
   }
 
-  const refillL = detectRefillLiters(points, refillThresholdL, DEFAULT_MIN_SPEED_KMH);
+  const refill = detectSegmentRefills(points, refillThresholdL, DEFAULT_MIN_SPEED_KMH);
   const levels = points.filter((p) => p.fuelLevel !== null).sort((a, b) => a.ms - b.ms);
   if (levels.length >= 2) {
     const first = levels[0].fuelLevel as number;
     const last = levels[levels.length - 1].fuelLevel as number;
-    const used = Math.max(0, first + refillL - last);
-    if (used > 0.05 || refillL > 0) {
-      return { fuelUsedL: used, fuelSource: "tank", refillL };
+    const used = Math.max(0, first + refill.liters - last);
+    if (used > 0.05 || refill.liters > 0) {
+      return {
+        fuelUsedL: used,
+        fuelSource: "tank",
+        refillL: refill.liters,
+        refillEvents: refill.events,
+      };
     }
   }
-  return { fuelUsedL: 0, fuelSource: "none", refillL: 0 };
+  return { fuelUsedL: 0, fuelSource: "none", refillL: 0, refillEvents: [] };
 }
 
 function pathAndDistance(points: TripSegmentPoint[]): { path: [number, number][]; distanceKm: number } {
@@ -269,6 +301,7 @@ function buildSegment(
     fuelUsedL: fuel.fuelUsedL,
     fuelSource: fuel.fuelSource,
     refillL: fuel.refillL,
+    refillEvents: fuel.refillEvents,
     path,
     pointCount: points.length,
   };
@@ -368,4 +401,42 @@ export function inclusiveDayCount(dateFrom: string, dateTo: string): number {
   const b = Date.parse(`${dateTo}T12:00:00Z`);
   if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
   return Math.floor((b - a) / 86_400_000) + 1;
+}
+
+export type TimelineDaySlice = {
+  segmentId: string;
+  status: SegmentStatus;
+  color: string;
+  leftPct: number;
+  widthPct: number;
+  title: string;
+};
+
+/** Absolute-positioned slice of a segment within one calendar day (0–100%). */
+export function timelineSlicesForDay(
+  segments: TripSegment[],
+  dateKey: string,
+  timezone: string,
+): TimelineDaySlice[] {
+  const dayStart = Date.parse(`${dateKey}T00:00:00${timezone}`);
+  const dayEnd = Date.parse(`${dateKey}T23:59:59.999${timezone}`);
+  if (!Number.isFinite(dayStart) || !Number.isFinite(dayEnd)) return [];
+  const dayMs = Math.max(1, dayEnd - dayStart);
+  const out: TimelineDaySlice[] = [];
+  for (const seg of segments) {
+    const start = Math.max(seg.startMs, dayStart);
+    const end = Math.min(seg.endMs, dayEnd);
+    if (end <= start) continue;
+    const leftPct = ((start - dayStart) / dayMs) * 100;
+    const widthPct = Math.max(((end - start) / dayMs) * 100, 0.2);
+    out.push({
+      segmentId: seg.id,
+      status: seg.status,
+      color: seg.color,
+      leftPct,
+      widthPct: Math.min(widthPct, 100 - leftPct),
+      title: `${seg.status} · ${Math.max(0, Math.round((end - start) / 60_000))}m`,
+    });
+  }
+  return out;
 }
