@@ -6,6 +6,7 @@ export type AppView =
   | "status"
   | "trips"
   | "live"
+  | "exceptions"
   | "admin"
   | "field";
 
@@ -16,6 +17,7 @@ export function viewFromPath(pathname: string): AppView {
   if (leaf === "admin") return "admin";
   if (leaf === "m" || leaf === "dispatch") return "field";
   if (leaf === "live" || leaf === "live.html") return "live";
+  if (leaf === "exceptions" || leaf === "exceptions.html") return "exceptions";
   if (leaf === "fleet" && (next === "compact" || next === "compact.html")) return "fleetCompact";
   if (leaf === "fleet" || leaf === "fleet.html") return "fleet";
   if (leaf === "compact" || leaf === "compact.html") return "compact";
@@ -59,6 +61,10 @@ export function tripsHref(search: string): string {
 
 export function liveHref(search: string): string {
   return withSearch("/live", search);
+}
+
+export function exceptionsHref(search: string): string {
+  return withSearch("/exceptions", search);
 }
 
 export const VIEW_CHANGE = "fms-embed:view";

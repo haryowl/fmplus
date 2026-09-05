@@ -2533,6 +2533,57 @@ html.onesheet-root body {
   width: 100%;
 }
 
+/* —— Exceptions inbox —— */
+.exceptions-derived-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.exceptions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.exceptions-empty {
+  padding: 20px;
+  border: 1px dashed #d5cbb9;
+  background: rgba(255, 252, 245, 0.8);
+}
+
+.exceptions-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid #d5cbb9;
+  background: #fffdf8;
+}
+
+.exceptions-list li.acked {
+  opacity: 0.72;
+}
+
+.exceptions-row-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.exceptions-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 @media (max-width: 900px) {
   .live-ops-layout {
     grid-template-columns: 1fr;

@@ -15,7 +15,7 @@ export const MODULE_LABELS: Record<string, string> = {
   status: "Last Status",
   trips: "Trips",
   live: "Live Ops",
-  exceptions: "Exceptions (soon)",
+  exceptions: "Exceptions",
   maintenance: "Maintenance (soon)",
   dispatch: "Dispatch (soon)",
   routePlan: "Route plan (soon)",

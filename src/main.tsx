@@ -7,6 +7,7 @@ import FleetCompact from "./pages/FleetCompact";
 import FleetDashboard from "./pages/FleetDashboard";
 import LastStatus from "./pages/LastStatus";
 import LiveOps from "./pages/LiveOps";
+import ExceptionsInbox from "./pages/ExceptionsInbox";
 import TripDetail from "./pages/TripDetail";
 import AdminConsole from "./pages/AdminConsole";
 import FieldLogin from "./pages/FieldLogin";
@@ -20,6 +21,7 @@ function pageFor(view: AppView) {
   if (view === "admin") return AdminConsole;
   if (view === "field") return FieldLogin;
   if (view === "live") return LiveOps;
+  if (view === "exceptions") return ExceptionsInbox;
   if (view === "status") return LastStatus;
   if (view === "trips") return TripDetail;
   if (view === "fleetCompact") return FleetCompact;

@@ -155,6 +155,16 @@ https://81.17.100.7:4173/live?k=YOUR_TENANT_KEY
 
 Map + list of `/usersstatus` vehicles with Moving / Idle / Off / Stale / No fix filters (30s refresh). Marker/list links open Trips and Full for that vehicle. Last Status (`/status`) remains the table snapshot.
 
+## Exceptions inbox
+
+Enable the **Exceptions** module on the tenant in Admin. Then open:
+
+```
+https://81.17.100.7:4173/exceptions?k=YOUR_TENANT_KEY
+```
+
+Shows Armada Command notifier events (`kind=exception`) with local **Ack** / **Unack**, plus optional derived stale positions from `/usersstatus`. Deep-link to Trips / Full when `USER_ID` is present on the payload (or on derived rows).
+
 ## Armada Command notifier (Phase B0)
 
 1. In Admin, set **Webhook secret** on the tenant and Save.

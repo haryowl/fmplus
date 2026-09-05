@@ -22,6 +22,7 @@ import { handleHealthRequest } from "./server/health.mjs";
 import { handleAdminRequest, maybeBootstrapAdmin } from "./server/admin-api.mjs";
 import { handleFieldRequest } from "./server/field-api.mjs";
 import { handleArmadaNotifyRequest } from "./server/armada-notify.mjs";
+import { handleExceptionsRequest } from "./server/exceptions-api.mjs";
 import { initTenantVault, tenantFromRequest } from "./server/tenants.mjs";
 import { runMigrations } from "./server/db/migrate.mjs";
 
@@ -101,6 +102,7 @@ function onRequest(req, res) {
   void (async () => {
     if (await handleHealthRequest(req, res)) return;
     if (await handleArmadaNotifyRequest(req, res)) return;
+    if (await handleExceptionsRequest(req, res)) return;
     if (await handleAdminRequest(req, res)) return;
     if (await handleFieldRequest(req, res)) return;
     if (await handleEmbedContextRequest(req, res)) return;
