@@ -5,6 +5,7 @@ import type { InsightBlock } from "./insight";
 import { movingSharePct, type MetricsTotals } from "./metrics";
 import type { ArmadaEvent, CustomField } from "./api";
 import { countEventsInRange, eventsInRange } from "./api";
+import { addressAt } from "./reverseGeocode";
 import {
   googleMapsUrl,
   timelineSlicesForDay,
@@ -394,6 +395,7 @@ export function tripSegmentsSheet(options: {
   includeRpm: boolean;
   includeRefill: boolean;
   includeEvents: boolean;
+  addresses?: Record<string, string>;
 }): ExcelCell[][] {
   const {
     segments,
@@ -406,6 +408,7 @@ export function tripSegmentsSheet(options: {
     includeRpm,
     includeRefill,
     includeEvents,
+    addresses = {},
   } = options;
   const selectedCf = customFields.filter((cf) => customFieldNames.includes(cf.name));
   const headers: string[] = [
@@ -418,9 +421,11 @@ export function tripSegmentsSheet(options: {
     "Duration",
     "Start Lat",
     "Start Lon",
+    "Start Location",
     "Start Map",
     "End Lat",
     "End Lon",
+    "End Location",
     "End Map",
     "Distance km",
     "Speed Avg",
@@ -446,9 +451,11 @@ export function tripSegmentsSheet(options: {
       formatDuration(seg.durationMs),
       seg.startLat ?? "",
       seg.startLon ?? "",
+      addressAt(addresses, seg.startLat, seg.startLon),
       seg.startLat !== null && seg.startLon !== null ? googleMapsUrl(seg.startLat, seg.startLon) : "",
       seg.endLat ?? "",
       seg.endLon ?? "",
+      addressAt(addresses, seg.endLat, seg.endLon),
       seg.endLat !== null && seg.endLon !== null ? googleMapsUrl(seg.endLat, seg.endLon) : "",
       seg.status === "trip" ? n(seg.distanceKm) : "",
       seg.status === "trip" ? formatSpeed(seg.avgSpeedKmh) : "",

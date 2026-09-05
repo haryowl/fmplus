@@ -2,6 +2,7 @@ import { API_RETRY_ATTEMPTS, API_RETRY_CAP_MS, DAY_PROGRESS_MS, TRACK_BATCH_BROW
 import { groupRowsIntoTrips, interleaveUserDays, normalizeTrackList, peekUserDayNdjson, batchDaysStillMissing, type DayTrackRow } from "./dayTracks";
 import { normalizeUserStatusList, STATUS_PAGE_SIZE, type LastStatusRow } from "./lastStatus";
 import { chunkArray, mapPool } from "./pool";
+import { parseReverseGeocodeAddress } from "./reverseGeocode";
 import { apiBase, tenantHeaders } from "./tenant";
 import type { Group, LoadProgress, TrackInfo, TrackPoint, Trip, User } from "./types";
 import { eachDateInclusive, formatUpdatedSince, updatedSinceWindows } from "./time";
@@ -744,6 +745,25 @@ export function userOptionLabel(user: User): string {
 }
 
 export type CustomField = { name: string; value: string };
+
+/** Armada/GpsGate reverse geocode. Empty string when unavailable. */
+export async function fetchReverseGeocode(
+  lat: number,
+  lon: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lon: String(lon),
+  });
+  try {
+    const raw = await apiGet<unknown>(`/reversegeocode?${params}`, signal);
+    return parseReverseGeocodeAddress(raw);
+  } catch (err) {
+    if ((err as Error).name === "AbortError") throw err;
+    return "";
+  }
+}
 
 export async function fetchUserCustomFields(userId: number, signal?: AbortSignal): Promise<CustomField[]> {
   const raw = await apiGet<unknown>(`/users/${userId}/customfields`, signal);

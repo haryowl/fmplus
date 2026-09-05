@@ -4,6 +4,7 @@ import {
   eventsInRange,
   fetchEventsForUserDays,
   fetchGroups,
+  fetchReverseGeocode,
   fetchUserCustomFields,
   fetchUsersForGroup,
   groupOptionLabel,
@@ -18,6 +19,11 @@ import { formatHours, formatKm, formatLiters, formatRpm, formatSpeed } from "../
 import { describeLoadProgress } from "../lib/dayTracks";
 import { writeLastVehicle } from "../lib/lastUsed";
 import { writeLocationSearch } from "../lib/routing";
+import {
+  addressAt,
+  coordsFromSegments,
+  resolveAddressesForCoords,
+} from "../lib/reverseGeocode";
 import { addDays, eachDateInclusive, offsetToMinutes, todayKeyInOffset } from "../lib/time";
 import {
   buildTripSegments,
@@ -113,6 +119,7 @@ export default function TripDetail() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<LoadProgress | null>(null);
   const [segments, setSegments] = useState<TripSegment[]>([]);
+  const [addresses, setAddresses] = useState<Record<string, string>>({});
   const [events, setEvents] = useState<ArmadaEvent[]>([]);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -277,6 +284,7 @@ export default function TripDetail() {
     setLoading(true);
     setLoadError("");
     setSegments([]);
+    setAddresses({});
     setEvents([]);
     setSelectedId(null);
     setFocusPoint(null);
@@ -306,6 +314,17 @@ export default function TripDetail() {
       setEvents(dayEvents);
       if (groupId) writeLastVehicle(groupId, String(id));
       if (next.length === 0) setLoadError("No recorded GPS segments in this range.");
+      // Fill addresses after segments render; failures stay blank ("—").
+      void resolveAddressesForCoords(coordsFromSegments(next), fetchReverseGeocode, {
+        concurrency: 4,
+        signal: ac.signal,
+      })
+        .then((map) => {
+          if (!ac.signal.aborted) setAddresses(map);
+        })
+        .catch((err: Error) => {
+          if (err.name !== "AbortError") setAddresses({});
+        });
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
         setLoadError((err as Error).message || "Failed to load trip detail.");
@@ -662,6 +681,7 @@ export default function TripDetail() {
                       includeRpm: columns.rpm,
                       includeRefill: columns.refill,
                       includeEvents: columns.events,
+                      addresses,
                     })
                   }
                 />
@@ -680,7 +700,9 @@ export default function TripDetail() {
                       <th>End Time</th>
                       <th>Duration</th>
                       <th>Start Lat Lon</th>
+                      <th>Start Location</th>
                       <th>End Lat Lon</th>
+                      <th>End Location</th>
                       <th>Distance</th>
                       <th>Speed Avg</th>
                       <th>Speed Max</th>
@@ -731,6 +753,9 @@ export default function TripDetail() {
                               "—"
                             )}
                           </td>
+                          <td className="trip-location">
+                            {addressAt(addresses, seg.startLat, seg.startLon) || "—"}
+                          </td>
                           <td>
                             {seg.endLat !== null && seg.endLon !== null ? (
                               <a
@@ -744,6 +769,9 @@ export default function TripDetail() {
                             ) : (
                               "—"
                             )}
+                          </td>
+                          <td className="trip-location">
+                            {addressAt(addresses, seg.endLat, seg.endLon) || "—"}
                           </td>
                           <td>{seg.status === "trip" ? `${formatKm(seg.distanceKm)} km` : "—"}</td>
                           <td>{seg.status === "trip" ? formatSpeed(seg.avgSpeedKmh) : "—"}</td>

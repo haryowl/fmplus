@@ -2131,6 +2131,12 @@ html.onesheet-root body {
   color: #0b6b62;
 }
 
+.trip-detail-table td.trip-location {
+  white-space: normal;
+  max-width: 220px;
+  line-height: 1.35;
+}
+
 .trip-color-dot {
   display: inline-block;
   width: 10px;
