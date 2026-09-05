@@ -14,7 +14,7 @@ export const MODULE_LABELS: Record<string, string> = {
   fleetCompact: "Ranking",
   status: "Last Status",
   trips: "Trips",
-  live: "Live Ops (soon)",
+  live: "Live Ops",
   exceptions: "Exceptions (soon)",
   maintenance: "Maintenance (soon)",
   dispatch: "Dispatch (soon)",

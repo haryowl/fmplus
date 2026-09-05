@@ -3,6 +3,7 @@ import {
   fleetCompactHref,
   fleetHref,
   fullHref,
+  liveHref,
   navigateView,
   statusHref,
   tripsHref,
@@ -18,6 +19,7 @@ const LINKS: { view: AppView; label: string; href: (search: string) => string }[
   { view: "fleetCompact", label: "Ranking", href: fleetCompactHref },
   { view: "trips", label: "Trips", href: tripsHref },
   { view: "status", label: "Status", href: statusHref },
+  { view: "live", label: "Live", href: liveHref },
 ];
 
 type Props = {

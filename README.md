@@ -145,6 +145,16 @@ https://81.17.100.7:4173/m?k=YOUR_TENANT_KEY
 
 Sign in with a field user created in Admin. Jobs / PoM come in later phases — login only for now.
 
+## Live Ops
+
+Enable the **Live Ops** module on the tenant in Admin (off by default). Then open:
+
+```
+https://81.17.100.7:4173/live?k=YOUR_TENANT_KEY
+```
+
+Map + list of `/usersstatus` vehicles with Moving / Idle / Off / Stale / No fix filters (30s refresh). Marker/list links open Trips and Full for that vehicle. Last Status (`/status`) remains the table snapshot.
+
 ## Armada Command notifier (Phase B0)
 
 1. In Admin, set **Webhook secret** on the tenant and Save.

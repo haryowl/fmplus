@@ -2390,6 +2390,158 @@ html.onesheet-root body {
   font-size: 1rem;
 }
 
+/* —— Live Ops —— */
+.app.live-ops-page .shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: calc(100vh - 120px);
+}
+
+.live-ops-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+}
+
+.live-ops-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.live-ops-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.live-ops-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.9fr);
+  gap: 12px;
+  flex: 1;
+  min-height: 420px;
+}
+
+.live-ops-map-wrap {
+  min-height: 420px;
+  border: 1px solid var(--border, #d5cbb9);
+  background: #e8ebe9;
+}
+
+.live-ops-map {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+}
+
+.live-ops-marker {
+  background: transparent;
+  border: none;
+}
+
+.live-ops-marker-dot {
+  display: block;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.live-ops-marker-dot.selected {
+  border-color: #1c1a16;
+}
+
+.live-ops-popup {
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.live-ops-popup-links {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.live-ops-list {
+  border: 1px solid var(--border, #d5cbb9);
+  background: rgba(255, 252, 245, 0.95);
+  padding: 12px;
+  overflow: auto;
+  max-height: min(70vh, 640px);
+}
+
+.live-ops-list h2 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.live-ops-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.live-ops-list li {
+  border: 1px solid #e0d8cb;
+  background: #fff;
+  padding: 8px;
+}
+
+.live-ops-list li > button {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.live-ops-list li > button.active .live-ops-list-main strong {
+  color: #0b6b62;
+}
+
+.live-ops-list-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.live-ops-list-main strong {
+  font-size: 0.92rem;
+}
+
+.live-ops-list-links {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+  padding-left: 18px;
+  font-size: 0.85rem;
+}
+
+.field.field-actions .btn {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .live-ops-layout {
+    grid-template-columns: 1fr;
+  }
+  .live-ops-list {
+    max-height: 320px;
+  }
+}
+
 @media (max-width: 800px) {
   .admin-layout {
     grid-template-columns: 1fr;
