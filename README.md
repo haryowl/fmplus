@@ -103,7 +103,7 @@ Roadmap baseline for Admin / Maintenance / Dispatch. Optional today — without 
 ```bash
 npm run db:up          # Postgres :5432 + MinIO :9000 (console :9001)
 # Add to .env.local (see .env.example):
-#   DATABASE_URL=postgres://fmplus:fmplus@127.0.0.1:5432/fmplus
+#   DATABASE_URL=postgres://fmplus:fmplus@127.0.0.1:5433/fmplus
 #   FMS_SECRETS_KEY=...long random...
 #   S3_ENDPOINT=http://127.0.0.1:9000
 #   S3_ACCESS_KEY=fmplus
