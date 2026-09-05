@@ -18,7 +18,16 @@ type AdminTenant = {
   hasWebhookSecret: boolean;
   hasToken: boolean;
   notifierUrlTemplate: string;
+  notifierUrlMaintenance?: string;
   updatedAt?: string;
+};
+
+type FieldUserRow = {
+  id: string;
+  username: string;
+  role: string;
+  displayName: string;
+  enabled: boolean;
 };
 
 type Draft = {
@@ -32,6 +41,12 @@ type Draft = {
   enabled: boolean;
   entitlements: Entitlements;
 };
+
+const FIELD_ROLE_OPTIONS = [
+  { value: "operator", label: "Operator" },
+  { value: "driver", label: "Driver" },
+  { value: "dispatcher", label: "Dispatcher" },
+];
 
 function emptyDraft(): Draft {
   return {
@@ -123,6 +138,12 @@ export default function AdminConsole() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [fieldUsers, setFieldUsers] = useState<FieldUserRow[]>([]);
+  const [fuUsername, setFuUsername] = useState("");
+  const [fuPassword, setFuPassword] = useState("");
+  const [fuRole, setFuRole] = useState("operator");
+  const [fuDisplayName, setFuDisplayName] = useState("");
+  const [fuResetPass, setFuResetPass] = useState<Record<string, string>>({});
 
   const refreshMe = useCallback(async () => {
     try {
@@ -140,12 +161,25 @@ export default function AdminConsole() {
     setTenants(data.tenants);
   }, []);
 
+  const loadFieldUsers = useCallback(async (tenantId: string) => {
+    const data = await api<{ users: FieldUserRow[] }>(`/api/admin/tenants/${tenantId}/field-users`);
+    setFieldUsers(data.users);
+  }, []);
+
   useEffect(() => {
     document.title = "Admin · FM Plus";
     void refreshMe().then((ok) => {
       if (ok) void loadTenants().catch((err: Error) => setError(err.message));
     });
   }, [refreshMe, loadTenants]);
+
+  useEffect(() => {
+    if (!selectedId || selectedId === "new") {
+      setFieldUsers([]);
+      return;
+    }
+    void loadFieldUsers(selectedId).catch((err: Error) => setError(err.message));
+  }, [selectedId, loadFieldUsers]);
 
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
@@ -249,6 +283,69 @@ export default function AdminConsole() {
       setDraft((d) => ({ ...d, enabled: false }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Disable failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createFieldUser(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedId || selectedId === "new") return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await api(`/api/admin/tenants/${selectedId}/field-users`, {
+        method: "POST",
+        body: JSON.stringify({
+          username: fuUsername.trim(),
+          password: fuPassword,
+          role: fuRole,
+          displayName: fuDisplayName.trim(),
+        }),
+      });
+      setFuUsername("");
+      setFuPassword("");
+      setFuDisplayName("");
+      setFuRole("operator");
+      setNotice("Field user created");
+      await loadFieldUsers(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Create field user failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function patchFieldUser(userId: string, body: Record<string, unknown>) {
+    if (!selectedId || selectedId === "new") return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/admin/tenants/${selectedId}/field-users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      setNotice("Field user updated");
+      await loadFieldUsers(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteFieldUser(userId: string, username: string) {
+    if (!selectedId || selectedId === "new") return;
+    if (!window.confirm(`Delete field user “${username}”?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/admin/tenants/${selectedId}/field-users/${userId}`, { method: "DELETE" });
+      setNotice("Field user deleted");
+      await loadFieldUsers(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
     } finally {
       setBusy(false);
     }
@@ -446,9 +543,16 @@ export default function AdminConsole() {
               />
 
               {selected && (
-                <p className="admin-notifier muted">
-                  Notifier URL template: <code>{selected.notifierUrlTemplate}</code>
-                </p>
+                <div className="admin-notifier muted">
+                  <p>
+                    Exception notifier: <code>{selected.notifierUrlTemplate}</code>
+                  </p>
+                  {selected.notifierUrlMaintenance && (
+                    <p>
+                      Maintenance notifier: <code>{selected.notifierUrlMaintenance}</code>
+                    </p>
+                  )}
+                </div>
               )}
 
               <div className="admin-actions">
@@ -461,6 +565,119 @@ export default function AdminConsole() {
                   </button>
                 )}
               </div>
+
+              {selectedId && selectedId !== "new" && (
+                <section className="admin-field-users">
+                  <h3>Field users</h3>
+                  <p className="muted">Login at /m (Maintenance) or /dispatch — scoped to this tenant.</p>
+                  <form className="admin-form-grid" onSubmit={(e) => void createFieldUser(e)}>
+                    <label>
+                      Username
+                      <input value={fuUsername} onChange={(e) => setFuUsername(e.target.value)} required />
+                    </label>
+                    <label>
+                      Password
+                      <input
+                        type="password"
+                        value={fuPassword}
+                        onChange={(e) => setFuPassword(e.target.value)}
+                        required
+                        minLength={6}
+                        autoComplete="new-password"
+                      />
+                    </label>
+                    <label>
+                      Display name
+                      <input value={fuDisplayName} onChange={(e) => setFuDisplayName(e.target.value)} />
+                    </label>
+                    <label>
+                      Role
+                      <select value={fuRole} onChange={(e) => setFuRole(e.target.value)}>
+                        {FIELD_ROLE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="span-2 admin-actions">
+                      <button type="submit" className="btn" disabled={busy}>
+                        Add field user
+                      </button>
+                    </div>
+                  </form>
+
+                  <ul className="admin-field-list">
+                    {fieldUsers.map((u) => (
+                      <li key={u.id}>
+                        <div>
+                          <strong>{u.username}</strong>
+                          <span className="muted">
+                            {" "}
+                            · {u.role}
+                            {u.displayName ? ` · ${u.displayName}` : ""}
+                            {!u.enabled ? " · disabled" : ""}
+                          </span>
+                        </div>
+                        <div className="admin-field-row-actions">
+                          <select
+                            value={u.role}
+                            disabled={busy}
+                            onChange={(e) => void patchFieldUser(u.id, { role: e.target.value })}
+                          >
+                            {FIELD_ROLE_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="password"
+                            placeholder="New password"
+                            value={fuResetPass[u.id] || ""}
+                            onChange={(e) => setFuResetPass({ ...fuResetPass, [u.id]: e.target.value })}
+                            autoComplete="new-password"
+                          />
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            disabled={busy || !(fuResetPass[u.id] || "").trim()}
+                            onClick={() => {
+                              const password = (fuResetPass[u.id] || "").trim();
+                              void patchFieldUser(u.id, { password }).then(() =>
+                                setFuResetPass((prev) => {
+                                  const next = { ...prev };
+                                  delete next[u.id];
+                                  return next;
+                                }),
+                              );
+                            }}
+                          >
+                            Reset pw
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            disabled={busy}
+                            onClick={() => void patchFieldUser(u.id, { enabled: !u.enabled })}
+                          >
+                            {u.enabled ? "Disable" : "Enable"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            disabled={busy}
+                            onClick={() => void deleteFieldUser(u.id, u.username)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                    {fieldUsers.length === 0 && <li className="muted">No field users yet.</li>}
+                  </ul>
+                </section>
+              )}
             </>
           ) : (
             <p className="muted">Select a tenant or create a new one.</p>

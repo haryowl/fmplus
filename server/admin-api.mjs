@@ -16,6 +16,12 @@ import {
 } from "./admin-auth.mjs";
 import { encryptSecret, hashWebhookSecret, secretsKeyConfigured } from "./crypto-secrets.mjs";
 import { defaultEntitlements, mergeEntitlements } from "./entitlements.mjs";
+import {
+  FIELD_ROLES,
+  hashPassword,
+  isFieldRole,
+  isFieldUsername,
+} from "./field-auth.mjs";
 import { initTenantVault, isTenantKey } from "./tenants.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 
@@ -67,7 +73,13 @@ function asIdList(value) {
   return [...new Set(value.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
 }
 
+function publicBaseUrl() {
+  return String(process.env.PUBLIC_BASE_URL || "https://<fmplus-host>").replace(/\/+$/, "");
+}
+
 function publicTenantRow(row) {
+  const base = publicBaseUrl();
+  const k = encodeURIComponent(row.key);
   return {
     id: row.id,
     key: row.key,
@@ -81,7 +93,20 @@ function publicTenantRow(row) {
     hasToken: Boolean(row.token_ciphertext),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    notifierUrlTemplate: `https://<fmplus-host>/api/armada/notify?k=${encodeURIComponent(row.key)}&secret=<webhook-secret>`,
+    notifierUrlTemplate: `${base}/api/armada/notify?k=${k}&secret=<webhook-secret>&kind=exception`,
+    notifierUrlMaintenance: `${base}/api/armada/notify?k=${k}&secret=<webhook-secret>&kind=maintenance`,
+  };
+}
+
+function publicFieldUserRow(row) {
+  return {
+    id: row.id,
+    username: row.username,
+    role: row.role,
+    displayName: row.display_name || "",
+    enabled: row.enabled !== false,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -243,6 +268,148 @@ export async function handleAdminRequest(req, res) {
       return true;
     }
 
+    const fieldUsersListMatch = /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/field-users$/i.exec(path);
+    if (fieldUsersListMatch) {
+      const tenantId = fieldUsersListMatch[1];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+
+      const tenantOk = await dbQuery(`SELECT id FROM tenants WHERE id = $1`, [tenantId]);
+      if (!tenantOk.rows[0]) {
+        json(res, 404, { error: "Tenant not found" });
+        return true;
+      }
+
+      if (req.method === "GET") {
+        const rows = await dbQuery(
+          `SELECT id, username, role, display_name, enabled, created_at, updated_at
+           FROM field_users WHERE tenant_id = $1 ORDER BY username ASC`,
+          [tenantId],
+        );
+        json(res, 200, { users: rows.rows.map(publicFieldUserRow) });
+        return true;
+      }
+
+      if (req.method === "POST") {
+        const body = await readJson(req);
+        const username = String(body.username || "").trim();
+        const password = String(body.password || "");
+        const role = String(body.role || "operator").trim();
+        const displayName = String(body.displayName || "").trim();
+        if (!isFieldUsername(username)) {
+          json(res, 400, { error: "Invalid username (2–64: A–Z a–z 0–9 . _ -)" });
+          return true;
+        }
+        if (!password || password.length < 6) {
+          json(res, 400, { error: "Password must be at least 6 characters" });
+          return true;
+        }
+        if (!isFieldRole(role)) {
+          json(res, 400, { error: `Role must be one of: ${FIELD_ROLES.join(", ")}` });
+          return true;
+        }
+        const inserted = await dbQuery(
+          `INSERT INTO field_users (tenant_id, username, password_hash, role, display_name, enabled)
+           VALUES ($1,$2,$3,$4,$5,$6)
+           RETURNING id, username, role, display_name, enabled, created_at, updated_at`,
+          [tenantId, username, hashPassword(password), role, displayName || null, body.enabled !== false],
+        );
+        await writeAudit(admin.id, "field_user.create", { tenantId, username, role });
+        json(res, 201, { user: publicFieldUserRow(inserted.rows[0]) });
+        return true;
+      }
+
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const fieldUserMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/field-users\/([0-9a-f-]{36})$/i.exec(path);
+    if (fieldUserMatch) {
+      const tenantId = fieldUserMatch[1];
+      const userId = fieldUserMatch[2];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+
+      if (req.method === "PATCH") {
+        const body = await readJson(req);
+        const found = await dbQuery(
+          `SELECT * FROM field_users WHERE id = $1 AND tenant_id = $2`,
+          [userId, tenantId],
+        );
+        const current = found.rows[0];
+        if (!current) {
+          json(res, 404, { error: "Field user not found" });
+          return true;
+        }
+
+        let role = current.role;
+        if (body.role !== undefined) {
+          role = String(body.role || "").trim();
+          if (!isFieldRole(role)) {
+            json(res, 400, { error: `Role must be one of: ${FIELD_ROLES.join(", ")}` });
+            return true;
+          }
+        }
+        let passwordHash = current.password_hash;
+        if (body.password !== undefined && String(body.password).trim()) {
+          const password = String(body.password);
+          if (password.length < 6) {
+            json(res, 400, { error: "Password must be at least 6 characters" });
+            return true;
+          }
+          passwordHash = hashPassword(password);
+        }
+        const displayName =
+          body.displayName !== undefined
+            ? String(body.displayName || "").trim() || null
+            : current.display_name;
+        const enabled =
+          body.enabled !== undefined ? body.enabled !== false : current.enabled !== false;
+
+        const updated = await dbQuery(
+          `UPDATE field_users SET
+             role = $3,
+             password_hash = $4,
+             display_name = $5,
+             enabled = $6,
+             updated_at = now()
+           WHERE id = $1 AND tenant_id = $2
+           RETURNING id, username, role, display_name, enabled, created_at, updated_at`,
+          [userId, tenantId, role, passwordHash, displayName, enabled],
+        );
+        await writeAudit(admin.id, "field_user.update", {
+          tenantId,
+          userId,
+          username: current.username,
+          passwordRotated: Boolean(body.password && String(body.password).trim()),
+        });
+        json(res, 200, { user: publicFieldUserRow(updated.rows[0]) });
+        return true;
+      }
+
+      if (req.method === "DELETE") {
+        const deleted = await dbQuery(
+          `DELETE FROM field_users WHERE id = $1 AND tenant_id = $2 RETURNING username`,
+          [userId, tenantId],
+        );
+        if (!deleted.rows[0]) {
+          json(res, 404, { error: "Field user not found" });
+          return true;
+        }
+        await writeAudit(admin.id, "field_user.delete", {
+          tenantId,
+          userId,
+          username: deleted.rows[0].username,
+        });
+        json(res, 200, { ok: true });
+        return true;
+      }
+
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
     const tenantMatch = /^\/api\/admin\/tenants\/([0-9a-f-]{36})$/i.exec(path);
     if (tenantMatch) {
       const id = tenantMatch[1];
@@ -371,7 +538,11 @@ export async function handleAdminRequest(req, res) {
     const status = err?.status || 500;
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes("duplicate key") || message.includes("unique")) {
-      json(res, 409, { error: "Embed key already exists" });
+      json(res, 409, {
+        error: message.includes("field_users")
+          ? "Username already exists for this tenant"
+          : "Embed key already exists",
+      });
       return true;
     }
     console.error("[admin]", message);

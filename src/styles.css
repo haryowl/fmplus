@@ -2192,7 +2192,8 @@ html.onesheet-root body {
 }
 
 .admin-login input,
-.admin-form-grid input {
+.admin-form-grid input,
+.admin-form-grid select {
   padding: 8px 10px;
   border: 1px solid #c9bfae;
   background: #fff;
@@ -2305,6 +2306,88 @@ html.onesheet-root body {
   margin-top: 4px;
   word-break: break-all;
   font-size: 0.8rem;
+}
+
+.admin-field-users {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #d9d0c0;
+}
+
+.admin-field-users h3 {
+  margin: 0 0 6px;
+}
+
+.admin-field-list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.admin-field-list li {
+  border: 1px solid #d5cbb9;
+  background: #fffdf8;
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.admin-field-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-field-row-actions input,
+.admin-field-row-actions select {
+  padding: 6px 8px;
+  border: 1px solid #c9bfae;
+  background: #fff;
+  font-size: 0.85rem;
+}
+
+.admin-field-row-actions input[type="password"] {
+  min-width: 140px;
+}
+
+/* —— Field login (/m, /dispatch) —— */
+.field-app {
+  min-height: 100vh;
+  background: linear-gradient(165deg, #e8f0ee 0%, #f4f1ea 50%, #e7ebe8 100%);
+  color: #1c1a16;
+  padding: 24px;
+  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+.field-card {
+  max-width: 400px;
+  margin: 10vh auto;
+  display: grid;
+  gap: 12px;
+  padding: 28px;
+  background: rgba(255, 252, 245, 0.94);
+  border: 1px solid #d9d0c0;
+}
+
+.field-card h1 {
+  margin: 0 0 4px;
+  font-size: 1.5rem;
+}
+
+.field-card label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.field-card input {
+  padding: 10px 12px;
+  border: 1px solid #c9bfae;
+  background: #fff;
+  font-size: 1rem;
 }
 
 @media (max-width: 800px) {

@@ -130,3 +130,33 @@ Open `/admin` after Postgres + `FMS_SECRETS_KEY` are configured.
 2. Restart the app (`npm run dev` or `systemctl restart fmplus`). The first admin is created only when `admin_users` is empty.
 3. Sign in at `/admin`, create tenants (embed `k`, appId, Armada token, webhook secret, module visibility).
 4. Armada tokens are encrypted at rest and **never** returned to the browser.
+5. Per tenant, add **field users** (operator / driver / dispatcher) for `/m` and `/dispatch` login.
+6. Set a **webhook secret** on the tenant, then copy the Exception / Maintenance notifier URLs into Armada Command notifier.
+
+Optional: set `PUBLIC_BASE_URL=https://81.17.100.7:4173` so Admin shows absolute notifier URLs.
+
+## Field login
+
+Open `/m` (or `/dispatch`) with the tenant embed key:
+
+```
+https://81.17.100.7:4173/m?k=YOUR_TENANT_KEY
+```
+
+Sign in with a field user created in Admin. Jobs / PoM come in later phases — login only for now.
+
+## Armada Command notifier (Phase B0)
+
+1. In Admin, set **Webhook secret** on the tenant and Save.
+2. Copy the Exception or Maintenance URL (replace `<webhook-secret>` with the real secret).
+3. In Armada: Event Rule / Maintenance Schedule → Command → Custom Server → HTTP GET to that URL (GpsGate appends `RULE_NAME`, `EVENT_TIME`, `USER_*`, `POS_*`, …).
+4. FM Plus responds plain text **`OK`**. Events are stored in Postgres (`armada_notifications`) for Exceptions / Maintenance UI later.
+
+Smoke test:
+
+```bash
+curl -sk "https://81.17.100.7:4173/api/armada/notify?k=YOUR_K&secret=YOUR_SECRET&kind=exception&RULE_NAME=Test&EVENT_TIME=2026-09-05T12:00:00Z&USER_USERNAME=demo"
+# → OK
+```
+
+Bad secret returns `401` (no `OK`) so misconfiguration is visible in Armada.

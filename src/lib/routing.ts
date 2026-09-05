@@ -1,10 +1,11 @@
-export type AppView = "full" | "compact" | "fleet" | "fleetCompact" | "status" | "trips" | "admin";
+export type AppView = "full" | "compact" | "fleet" | "fleetCompact" | "status" | "trips" | "admin" | "field";
 
 export function viewFromPath(pathname: string): AppView {
   const parts = (pathname.replace(/\/+$/, "") || "/").split("/").filter(Boolean);
   const leaf = parts[0] ?? "";
   const next = parts[1] ?? "";
   if (leaf === "admin") return "admin";
+  if (leaf === "m" || leaf === "dispatch") return "field";
   if (leaf === "fleet" && (next === "compact" || next === "compact.html")) return "fleetCompact";
   if (leaf === "fleet" || leaf === "fleet.html") return "fleet";
   if (leaf === "compact" || leaf === "compact.html") return "compact";

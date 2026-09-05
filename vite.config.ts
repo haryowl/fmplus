@@ -8,6 +8,8 @@ import { handleUserDayTracksRequest } from "./server/user-day-tracks.mjs";
 import { handleNearbyFuelRequest } from "./server/nearby-fuel.mjs";
 import { handleHealthRequest } from "./server/health.mjs";
 import { handleAdminRequest, maybeBootstrapAdmin } from "./server/admin-api.mjs";
+import { handleFieldRequest } from "./server/field-api.mjs";
+import { handleArmadaNotifyRequest } from "./server/armada-notify.mjs";
 import { initTenantVault } from "./server/tenants.mjs";
 import { runMigrations } from "./server/db/migrate.mjs";
 
@@ -18,7 +20,9 @@ function apiPlugin(): Plugin {
       server.middlewares.use((req, res, next) => {
         void (async () => {
           if (await handleHealthRequest(req, res)) return;
+          if (await handleArmadaNotifyRequest(req, res)) return;
           if (await handleAdminRequest(req, res)) return;
+          if (await handleFieldRequest(req, res)) return;
           if (await handleEmbedContextRequest(req, res)) return;
           if (await handleTracksBatchRequest(req, res)) return;
           if (await handleUserDayTracksRequest(req, res)) return;
@@ -33,7 +37,9 @@ function apiPlugin(): Plugin {
       server.middlewares.use((req, res, next) => {
         void (async () => {
           if (await handleHealthRequest(req, res)) return;
+          if (await handleArmadaNotifyRequest(req, res)) return;
           if (await handleAdminRequest(req, res)) return;
+          if (await handleFieldRequest(req, res)) return;
           if (await handleEmbedContextRequest(req, res)) return;
           if (await handleTracksBatchRequest(req, res)) return;
           if (await handleUserDayTracksRequest(req, res)) return;
@@ -46,7 +52,6 @@ function apiPlugin(): Plugin {
     },
   };
 }
-
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   for (const [key, value] of Object.entries(env)) {
