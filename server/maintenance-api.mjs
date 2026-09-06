@@ -562,29 +562,32 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
 
   if (prevStatus !== "done" && status === "done" && event) {
     try {
-      nextEvent = await spawnNextDueEvent(event, tenantId, {
+      const spawned = await spawnNextDueEvent(event, tenantId, {
         vaultTenant: opts.vaultTenant,
         completionOdo: odometerKm,
       });
+      nextEvent = spawned?.event || null;
+      // Notify only when a brand-new follow-up is inserted — not on every Done/Save retry
+      // that merely returns the existing next-due row (that spam filled the alert inbox).
+      if (spawned?.created && nextEvent) {
+        try {
+          const { fanOutEventReminder } = await import("./maintenance-remind.mjs");
+          await fanOutEventReminder({
+            tenantId,
+            tenantKey: opts.tenantKey || opts.vaultTenant?.key || "",
+            event: nextEvent,
+            kind: "next_due",
+            title: `Next maintenance due · ${nextEvent.userDisplayName || nextEvent.armadaUsername || "Vehicle"}`,
+            body: `${nextEvent.title} scheduled after completion.`,
+            payload: { parentEventId: event.id },
+          });
+        } catch (err) {
+          console.error("[maintenance] next_due notify", err);
+        }
+      }
     } catch (err) {
       console.error("[maintenance] spawn next due", err);
       nextEvent = null;
-    }
-    if (nextEvent) {
-      try {
-        const { fanOutEventReminder } = await import("./maintenance-remind.mjs");
-        await fanOutEventReminder({
-          tenantId,
-          tenantKey: opts.tenantKey || opts.vaultTenant?.key || "",
-          event: nextEvent,
-          kind: "next_due",
-          title: `Next maintenance due · ${nextEvent.userDisplayName || nextEvent.armadaUsername || "Vehicle"}`,
-          body: `${nextEvent.title} scheduled after completion.`,
-          payload: { parentEventId: event.id },
-        });
-      } catch (err) {
-        console.error("[maintenance] next_due notify", err);
-      }
     }
   }
 
@@ -601,8 +604,8 @@ function scheduleConfigured(ev) {
 }
 
 /**
- * @param {ReturnType<typeof publicEvent>} completed
- * @param {string} tenantId
+ * Create the next scheduled due job after completion.
+ * @returns {Promise<{ event: object, created: boolean } | null>}
  */
 async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionOdo } = {}) {
   if (!scheduleConfigured(completed)) return null;
@@ -625,9 +628,9 @@ async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionO
          WHERE id = $1 RETURNING ${SELECT_COLS}`,
         [row.id],
       );
-      return publicEvent(cleared.rows[0] || row);
+      return { event: publicEvent(cleared.rows[0] || row), created: false };
     }
-    return publicEvent(row);
+    return { event: publicEvent(row), created: false };
   }
 
   let nextBaseline = completionOdo ?? completed.odometerKm ?? completed.remindBaselineOdometerKm;
@@ -701,7 +704,7 @@ async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionO
       completed.id,
     ],
   );
-  return publicEvent(inserted.rows[0]);
+  return { event: publicEvent(inserted.rows[0]), created: true };
 }
 
 export async function savePhoto(eventId, tenantId, { buffer, contentType, caption, fieldUserId }) {

@@ -112,7 +112,10 @@ export async function emitReminder({
   payload = {},
   send = true,
 }) {
-  const dedupe = `${tenantId}:${eventId || "none"}:${kind}:${channel}:${recipient || "_"}`;
+  const dedupe =
+    kind === "next_due" && payload?.parentEventId
+      ? `${tenantId}:next_due:parent:${payload.parentEventId}:${channel}:${recipient || "_"}`
+      : `${tenantId}:${eventId || "none"}:${kind}:${channel}:${recipient || "_"}`;
   const inserted = await dbQuery(
     `INSERT INTO maintenance_reminders (
        tenant_id, event_id, kind, channel, recipient, title, body, payload, dedupe_key
