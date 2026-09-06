@@ -90,7 +90,7 @@ export type FieldUserOption = {
   enabled: boolean;
 };
 
-export type MaintenanceStatusFilter = ServiceEventStatus | "open" | "all";
+export type MaintenanceStatusFilter = ServiceEventStatus | "open" | "all" | "completed";
 export type MaintenanceBoardView =
   | "attention"
   | "upcoming"
