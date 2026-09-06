@@ -104,6 +104,25 @@ export type ScheduleSummary = {
   open: number;
 };
 
+export type ScheduleHealthBars = {
+  labels: string[];
+  values: number[];
+  keys: string[];
+};
+
+export type ScheduleTimeline = {
+  days: number;
+  labels: string[];
+  completed: number[];
+  opened: number[];
+};
+
+export type ScheduleDashboard = {
+  summary: ScheduleSummary;
+  healthBars?: ScheduleHealthBars;
+  timeline?: ScheduleTimeline;
+};
+
 export const SERVICE_STATUS_LABELS: Record<ServiceEventStatus, string> = {
   due: "Due",
   in_progress: "In progress",
@@ -146,18 +165,20 @@ export async function fetchServiceEvents(
   return { events: data.events || [], summary: data.summary };
 }
 
-export async function fetchScheduleSummary(signal?: AbortSignal): Promise<ScheduleSummary> {
+export async function fetchScheduleSummary(signal?: AbortSignal): Promise<ScheduleDashboard> {
   const res = await fetch("/api/maintenance/schedule-summary", {
     headers: { accept: "application/json", ...tenantHeaders() },
     signal,
   });
   const data = (await res.json().catch(() => ({}))) as {
     summary?: ScheduleSummary;
+    healthBars?: ScheduleHealthBars;
+    timeline?: ScheduleTimeline;
     error?: string;
   };
   if (!res.ok) throw new Error(data.error || `Summary ${res.status}`);
-  return (
-    data.summary || {
+  return {
+    summary: data.summary || {
       upcoming: 0,
       due: 0,
       overdue: 0,
@@ -165,8 +186,10 @@ export async function fetchScheduleSummary(signal?: AbortSignal): Promise<Schedu
       ok: 0,
       none: 0,
       open: 0,
-    }
-  );
+    },
+    healthBars: data.healthBars,
+    timeline: data.timeline,
+  };
 }
 
 export async function fetchServiceEvent(id: string, signal?: AbortSignal): Promise<ServiceEvent> {

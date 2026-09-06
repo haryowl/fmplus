@@ -941,7 +941,60 @@ export async function handleMaintenanceRequest(req, res) {
       );
       const summary = summarizeSchedule(enriched);
       summary.completed = doneCount.rows[0]?.n || 0;
-      json(res, 200, { summary });
+
+      const days = 14;
+      const timelineRows = await dbQuery(
+        `WITH days AS (
+           SELECT generate_series(
+             (CURRENT_DATE - ($2::int - 1))::date,
+             CURRENT_DATE::date,
+             '1 day'::interval
+           )::date AS day
+         ),
+         completed AS (
+           SELECT (COALESCE(ended_at, updated_at) AT TIME ZONE 'UTC')::date AS day, count(*)::int AS n
+           FROM service_events
+           WHERE tenant_id = $1 AND status = 'done'
+             AND COALESCE(ended_at, updated_at) >= (CURRENT_DATE - ($2::int - 1))::timestamptz
+           GROUP BY 1
+         ),
+         opened AS (
+           SELECT (created_at AT TIME ZONE 'UTC')::date AS day, count(*)::int AS n
+           FROM service_events
+           WHERE tenant_id = $1
+             AND created_at >= (CURRENT_DATE - ($2::int - 1))::timestamptz
+           GROUP BY 1
+         )
+         SELECT d.day::text AS day,
+                COALESCE(c.n, 0)::int AS completed,
+                COALESCE(o.n, 0)::int AS opened
+         FROM days d
+         LEFT JOIN completed c ON c.day = d.day
+         LEFT JOIN opened o ON o.day = d.day
+         ORDER BY d.day ASC`,
+        [dbTenant.id, days],
+      );
+
+      json(res, 200, {
+        summary,
+        healthBars: {
+          labels: ["Upcoming", "Due", "Overdue", "On track", "Unscheduled"],
+          values: [
+            summary.upcoming,
+            summary.due,
+            summary.overdue,
+            summary.ok || 0,
+            summary.none || 0,
+          ],
+          keys: ["upcoming", "due", "overdue", "ok", "none"],
+        },
+        timeline: {
+          days,
+          labels: timelineRows.rows.map((r) => String(r.day).slice(5)), // MM-DD
+          completed: timelineRows.rows.map((r) => Number(r.completed) || 0),
+          opened: timelineRows.rows.map((r) => Number(r.opened) || 0),
+        },
+      });
       return true;
     }
 

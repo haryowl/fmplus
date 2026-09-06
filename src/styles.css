@@ -2946,6 +2946,35 @@ html.onesheet-root body {
   gap: 8px;
 }
 
+.maintenance-schedule-charts {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 12px;
+}
+
+.maintenance-chart-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #d5cbb9;
+  background: #fffdf8;
+}
+
+.maintenance-chart-panel header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.maintenance-chart-panel header p {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+}
+
+.maintenance-chart-panel .chart-wrap-sm {
+  height: 180px;
+}
+
 .maint-dash-tile {
   display: grid;
   gap: 4px;
@@ -3012,6 +3041,10 @@ html.onesheet-root body {
 @media (max-width: 720px) {
   .maintenance-schedule-dash {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .maintenance-schedule-charts {
+    grid-template-columns: 1fr;
   }
 }
 

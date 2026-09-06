@@ -17,6 +17,7 @@ import {
   SERVICE_STATUS_LABELS,
   type MaintenanceReminder,
   type MaintenanceStatusFilter,
+  type ScheduleDashboard,
   type ScheduleHealth,
   type ScheduleSummary,
   type ServiceEvent,
@@ -29,6 +30,7 @@ import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
 import { BrandMark } from "../components/BrandMark";
 import { MaintenanceEventDetail } from "../components/MaintenanceEventDetail";
+import { MaintenanceScheduleCharts } from "../components/MaintenanceScheduleCharts";
 import { ViewNav } from "../components/ViewNav";
 
 function vehicleSearch(userId: number): string {
@@ -61,6 +63,7 @@ export default function MaintenanceBoard() {
     "",
   );
   const [scheduleSummary, setScheduleSummary] = useState<ScheduleSummary | null>(null);
+  const [scheduleDash, setScheduleDash] = useState<ScheduleDashboard | null>(null);
   const [events, setEvents] = useState<ServiceEvent[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -247,7 +250,10 @@ export default function MaintenanceBoard() {
     if (!ready || !query.tenantKey) return;
     const ac = new AbortController();
     void fetchScheduleSummary(ac.signal)
-      .then(setScheduleSummary)
+      .then((dash) => {
+        setScheduleDash(dash);
+        setScheduleSummary(dash.summary);
+      })
       .catch(() => {
         /* optional */
       });
@@ -344,7 +350,12 @@ export default function MaintenanceBoard() {
         setEventId(nextEvent.id);
         void fetchMaintReminders("open").then(setReminders).catch(() => {});
       }
-      void fetchScheduleSummary().then(setScheduleSummary).catch(() => {});
+      void fetchScheduleSummary()
+        .then((dash) => {
+          setScheduleDash(dash);
+          setScheduleSummary(dash.summary);
+        })
+        .catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
     } finally {
@@ -477,6 +488,22 @@ export default function MaintenanceBoard() {
               <strong>{scheduleSummary?.completed ?? "—"}</strong>
             </button>
           </section>
+        )}
+
+        {!eventId && (scheduleSummary || scheduleDash) && (
+          <MaintenanceScheduleCharts
+            summary={scheduleSummary}
+            healthBars={scheduleDash?.healthBars}
+            timeline={scheduleDash?.timeline}
+            onSelectHealth={(key) => {
+              if (!key) {
+                setHealthFilter("");
+                setStatusFilter("open");
+                return;
+              }
+              setHealthFilter(key);
+            }}
+          />
         )}
 
         {!eventId && (
