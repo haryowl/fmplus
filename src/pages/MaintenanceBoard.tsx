@@ -45,6 +45,19 @@ function defaultTitle(): string {
   return `Service · ${new Date().toISOString().slice(0, 10)}`;
 }
 
+const REMINDER_KIND_LABELS: Record<string, string> = {
+  overdue: "Overdue",
+  due_soon: "Due soon",
+  next_due: "Next due",
+  assigned: "Assigned",
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+  platform: "Inbox",
+  whatsapp: "WA",
+  email: "Email",
+};
+
 export default function MaintenanceBoard() {
   const {
     query,
@@ -88,6 +101,11 @@ export default function MaintenanceBoard() {
   const [remindBeforeKm, setRemindBeforeKm] = useState("");
   const [remindBeforeHours, setRemindBeforeHours] = useState("");
   const [reminders, setReminders] = useState<MaintenanceReminder[]>([]);
+  const [remindersOpen, setRemindersOpen] = useState(true);
+  const [reminderKind, setReminderKind] = useState<"all" | "overdue" | "due_soon" | "next_due" | "assigned">(
+    "all",
+  );
+  const [listQuery, setListQuery] = useState("");
   const [eventId, setEventId] = useState(
     () => new URLSearchParams(window.location.search).get("eventId") || "",
   );
@@ -127,6 +145,37 @@ export default function MaintenanceBoard() {
         String(v.id).includes(q),
     );
   }, [groupId, users, statusRows, statusById, vehicleQuery]);
+
+  const filteredReminders = useMemo(() => {
+    if (reminderKind === "all") return reminders;
+    return reminders.filter((r) => r.kind === reminderKind);
+  }, [reminders, reminderKind]);
+
+  const reminderCounts = useMemo(() => {
+    const counts = { all: reminders.length, overdue: 0, due_soon: 0, next_due: 0, assigned: 0 };
+    for (const r of reminders) {
+      if (r.kind in counts) counts[r.kind as keyof typeof counts] += 1;
+    }
+    return counts;
+  }, [reminders]);
+
+  const filteredEvents = useMemo(() => {
+    const q = listQuery.trim().toLowerCase();
+    if (!q) return events;
+    return events.filter((ev) => {
+      const hay = [
+        ev.title,
+        eventVehicleLabel(ev),
+        ev.armadaUsername,
+        ev.notes,
+        ev.scheduleHealth || "",
+        ...(ev.scheduleBits || []),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [events, listQuery]);
 
   useEffect(() => {
     writeLocationSearch({
@@ -667,57 +716,145 @@ export default function MaintenanceBoard() {
 
         {error && <div className="banner error">{error}</div>}
 
-        {!eventId && reminders.length > 0 && (
-          <section className="maintenance-reminders">
-            <div className="maintenance-reminders-head">
-              <h2>Reminders</h2>
+        {!eventId && (
+          <section className={`maintenance-inbox${remindersOpen ? " is-open" : ""}`}>
+            <div className="maintenance-inbox-head">
               <button
                 type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  void evaluateMaintReminders()
-                    .then((r) => {
-                      setReload((n) => n + 1);
-                      if (r.emitted === 0) setError("");
-                    })
-                    .catch((err) => setError(err instanceof Error ? err.message : "Evaluate failed"));
-                }}
+                className="maintenance-inbox-toggle"
+                onClick={() => setRemindersOpen((o) => !o)}
+                aria-expanded={remindersOpen}
               >
-                Check reminders
+                <span className="maintenance-inbox-title">
+                  Inbox
+                  <span className="maint-count">{reminders.length}</span>
+                </span>
+                <span className="muted">{remindersOpen ? "Hide" : "Show"}</span>
               </button>
+              <div className="maintenance-inbox-tools">
+                {reminders.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => {
+                      const ids = filteredReminders.map((r) => r.id);
+                      void Promise.all(ids.map((id) => ackMaintReminder(id)))
+                        .then(() => setReminders((prev) => prev.filter((r) => !ids.includes(r.id))))
+                        .catch((err) => setError(err instanceof Error ? err.message : "Ack failed"));
+                    }}
+                  >
+                    Ack shown
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    void evaluateMaintReminders()
+                      .then(() => setReload((n) => n + 1))
+                      .catch((err) => setError(err instanceof Error ? err.message : "Evaluate failed"));
+                  }}
+                >
+                  Check
+                </button>
+              </div>
             </div>
-            <ul className="maintenance-reminder-list">
-              {reminders.map((r) => (
-                <li key={r.id}>
-                  <div>
-                    <strong>{r.title}</strong>
-                    <span className="muted">
-                      {r.kind} · {r.channel}
-                      {r.recipient ? ` · ${r.recipient}` : ""}
-                    </span>
-                    <span className="muted">{r.body}</span>
-                  </div>
-                  <div className="maintenance-row-actions">
-                    {r.eventId ? (
-                      <button type="button" className="btn-link" onClick={() => setEventId(r.eventId!)}>
-                        Open
-                      </button>
-                    ) : null}
+
+            {remindersOpen && (
+              <>
+                <div className="maintenance-inbox-filters">
+                  {(
+                    [
+                      ["all", "All"],
+                      ["overdue", "Overdue"],
+                      ["due_soon", "Due soon"],
+                      ["next_due", "Next due"],
+                      ["assigned", "Assigned"],
+                    ] as const
+                  ).map(([key, label]) => (
                     <button
+                      key={key}
                       type="button"
-                      className="btn-secondary"
-                      onClick={() =>
-                        void ackMaintReminder(r.id)
-                          .then(() => setReminders((prev) => prev.filter((x) => x.id !== r.id)))
-                          .catch((err) => setError(err instanceof Error ? err.message : "Ack failed"))
-                      }
+                      className={`maint-filter-chip${reminderKind === key ? " is-active" : ""}${
+                        key !== "all" ? ` kind-${key}` : ""
+                      }`}
+                      onClick={() => setReminderKind(key)}
                     >
-                      Ack
+                      {label}
+                      <span>{reminderCounts[key]}</span>
                     </button>
+                  ))}
+                </div>
+                {filteredReminders.length === 0 ? (
+                  <p className="muted maintenance-inbox-empty">
+                    {reminders.length === 0
+                      ? "No open reminders. Check to evaluate schedules."
+                      : "No reminders in this filter."}
+                  </p>
+                ) : (
+                  <div className="maintenance-inbox-scroll">
+                    <table className="maintenance-inbox-table">
+                      <thead>
+                        <tr>
+                          <th>Kind</th>
+                          <th>Alert</th>
+                          <th>Channel</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredReminders.map((r) => (
+                          <tr key={r.id} className={`kind-${r.kind}`}>
+                            <td>
+                              <span className={`maint-kind kind-${r.kind}`}>
+                                {REMINDER_KIND_LABELS[r.kind] || r.kind}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="maintenance-inbox-alert"
+                                onClick={() => r.eventId && setEventId(r.eventId)}
+                                disabled={!r.eventId}
+                              >
+                                <strong>{r.title}</strong>
+                                <span className="muted">{r.body}</span>
+                              </button>
+                            </td>
+                            <td>
+                              <span className="maint-channel">
+                                {CHANNEL_LABELS[r.channel] || r.channel}
+                                {r.recipient ? ` · ${r.recipient}` : ""}
+                              </span>
+                            </td>
+                            <td className="maintenance-inbox-actions">
+                              {r.eventId ? (
+                                <button type="button" className="btn-link" onClick={() => setEventId(r.eventId!)}>
+                                  Open
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                className="btn-ghost"
+                                onClick={() =>
+                                  void ackMaintReminder(r.id)
+                                    .then(() => setReminders((prev) => prev.filter((x) => x.id !== r.id)))
+                                    .catch((err) =>
+                                      setError(err instanceof Error ? err.message : "Ack failed"),
+                                    )
+                                }
+                              >
+                                Ack
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                </li>
-              ))}
-            </ul>
+                )}
+              </>
+            )}
           </section>
         )}
 
@@ -755,65 +892,91 @@ export default function MaintenanceBoard() {
             }}
           />
         ) : (
+        <>
+        <div className="maintenance-list-toolbar">
+          <label className="maintenance-list-search">
+            <span className="visually-hidden">Filter jobs</span>
+            <input
+              value={listQuery}
+              onChange={(e) => setListQuery(e.target.value)}
+              placeholder="Filter jobs by vehicle, title, schedule…"
+            />
+          </label>
+          <span className="muted maintenance-list-count">
+            {filteredEvents.length}
+            {listQuery.trim() ? ` of ${events.length}` : ""} jobs
+          </span>
+        </div>
         <ul className="maintenance-list">
-          {events.length === 0 && !loading && (
+          {filteredEvents.length === 0 && !loading && (
             <li className="muted maintenance-empty">
               {query.tenantKey
-                ? "No service events yet. Open for a fleet vehicle above, or wire Armada Maintenance Schedule (kind=maintenance)."
+                ? listQuery.trim()
+                  ? "No jobs match this filter."
+                  : "No service events yet. Open for a fleet vehicle above, or wire Armada Maintenance Schedule (kind=maintenance)."
                 : "Add k= to the URL."}
             </li>
           )}
-          {events.map((ev) => {
+          {filteredEvents.map((ev) => {
             const search = ev.armadaUserId ? vehicleSearch(ev.armadaUserId) : "";
+            const health =
+              ev.scheduleHealth && ev.scheduleHealth !== "none" && ev.scheduleHealth !== "completed"
+                ? ev.scheduleHealth
+                : "";
+            const scheduleText =
+              ev.scheduleBits && ev.scheduleBits.length > 0
+                ? ev.scheduleBits.join("; ")
+                : scheduleLabel(ev) || "";
             return (
-              <li key={ev.id} className={`maint-status-${ev.status}`}>
-                <div className="maintenance-row-main">
+              <li
+                key={ev.id}
+                className={`maint-row maint-status-${ev.status}${health ? ` maint-health-${health}` : ""}`}
+              >
+                <div className={`maint-row-rail${health ? ` is-${health}` : ""}`} aria-hidden />
+                <div className="maint-row-main">
                   <button type="button" className="maintenance-row-title" onClick={() => setEventId(ev.id)}>
                     <strong>{ev.title}</strong>
                   </button>
-                  <span className="maintenance-row-badges">
-                    <span className={`maint-badge maint-status-${ev.status}`}>
-                      {SERVICE_STATUS_LABELS[ev.status]}
-                    </span>
-                    {ev.scheduleHealth &&
-                    ev.scheduleHealth !== "none" &&
-                    ev.scheduleHealth !== "completed" ? (
-                      <span className={`maint-badge maint-health-${ev.scheduleHealth}`}>
-                        {SCHEDULE_HEALTH_LABELS[ev.scheduleHealth as ScheduleHealth]}
-                      </span>
+                  <span className="maint-row-meta muted">
+                    {eventVehicleLabel(ev)}
+                    <span>·</span>
+                    {eventWhen(ev, now)}
+                    {ev.odometerKm != null ? (
+                      <>
+                        <span>·</span>
+                        {formatKm(ev.odometerKm)} km
+                      </>
                     ) : null}
                   </span>
-                  <span className="muted">
-                    {eventWhen(ev, now)} · {eventVehicleLabel(ev)}
-                    {ev.notificationId ? " · from notifier" : " · manual"}
-                    {ev.odometerKm != null ? ` · ${formatKm(ev.odometerKm)} km` : ""}
-                    {ev.servicePointName ? ` · ${ev.servicePointName}` : ""}
+                </div>
+                <div className="maintenance-row-badges">
+                  <span className={`maint-badge maint-status-${ev.status}`}>
+                    {SERVICE_STATUS_LABELS[ev.status]}
                   </span>
-                  {ev.scheduleBits && ev.scheduleBits.length > 0 ? (
-                    <span className="muted">Schedule: {ev.scheduleBits.join("; ")}</span>
-                  ) : scheduleLabel(ev) ? (
-                    <span className="muted">Remind: {scheduleLabel(ev)}</span>
+                  {health ? (
+                    <span className={`maint-badge maint-health-${health}`}>
+                      {SCHEDULE_HEALTH_LABELS[health as ScheduleHealth]}
+                    </span>
                   ) : null}
-                  {ev.notes ? <span className="muted">{ev.notes}</span> : null}
+                </div>
+                <div className="maint-row-schedule muted" title={scheduleText || undefined}>
+                  {scheduleText || "—"}
                 </div>
                 <div className="maintenance-row-actions">
-                  <button type="button" className="btn-secondary" onClick={() => setEventId(ev.id)}>
-                    Detail
-                  </button>
                   {ev.armadaUserId ? (
-                    <>
+                    <span className="maint-row-links">
                       <a className="btn-link" href={tripsHref(search)}>
                         Trips
                       </a>
                       <a className="btn-link" href={fullHref(search)}>
                         Full
                       </a>
-                    </>
+                    </span>
                   ) : null}
                   {ev.status === "due" && (
                     <button
                       type="button"
-                      className="btn btn-primary"
+                      className="btn btn-primary btn-compact"
                       disabled={busyId === ev.id}
                       onClick={() => void setStatus(ev.id, "in_progress")}
                     >
@@ -824,7 +987,7 @@ export default function MaintenanceBoard() {
                     <>
                       <button
                         type="button"
-                        className="btn btn-primary"
+                        className="btn btn-primary btn-compact"
                         disabled={busyId === ev.id}
                         onClick={() => void setStatus(ev.id, "done")}
                       >
@@ -832,7 +995,7 @@ export default function MaintenanceBoard() {
                       </button>
                       <button
                         type="button"
-                        className="btn-secondary"
+                        className="btn-ghost btn-compact"
                         disabled={busyId === ev.id}
                         onClick={() => void setStatus(ev.id, "skipped")}
                       >
@@ -843,7 +1006,7 @@ export default function MaintenanceBoard() {
                   {(ev.status === "done" || ev.status === "skipped") && (
                     <button
                       type="button"
-                      className="btn-secondary"
+                      className="btn-secondary btn-compact"
                       disabled={busyId === ev.id}
                       onClick={() => void setStatus(ev.id, "due")}
                     >
@@ -855,6 +1018,7 @@ export default function MaintenanceBoard() {
             );
           })}
         </ul>
+        </>
         )}
       </main>
     </div>
