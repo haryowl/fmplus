@@ -444,33 +444,43 @@ export function MaintenanceEventDetail({
 
   return (
     <section className="maintenance-detail">
-      <div className="maintenance-detail-head">
-        <button type="button" className="btn-secondary" onClick={onClose}>
-          ← Board
-        </button>
-        <span className={`maint-badge maint-status-${event.status}`}>
-          {SERVICE_STATUS_LABELS[event.status]}
-        </span>
-        {event.scheduleHealth &&
-        event.scheduleHealth !== "none" &&
-        event.scheduleHealth !== "completed" ? (
-          <span className={`maint-badge maint-health-${event.scheduleHealth}`}>
-            {SCHEDULE_HEALTH_LABELS[event.scheduleHealth as ScheduleHealth]}
-            {event.scheduleBits?.length ? ` · ${event.scheduleBits.join("; ")}` : ""}
-          </span>
-        ) : null}
-        <span className="muted">{eventVehicleLabel(event)}</span>
-        {event.armadaUserId ? (
-          <span className="maintenance-detail-links">
-            <a className="btn-link" href={tripsHref(search)}>
-              Trips
-            </a>
-            <a className="btn-link" href={fullHref(search)}>
-              Full
-            </a>
-          </span>
-        ) : null}
-      </div>
+      <header className="maintenance-detail-head">
+        <div className="maint-detail-nav">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            ← Board
+          </button>
+          {event.armadaUserId ? (
+            <span className="maintenance-detail-links">
+              <a className="btn-link" href={tripsHref(search)}>
+                Trips
+              </a>
+              <a className="btn-link" href={fullHref(search)}>
+                Full
+              </a>
+            </span>
+          ) : null}
+        </div>
+        <div className="maint-detail-hero">
+          <div className="maint-detail-hero-text">
+            <p className="maint-eyebrow">Maintenance job</p>
+            <h2>{eventVehicleLabel(event)}</h2>
+            <p className="maint-detail-subtitle">{event.title || "Untitled job"}</p>
+          </div>
+          <div className="maint-detail-hero-badges">
+            <span className={`maint-badge maint-status-${event.status}`}>
+              {SERVICE_STATUS_LABELS[event.status]}
+            </span>
+            {event.scheduleHealth &&
+            event.scheduleHealth !== "none" &&
+            event.scheduleHealth !== "completed" ? (
+              <span className={`maint-badge maint-health-${event.scheduleHealth}`}>
+                {SCHEDULE_HEALTH_LABELS[event.scheduleHealth as ScheduleHealth]}
+                {event.scheduleBits?.length ? ` · ${event.scheduleBits.join("; ")}` : ""}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </header>
 
       {error && <div className="banner error">{error}</div>}
       {notice && <div className="banner ok">{notice}</div>}
@@ -509,289 +519,340 @@ export function MaintenanceEventDetail({
           if (!locked) void save();
         }}
       >
-        <label className="span-2">
-          Title
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-            maxLength={200}
-            disabled={locked}
-          />
-        </label>
-        <label className="span-2">
-          Notes
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} disabled={locked} />
-        </label>
-        <label>
-          Started
-          <input
-            type="datetime-local"
-            value={startedAt}
-            onChange={(e) => setStartedAt(e.target.value)}
-            disabled={locked}
-          />
-        </label>
-        <label>
-          Ended
-          <input
-            type="datetime-local"
-            value={endedAt}
-            onChange={(e) => setEndedAt(e.target.value)}
-            disabled={locked}
-          />
-        </label>
-        <p className="span-2 muted maintenance-service-time">
-          Service time (Start → Done):{" "}
-          <strong>{formatServiceDuration(event.serviceDurationMinutes)}</strong>
-          {event.status === "due" ? " — press Start, then Done to record wrench time." : null}
-          {event.status === "in_progress" ? " — clock is running; Done closes the timer." : null}
-        </p>
-        <label>
-          Odometer (km)
-          <input
-            inputMode="decimal"
-            value={odometerKm}
-            onChange={(e) => setOdometerKm(e.target.value)}
-            placeholder={event.odometerKm != null ? formatKm(event.odometerKm) : ""}
-            disabled={locked}
-          />
-        </label>
-        <label>
-          Assign field user
-          <select
-            value={assignedFieldUserId}
-            onChange={(e) => setAssignedFieldUserId(e.target.value)}
-            disabled={locked}
-          >
-            <option value="">Unassigned (all operators see it)</option>
-            {fieldUsers.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.displayName || u.username} ({u.role})
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <fieldset className="span-2 maintenance-schedule">
-          <legend>Schedule / remind</legend>
-          <p className="muted maintenance-hint">
-            Independent due rules (optional). Use a calendar date, day interval, km interval, and/or
-            ignition-on hours from tracks — not only Armada notifier.
-          </p>
-          <div className="maintenance-schedule-grid">
-            <label>
-              Due date
-              <input type="date" value={remindDueAt} onChange={(e) => setRemindDueAt(e.target.value)} />
-            </label>
-            <label>
-              Interval (days)
+        <div className="maint-section span-2">
+          <header className="maint-section-head">
+            <h3>Job details</h3>
+            <p>Title, notes, clock, and assignment</p>
+          </header>
+          <div className="maint-section-grid">
+            <label className="span-2">
+              Title
               <input
-                type="number"
-                min={1}
-                step={1}
-                placeholder="e.g. 90"
-                value={remindIntervalDays}
-                onChange={(e) => setRemindIntervalDays(e.target.value)}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                maxLength={200}
+                disabled={locked}
               />
             </label>
-            <label>
-              Interval (km)
-              <input
-                type="number"
-                min={1}
-                step="any"
-                placeholder="e.g. 5000"
-                value={remindIntervalKm}
-                onChange={(e) => setRemindIntervalKm(e.target.value)}
-              />
+            <label className="span-2">
+              Notes
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} disabled={locked} />
             </label>
             <label>
-              Baseline odo (km)
-              <input
-                type="number"
-                step="any"
-                placeholder="Start of km interval"
-                value={remindBaselineOdometerKm}
-                onChange={(e) => setRemindBaselineOdometerKm(e.target.value)}
-              />
-            </label>
-            <label>
-              Interval (hours, ign-on)
-              <input
-                type="number"
-                min={1}
-                step="any"
-                placeholder="e.g. 250"
-                value={remindIntervalHours}
-                onChange={(e) => setRemindIntervalHours(e.target.value)}
-              />
-            </label>
-            <label>
-              Hours since
+              Started
               <input
                 type="datetime-local"
-                value={remindHoursSinceAt}
-                onChange={(e) => setRemindHoursSinceAt(e.target.value)}
+                value={startedAt}
+                onChange={(e) => setStartedAt(e.target.value)}
+                disabled={locked}
               />
             </label>
             <label>
-              Remind before (days)
+              Ended
               <input
-                type="number"
-                min={0}
-                step={1}
-                placeholder="7"
-                value={remindBeforeDays}
-                onChange={(e) => setRemindBeforeDays(e.target.value)}
+                type="datetime-local"
+                value={endedAt}
+                onChange={(e) => setEndedAt(e.target.value)}
+                disabled={locked}
+              />
+            </label>
+            <p className="span-2 muted maintenance-service-time">
+              Service time (Start → Done):{" "}
+              <strong>{formatServiceDuration(event.serviceDurationMinutes)}</strong>
+              {event.status === "due" ? " — press Start, then Done to record wrench time." : null}
+              {event.status === "in_progress" ? " — clock is running; Done closes the timer." : null}
+            </p>
+            <label>
+              Odometer (km)
+              <input
+                inputMode="decimal"
+                value={odometerKm}
+                onChange={(e) => setOdometerKm(e.target.value)}
+                placeholder={event.odometerKm != null ? formatKm(event.odometerKm) : ""}
+                disabled={locked}
               />
             </label>
             <label>
-              Remind before (km)
-              <input
-                type="number"
-                min={0}
-                step="any"
-                placeholder="500"
-                value={remindBeforeKm}
-                onChange={(e) => setRemindBeforeKm(e.target.value)}
-              />
-            </label>
-            <label>
-              Remind before (hours)
-              <input
-                type="number"
-                min={0}
-                step="any"
-                placeholder="auto"
-                value={remindBeforeHours}
-                onChange={(e) => setRemindBeforeHours(e.target.value)}
-              />
+              Assign field user
+              <select
+                value={assignedFieldUserId}
+                onChange={(e) => setAssignedFieldUserId(e.target.value)}
+                disabled={locked}
+              >
+                <option value="">Unassigned (all operators see it)</option>
+                {fieldUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.displayName || u.username} ({u.role})
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
-          {remindIntervalKm.trim() && remindBaselineOdometerKm.trim() ? (
-            <p className="muted maintenance-hint">
-              Next km due around{" "}
-              {(Number(remindBaselineOdometerKm) + Number(remindIntervalKm)).toLocaleString()} km
-            </p>
-          ) : null}
-          {remindIntervalKm.trim() ? (
-            <p className="muted maintenance-hint">
-              {kmLoading
-                ? "Reading odometer from live status…"
-                : kmAccrued?.kmAccrued != null && kmAccrued.intervalKm != null
-                  ? `Odo ${kmAccrued.currentOdoKm?.toLocaleString() ?? "—"} km · accrued ${kmAccrued.kmAccrued.toLocaleString()} / ${kmAccrued.intervalKm.toLocaleString()} km${
-                      kmAccrued.due ? " — due" : ""
-                    }${
-                      kmAccrued.nextDueOdoKm != null
-                        ? ` · next @ ${kmAccrued.nextDueOdoKm.toLocaleString()} km`
-                        : ""
-                    }`
-                  : kmAccrued?.reason === "no_baseline"
-                    ? "Set baseline odo (or create with vehicle status) to evaluate km interval."
-                    : kmAccrued?.reason === "no_status_odo"
-                      ? "No odometer on live status for this vehicle."
-                      : kmAccrued?.reason
-                        ? `Km: ${kmAccrued.reason}`
-                        : "Save to evaluate km against live status odometer."}
-              {kmAccrued?.currentOdoKm != null ? (
-                <>
-                  {" "}
-                  <button
-                    type="button"
-                    className="btn-link"
-                    onClick={() => setRemindBaselineOdometerKm(String(kmAccrued.currentOdoKm))}
-                  >
-                    Use live odo as baseline
-                  </button>
-                </>
-              ) : null}
-            </p>
-          ) : null}
-          {remindIntervalHours.trim() ? (
-            <p className="muted maintenance-hint">
-              {hoursLoading
-                ? "Computing ignition-on hours from tracks…"
-                : hoursAccrued?.hoursAccrued != null && hoursAccrued.intervalHours != null
-                  ? `Accrued ${hoursAccrued.hoursAccrued.toFixed(1)} / ${hoursAccrued.intervalHours} h${
-                      hoursAccrued.due ? " — due" : ""
-                    }${hoursAccrued.lookbackCapped ? " (lookback capped at 90 days)" : ""}`
-                  : hoursAccrued?.reason
-                    ? `Hours: ${hoursAccrued.reason}`
-                    : "Save to compute ignition-on hours from tracks."}
-            </p>
-          ) : null}
-        </fieldset>
+        </div>
 
-        <fieldset className="span-2 maintenance-point">
-          <legend>Service point</legend>
-          <label>
-            Name
-            <input
-              value={servicePointName}
-              onChange={(e) => void searchPoints(e.target.value)}
-              placeholder="Workshop / dealer / yard"
-              list="maint-point-hints"
-            />
-            <datalist id="maint-point-hints">
-              {pointHints.map((p) => (
-                <option key={p.id} value={p.name} />
-              ))}
-            </datalist>
-          </label>
-          {pointHints.length > 0 && (
-            <ul className="maintenance-point-hints">
-              {pointHints.slice(0, 6).map((p) => (
-                <li key={p.id}>
-                  <button type="button" className="btn-link" onClick={() => pickPoint(p)}>
-                    {p.name}
-                    {p.lat != null && p.lon != null ? ` · ${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}` : ""}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="maintenance-point-coords">
-            <label>
-              Lat
-              <input value={servicePointLat} onChange={(e) => setServicePointLat(e.target.value)} />
-            </label>
-            <label>
-              Lon
-              <input value={servicePointLon} onChange={(e) => setServicePointLon(e.target.value)} />
-            </label>
-            <button type="button" className="btn-secondary" onClick={useVehiclePin} disabled={event.lat == null}>
-              Use vehicle pin
-            </button>
+        <div className="maint-section span-2">
+          <header className="maint-section-head">
+            <h3>Schedule / remind</h3>
+            <p>Optional calendar, km, or ignition-hour intervals</p>
+          </header>
+          <div className="maint-section-body">
+            <div className="maintenance-schedule-grid">
+              <label>
+                Due date
+                <input
+                  type="date"
+                  value={remindDueAt}
+                  onChange={(e) => setRemindDueAt(e.target.value)}
+                  disabled={locked}
+                />
+              </label>
+              <label>
+                Interval (days)
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  placeholder="e.g. 90"
+                  value={remindIntervalDays}
+                  onChange={(e) => setRemindIntervalDays(e.target.value)}
+                  disabled={locked}
+                />
+              </label>
+              <label>
+                Interval (km)
+                <input
+                  type="number"
+                  min={1}
+                  step="any"
+                  placeholder="e.g. 5000"
+                  value={remindIntervalKm}
+                  onChange={(e) => setRemindIntervalKm(e.target.value)}
+                  disabled={locked}
+                />
+              </label>
+              <label>
+                Baseline odo (km)
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="Start of km interval"
+                  value={remindBaselineOdometerKm}
+                  onChange={(e) => setRemindBaselineOdometerKm(e.target.value)}
+                  disabled={locked}
+                />
+              </label>
+              <label>
+                Interval (hours, ign-on)
+                <input
+                  type="number"
+                  min={1}
+                  step="any"
+                  placeholder="e.g. 250"
+                  value={remindIntervalHours}
+                  onChange={(e) => setRemindIntervalHours(e.target.value)}
+                  disabled={locked}
+                />
+              </label>
+              <label>
+                Hours since
+                <input
+                  type="datetime-local"
+                  value={remindHoursSinceAt}
+                  onChange={(e) => setRemindHoursSinceAt(e.target.value)}
+                  disabled={locked}
+                />
+              </label>
+              <label>
+                Remind before (days)
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  placeholder="7"
+                  value={remindBeforeDays}
+                  onChange={(e) => setRemindBeforeDays(e.target.value)}
+                  disabled={locked}
+                />
+              </label>
+              <label>
+                Remind before (km)
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  placeholder="500"
+                  value={remindBeforeKm}
+                  onChange={(e) => setRemindBeforeKm(e.target.value)}
+                  disabled={locked}
+                />
+              </label>
+              <label>
+                Remind before (hours)
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  placeholder="auto"
+                  value={remindBeforeHours}
+                  onChange={(e) => setRemindBeforeHours(e.target.value)}
+                  disabled={locked}
+                />
+              </label>
+            </div>
+            {remindIntervalKm.trim() && remindBaselineOdometerKm.trim() ? (
+              <p className="muted maintenance-hint">
+                Next km due around{" "}
+                {(Number(remindBaselineOdometerKm) + Number(remindIntervalKm)).toLocaleString()} km
+              </p>
+            ) : null}
+            {remindIntervalKm.trim() ? (
+              <p className="muted maintenance-hint">
+                {kmLoading
+                  ? "Reading odometer from live status…"
+                  : kmAccrued?.kmAccrued != null && kmAccrued.intervalKm != null
+                    ? `Odo ${kmAccrued.currentOdoKm?.toLocaleString() ?? "—"} km · accrued ${kmAccrued.kmAccrued.toLocaleString()} / ${kmAccrued.intervalKm.toLocaleString()} km${
+                        kmAccrued.due ? " — due" : ""
+                      }${
+                        kmAccrued.nextDueOdoKm != null
+                          ? ` · next @ ${kmAccrued.nextDueOdoKm.toLocaleString()} km`
+                          : ""
+                      }`
+                    : kmAccrued?.reason === "no_baseline"
+                      ? "Set baseline odo (or create with vehicle status) to evaluate km interval."
+                      : kmAccrued?.reason === "no_status_odo"
+                        ? "No odometer on live status for this vehicle."
+                        : kmAccrued?.reason
+                          ? `Km: ${kmAccrued.reason}`
+                          : "Save to evaluate km against live status odometer."}
+                {kmAccrued?.currentOdoKm != null ? (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => setRemindBaselineOdometerKm(String(kmAccrued.currentOdoKm))}
+                    >
+                      Use live odo as baseline
+                    </button>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+            {remindIntervalHours.trim() ? (
+              <p className="muted maintenance-hint">
+                {hoursLoading
+                  ? "Computing ignition-on hours from tracks…"
+                  : hoursAccrued?.hoursAccrued != null && hoursAccrued.intervalHours != null
+                    ? `Accrued ${hoursAccrued.hoursAccrued.toFixed(1)} / ${hoursAccrued.intervalHours} h${
+                        hoursAccrued.due ? " — due" : ""
+                      }${hoursAccrued.lookbackCapped ? " (lookback capped at 90 days)" : ""}`
+                    : hoursAccrued?.reason
+                      ? `Hours: ${hoursAccrued.reason}`
+                      : "Save to compute ignition-on hours from tracks."}
+              </p>
+            ) : null}
           </div>
-        </fieldset>
+        </div>
 
-        <fieldset className="span-2 maintenance-lines">
-          <legend>Line items</legend>
-          {lines.map((line, idx) => (
-            <CatalogLineEditor
-              key={idx}
-              line={line}
-              catalog={catalog}
-              disabled={locked}
-              onChange={(patch) => updateLine(idx, patch)}
-              onRemove={() => removeLine(idx)}
-            />
-          ))}
-          <div className="maintenance-lines-footer">
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={locked}
-              onClick={() => setLines((p) => [...p, emptyLine()])}
-            >
-              Add line
-            </button>
-            <span className="muted">
-              Price Σ {priceTotal.toFixed(2)} · Cost Σ {costTotal.toFixed(2)}
-            </span>
+        <div className="maint-section span-2">
+          <header className="maint-section-head">
+            <h3>Service point</h3>
+            <p>Workshop or yard where the work happens</p>
+          </header>
+          <div className="maint-section-body">
+            <label>
+              Name
+              <input
+                value={servicePointName}
+                onChange={(e) => void searchPoints(e.target.value)}
+                placeholder="Workshop / dealer / yard"
+                list="maint-point-hints"
+                disabled={locked}
+              />
+              <datalist id="maint-point-hints">
+                {pointHints.map((p) => (
+                  <option key={p.id} value={p.name} />
+                ))}
+              </datalist>
+            </label>
+            {pointHints.length > 0 && (
+              <ul className="maintenance-point-hints">
+                {pointHints.slice(0, 6).map((p) => (
+                  <li key={p.id}>
+                    <button type="button" className="btn-link" onClick={() => pickPoint(p)}>
+                      {p.name}
+                      {p.lat != null && p.lon != null ? ` · ${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}` : ""}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="maintenance-point-coords">
+              <label>
+                Lat
+                <input
+                  value={servicePointLat}
+                  onChange={(e) => setServicePointLat(e.target.value)}
+                  disabled={locked}
+                />
+              </label>
+              <label>
+                Lon
+                <input
+                  value={servicePointLon}
+                  onChange={(e) => setServicePointLon(e.target.value)}
+                  disabled={locked}
+                />
+              </label>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={useVehiclePin}
+                disabled={locked || event.lat == null}
+              >
+                Use vehicle pin
+              </button>
+            </div>
           </div>
-        </fieldset>
+        </div>
+
+        <div className="maint-section span-2">
+          <header className="maint-section-head">
+            <h3>Parts &amp; service lines</h3>
+            <p>Catalog picks or free-text Others · editable price and cost</p>
+          </header>
+          <div className="maint-section-body">
+            {lines.map((line, idx) => (
+              <CatalogLineEditor
+                key={idx}
+                line={line}
+                catalog={catalog}
+                disabled={locked}
+                onChange={(patch) => updateLine(idx, patch)}
+                onRemove={() => removeLine(idx)}
+              />
+            ))}
+            <div className="maintenance-lines-footer">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={locked}
+                onClick={() => setLines((p) => [...p, emptyLine()])}
+              >
+                Add line
+              </button>
+              <span className="maint-line-totals">
+                <span>
+                  Price <strong>{priceTotal.toFixed(2)}</strong>
+                </span>
+                <span>
+                  Cost <strong>{costTotal.toFixed(2)}</strong>
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
 
         <div className="span-2 maintenance-detail-actions">
           {!locked && (
@@ -845,16 +906,19 @@ export function MaintenanceEventDetail({
             </button>
           )}
           {canDelete ? (
-            <button type="button" className="btn-ghost" disabled={busy} onClick={() => void onDelete()}>
+            <button type="button" className="maint-btn-danger" disabled={busy} onClick={() => void onDelete()}>
               Delete
             </button>
           ) : null}
         </div>
       </form>
 
-      <div className="maintenance-photos">
+      <div className="maint-section maintenance-photos">
         <div className="maintenance-photos-head">
-          <h3>Proof of maintenance</h3>
+          <div>
+            <h3>Proof of maintenance</h3>
+            <p className="muted">Photos from the field or manager</p>
+          </div>
           {!locked ? (
             <label className="btn-secondary maint-photo-upload">
               Add photo

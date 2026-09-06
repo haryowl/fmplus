@@ -534,7 +534,7 @@ export default function MaintenanceBoard() {
           <BrandMark />
           <div>
             <h1>Maintenance</h1>
-            <p>Due from Armada notifier, or open any fleet vehicle yourself</p>
+            <p>Schedule health, jobs by vehicle, approve &amp; costs</p>
           </div>
         </div>
         <div className="topbar-actions">
@@ -1257,7 +1257,7 @@ export default function MaintenanceBoard() {
                               {(ev.status === "due" || ev.status === "in_progress") && (
                                 <button
                                   type="button"
-                                  className="btn-ghost btn-compact"
+                                  className="btn-secondary btn-compact"
                                   disabled={busyId === ev.id}
                                   onClick={() => void setStatus(ev.id, "skipped")}
                                 >
@@ -1277,7 +1277,7 @@ export default function MaintenanceBoard() {
                               {deleteOk ? (
                                 <button
                                   type="button"
-                                  className="btn-ghost btn-compact"
+                                  className="maint-btn-danger btn-compact"
                                   disabled={busyId === ev.id}
                                   onClick={() => void deleteJob(ev)}
                                 >
