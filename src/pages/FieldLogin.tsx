@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { BrandMark } from "../components/BrandMark";
+import { prepareImageDataUrl } from "../lib/imageUpload";
 import {
   emptyLine,
   eventVehicleLabel,
@@ -23,22 +24,47 @@ type FieldUser = {
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
-    credentials: "include",
-    headers: { accept: "application/json", "content-type": "application/json", ...(init?.headers || {}) },
     ...init,
+    credentials: "include",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      ...(init?.headers || {}),
+    },
   });
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("Could not read file"));
-    reader.readAsDataURL(file);
-  });
+function draftKey(eventId: string) {
+  return `fmplus-field-draft:${eventId}`;
+}
+
+function loadDraft(eventId: string): { notes?: string; odometerKm?: string; lines?: ServiceLine[] } | null {
+  try {
+    const raw = localStorage.getItem(draftKey(eventId));
+    if (!raw) return null;
+    return JSON.parse(raw) as { notes?: string; odometerKm?: string; lines?: ServiceLine[] };
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(eventId: string, draft: { notes: string; odometerKm: string; lines: ServiceLine[] }) {
+  try {
+    localStorage.setItem(draftKey(eventId), JSON.stringify(draft));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function clearDraft(eventId: string) {
+  try {
+    localStorage.removeItem(draftKey(eventId));
+  } catch {
+    /* ignore */
+  }
 }
 
 function linesFromEvent(ev: ServiceEvent | null): ServiceLine[] {
@@ -65,6 +91,7 @@ export default function FieldLogin() {
   const [notes, setNotes] = useState("");
   const [odometerKm, setOdometerKm] = useState("");
   const [lines, setLines] = useState<ServiceLine[]>([emptyLine()]);
+  const [linesDirty, setLinesDirty] = useState(false);
   const [jobFilter, setJobFilter] = useState<"all" | "due" | "in_progress">("all");
 
   const refreshMe = useCallback(async () => {
@@ -118,10 +145,37 @@ export default function FieldLogin() {
     void api<{ event: ServiceEvent }>(`/api/field/maintenance/events/${selectedId}`)
       .then((data) => {
         if (cancelled) return;
-        setDetail(data.event);
-        setNotes(data.event.notes || "");
-        setOdometerKm(data.event.odometerKm != null ? String(data.event.odometerKm) : "");
-        setLines(linesFromEvent(data.event));
+        const ev = data.event;
+        const draft = loadDraft(selectedId);
+        setDetail(ev);
+        const serverLines = linesFromEvent(ev);
+        const draftHasLines = Boolean(
+          draft?.lines?.some(
+            (l) =>
+              String(l.description || "").trim() ||
+              l.unitPrice != null ||
+              l.unitCost != null ||
+              String(l.vendor || "").trim(),
+          ),
+        );
+        const serverHasLines = Boolean(ev.lines?.length);
+        setNotes(draft?.notes != null && draft.notes !== (ev.notes || "") ? draft.notes : ev.notes || "");
+        setOdometerKm(
+          draft?.odometerKm != null &&
+            draft.odometerKm !== (ev.odometerKm != null ? String(ev.odometerKm) : "")
+            ? draft.odometerKm
+            : ev.odometerKm != null
+              ? String(ev.odometerKm)
+              : "",
+        );
+        if (!serverHasLines && draftHasLines && draft?.lines) {
+          setLines(draft.lines.map((l) => ({ ...l })));
+          setLinesDirty(true);
+          setNotice("Restored unsaved parts draft on this device.");
+        } else {
+          setLines(serverLines);
+          setLinesDirty(false);
+        }
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);
@@ -133,6 +187,11 @@ export default function FieldLogin() {
       cancelled = true;
     };
   }, [selectedId, mobileMaintenance]);
+
+  useEffect(() => {
+    if (!selectedId || !detail) return;
+    saveDraft(selectedId, { notes, odometerKm, lines });
+  }, [selectedId, detail, notes, odometerKm, lines]);
 
   const visibleJobs = useMemo(() => {
     if (jobFilter === "all") return jobs;
@@ -149,16 +208,24 @@ export default function FieldLogin() {
   }, 0);
 
   function updateLine(idx: number, patch: Partial<ServiceLine>) {
+    setLinesDirty(true);
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
   }
 
   function removeLine(idx: number) {
+    setLinesDirty(true);
     setLines((prev) => (prev.length <= 1 ? [emptyLine()] : prev.filter((_, i) => i !== idx)));
   }
 
   function serializeLines() {
     return lines
-      .filter((l) => l.description.trim() || l.unitPrice != null || l.unitCost != null)
+      .filter(
+        (l) =>
+          l.description.trim() ||
+          l.unitPrice != null ||
+          l.unitCost != null ||
+          String(l.vendor || "").trim(),
+      )
       .map((l, i) => ({
         kind: l.kind,
         description: l.description,
@@ -205,18 +272,21 @@ export default function FieldLogin() {
     }
   }
 
-  async function saveJob(extra: Record<string, unknown> = {}) {
-    if (!selectedId) return;
+  async function saveJob(extra: Record<string, unknown> = {}, opts: { quiet?: boolean } = {}) {
+    if (!selectedId) return null;
     setBusy(true);
     setError("");
-    setNotice("");
+    if (!opts.quiet) setNotice("");
     try {
       const body: Record<string, unknown> = {
         notes: notes.trim(),
         odometerKm: odometerKm.trim() === "" ? null : Number(odometerKm),
-        lines: serializeLines(),
         ...extra,
       };
+      // Only replace lines when the tech edited them — empty default row must not wipe DB lines.
+      if (linesDirty || extra.status === "done" || extra.status === "skipped") {
+        body.lines = serializeLines();
+      }
       const data = await api<{ event: ServiceEvent; nextEvent?: ServiceEvent | null }>(
         `/api/field/maintenance/events/${selectedId}`,
         {
@@ -226,6 +296,8 @@ export default function FieldLogin() {
       );
       setDetail(data.event);
       setLines(linesFromEvent(data.event));
+      setLinesDirty(false);
+      clearDraft(selectedId);
       const status = String(extra.status || data.event.status);
       if (status === "done" || status === "skipped") {
         setSelectedId(null);
@@ -234,13 +306,24 @@ export default function FieldLogin() {
         await loadJobs();
       } else {
         setJobs((prev) => prev.map((j) => (j.id === data.event.id ? { ...j, ...data.event } : j)));
-        setNotice("Saved.");
+        if (!opts.quiet) setNotice("Saved.");
       }
+      return data.event;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
+      return null;
     } finally {
       setBusy(false);
     }
+  }
+
+  async function goBackToJobs() {
+    if (selectedId && (linesDirty || notes.trim() || odometerKm.trim())) {
+      const ok = await saveJob({}, { quiet: true });
+      if (!ok) return;
+    }
+    setSelectedId(null);
+    setDetail(null);
   }
 
   async function onPhoto(e: ChangeEvent<HTMLInputElement>) {
@@ -249,19 +332,25 @@ export default function FieldLogin() {
     if (!file || !selectedId) return;
     setBusy(true);
     setError("");
+    setNotice("Saving job sheet…");
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      const data = await api<{ photo: ServicePhoto }>(
-        `/api/field/maintenance/events/${selectedId}/photos`,
-        {
-          method: "POST",
-          body: JSON.stringify({ dataUrl }),
-        },
+      const saved = await saveJob({}, { quiet: true });
+      if (!saved) return;
+      setBusy(true);
+      setNotice("Uploading photo…");
+      const dataUrl = await prepareImageDataUrl(file);
+      await api<{ photo: ServicePhoto }>(`/api/field/maintenance/events/${selectedId}/photos`, {
+        method: "POST",
+        body: JSON.stringify({ dataUrl }),
+      });
+      const refreshed = await api<{ event: ServiceEvent }>(
+        `/api/field/maintenance/events/${selectedId}`,
       );
-      setDetail((prev) =>
-        prev ? { ...prev, photos: [...(prev.photos || []), data.photo] } : prev,
-      );
-      setNotice("Photo uploaded.");
+      setDetail(refreshed.event);
+      setLines(linesFromEvent(refreshed.event));
+      setLinesDirty(false);
+      clearDraft(selectedId);
+      setNotice("Photo uploaded and saved.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -305,7 +394,7 @@ export default function FieldLogin() {
           </div>
         ) : selectedId && detail ? (
           <div className="field-job-detail">
-            <button type="button" className="btn-ghost field-back" onClick={() => setSelectedId(null)}>
+            <button type="button" className="btn-ghost field-back" onClick={() => void goBackToJobs()}>
               ← Jobs
             </button>
 
@@ -320,6 +409,16 @@ export default function FieldLogin() {
               </div>
               <h2>{detail.title}</h2>
               <p className="field-vehicle">{eventVehicleLabel(detail)}</p>
+              {detail.status === "in_progress" && detail.startedAt ? (
+                <p className="field-service-clock muted">
+                  Service clock running since {new Date(detail.startedAt).toLocaleString()}
+                </p>
+              ) : null}
+              {detail.serviceDurationMinutes != null ? (
+                <p className="field-service-clock">
+                  Service time · {detail.serviceDurationMinutes} min
+                </p>
+              ) : null}
               {detail.servicePointName ? (
                 <p className="muted">Service point · {detail.servicePointName}</p>
               ) : null}
@@ -362,6 +461,28 @@ export default function FieldLogin() {
                   placeholder="Optional"
                 />
               </label>
+            </section>
+
+            <section className="field-panel field-photos-panel">
+              <header className="field-panel-head">
+                <h3>Proof photos</h3>
+                <p className="muted">Take a picture — it saves with the job sheet</p>
+              </header>
+              <label className="field-photo-btn">
+                Take / upload photo
+                <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void onPhoto(e)} />
+              </label>
+              {(detail.photos || []).length > 0 ? (
+                <ul className="field-photo-grid">
+                  {(detail.photos || []).map((p) => (
+                    <li key={p.id}>
+                      <img src={p.url} alt={p.caption || "PoM"} />
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">No photos yet.</p>
+              )}
             </section>
 
             <section className="field-panel">
@@ -456,7 +577,10 @@ export default function FieldLogin() {
                 <button
                   type="button"
                   className="btn-secondary"
-                  onClick={() => setLines((p) => [...p, emptyLine()])}
+                  onClick={() => {
+                    setLinesDirty(true);
+                    setLines((p) => [...p, emptyLine()]);
+                  }}
                 >
                   Add line
                 </button>
@@ -466,27 +590,6 @@ export default function FieldLogin() {
                   Cost Σ {costTotal.toFixed(2)}
                 </span>
               </div>
-            </section>
-
-            <section className="field-panel">
-              <header className="field-panel-head">
-                <h3>Proof photos</h3>
-              </header>
-              <label className="field-photo-btn">
-                Take / upload photo
-                <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void onPhoto(e)} />
-              </label>
-              {(detail.photos || []).length > 0 ? (
-                <ul className="field-photo-grid">
-                  {(detail.photos || []).map((p) => (
-                    <li key={p.id}>
-                      <img src={p.url} alt={p.caption || "PoM"} />
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="muted">No photos yet.</p>
-              )}
             </section>
 
             <div className="field-job-actions">
@@ -503,22 +606,36 @@ export default function FieldLogin() {
                   Start
                 </button>
               )}
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={busy}
-                onClick={() => void saveJob({ status: "done" })}
-              >
-                Done
-              </button>
-              <button
-                type="button"
-                className="btn-ghost"
-                disabled={busy}
-                onClick={() => void saveJob({ status: "skipped" })}
-              >
-                Skip
-              </button>
+              {detail.status === "in_progress" && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={busy}
+                  onClick={() => void saveJob({ status: "done" })}
+                >
+                  Done
+                </button>
+              )}
+              {detail.status === "in_progress" && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={busy}
+                  onClick={() => void saveJob({ status: "due" })}
+                >
+                  Cancel start
+                </button>
+              )}
+              {(detail.status === "due" || detail.status === "in_progress") && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={busy}
+                  onClick={() => void saveJob({ status: "skipped" })}
+                >
+                  Skip
+                </button>
+              )}
             </div>
           </div>
         ) : (

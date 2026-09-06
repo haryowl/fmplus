@@ -21,7 +21,8 @@ function hashToken(token) {
 }
 
 export function fieldSessionCookieHeader(token, maxAgeSec) {
-  const secure = process.env.ADMIN_COOKIE_SECURE === "1" || process.env.NODE_ENV === "production";
+  // Only mark Secure when explicitly enabled — production HTTP (IP:port) must keep cookies.
+  const secure = process.env.ADMIN_COOKIE_SECURE === "1";
   const parts = [
     `${COOKIE}=${encodeURIComponent(token)}`,
     "Path=/",

@@ -204,9 +204,11 @@ https://81.17.100.7:4173/maintenance?k=YOUR_TENANT_KEY
 https://81.17.100.7:4173/m?k=YOUR_TENANT_KEY
 ```
 
-Field users are created **under that tenant** in Admin (not a new tenant each time). They sign in at `/m?k=TENANT_KEY`, see **only jobs assigned to them**, open a job, add **parts / labor / prices**, notes, odometer, upload camera/file photos (MinIO/`S3_*` required), then **Save**, **Start**, **Done**, or **Skip**.
+Field users are created **under that tenant** in Admin (not a new tenant each time). They sign in at `/m?k=TENANT_KEY`, see **only jobs assigned to them**, open a job, add **parts / labor / prices**, notes, odometer, upload camera/file photos, then follow **Start → Done** (or Skip). Photos store in MinIO/`S3_*` when configured; otherwise they are saved in Postgres.
 
-Deploy notes: `npm run db:migrate` (through migration `009_maintenance_reminders.sql`), build, restart. MinIO must be configured for photo upload. Set `FMS_SECRETS_KEY` to store Wablas secrets; configure SMTP and/or Admin Wablas + notify recipients for outbound channels.
+**Job lifecycle:** `due` → **Start** → `in_progress` → **Done** → `done` (service time = ended − started). **Done is blocked until Start.** **Cancel start** returns `in_progress` → `due` (clears the clock) until Done is pressed. After Done/Skip, field users cannot edit; managers may **Reopen**. Skip can happen from due without Start (work cancelled, not completed). Scheduled intervals spawn at most one open next-due child per completed job.
+
+Deploy notes: `npm run db:migrate` (through migration `010_photo_payload.sql`), build, restart. For HTTPS deployments set `ADMIN_COOKIE_SECURE=1` so session cookies are Secure. Configure SMTP and/or Admin Wablas + notify recipients for outbound channels.
 
 ## Armada Command notifier (Phase B0)
 

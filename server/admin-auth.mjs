@@ -55,7 +55,7 @@ export function readCookies(req) {
 }
 
 export function sessionCookieHeader(token, maxAgeSec) {
-  const secure = process.env.ADMIN_COOKIE_SECURE === "1" || process.env.NODE_ENV === "production";
+  const secure = process.env.ADMIN_COOKIE_SECURE === "1";
   const parts = [
     `${COOKIE}=${encodeURIComponent(token)}`,
     "Path=/",

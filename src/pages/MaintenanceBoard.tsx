@@ -11,6 +11,7 @@ import {
   evaluateMaintReminders,
   fetchScheduleSummary,
   fetchServiceEvents,
+  formatServiceDuration,
   patchServiceEvent,
   scheduleLabel,
   SCHEDULE_HEALTH_LABELS,
@@ -536,6 +537,15 @@ export default function MaintenanceBoard() {
               <span className="maint-dash-label">Completed</span>
               <strong>{scheduleSummary?.completed ?? "—"}</strong>
             </button>
+            <div className="maint-dash-tile maint-dash-stat" title="Average Start→Done time (last 90 days)">
+              <span className="maint-dash-label">Avg service</span>
+              <strong>{formatServiceDuration(scheduleSummary?.avgServiceMinutes)}</strong>
+              {scheduleSummary?.serviceTimeSamples ? (
+                <span className="muted maint-dash-sub">{scheduleSummary.serviceTimeSamples} jobs</span>
+              ) : (
+                <span className="muted maint-dash-sub">Start→Done</span>
+              )}
+            </div>
           </section>
         )}
 

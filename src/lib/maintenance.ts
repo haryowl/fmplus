@@ -41,6 +41,8 @@ export type ServiceEvent = {
   notificationId: string | null;
   startedAt: string | null;
   endedAt: string | null;
+  /** Minutes from Start → Done (or Skip), when both timestamps exist. */
+  serviceDurationMinutes?: number | null;
   odometerKm: number | null;
   servicePointId?: string | null;
   servicePointName?: string;
@@ -102,7 +104,18 @@ export type ScheduleSummary = {
   ok: number;
   none: number;
   open: number;
+  /** Average Start→Done minutes over recent completed jobs (when available). */
+  avgServiceMinutes?: number | null;
+  serviceTimeSamples?: number;
 };
+
+export function formatServiceDuration(minutes: number | null | undefined): string {
+  if (minutes == null || !Number.isFinite(minutes) || minutes < 0) return "—";
+  if (minutes < 60) return `${Math.round(minutes)} min`;
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
 
 export type ScheduleHealthBars = {
   labels: string[];
@@ -186,6 +199,8 @@ export async function fetchScheduleSummary(signal?: AbortSignal): Promise<Schedu
       ok: 0,
       none: 0,
       open: 0,
+      avgServiceMinutes: null,
+      serviceTimeSamples: 0,
     },
     healthBars: data.healthBars,
     timeline: data.timeline,

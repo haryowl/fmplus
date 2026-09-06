@@ -7,6 +7,7 @@ import {
   fetchMaintFieldUsers,
   fetchServiceEvent,
   fetchServicePoints,
+  formatServiceDuration,
   LINE_KIND_LABELS,
   patchServiceEvent,
   SERVICE_STATUS_LABELS,
@@ -20,6 +21,7 @@ import {
   type ServiceLine,
   type ServicePoint,
 } from "../lib/maintenance";
+import { prepareImageDataUrl } from "../lib/imageUpload";
 import { formatKm } from "../lib/format";
 import { fullHref, tripsHref } from "../lib/routing";
 import { tenantHeaders } from "../lib/tenant";
@@ -342,7 +344,7 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
     setBusy(true);
     setError("");
     try {
-      const dataUrl = await readFileAsDataUrl(file);
+      const dataUrl = await prepareImageDataUrl(file);
       await uploadMaintPhoto(event.id, dataUrl);
       const refreshed = await fetchServiceEvent(event.id);
       setEvent(refreshed);
@@ -431,6 +433,12 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
           Ended
           <input type="datetime-local" value={endedAt} onChange={(e) => setEndedAt(e.target.value)} />
         </label>
+        <p className="span-2 muted maintenance-service-time">
+          Service time (Start → Done):{" "}
+          <strong>{formatServiceDuration(event.serviceDurationMinutes)}</strong>
+          {event.status === "due" ? " — press Start, then Done to record wrench time." : null}
+          {event.status === "in_progress" ? " — clock is running; Done closes the timer." : null}
+        </p>
         <label>
           Odometer (km)
           <input
@@ -735,15 +743,25 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
               Start
             </button>
           )}
-          {(event.status === "due" || event.status === "in_progress") && (
+          {event.status === "in_progress" && (
             <>
               <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void setStatus("done")}>
                 Done
               </button>
-              <button type="button" className="btn-secondary" disabled={busy} onClick={() => void setStatus("skipped")}>
-                Skip
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy}
+                onClick={() => void setStatus("due")}
+              >
+                Cancel start
               </button>
             </>
+          )}
+          {(event.status === "due" || event.status === "in_progress") && (
+            <button type="button" className="btn-secondary" disabled={busy} onClick={() => void setStatus("skipped")}>
+              Skip
+            </button>
           )}
           {(event.status === "done" || event.status === "skipped") && (
             <button type="button" className="btn-secondary" disabled={busy} onClick={() => void setStatus("due")}>
@@ -790,13 +808,4 @@ function photoUrlWithTenant(url: string): string {
 
 function currentTenantFromSearch(): string {
   return new URLSearchParams(window.location.search).get("k") || "";
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("Could not read file"));
-    reader.readAsDataURL(file);
-  });
 }

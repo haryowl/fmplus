@@ -17,6 +17,9 @@ import {
 import { slimAsync } from "./slim-pool.mjs";
 import { eachDateYmd, sumIgnitionOnHours } from "./ignition-hours.mjs";
 import { evaluateKmInterval, findOdometerKmInStatus } from "./odometer-status.mjs";
+import { canTransition, serviceDurationMinutes } from "./maintenance-lifecycle.mjs";
+
+export { canTransition, serviceDurationMinutes } from "./maintenance-lifecycle.mjs";
 
 const HOURS_LOOKBACK_DAYS = 90;
 const DAY_FETCH_TIMEOUT_MS = 120_000;
@@ -42,7 +45,7 @@ function json(res, status, obj) {
 }
 
 /** @param {import('node:http').IncomingMessage} req */
-function readBody(req, limit = 8_000_000) {
+function readBody(req, limit = 20_000_000) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -58,6 +61,16 @@ function readBody(req, limit = 8_000_000) {
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
+}
+
+/** Parse data URIs including charset params: data:image/jpeg;charset=utf-8;base64,... */
+export function parseDataUrl(dataUrl) {
+  const raw = String(dataUrl || "");
+  const m = /^data:([^;,]+)?(?:;[^,]*)?;base64,([\s\S]+)$/i.exec(raw);
+  if (!m) return null;
+  const contentType = String(m[1] || "application/octet-stream").trim() || "application/octet-stream";
+  const buffer = Buffer.from(String(m[2]).replace(/\s/g, ""), "base64");
+  return { contentType, buffer };
 }
 
 async function readJson(req) {
@@ -128,6 +141,8 @@ export function publicPhoto(row) {
 }
 
 export function publicEvent(row, extras = {}) {
+  const startedAt = row.started_at || null;
+  const endedAt = row.ended_at || null;
   return {
     id: row.id,
     status: row.status,
@@ -139,8 +154,9 @@ export function publicEvent(row, extras = {}) {
     lat: row.lat == null ? null : Number(row.lat),
     lon: row.lon == null ? null : Number(row.lon),
     notificationId: row.notification_id || null,
-    startedAt: row.started_at || null,
-    endedAt: row.ended_at || null,
+    startedAt,
+    endedAt,
+    serviceDurationMinutes: serviceDurationMinutes(startedAt, endedAt),
     odometerKm: row.odometer_km == null ? null : Number(row.odometer_km),
     servicePointId: row.service_point_id || null,
     servicePointName: row.service_point_name || "",
@@ -167,13 +183,16 @@ export function publicEvent(row, extras = {}) {
   };
 }
 
-function canTransition(from, to) {
-  if (from === to) return true;
-  if (from === "due" && (to === "in_progress" || to === "done" || to === "skipped")) return true;
-  if (from === "in_progress" && (to === "done" || to === "skipped" || to === "due")) return true;
-  if ((from === "done" || from === "skipped") && to === "due") return true;
-  return false;
-}
+/**
+ * Work-order lifecycle (CMMS-style):
+ *   due → in_progress (Start)
+ *   in_progress → due (Cancel start, before Done)
+ *   in_progress → done (Done; requires Start)
+ *   due|in_progress → skipped
+ *   done|skipped → due (Reopen — manager only)
+ * Done is never allowed directly from due.
+ */
+// canTransition + serviceDurationMinutes imported from maintenance-lifecycle.mjs
 
 export async function loadLines(eventId) {
   const rows = await dbQuery(
@@ -260,10 +279,18 @@ export async function replaceLines(eventId, linesInput) {
  * @param {object} current
  * @param {object} body
  * @param {string} tenantId
- * @param {{ tenantKey?: string, vaultTenant?: { key: string, appId: number, token: string } }} [opts]
+ * @param {{ tenantKey?: string, vaultTenant?: { key: string, appId: number, token: string }, actor?: "field" | "manager" }} [opts]
  */
 export async function applyEventPatch(current, body, tenantId, opts = {}) {
+  const actor = opts.actor === "field" ? "field" : "manager";
   const prevStatus = current.status;
+
+  if (actor === "field" && (prevStatus === "done" || prevStatus === "skipped")) {
+    const err = new Error("Completed jobs can only be edited by a manager");
+    err.status = 403;
+    throw err;
+  }
+
   let status = current.status;
   if (body.status !== undefined) {
     status = String(body.status || "").trim();
@@ -273,8 +300,17 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
       throw err;
     }
     if (!canTransition(current.status, status)) {
-      const err = new Error(`Cannot transition from ${current.status} to ${status}`);
+      const err = new Error(
+        status === "done" && current.status === "due"
+          ? "Start the job before marking Done"
+          : `Cannot transition from ${current.status} to ${status}`,
+      );
       err.status = 400;
+      throw err;
+    }
+    if (actor === "field" && (status === "due") && prevStatus !== "in_progress" && prevStatus !== "due") {
+      const err = new Error("Only a manager can reopen a completed job");
+      err.status = 403;
       throw err;
     }
   }
@@ -286,16 +322,40 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
   let startedAt = current.started_at;
   let endedAt = current.ended_at;
   if (status === "in_progress" && !startedAt) startedAt = new Date().toISOString();
-  if ((status === "done" || status === "skipped") && !endedAt) endedAt = new Date().toISOString();
-  if (status === "due" && body.status !== undefined) {
+  if (status === "due" && body.status !== undefined && prevStatus === "in_progress") {
+    // Cancel start — clear clock so a later Start begins fresh service time.
+    startedAt = null;
+    endedAt = null;
+  } else if (status === "due" && body.status !== undefined && (prevStatus === "done" || prevStatus === "skipped")) {
+    // Manager reopen
     startedAt = null;
     endedAt = null;
   }
-  if (body.startedAt !== undefined) {
-    startedAt = body.startedAt ? new Date(String(body.startedAt)).toISOString() : null;
+  if (status === "done") {
+    if (!startedAt) {
+      const err = new Error("Start the job before marking Done");
+      err.status = 400;
+      throw err;
+    }
+    if (prevStatus !== "done") endedAt = new Date().toISOString();
+  } else if (status === "skipped" && prevStatus !== "skipped") {
+    endedAt = new Date().toISOString();
   }
-  if (body.endedAt !== undefined) {
-    endedAt = body.endedAt ? new Date(String(body.endedAt)).toISOString() : null;
+
+  // Manager may correct timestamps on open jobs; ignore field overrides of the clock.
+  if (actor === "manager") {
+    if (body.startedAt !== undefined) {
+      startedAt = body.startedAt ? new Date(String(body.startedAt)).toISOString() : null;
+    }
+    if (body.endedAt !== undefined) {
+      endedAt = body.endedAt ? new Date(String(body.endedAt)).toISOString() : null;
+    }
+  }
+
+  if (status === "done" && !startedAt) {
+    const err = new Error("Start the job before marking Done");
+    err.status = 400;
+    throw err;
   }
 
   let odometerKm = current.odometer_km;
@@ -534,6 +594,15 @@ function scheduleConfigured(ev) {
 async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionOdo } = {}) {
   if (!scheduleConfigured(completed)) return null;
 
+  // One open follow-up per completed job — avoids duplicate next-due after double Done/races.
+  const existingOpen = await dbQuery(
+    `SELECT ${SELECT_COLS} FROM service_events
+     WHERE parent_event_id = $1 AND status IN ('due', 'in_progress')
+     ORDER BY created_at ASC LIMIT 1`,
+    [completed.id],
+  );
+  if (existingOpen.rows[0]) return publicEvent(existingOpen.rows[0]);
+
   let nextBaseline = completionOdo ?? completed.odometerKm ?? completed.remindBaselineOdometerKm;
   if (
     (nextBaseline == null || !Number.isFinite(nextBaseline)) &&
@@ -607,20 +676,50 @@ async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionO
 }
 
 export async function savePhoto(eventId, tenantId, { buffer, contentType, caption, fieldUserId }) {
-  if (!objectStorageConfigured()) {
-    const err = new Error("Object storage is not configured");
-    err.status = 503;
-    throw err;
+  const ct = contentType || "image/jpeg";
+  let key;
+  let payload = null;
+  if (objectStorageConfigured()) {
+    key = `pom/${tenantId}/${eventId}/${crypto.randomUUID()}`;
+    await putObject(key, buffer, ct);
+  } else {
+    // Persist in Postgres when MinIO/S3 is not configured (common on small VPS).
+    key = `inline/${tenantId}/${eventId}/${crypto.randomUUID()}`;
+    payload = buffer;
   }
-  const key = `pom/${tenantId}/${eventId}/${crypto.randomUUID()}`;
-  await putObject(key, buffer, contentType || "image/jpeg");
   const inserted = await dbQuery(
-    `INSERT INTO service_event_photos (event_id, storage_key, content_type, bytes, caption, uploaded_by_field_user_id)
-     VALUES ($1,$2,$3,$4,$5,$6)
+    `INSERT INTO service_event_photos
+       (event_id, storage_key, content_type, bytes, caption, uploaded_by_field_user_id, payload)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
      RETURNING id, content_type, bytes, caption, created_at`,
-    [eventId, key, contentType || "image/jpeg", buffer.length, caption || null, fieldUserId || null],
+    [eventId, key, ct, buffer.length, caption || null, fieldUserId || null, payload],
   );
   return publicPhoto(inserted.rows[0]);
+}
+
+/** Load photo bytes from inline DB payload or object storage. */
+export async function loadPhotoBytes(photoId, tenantId) {
+  const found = await dbQuery(
+    `SELECT p.storage_key, p.content_type, p.payload
+     FROM service_event_photos p
+     JOIN service_events e ON e.id = p.event_id
+     WHERE p.id = $1 AND e.tenant_id = $2`,
+    [photoId, tenantId],
+  );
+  const row = found.rows[0];
+  if (!row) return null;
+  if (row.payload) {
+    const body = Buffer.isBuffer(row.payload) ? row.payload : Buffer.from(row.payload);
+    return {
+      body,
+      contentType: row.content_type || "image/jpeg",
+    };
+  }
+  const obj = await getObject(row.storage_key);
+  return {
+    body: obj.body,
+    contentType: obj.contentType || row.content_type || "image/jpeg",
+  };
 }
 
 async function loadDayTrackPoints(vaultTenant, userId, date, todayYmd) {
@@ -788,24 +887,16 @@ export async function handleMaintenanceRequest(req, res) {
         json(res, 401, { error: "Unknown embed tenant" });
         return true;
       }
-      const photoId = photoMatch[1];
-      const found = await dbQuery(
-        `SELECT p.storage_key, p.content_type
-         FROM service_event_photos p
-         JOIN service_events e ON e.id = p.event_id
-         WHERE p.id = $1 AND e.tenant_id = $2`,
-        [photoId, dbTenant.id],
-      );
-      if (!found.rows[0]) {
+      const obj = await loadPhotoBytes(photoMatch[1], dbTenant.id);
+      if (!obj) {
         json(res, 404, { error: "Photo not found" });
         return true;
       }
-      const obj = await getObject(found.rows[0].storage_key);
       send(
         res,
         200,
         {
-          "Content-Type": obj.contentType || found.rows[0].content_type || "image/jpeg",
+          "Content-Type": obj.contentType || "image/jpeg",
           "Cache-Control": "private, max-age=3600",
         },
         obj.body,
@@ -963,6 +1054,22 @@ export async function handleMaintenanceRequest(req, res) {
       );
       const summary = summarizeSchedule(enriched);
       summary.completed = doneCount.rows[0]?.n || 0;
+
+      const serviceAvg = await dbQuery(
+        `SELECT
+           count(*)::int AS n,
+           ROUND(AVG(EXTRACT(EPOCH FROM (ended_at - started_at)) / 60.0))::int AS avg_minutes
+         FROM service_events
+         WHERE tenant_id = $1
+           AND status = 'done'
+           AND started_at IS NOT NULL
+           AND ended_at IS NOT NULL
+           AND ended_at >= started_at
+           AND ended_at >= (CURRENT_DATE - 90)::timestamptz`,
+        [dbTenant.id],
+      );
+      summary.avgServiceMinutes = serviceAvg.rows[0]?.avg_minutes ?? null;
+      summary.serviceTimeSamples = serviceAvg.rows[0]?.n || 0;
 
       const days = 14;
       const timelineRows = await dbQuery(
@@ -1222,20 +1329,18 @@ export async function handleMaintenanceRequest(req, res) {
         return true;
       }
       const body = await readJson(req);
-      const dataUrl = String(body.dataUrl || body.data || "");
-      const m = /^data:([^;]+);base64,(.+)$/i.exec(dataUrl);
-      if (!m) {
+      const parsed = parseDataUrl(body.dataUrl || body.data || "");
+      if (!parsed) {
         json(res, 400, { error: "dataUrl (base64 data URI) required" });
         return true;
       }
-      const buffer = Buffer.from(m[2], "base64");
-      if (buffer.length < 32 || buffer.length > 6_000_000) {
-        json(res, 400, { error: "Image must be between 32B and 6MB" });
+      if (parsed.buffer.length < 32 || parsed.buffer.length > 12_000_000) {
+        json(res, 400, { error: "Image must be between 32B and 12MB" });
         return true;
       }
       const photo = await savePhoto(id, dbTenant.id, {
-        buffer,
-        contentType: m[1],
+        buffer: parsed.buffer,
+        contentType: parsed.contentType,
         caption: String(body.caption || "").trim(),
       });
       json(res, 201, { photo });
@@ -1281,6 +1386,7 @@ export async function handleMaintenanceRequest(req, res) {
       const { event, nextEvent } = await applyEventPatch(found.rows[0], body, dbTenant.id, {
         tenantKey: dbTenant.key,
         vaultTenant: vaultTenant || undefined,
+        actor: "manager",
       });
       json(res, 200, { event, nextEvent: nextEvent || null });
       return true;

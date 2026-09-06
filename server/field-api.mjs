@@ -12,9 +12,8 @@ import {
   verifyPassword,
 } from "./field-auth.mjs";
 import { readCookies } from "./admin-auth.mjs";
+import { applyEventPatch, loadEventDetail, loadPhotoBytes, parseDataUrl, publicEvent, savePhoto } from "./maintenance-api.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
-import { applyEventPatch, loadEventDetail, publicEvent, savePhoto } from "./maintenance-api.mjs";
-import { getObject } from "./storage.mjs";
 import { mergeEntitlements } from "./entitlements.mjs";
 
 const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
@@ -45,7 +44,7 @@ function json(res, status, obj, extraHeaders = {}) {
 }
 
 /** @param {import('node:http').IncomingMessage} req */
-function readBody(req, limit = 8_000_000) {
+function readBody(req, limit = 20_000_000) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -185,7 +184,7 @@ export async function handleFieldRequest(req, res) {
         return true;
       }
       const found = await dbQuery(
-        `SELECT p.storage_key, p.content_type
+        `SELECT p.id
          FROM service_event_photos p
          JOIN service_events e ON e.id = p.event_id
          WHERE p.id = $1 AND e.tenant_id = $2 AND e.assigned_field_user_id = $3`,
@@ -195,12 +194,16 @@ export async function handleFieldRequest(req, res) {
         json(res, 404, { error: "Photo not found" });
         return true;
       }
-      const obj = await getObject(found.rows[0].storage_key);
+      const obj = await loadPhotoBytes(photoGet[1], user.tenantId);
+      if (!obj) {
+        json(res, 404, { error: "Photo not found" });
+        return true;
+      }
       send(
         res,
         200,
         {
-          "Content-Type": obj.contentType || found.rows[0].content_type || "image/jpeg",
+          "Content-Type": obj.contentType || "image/jpeg",
           "Cache-Control": "private, max-age=3600",
         },
         obj.body,
@@ -263,6 +266,7 @@ export async function handleFieldRequest(req, res) {
         delete body.assignedFieldUserId;
         const { event: patched, nextEvent } = await applyEventPatch(found, body, user.tenantId, {
           tenantKey: user.tenantKey,
+          actor: "field",
         });
         const event = {
           ...patched,
@@ -282,21 +286,23 @@ export async function handleFieldRequest(req, res) {
           json(res, 404, { error: "Job not found or not assigned to you" });
           return true;
         }
+        if (found.status === "done" || found.status === "skipped") {
+          json(res, 403, { error: "Completed jobs can only be edited by a manager" });
+          return true;
+        }
         const body = await readJson(req);
-        const dataUrl = String(body.dataUrl || body.data || "");
-        const m = /^data:([^;]+);base64,(.+)$/i.exec(dataUrl);
-        if (!m) {
+        const parsed = parseDataUrl(body.dataUrl || body.data || "");
+        if (!parsed) {
           json(res, 400, { error: "dataUrl (base64 data URI) required" });
           return true;
         }
-        const buffer = Buffer.from(m[2], "base64");
-        if (buffer.length < 32 || buffer.length > 6_000_000) {
-          json(res, 400, { error: "Image must be between 32B and 6MB" });
+        if (parsed.buffer.length < 32 || parsed.buffer.length > 12_000_000) {
+          json(res, 400, { error: "Image must be between 32B and 12MB" });
           return true;
         }
         const photo = await savePhoto(photoPost[1], user.tenantId, {
-          buffer,
-          contentType: m[1],
+          buffer: parsed.buffer,
+          contentType: parsed.contentType,
           caption: String(body.caption || "").trim(),
           fieldUserId: user.id,
         });

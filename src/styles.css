@@ -2883,6 +2883,12 @@ html.onesheet-root body {
   box-shadow: 0 10px 28px rgba(23, 22, 20, 0.1); z-index: 2;
 }
 
+.field-photos-panel .field-photo-btn {
+  min-height: 48px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .field-jobs-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .field-job-filters { display: flex; flex-wrap: wrap; gap: 6px; }
 .field-filter-chip {
@@ -2908,9 +2914,62 @@ html.onesheet-root body {
 .field-back { width: fit-content; }
 
 @media (max-width: 720px) {
+  .field-app {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
   .field-login-shell { grid-template-columns: 1fr; }
   .field-login-brand { min-height: auto; }
   .field-user-chip { display: none; }
+  .field-jobs, .field-job-detail {
+    padding: 0 12px;
+    margin-top: 10px;
+  }
+  .field-job-detail {
+    padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+  }
+  .field-panel { padding: 12px; }
+  .field-label input,
+  .field-label textarea,
+  .field-line-card input,
+  .field-line-card select {
+    font-size: 16px; /* avoid iOS zoom on focus */
+    min-height: 44px;
+  }
+  .field-line-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .field-job-actions {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: 0;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: rgba(251, 249, 244, 0.98);
+    z-index: 30;
+  }
+  .field-job-actions .btn,
+  .field-job-actions .btn-primary,
+  .field-job-actions .btn-secondary,
+  .field-job-actions .btn-ghost {
+    width: 100%;
+    min-width: 0;
+    height: 44px;
+    justify-content: center;
+  }
+  .field-photo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .field-photo-grid img {
+    height: 140px;
+  }
 }
 
 /* â€”â€” Live Ops â€”â€” */
@@ -3724,6 +3783,17 @@ html.onesheet-root body {
   border-color: #8aaf8f;
   background: #e8f3ea;
   color: #1e5c34;
+}
+
+.maint-dash-tile.maint-dash-stat {
+  cursor: default;
+  display: grid;
+  gap: 2px;
+  align-content: start;
+}
+
+.maint-dash-sub {
+  font-size: 0.72rem;
 }
 
 .maintenance-row-badges {
