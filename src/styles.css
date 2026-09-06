@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #efece6;
   --bg-deep: #e4dfd5;
   --surface: #fbf9f4;
@@ -1798,7 +1798,7 @@ html.onesheet-root body {
 }
 
 
-/* —— Trip detail —— */
+/* â€”â€” Trip detail â€”â€” */
 .trip-detail-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -2164,7 +2164,7 @@ html.onesheet-root body {
   color: #5c5650;
 }
 
-/* —— Admin control plane —— */
+/* â€”â€” Admin control plane â€”â€” */
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -2755,150 +2755,165 @@ html.onesheet-root body {
 /* —— Field login (/m, /dispatch) —— */
 .field-app {
   min-height: 100vh;
-  background: linear-gradient(165deg, #e8f0ee 0%, #f4f1ea 50%, #e7ebe8 100%);
-  color: #1c1a16;
-  padding: 24px;
-  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+  background:
+    radial-gradient(900px 420px at 0% -10%, rgba(11, 107, 98, 0.16), transparent 55%),
+    linear-gradient(165deg, #f4f1ea 0%, #e8ebe8 55%, #e4ebe8 100%);
+  color: var(--ink);
+  padding: 0 0 48px;
+  font-family: var(--font);
 }
 
-.field-card {
-  max-width: 400px;
-  margin: 10vh auto;
+.field-app-login {
   display: grid;
+  place-items: center;
+  padding: 28px 16px;
+}
+
+.field-login-shell {
+  width: min(880px, 100%);
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  border: 1px solid var(--line);
+  background: rgba(251, 249, 244, 0.95);
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(23, 22, 20, 0.08);
+}
+
+.field-login-brand {
+  display: grid;
+  align-content: end;
   gap: 12px;
-  padding: 28px;
-  background: rgba(255, 252, 245, 0.94);
-  border: 1px solid #d9d0c0;
+  padding: 32px 28px;
+  min-height: 280px;
+  background: linear-gradient(160deg, #141311 0%, #1f2a28 55%, #0b6b62 130%);
+  color: #f4efe6;
 }
 
-.field-card h1 {
-  margin: 0 0 4px;
-  font-size: 1.5rem;
+.field-login-brand .muted { color: #b7b0a4; }
+
+.field-login-brand .mark {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08); display: grid; place-items: center;
 }
 
-.field-card label {
-  display: grid;
-  gap: 4px;
-  font-size: 0.9rem;
+.field-login-form { display: grid; gap: 12px; padding: 32px 28px; }
+
+.field-kicker {
+  margin: 0; font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 650;
+}
+.field-login-brand .field-kicker { color: #9fd4cc; }
+
+.field-topbar {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 14px 18px; background: var(--nav); color: var(--nav-text);
 }
 
-.field-card input {
-  padding: 10px 12px;
-  border: 1px solid #c9bfae;
-  background: #fff;
-  font-size: 1rem;
+.field-brand { display: flex; align-items: center; gap: 10px; }
+.field-brand h1 { margin: 0; font-size: 1.15rem; letter-spacing: -0.02em; }
+.field-brand .field-kicker { color: var(--nav-muted); }
+.field-brand .mark {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08); display: grid; place-items: center;
 }
 
-.field-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  max-width: 560px;
-  margin: 0 auto 16px;
+.field-topbar-meta { display: flex; align-items: center; gap: 8px; }
+.field-user-chip {
+  padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 0.8rem; color: var(--nav-muted); max-width: 140px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-.field-top h1 {
-  margin: 0;
-  font-size: 1.35rem;
+.field-banner { max-width: 640px; margin: 12px auto 0; padding: 0 16px; width: 100%; box-sizing: border-box; }
+.field-error { margin: 0; padding: 10px 12px; background: var(--danger-soft); color: var(--danger); border-radius: var(--radius-sm); }
+.field-notice { margin: 0; padding: 10px 12px; background: var(--accent-soft); color: #08443e; border-radius: var(--radius-sm); }
+
+.field-jobs, .field-job-detail {
+  max-width: 640px; margin: 14px auto 0; padding: 0 16px; display: grid; gap: 12px;
+  width: 100%; box-sizing: border-box;
 }
 
-.field-error {
-  max-width: 560px;
-  margin: 0 auto 12px;
+.field-panel {
+  display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line);
+  background: rgba(251, 249, 244, 0.95); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.field-panel-head h3 { margin: 0; font-size: 0.98rem; }
+.field-panel-head p { margin: 2px 0 0; font-size: 0.82rem; }
+.field-job-hero-top { display: flex; flex-wrap: wrap; gap: 6px; }
+.field-job-hero h2 { margin: 4px 0 0; font-size: 1.35rem; letter-spacing: -0.02em; }
+.field-vehicle { margin: 0; font-weight: 600; }
+
+.field-status, .field-pill {
+  display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px;
+  font-size: 0.72rem; font-weight: 650; border: 1px solid var(--line-strong); background: #fff;
+}
+.field-status-due { background: #f8ead8; border-color: #c49a5a; color: #7a4b12; }
+.field-status-in_progress { background: var(--accent-soft); border-color: var(--accent); color: #08443e; }
+.field-map-link { color: var(--accent); font-weight: 600; font-size: 0.9rem; width: fit-content; }
+
+.field-label { display: grid; gap: 6px; font-size: 0.86rem; color: var(--ink-soft); }
+.field-label input, .field-label textarea, .field-line-card input, .field-line-card select, .field-login-form input {
+  padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background: #fff; font: inherit; color: var(--ink);
+}
+.field-label input:focus, .field-label textarea:focus, .field-line-card input:focus, .field-line-card select:focus, .field-login-form input:focus {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.field-jobs,
-.field-job-detail {
-  max-width: 560px;
-  margin: 0 auto;
-  display: grid;
-  gap: 12px;
-}
-
-.field-jobs-toolbar {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.field-job-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-
-.field-job-row {
-  width: 100%;
-  text-align: left;
-  display: grid;
-  gap: 4px;
-  padding: 14px 16px;
-  border: 1px solid #d9d0c0;
-  background: rgba(255, 252, 245, 0.94);
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-}
-
-.field-job-detail {
-  padding: 16px;
-  border: 1px solid #d9d0c0;
-  background: rgba(255, 252, 245, 0.94);
-}
-
-.field-job-detail h2 {
-  margin: 0;
-  font-size: 1.2rem;
-}
-
-.field-job-detail label {
-  display: grid;
-  gap: 4px;
-}
-
-.field-job-detail textarea {
-  padding: 10px 12px;
-  border: 1px solid #c9bfae;
-  font: inherit;
-  resize: vertical;
-}
-
-.field-job-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.field-photo-block h3 {
-  margin: 0 0 8px;
-  font-size: 1rem;
-}
+.field-lines { display: grid; gap: 10px; }
+.field-line-card { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; }
+.field-line-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.field-line-top select { flex: 1; }
+.field-line-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.field-line-grid label { display: grid; gap: 4px; font-size: 0.78rem; color: var(--ink-faint); }
+.field-lines-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; }
+.field-totals { display: inline-flex; gap: 8px; font-size: 0.86rem; font-weight: 650; color: var(--ink-soft); }
 
 .field-photo-btn {
-  display: inline-block;
-  cursor: pointer;
+  display: inline-flex; justify-content: center; align-items: center; padding: 12px 14px;
+  border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); background: #fff;
+  font-weight: 650; color: var(--accent); cursor: pointer;
+}
+.field-photo-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.field-photo-grid img { width: 100%; height: 110px; object-fit: cover; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #e8ebe9; }
+
+.field-job-actions {
+  position: sticky; bottom: 10px; display: flex; flex-wrap: wrap; gap: 8px; padding: 10px;
+  border: 1px solid var(--line); background: rgba(251, 249, 244, 0.96); border-radius: var(--radius-sm);
+  box-shadow: 0 10px 28px rgba(23, 22, 20, 0.1); z-index: 2;
 }
 
-.field-photo-grid {
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 8px;
+.field-jobs-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.field-job-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.field-filter-chip {
+  padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line-strong); background: #fff;
+  font: inherit; font-size: 0.8rem; color: var(--ink-soft); cursor: pointer;
+}
+.field-filter-chip.is-active { border-color: var(--accent); background: var(--accent-soft); color: #08443e; }
+
+.field-job-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.field-job-row {
+  width: 100%; display: grid; grid-template-columns: 4px 1fr auto; gap: 10px; align-items: center;
+  text-align: left; padding: 0 12px 0 0; min-height: 64px; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); background: rgba(251, 249, 244, 0.95); cursor: pointer; color: inherit; font: inherit;
+}
+.field-job-row:hover { border-color: var(--accent); background: rgba(217, 239, 233, 0.35); }
+.field-row-rail { align-self: stretch; background: #d5cbb9; border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.field-row-rail.field-status-due { background: #c49a5a; }
+.field-row-rail.field-status-in_progress { background: var(--accent); }
+.field-job-row-main { display: grid; gap: 2px; min-width: 0; padding: 10px 0; }
+.field-job-row-main strong { font-size: 0.98rem; }
+.field-job-chevron { font-size: 1.4rem; color: var(--ink-faint); padding-right: 4px; }
+.field-empty h2, .field-loading { margin: 0; }
+.field-back { width: fit-content; }
+
+@media (max-width: 720px) {
+  .field-login-shell { grid-template-columns: 1fr; }
+  .field-login-brand { min-height: auto; }
+  .field-user-chip { display: none; }
 }
 
-.field-photo-grid img {
-  width: 100%;
-  height: 120px;
-  object-fit: cover;
-  border: 1px solid #d9d0c0;
-  background: #e8ebe9;
-}
-
-/* —— Live Ops —— */
+/* â€”â€” Live Ops â€”â€” */
 .app.live-ops-page .shell {
   display: flex;
   flex-direction: column;
@@ -3041,7 +3056,7 @@ html.onesheet-root body {
   width: 100%;
 }
 
-/* —— Exceptions inbox —— */
+/* â€”â€” Exceptions inbox â€”â€” */
 .exceptions-derived-toggle {
   display: inline-flex;
   align-items: center;
@@ -3092,7 +3107,7 @@ html.onesheet-root body {
   align-items: center;
 }
 
-/* —— Maintenance board —— */
+/* â€”â€” Maintenance board â€”â€” */
 .maintenance-toolbar {
   display: flex;
   gap: 10px;

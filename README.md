@@ -188,7 +188,7 @@ https://81.17.100.7:4173/maintenance?k=YOUR_TENANT_KEY
 - Optional service time (started / ended), odometer, notes.
 - Line items: part / labor / other with qty, unit price, unit cost, vendor; roll-up totals.
 - Service point: name + lat/lon (typeahead from tenant catalog; **Use vehicle pin** from last fix). Saved points upsert into the catalog.
-- Optional assign to a field user (Admin-created). Unassigned jobs are visible to all field operators for the tenant.
+- Optional assign to a field user (Admin-created under the **same tenant**). Field `/m` users only see jobs **assigned to them**.
 - Proof-of-maintenance photo gallery (read + upload from embed).
 
 **Outbound notify (WhatsApp + email)**
@@ -204,7 +204,7 @@ https://81.17.100.7:4173/maintenance?k=YOUR_TENANT_KEY
 https://81.17.100.7:4173/m?k=YOUR_TENANT_KEY
 ```
 
-Field users sign in, see open jobs (assigned to them or unassigned), open a job, upload camera/file photos (MinIO/`S3_*` required), then **Done** or **Skip**.
+Field users are created **under that tenant** in Admin (not a new tenant each time). They sign in at `/m?k=TENANT_KEY`, see **only jobs assigned to them**, open a job, add **parts / labor / prices**, notes, odometer, upload camera/file photos (MinIO/`S3_*` required), then **Save**, **Start**, **Done**, or **Skip**.
 
 Deploy notes: `npm run db:migrate` (through migration `009_maintenance_reminders.sql`), build, restart. MinIO must be configured for photo upload. Set `FMS_SECRETS_KEY` to store Wablas secrets; configure SMTP and/or Admin Wablas + notify recipients for outbound channels.
 

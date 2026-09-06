@@ -82,6 +82,16 @@ function publicFieldUser(user) {
   };
 }
 
+/** Open/closed jobs strictly assigned to this field user (same tenant). */
+async function loadAssignedEventRow(tenantId, eventId, fieldUserId) {
+  const found = await dbQuery(
+    `SELECT ${SELECT_COLS} FROM service_events
+     WHERE id = $1 AND tenant_id = $2 AND assigned_field_user_id = $3`,
+    [eventId, tenantId, fieldUserId],
+  );
+  return found.rows[0] || null;
+}
+
 async function tenantMobileMaintenanceEnabled(tenantId) {
   const row = await dbQuery(`SELECT entitlements FROM tenants WHERE id = $1`, [tenantId]);
   const ent = mergeEntitlements(row.rows[0]?.entitlements);
@@ -178,8 +188,8 @@ export async function handleFieldRequest(req, res) {
         `SELECT p.storage_key, p.content_type
          FROM service_event_photos p
          JOIN service_events e ON e.id = p.event_id
-         WHERE p.id = $1 AND e.tenant_id = $2`,
-        [photoGet[1], user.tenantId],
+         WHERE p.id = $1 AND e.tenant_id = $2 AND e.assigned_field_user_id = $3`,
+        [photoGet[1], user.tenantId, user.id],
       );
       if (!found.rows[0]) {
         json(res, 404, { error: "Photo not found" });
@@ -214,7 +224,7 @@ export async function handleFieldRequest(req, res) {
           `SELECT ${SELECT_COLS} FROM service_events
            WHERE tenant_id = $1
              AND status IN ('due', 'in_progress')
-             AND (assigned_field_user_id IS NULL OR assigned_field_user_id = $2)
+             AND assigned_field_user_id = $2
            ORDER BY created_at DESC
            LIMIT 100`,
           [user.tenantId, user.id],
@@ -225,9 +235,14 @@ export async function handleFieldRequest(req, res) {
 
       const evMatch = /^\/api\/field\/maintenance\/events\/([0-9a-f-]{36})$/i.exec(url.pathname);
       if (evMatch && req.method === "GET") {
+        const row = await loadAssignedEventRow(user.tenantId, evMatch[1], user.id);
+        if (!row) {
+          json(res, 404, { error: "Job not found or not assigned to you" });
+          return true;
+        }
         const detail = await loadEventDetail(user.tenantId, evMatch[1]);
-        if (!detail) {
-          json(res, 404, { error: "Not found" });
+        if (!detail || detail.assignedFieldUserId !== user.id) {
+          json(res, 404, { error: "Job not found or not assigned to you" });
           return true;
         }
         detail.photos = (detail.photos || []).map((p) => ({
@@ -239,17 +254,14 @@ export async function handleFieldRequest(req, res) {
       }
 
       if (evMatch && req.method === "PATCH") {
-        const found = await dbQuery(
-          `SELECT ${SELECT_COLS} FROM service_events WHERE id = $1 AND tenant_id = $2`,
-          [evMatch[1], user.tenantId],
-        );
-        if (!found.rows[0]) {
-          json(res, 404, { error: "Not found" });
+        const found = await loadAssignedEventRow(user.tenantId, evMatch[1], user.id);
+        if (!found) {
+          json(res, 404, { error: "Job not found or not assigned to you" });
           return true;
         }
         const body = await readJson(req);
         delete body.assignedFieldUserId;
-        const { event: patched, nextEvent } = await applyEventPatch(found.rows[0], body, user.tenantId, {
+        const { event: patched, nextEvent } = await applyEventPatch(found, body, user.tenantId, {
           tenantKey: user.tenantKey,
         });
         const event = {
@@ -265,12 +277,9 @@ export async function handleFieldRequest(req, res) {
 
       const photoPost = /^\/api\/field\/maintenance\/events\/([0-9a-f-]{36})\/photos$/i.exec(url.pathname);
       if (photoPost && req.method === "POST") {
-        const found = await dbQuery(`SELECT id FROM service_events WHERE id = $1 AND tenant_id = $2`, [
-          photoPost[1],
-          user.tenantId,
-        ]);
-        if (!found.rows[0]) {
-          json(res, 404, { error: "Not found" });
+        const found = await loadAssignedEventRow(user.tenantId, photoPost[1], user.id);
+        if (!found) {
+          json(res, 404, { error: "Job not found or not assigned to you" });
           return true;
         }
         const body = await readJson(req);

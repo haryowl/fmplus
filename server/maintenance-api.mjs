@@ -359,6 +359,7 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
     }
   }
 
+  const prevAssigned = current.assigned_field_user_id || null;
   let assignedFieldUserId = current.assigned_field_user_id;
   if (body.assignedFieldUserId !== undefined) {
     assignedFieldUserId = body.assignedFieldUserId || null;
@@ -469,6 +470,27 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
 
   const event = await loadEventDetail(tenantId, current.id);
   let nextEvent = null;
+
+  if (
+    event &&
+    assignedFieldUserId &&
+    String(assignedFieldUserId) !== String(prevAssigned || "")
+  ) {
+    try {
+      const { fanOutEventReminder } = await import("./maintenance-remind.mjs");
+      await fanOutEventReminder({
+        tenantId,
+        tenantKey: opts.tenantKey || opts.vaultTenant?.key || "",
+        event,
+        kind: "assigned",
+        title: `Job assigned · ${event.userDisplayName || event.armadaUsername || "Vehicle"}`,
+        body: `${event.title} was assigned to you.`,
+        payload: { assignedFieldUserId },
+      });
+    } catch (err) {
+      console.error("[maintenance] assigned notify", err);
+    }
+  }
 
   if (prevStatus !== "done" && status === "done" && event) {
     nextEvent = await spawnNextDueEvent(event, tenantId, {
