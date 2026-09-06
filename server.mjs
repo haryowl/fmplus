@@ -152,6 +152,16 @@ async function boot() {
     const ready = tenantFromRequest({ headers: {} }) ? "Armada proxy enabled" : "no default tenant token";
     console.log(`Vehicle Metrics on ${scheme}://localhost:${port} (${ready})`);
   });
+
+  const remindMs = Math.max(60_000, Number(process.env.MAINT_REMIND_INTERVAL_MS) || 15 * 60_000);
+  setInterval(() => {
+    void import("./server/maintenance-remind.mjs")
+      .then((m) => m.evaluateAllTenantReminders())
+      .then((r) => {
+        if (r.emitted > 0) console.log(`[maintenance-remind] emitted=${r.emitted} tenants=${r.tenants}`);
+      })
+      .catch((err) => console.error("[maintenance-remind]", err instanceof Error ? err.message : err));
+  }, remindMs).unref?.();
 }
 
 void boot();

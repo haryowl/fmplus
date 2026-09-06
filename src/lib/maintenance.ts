@@ -3,6 +3,7 @@ import { tenantHeaders } from "./tenant";
 import { downloadXlsx, excelFilename, type ExcelCell } from "./xlsxDownload";
 
 export type ServiceEventStatus = "due" | "in_progress" | "done" | "skipped";
+export type ScheduleHealth = "none" | "ok" | "upcoming" | "due" | "overdue" | "completed";
 export type LineKind = "part" | "labor" | "other";
 
 export type ServiceLine = {
@@ -52,6 +53,13 @@ export type ServiceEvent = {
   remindBaselineOdometerKm?: number | null;
   remindIntervalHours?: number | null;
   remindHoursSinceAt?: string | null;
+  remindBeforeDays?: number | null;
+  remindBeforeKm?: number | null;
+  remindBeforeHours?: number | null;
+  parentEventId?: string | null;
+  scheduleHealth?: ScheduleHealth;
+  scheduleBits?: string[];
+  scheduleUrgency?: number;
   createdAt: string;
   updatedAt: string;
   lines?: ServiceLine[];
@@ -78,12 +86,38 @@ export type FieldUserOption = {
 };
 
 export type MaintenanceStatusFilter = ServiceEventStatus | "open" | "all";
+export type MaintenanceBoardView =
+  | "attention"
+  | "upcoming"
+  | "due"
+  | "overdue"
+  | "completed"
+  | MaintenanceStatusFilter;
+
+export type ScheduleSummary = {
+  upcoming: number;
+  due: number;
+  overdue: number;
+  completed: number;
+  ok: number;
+  none: number;
+  open: number;
+};
 
 export const SERVICE_STATUS_LABELS: Record<ServiceEventStatus, string> = {
   due: "Due",
   in_progress: "In progress",
   done: "Done",
   skipped: "Skipped",
+};
+
+export const SCHEDULE_HEALTH_LABELS: Record<ScheduleHealth, string> = {
+  none: "Unscheduled",
+  ok: "On track",
+  upcoming: "Upcoming",
+  due: "Due",
+  overdue: "Overdue",
+  completed: "Completed",
 };
 
 export const LINE_KIND_LABELS: Record<LineKind, string> = {
@@ -95,14 +129,44 @@ export const LINE_KIND_LABELS: Record<LineKind, string> = {
 export async function fetchServiceEvents(
   status: MaintenanceStatusFilter = "open",
   signal?: AbortSignal,
-): Promise<ServiceEvent[]> {
-  const res = await fetch(`/api/maintenance/events?status=${encodeURIComponent(status)}&limit=100`, {
+  opts?: { health?: Exclude<ScheduleHealth, "completed"> | "" },
+): Promise<{ events: ServiceEvent[]; summary?: ScheduleSummary }> {
+  const params = new URLSearchParams({ status, limit: "100" });
+  if (opts?.health) params.set("health", opts.health);
+  const res = await fetch(`/api/maintenance/events?${params}`, {
     headers: { accept: "application/json", ...tenantHeaders() },
     signal,
   });
-  const data = (await res.json().catch(() => ({}))) as { events?: ServiceEvent[]; error?: string };
+  const data = (await res.json().catch(() => ({}))) as {
+    events?: ServiceEvent[];
+    summary?: ScheduleSummary;
+    error?: string;
+  };
   if (!res.ok) throw new Error(data.error || `Maintenance ${res.status}`);
-  return data.events || [];
+  return { events: data.events || [], summary: data.summary };
+}
+
+export async function fetchScheduleSummary(signal?: AbortSignal): Promise<ScheduleSummary> {
+  const res = await fetch("/api/maintenance/schedule-summary", {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    summary?: ScheduleSummary;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Summary ${res.status}`);
+  return (
+    data.summary || {
+      upcoming: 0,
+      due: 0,
+      overdue: 0,
+      completed: 0,
+      ok: 0,
+      none: 0,
+      open: 0,
+    }
+  );
 }
 
 export async function fetchServiceEvent(id: string, signal?: AbortSignal): Promise<ServiceEvent> {
@@ -131,6 +195,9 @@ export async function createServiceEvent(body: {
   remindBaselineOdometerKm?: number | null;
   remindIntervalHours?: number | null;
   remindHoursSinceAt?: string | null;
+  remindBeforeDays?: number | null;
+  remindBeforeKm?: number | null;
+  remindBeforeHours?: number | null;
 }): Promise<ServiceEvent> {
   const res = await fetch("/api/maintenance/events", {
     method: "POST",
@@ -146,16 +213,80 @@ export async function createServiceEvent(body: {
 export async function patchServiceEvent(
   id: string,
   body: Record<string, unknown>,
-): Promise<ServiceEvent> {
+): Promise<{ event: ServiceEvent; nextEvent: ServiceEvent | null }> {
   const res = await fetch(`/api/maintenance/events/${id}`, {
     method: "PATCH",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify(body),
   });
-  const data = (await res.json().catch(() => ({}))) as { event?: ServiceEvent; error?: string };
+  const data = (await res.json().catch(() => ({}))) as {
+    event?: ServiceEvent;
+    nextEvent?: ServiceEvent | null;
+    error?: string;
+  };
   if (!res.ok) throw new Error(data.error || `Update ${res.status}`);
   if (!data.event) throw new Error("Update failed");
-  return data.event;
+  return { event: data.event, nextEvent: data.nextEvent || null };
+}
+
+export type MaintenanceReminder = {
+  id: string;
+  eventId: string | null;
+  kind: string;
+  channel: string;
+  recipient: string;
+  title: string;
+  body: string;
+  ackedAt: string | null;
+  sentAt: string | null;
+  error: string;
+  createdAt: string;
+};
+
+export async function fetchMaintReminders(
+  status: "open" | "acked" | "all" = "open",
+  signal?: AbortSignal,
+): Promise<MaintenanceReminder[]> {
+  const res = await fetch(`/api/maintenance/reminders?status=${status}&limit=50`, {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    reminders?: MaintenanceReminder[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Reminders ${res.status}`);
+  return data.reminders || [];
+}
+
+export async function ackMaintReminder(id: string): Promise<MaintenanceReminder> {
+  const res = await fetch(`/api/maintenance/reminders/${id}/ack`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: "{}",
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    reminder?: MaintenanceReminder;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Ack ${res.status}`);
+  if (!data.reminder) throw new Error("Ack failed");
+  return data.reminder;
+}
+
+export async function evaluateMaintReminders(): Promise<{ checked: number; emitted: number }> {
+  const res = await fetch("/api/maintenance/reminders/evaluate", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: "{}",
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    checked?: number;
+    emitted?: number;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Evaluate ${res.status}`);
+  return { checked: data.checked || 0, emitted: data.emitted || 0 };
 }
 
 export async function fetchServicePoints(q = ""): Promise<ServicePoint[]> {

@@ -6,11 +6,19 @@ import {
   downloadMaintenanceExcel,
   eventVehicleLabel,
   eventWhen,
+  fetchMaintReminders,
+  ackMaintReminder,
+  evaluateMaintReminders,
+  fetchScheduleSummary,
   fetchServiceEvents,
   patchServiceEvent,
   scheduleLabel,
+  SCHEDULE_HEALTH_LABELS,
   SERVICE_STATUS_LABELS,
+  type MaintenanceReminder,
   type MaintenanceStatusFilter,
+  type ScheduleHealth,
+  type ScheduleSummary,
   type ServiceEvent,
   type ServiceEventStatus,
 } from "../lib/maintenance";
@@ -49,6 +57,10 @@ export default function MaintenanceBoard() {
   const [timezone, setTimezone] = useState(query.tz);
   const [groupId, setGroupId] = useState(query.groupId);
   const [statusFilter, setStatusFilter] = useState<MaintenanceStatusFilter>("open");
+  const [healthFilter, setHealthFilter] = useState<"" | "upcoming" | "due" | "overdue" | "completed">(
+    "",
+  );
+  const [scheduleSummary, setScheduleSummary] = useState<ScheduleSummary | null>(null);
   const [events, setEvents] = useState<ServiceEvent[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -69,6 +81,10 @@ export default function MaintenanceBoard() {
   const [remindIntervalDays, setRemindIntervalDays] = useState("");
   const [remindIntervalKm, setRemindIntervalKm] = useState("");
   const [remindIntervalHours, setRemindIntervalHours] = useState("");
+  const [remindBeforeDays, setRemindBeforeDays] = useState("");
+  const [remindBeforeKm, setRemindBeforeKm] = useState("");
+  const [remindBeforeHours, setRemindBeforeHours] = useState("");
+  const [reminders, setReminders] = useState<MaintenanceReminder[]>([]);
   const [eventId, setEventId] = useState(
     () => new URLSearchParams(window.location.search).get("eventId") || "",
   );
@@ -207,8 +223,14 @@ export default function MaintenanceBoard() {
     const ac = new AbortController();
     setLoading(true);
     setError("");
-    void fetchServiceEvents(statusFilter, ac.signal)
-      .then((list) => {
+    const status: MaintenanceStatusFilter =
+      healthFilter === "completed" ? "done" : healthFilter ? "open" : statusFilter;
+    const health =
+      healthFilter === "upcoming" || healthFilter === "due" || healthFilter === "overdue"
+        ? healthFilter
+        : undefined;
+    void fetchServiceEvents(status, ac.signal, health ? { health } : undefined)
+      .then(({ events: list }) => {
         setEvents(list);
         setNow(Date.now());
       })
@@ -219,7 +241,29 @@ export default function MaintenanceBoard() {
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [ready, query.tenantKey, statusFilter, reload]);
+  }, [ready, query.tenantKey, statusFilter, healthFilter, reload]);
+
+  useEffect(() => {
+    if (!ready || !query.tenantKey) return;
+    const ac = new AbortController();
+    void fetchScheduleSummary(ac.signal)
+      .then(setScheduleSummary)
+      .catch(() => {
+        /* optional */
+      });
+    return () => ac.abort();
+  }, [ready, query.tenantKey, reload]);
+
+  useEffect(() => {
+    if (!ready || !query.tenantKey) return;
+    const ac = new AbortController();
+    void fetchMaintReminders("open", ac.signal)
+      .then(setReminders)
+      .catch(() => {
+        /* optional */
+      });
+    return () => ac.abort();
+  }, [ready, query.tenantKey, reload]);
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
@@ -250,6 +294,9 @@ export default function MaintenanceBoard() {
         remindIntervalKm: remindIntervalKm.trim() === "" ? null : Number(remindIntervalKm),
         remindIntervalHours: remindIntervalHours.trim() === "" ? null : Number(remindIntervalHours),
         remindBaselineOdometerKm: st?.odometerKm ?? null,
+        remindBeforeDays: remindBeforeDays.trim() === "" ? null : Number(remindBeforeDays),
+        remindBeforeKm: remindBeforeKm.trim() === "" ? null : Number(remindBeforeKm),
+        remindBeforeHours: remindBeforeHours.trim() === "" ? null : Number(remindBeforeHours),
       });
       setNotes("");
       setTitle(defaultTitle());
@@ -257,6 +304,9 @@ export default function MaintenanceBoard() {
       setRemindIntervalDays("");
       setRemindIntervalKm("");
       setRemindIntervalHours("");
+      setRemindBeforeDays("");
+      setRemindBeforeKm("");
+      setRemindBeforeHours("");
       setShowCreate(false);
       setEventId(created.id);
       setReload((n) => n + 1);
@@ -275,16 +325,26 @@ export default function MaintenanceBoard() {
     setBusyId(id);
     setError("");
     try {
-      const updated = await patchServiceEvent(id, { status });
+      const { event: updated, nextEvent } = await patchServiceEvent(id, { status });
       setEvents((prev) => {
+        let next = prev;
         if (statusFilter === "open" && (status === "done" || status === "skipped")) {
-          return prev.filter((x) => x.id !== id);
+          next = prev.filter((x) => x.id !== id);
+        } else if (statusFilter !== "all" && statusFilter !== "open" && statusFilter !== status) {
+          next = prev.filter((x) => x.id !== id);
+        } else {
+          next = prev.map((x) => (x.id === id ? updated : x));
         }
-        if (statusFilter !== "all" && statusFilter !== "open" && statusFilter !== status) {
-          return prev.filter((x) => x.id !== id);
+        if (nextEvent && (statusFilter === "open" || statusFilter === "due" || statusFilter === "all")) {
+          next = [nextEvent, ...next.filter((x) => x.id !== nextEvent.id)];
         }
-        return prev.map((x) => (x.id === id ? updated : x));
+        return next;
       });
+      if (nextEvent) {
+        setEventId(nextEvent.id);
+        void fetchMaintReminders("open").then(setReminders).catch(() => {});
+      }
+      void fetchScheduleSummary().then(setScheduleSummary).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
     } finally {
@@ -322,14 +382,18 @@ export default function MaintenanceBoard() {
             </select>
           </div>
           <div className="field">
-            <label htmlFor="maint-status">Status</label>
+            <label htmlFor="maint-status">Workflow</label>
             <select
               id="maint-status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as MaintenanceStatusFilter)}
+              value={healthFilter ? "" : statusFilter}
+              disabled={Boolean(healthFilter)}
+              onChange={(e) => {
+                setHealthFilter("");
+                setStatusFilter(e.target.value as MaintenanceStatusFilter);
+              }}
             >
               <option value="open">Open (due + in progress)</option>
-              <option value="due">Due</option>
+              <option value="due">Due (workflow)</option>
               <option value="in_progress">In progress</option>
               <option value="done">Done</option>
               <option value="skipped">Skipped</option>
@@ -366,6 +430,54 @@ export default function MaintenanceBoard() {
             </div>
           )}
         </section>
+
+        {!eventId && (
+          <section className="maintenance-schedule-dash" aria-label="Schedule health">
+            <button
+              type="button"
+              className={`maint-dash-tile${healthFilter === "" ? " is-active" : ""}`}
+              onClick={() => {
+                setHealthFilter("");
+                setStatusFilter("open");
+              }}
+            >
+              <span className="maint-dash-label">Open</span>
+              <strong>{scheduleSummary?.open ?? "—"}</strong>
+            </button>
+            <button
+              type="button"
+              className={`maint-dash-tile maint-health-upcoming${healthFilter === "upcoming" ? " is-active" : ""}`}
+              onClick={() => setHealthFilter("upcoming")}
+            >
+              <span className="maint-dash-label">Upcoming</span>
+              <strong>{scheduleSummary?.upcoming ?? "—"}</strong>
+            </button>
+            <button
+              type="button"
+              className={`maint-dash-tile maint-health-due${healthFilter === "due" ? " is-active" : ""}`}
+              onClick={() => setHealthFilter("due")}
+            >
+              <span className="maint-dash-label">Due</span>
+              <strong>{scheduleSummary?.due ?? "—"}</strong>
+            </button>
+            <button
+              type="button"
+              className={`maint-dash-tile maint-health-overdue${healthFilter === "overdue" ? " is-active" : ""}`}
+              onClick={() => setHealthFilter("overdue")}
+            >
+              <span className="maint-dash-label">Overdue</span>
+              <strong>{scheduleSummary?.overdue ?? "—"}</strong>
+            </button>
+            <button
+              type="button"
+              className={`maint-dash-tile maint-health-completed${healthFilter === "completed" ? " is-active" : ""}`}
+              onClick={() => setHealthFilter("completed")}
+            >
+              <span className="maint-dash-label">Completed</span>
+              <strong>{scheduleSummary?.completed ?? "—"}</strong>
+            </button>
+          </section>
+        )}
 
         {!eventId && (
         <div className="maintenance-toolbar">
@@ -474,6 +586,39 @@ export default function MaintenanceBoard() {
                     onChange={(e) => setRemindIntervalHours(e.target.value)}
                   />
                 </label>
+                <label>
+                  Remind before (days)
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="7"
+                    value={remindBeforeDays}
+                    onChange={(e) => setRemindBeforeDays(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Remind before (km)
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="500"
+                    value={remindBeforeKm}
+                    onChange={(e) => setRemindBeforeKm(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Remind before (hours)
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="auto"
+                    value={remindBeforeHours}
+                    onChange={(e) => setRemindBeforeHours(e.target.value)}
+                  />
+                </label>
               </div>
               <p className="muted maintenance-hint">
                 Baseline odo for km interval is taken from the vehicle’s last status when you create.
@@ -495,14 +640,78 @@ export default function MaintenanceBoard() {
 
         {error && <div className="banner error">{error}</div>}
 
+        {!eventId && reminders.length > 0 && (
+          <section className="maintenance-reminders">
+            <div className="maintenance-reminders-head">
+              <h2>Reminders</h2>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  void evaluateMaintReminders()
+                    .then((r) => {
+                      setReload((n) => n + 1);
+                      if (r.emitted === 0) setError("");
+                    })
+                    .catch((err) => setError(err instanceof Error ? err.message : "Evaluate failed"));
+                }}
+              >
+                Check reminders
+              </button>
+            </div>
+            <ul className="maintenance-reminder-list">
+              {reminders.map((r) => (
+                <li key={r.id}>
+                  <div>
+                    <strong>{r.title}</strong>
+                    <span className="muted">
+                      {r.kind} · {r.channel}
+                      {r.recipient ? ` · ${r.recipient}` : ""}
+                    </span>
+                    <span className="muted">{r.body}</span>
+                  </div>
+                  <div className="maintenance-row-actions">
+                    {r.eventId ? (
+                      <button type="button" className="btn-link" onClick={() => setEventId(r.eventId!)}>
+                        Open
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() =>
+                        void ackMaintReminder(r.id)
+                          .then(() => setReminders((prev) => prev.filter((x) => x.id !== r.id)))
+                          .catch((err) => setError(err instanceof Error ? err.message : "Ack failed"))
+                      }
+                    >
+                      Ack
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {eventId ? (
           <MaintenanceEventDetail
             eventId={eventId}
             onClose={() => setEventId("")}
+            onOpenEvent={(id) => setEventId(id)}
             onSaved={(updated) => {
               setEvents((prev) => {
                 const exists = prev.some((x) => x.id === updated.id);
-                if (!exists) return prev;
+                if (!exists) {
+                  if (
+                    statusFilter === "open" ||
+                    statusFilter === "due" ||
+                    statusFilter === "all"
+                  ) {
+                    return [updated, ...prev];
+                  }
+                  return prev;
+                }
                 if (statusFilter === "open" && (updated.status === "done" || updated.status === "skipped")) {
                   return prev.filter((x) => x.id !== updated.id);
                 }
@@ -515,6 +724,7 @@ export default function MaintenanceBoard() {
                 }
                 return prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x));
               });
+              void fetchMaintReminders("open").then(setReminders).catch(() => {});
             }}
           />
         ) : (
@@ -534,13 +744,29 @@ export default function MaintenanceBoard() {
                   <button type="button" className="maintenance-row-title" onClick={() => setEventId(ev.id)}>
                     <strong>{ev.title}</strong>
                   </button>
+                  <span className="maintenance-row-badges">
+                    <span className={`maint-badge maint-status-${ev.status}`}>
+                      {SERVICE_STATUS_LABELS[ev.status]}
+                    </span>
+                    {ev.scheduleHealth &&
+                    ev.scheduleHealth !== "none" &&
+                    ev.scheduleHealth !== "completed" ? (
+                      <span className={`maint-badge maint-health-${ev.scheduleHealth}`}>
+                        {SCHEDULE_HEALTH_LABELS[ev.scheduleHealth as ScheduleHealth]}
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="muted">
-                    {SERVICE_STATUS_LABELS[ev.status]} · {eventWhen(ev, now)} · {eventVehicleLabel(ev)}
+                    {eventWhen(ev, now)} · {eventVehicleLabel(ev)}
                     {ev.notificationId ? " · from notifier" : " · manual"}
                     {ev.odometerKm != null ? ` · ${formatKm(ev.odometerKm)} km` : ""}
                     {ev.servicePointName ? ` · ${ev.servicePointName}` : ""}
                   </span>
-                  {scheduleLabel(ev) ? <span className="muted">Remind: {scheduleLabel(ev)}</span> : null}
+                  {ev.scheduleBits && ev.scheduleBits.length > 0 ? (
+                    <span className="muted">Schedule: {ev.scheduleBits.join("; ")}</span>
+                  ) : scheduleLabel(ev) ? (
+                    <span className="muted">Remind: {scheduleLabel(ev)}</span>
+                  ) : null}
                   {ev.notes ? <span className="muted">{ev.notes}</span> : null}
                 </div>
                 <div className="maintenance-row-actions">

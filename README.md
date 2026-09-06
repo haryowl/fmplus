@@ -177,7 +177,10 @@ https://81.17.100.7:4173/maintenance?k=YOUR_TENANT_KEY
 
 - Armada Maintenance Schedule → Command notifier URL with `kind=maintenance` (and webhook `secret`) creates a **due** service event automatically.
 - Managers can also **Open for vehicle**: pick any fleet unit from group / last-status (name, odo, position filled automatically). From **Live** or **Status**, use the **Maintenance** link on a vehicle (`/maintenance?k=…&userId=…&open=1`).
-- On create (and in event detail), set optional **Schedule / remind**: due date, interval days, interval km (live **odometer from `/usersstatus`** vs baseline → accrued/due on detail), and/or **interval hours** (ignition-on time from Armada day tracks / cache — not a CAN engine-hour meter). Hours since defaults to create time; hour accrual lookback is capped at **90 days**. Detail shows accrued vs interval for both km and hours when set.
+- On create (and in event detail), set optional **Schedule / remind**: due date, interval days, interval km (live **odometer from `/usersstatus`** vs baseline → accrued/due on detail), and/or **interval hours** (ignition-on time from Armada day tracks / cache — not a CAN engine-hour meter). Hours since defaults to create time; hour accrual lookback is capped at **90 days**. Optional **remind before** (days / km / hours) sets lead windows; defaults are 7 days / 500 km / 10% of hour interval.
+- **Done** with any schedule interval spawns the **next due** event (baselines rolled; `parent_event_id` links history). **Skip** does not spawn.
+- Board **Reminders** inbox lists platform alerts (`due_soon` / `overdue` / `next_due`); Ack clears them. **Check reminders** runs evaluation now (also every ~15 min server-side).
+- Board **schedule dashboard**: **Upcoming / Due / Overdue / Completed** (calendar + live odo; hour meters on detail/reminders). Worst meter wins (“whichever comes first”). Workflow filter (open / in progress / …) remains for work-list views.
 - Board filters: open / due / in progress / done / skipped; Start / Done / Skip / Reopen; Excel export; Trips/Full when Armada user id is known.
 
 **Event detail (D2)** — click a row or **Detail** (`?eventId=`):
@@ -188,6 +191,13 @@ https://81.17.100.7:4173/maintenance?k=YOUR_TENANT_KEY
 - Optional assign to a field user (Admin-created). Unassigned jobs are visible to all field operators for the tenant.
 - Proof-of-maintenance photo gallery (read + upload from embed).
 
+**Outbound notify (WhatsApp + email)**
+
+- Platform reminder rows are always written. WhatsApp uses **[Wablas](https://www.wablas.com/documentation/api)** per tenant (Admin: base URL, token, secret — encrypted with `FMS_SECRETS_KEY`). Optional env fallback: `WABLAS_BASE_URL`, `WABLAS_TOKEN`, `WABLAS_SECRET_KEY`.
+- Recipients: tenant **notify WhatsApp / emails** (Admin, comma-separated) plus assigned field user’s phone/email when set.
+- Email sends only when SMTP is configured: `SMTP_HOST`, `SMTP_PORT` (default 465), `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`. Otherwise email is skipped quietly.
+- PWA Web Push is out of scope for this ship.
+
 **Field PoM (/m, D3)** — enable **Mobile apps → Maintenance PWA** in Admin entitlements (login still works if the flag is off; jobs UI shows an empty / disabled state).
 
 ```
@@ -196,7 +206,7 @@ https://81.17.100.7:4173/m?k=YOUR_TENANT_KEY
 
 Field users sign in, see open jobs (assigned to them or unassigned), open a job, upload camera/file photos (MinIO/`S3_*` required), then **Done** or **Skip**.
 
-Deploy notes: `npm run db:migrate` (migration `006_maintenance_d2.sql`), build, restart. MinIO must be configured for photo upload.
+Deploy notes: `npm run db:migrate` (through migration `009_maintenance_reminders.sql`), build, restart. MinIO must be configured for photo upload. Set `FMS_SECRETS_KEY` to store Wablas secrets; configure SMTP and/or Admin Wablas + notify recipients for outbound channels.
 
 ## Armada Command notifier (Phase B0)
 

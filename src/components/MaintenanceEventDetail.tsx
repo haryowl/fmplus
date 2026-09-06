@@ -10,9 +10,11 @@ import {
   LINE_KIND_LABELS,
   patchServiceEvent,
   SERVICE_STATUS_LABELS,
+  SCHEDULE_HEALTH_LABELS,
   uploadMaintPhoto,
   type FieldUserOption,
   type LineKind,
+  type ScheduleHealth,
   type ServiceEvent,
   type ServiceEventStatus,
   type ServiceLine,
@@ -26,6 +28,7 @@ type Props = {
   eventId: string;
   onClose: () => void;
   onSaved: (event: ServiceEvent) => void;
+  onOpenEvent?: (eventId: string) => void;
 };
 
 function toLocalInput(iso: string | null | undefined): string {
@@ -65,11 +68,12 @@ function vehicleSearch(userId: number): string {
   return q ? `?${q}` : "";
 }
 
-export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
+export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent }: Props) {
   const [event, setEvent] = useState<ServiceEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [fieldUsers, setFieldUsers] = useState<FieldUserOption[]>([]);
   const [pointHints, setPointHints] = useState<ServicePoint[]>([]);
 
@@ -89,6 +93,9 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
   const [remindBaselineOdometerKm, setRemindBaselineOdometerKm] = useState("");
   const [remindIntervalHours, setRemindIntervalHours] = useState("");
   const [remindHoursSinceAt, setRemindHoursSinceAt] = useState("");
+  const [remindBeforeDays, setRemindBeforeDays] = useState("");
+  const [remindBeforeKm, setRemindBeforeKm] = useState("");
+  const [remindBeforeHours, setRemindBeforeHours] = useState("");
   const [hoursAccrued, setHoursAccrued] = useState<{
     hoursAccrued: number | null;
     intervalHours: number | null;
@@ -150,6 +157,9 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
     );
     setRemindIntervalHours(ev.remindIntervalHours != null ? String(ev.remindIntervalHours) : "");
     setRemindHoursSinceAt(toLocalInput(ev.remindHoursSinceAt));
+    setRemindBeforeDays(ev.remindBeforeDays != null ? String(ev.remindBeforeDays) : "");
+    setRemindBeforeKm(ev.remindBeforeKm != null ? String(ev.remindBeforeKm) : "");
+    setRemindBeforeHours(ev.remindBeforeHours != null ? String(ev.remindBeforeHours) : "");
     setLines(ev.lines?.length ? ev.lines.map((l) => ({ ...l })) : [emptyLine()]);
   }
 
@@ -266,6 +276,7 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
     if (!event) return;
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       const body: Record<string, unknown> = {
         title: title.trim(),
@@ -284,6 +295,9 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
           remindBaselineOdometerKm.trim() === "" ? null : Number(remindBaselineOdometerKm),
         remindIntervalHours: remindIntervalHours.trim() === "" ? null : Number(remindIntervalHours),
         remindHoursSinceAt: fromLocalInput(remindHoursSinceAt),
+        remindBeforeDays: remindBeforeDays.trim() === "" ? null : Number(remindBeforeDays),
+        remindBeforeKm: remindBeforeKm.trim() === "" ? null : Number(remindBeforeKm),
+        remindBeforeHours: remindBeforeHours.trim() === "" ? null : Number(remindBeforeHours),
         upsertServicePoint: Boolean(servicePointName.trim()),
         lines: lines
           .filter((l) => l.description.trim() || l.unitPrice != null || l.unitCost != null)
@@ -299,10 +313,17 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
         ...extra,
       };
       if (servicePointId) body.servicePointId = servicePointId;
-      const updated = await patchServiceEvent(event.id, body);
+      const { event: updated, nextEvent } = await patchServiceEvent(event.id, body);
       setEvent(updated);
       applyForm(updated);
       onSaved(updated);
+      if (nextEvent) {
+        setNotice("Next due created — opening the new event.");
+        onSaved(nextEvent);
+        onOpenEvent?.(nextEvent.id);
+      } else {
+        setNotice("Saved.");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -363,6 +384,14 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
         <span className={`maint-badge maint-status-${event.status}`}>
           {SERVICE_STATUS_LABELS[event.status]}
         </span>
+        {event.scheduleHealth &&
+        event.scheduleHealth !== "none" &&
+        event.scheduleHealth !== "completed" ? (
+          <span className={`maint-badge maint-health-${event.scheduleHealth}`}>
+            {SCHEDULE_HEALTH_LABELS[event.scheduleHealth as ScheduleHealth]}
+            {event.scheduleBits?.length ? ` · ${event.scheduleBits.join("; ")}` : ""}
+          </span>
+        ) : null}
         <span className="muted">{eventVehicleLabel(event)}</span>
         {event.armadaUserId ? (
           <span className="maintenance-detail-links">
@@ -377,6 +406,7 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
       </div>
 
       {error && <div className="banner error">{error}</div>}
+      {notice && <div className="banner ok">{notice}</div>}
 
       <form
         className="maintenance-detail-form"
@@ -482,6 +512,39 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
                 type="datetime-local"
                 value={remindHoursSinceAt}
                 onChange={(e) => setRemindHoursSinceAt(e.target.value)}
+              />
+            </label>
+            <label>
+              Remind before (days)
+              <input
+                type="number"
+                min={0}
+                step={1}
+                placeholder="7"
+                value={remindBeforeDays}
+                onChange={(e) => setRemindBeforeDays(e.target.value)}
+              />
+            </label>
+            <label>
+              Remind before (km)
+              <input
+                type="number"
+                min={0}
+                step="any"
+                placeholder="500"
+                value={remindBeforeKm}
+                onChange={(e) => setRemindBeforeKm(e.target.value)}
+              />
+            </label>
+            <label>
+              Remind before (hours)
+              <input
+                type="number"
+                min={0}
+                step="any"
+                placeholder="auto"
+                value={remindBeforeHours}
+                onChange={(e) => setRemindBeforeHours(e.target.value)}
               />
             </label>
           </div>

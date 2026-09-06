@@ -91,6 +91,11 @@ function publicTenantRow(row) {
     entitlements: mergeEntitlements(row.entitlements),
     hasWebhookSecret: Boolean(row.webhook_secret_hash),
     hasToken: Boolean(row.token_ciphertext),
+    notifyEmails: row.notify_emails || "",
+    notifyWhatsapp: row.notify_whatsapp || "",
+    wablasBaseUrl: row.wablas_base_url || "",
+    hasWablasToken: Boolean(row.wablas_token_ciphertext),
+    hasWablasSecret: Boolean(row.wablas_secret_ciphertext),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     notifierUrlTemplate: `${base}/api/armada/notify?k=${k}&secret=<webhook-secret>&kind=exception`,
@@ -104,6 +109,8 @@ function publicFieldUserRow(row) {
     username: row.username,
     role: row.role,
     displayName: row.display_name || "",
+    phone: row.phone || "",
+    email: row.email || "",
     enabled: row.enabled !== false,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -206,7 +213,10 @@ export async function handleAdminRequest(req, res) {
       if (!admin) return true;
       const rows = await dbQuery(
         `SELECT id, key, app_id, display_name, enabled, user_ids, group_ids, entitlements,
-                webhook_secret_hash, token_ciphertext, created_at, updated_at
+                webhook_secret_hash, token_ciphertext,
+                notify_emails, notify_whatsapp, wablas_base_url,
+                wablas_token_ciphertext, wablas_secret_ciphertext,
+                created_at, updated_at
          FROM tenants
          ORDER BY created_at DESC`,
       );
@@ -244,12 +254,23 @@ export async function handleAdminRequest(req, res) {
       const webhookSecret = String(body.webhookSecret || "").trim();
       const webhookHash = webhookSecret ? hashWebhookSecret(webhookSecret) : null;
       const tokenCipher = encryptSecret(token);
+      const notifyEmails = String(body.notifyEmails || "").trim() || null;
+      const notifyWhatsapp = String(body.notifyWhatsapp || "").trim() || null;
+      const wablasBaseUrl = String(body.wablasBaseUrl || "").trim() || null;
+      const wablasToken = String(body.wablasToken || "").trim();
+      const wablasSecret = String(body.wablasSecret || "").trim();
+      const wablasTokenCipher = wablasToken ? encryptSecret(wablasToken) : null;
+      const wablasSecretCipher = wablasSecret ? encryptSecret(wablasSecret) : null;
       const inserted = await dbQuery(
         `INSERT INTO tenants (
-           key, app_id, token_ciphertext, webhook_secret_hash, user_ids, group_ids, entitlements, enabled, display_name
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
+           key, app_id, token_ciphertext, webhook_secret_hash, user_ids, group_ids, entitlements, enabled, display_name,
+           notify_emails, notify_whatsapp, wablas_base_url, wablas_token_ciphertext, wablas_secret_ciphertext
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14)
          RETURNING id, key, app_id, display_name, enabled, user_ids, group_ids, entitlements,
-                   webhook_secret_hash, token_ciphertext, created_at, updated_at`,
+                   webhook_secret_hash, token_ciphertext,
+                   notify_emails, notify_whatsapp, wablas_base_url,
+                   wablas_token_ciphertext, wablas_secret_ciphertext,
+                   created_at, updated_at`,
         [
           key,
           appId,
@@ -260,6 +281,11 @@ export async function handleAdminRequest(req, res) {
           JSON.stringify(entitlements),
           body.enabled !== false,
           displayName || null,
+          notifyEmails,
+          notifyWhatsapp,
+          wablasBaseUrl,
+          wablasTokenCipher,
+          wablasSecretCipher,
         ],
       );
       await writeAudit(admin.id, "tenant.create", { key, appId });
@@ -282,7 +308,7 @@ export async function handleAdminRequest(req, res) {
 
       if (req.method === "GET") {
         const rows = await dbQuery(
-          `SELECT id, username, role, display_name, enabled, created_at, updated_at
+          `SELECT id, username, role, display_name, phone, email, enabled, created_at, updated_at
            FROM field_users WHERE tenant_id = $1 ORDER BY username ASC`,
           [tenantId],
         );
@@ -296,6 +322,8 @@ export async function handleAdminRequest(req, res) {
         const password = String(body.password || "");
         const role = String(body.role || "operator").trim();
         const displayName = String(body.displayName || "").trim();
+        const phone = String(body.phone || "").trim() || null;
+        const email = String(body.email || "").trim() || null;
         if (!isFieldUsername(username)) {
           json(res, 400, { error: "Invalid username (2–64: A–Z a–z 0–9 . _ -)" });
           return true;
@@ -309,10 +337,19 @@ export async function handleAdminRequest(req, res) {
           return true;
         }
         const inserted = await dbQuery(
-          `INSERT INTO field_users (tenant_id, username, password_hash, role, display_name, enabled)
-           VALUES ($1,$2,$3,$4,$5,$6)
-           RETURNING id, username, role, display_name, enabled, created_at, updated_at`,
-          [tenantId, username, hashPassword(password), role, displayName || null, body.enabled !== false],
+          `INSERT INTO field_users (tenant_id, username, password_hash, role, display_name, phone, email, enabled)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           RETURNING id, username, role, display_name, phone, email, enabled, created_at, updated_at`,
+          [
+            tenantId,
+            username,
+            hashPassword(password),
+            role,
+            displayName || null,
+            phone,
+            email,
+            body.enabled !== false,
+          ],
         );
         await writeAudit(admin.id, "field_user.create", { tenantId, username, role });
         json(res, 201, { user: publicFieldUserRow(inserted.rows[0]) });
@@ -364,6 +401,10 @@ export async function handleAdminRequest(req, res) {
           body.displayName !== undefined
             ? String(body.displayName || "").trim() || null
             : current.display_name;
+        const phone =
+          body.phone !== undefined ? String(body.phone || "").trim() || null : current.phone;
+        const email =
+          body.email !== undefined ? String(body.email || "").trim() || null : current.email;
         const enabled =
           body.enabled !== undefined ? body.enabled !== false : current.enabled !== false;
 
@@ -372,11 +413,13 @@ export async function handleAdminRequest(req, res) {
              role = $3,
              password_hash = $4,
              display_name = $5,
-             enabled = $6,
+             phone = $6,
+             email = $7,
+             enabled = $8,
              updated_at = now()
            WHERE id = $1 AND tenant_id = $2
-           RETURNING id, username, role, display_name, enabled, created_at, updated_at`,
-          [userId, tenantId, role, passwordHash, displayName, enabled],
+           RETURNING id, username, role, display_name, phone, email, enabled, created_at, updated_at`,
+          [userId, tenantId, role, passwordHash, displayName, phone, email, enabled],
         );
         await writeAudit(admin.id, "field_user.update", {
           tenantId,
@@ -419,7 +462,10 @@ export async function handleAdminRequest(req, res) {
       if (req.method === "GET") {
         const found = await dbQuery(
           `SELECT id, key, app_id, display_name, enabled, user_ids, group_ids, entitlements,
-                  webhook_secret_hash, token_ciphertext, created_at, updated_at
+                  webhook_secret_hash, token_ciphertext,
+                  notify_emails, notify_whatsapp, wablas_base_url,
+                  wablas_token_ciphertext, wablas_secret_ciphertext,
+                  created_at, updated_at
            FROM tenants WHERE id = $1`,
           [id],
         );
@@ -481,6 +527,27 @@ export async function handleAdminRequest(req, res) {
             ? String(body.displayName || "").trim() || null
             : current.display_name;
 
+        const notifyEmails =
+          body.notifyEmails !== undefined
+            ? String(body.notifyEmails || "").trim() || null
+            : current.notify_emails;
+        const notifyWhatsapp =
+          body.notifyWhatsapp !== undefined
+            ? String(body.notifyWhatsapp || "").trim() || null
+            : current.notify_whatsapp;
+        const wablasBaseUrl =
+          body.wablasBaseUrl !== undefined
+            ? String(body.wablasBaseUrl || "").trim() || null
+            : current.wablas_base_url;
+        let wablasTokenCipher = current.wablas_token_ciphertext;
+        if (body.wablasToken !== undefined && String(body.wablasToken).trim()) {
+          wablasTokenCipher = encryptSecret(String(body.wablasToken).trim());
+        }
+        let wablasSecretCipher = current.wablas_secret_ciphertext;
+        if (body.wablasSecret !== undefined && String(body.wablasSecret).trim()) {
+          wablasSecretCipher = encryptSecret(String(body.wablasSecret).trim());
+        }
+
         const updated = await dbQuery(
           `UPDATE tenants SET
              key = $2,
@@ -492,10 +559,18 @@ export async function handleAdminRequest(req, res) {
              entitlements = $8::jsonb,
              enabled = $9,
              display_name = $10,
+             notify_emails = $11,
+             notify_whatsapp = $12,
+             wablas_base_url = $13,
+             wablas_token_ciphertext = $14,
+             wablas_secret_ciphertext = $15,
              updated_at = now()
            WHERE id = $1
            RETURNING id, key, app_id, display_name, enabled, user_ids, group_ids, entitlements,
-                     webhook_secret_hash, token_ciphertext, created_at, updated_at`,
+                     webhook_secret_hash, token_ciphertext,
+                     notify_emails, notify_whatsapp, wablas_base_url,
+                     wablas_token_ciphertext, wablas_secret_ciphertext,
+                     created_at, updated_at`,
           [
             id,
             key,
@@ -507,6 +582,11 @@ export async function handleAdminRequest(req, res) {
             JSON.stringify(entitlements),
             enabled,
             displayName,
+            notifyEmails,
+            notifyWhatsapp,
+            wablasBaseUrl,
+            wablasTokenCipher,
+            wablasSecretCipher,
           ],
         );
         await writeAudit(admin.id, "tenant.update", {

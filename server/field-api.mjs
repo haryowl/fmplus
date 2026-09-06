@@ -23,6 +23,7 @@ const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, 
   assigned_field_user_id,
   remind_due_at, remind_interval_days, remind_interval_km, remind_baseline_odometer_km,
   remind_interval_hours, remind_hours_since_at,
+  remind_before_days, remind_before_km, remind_before_hours, parent_event_id,
   created_at, updated_at`;
 
 function send(res, status, headers, body) {
@@ -248,12 +249,17 @@ export async function handleFieldRequest(req, res) {
         }
         const body = await readJson(req);
         delete body.assignedFieldUserId;
-        const event = await applyEventPatch(found.rows[0], body, user.tenantId);
-        event.photos = (event.photos || []).map((p) => ({
-          ...p,
-          url: `/api/field/maintenance/photos/${p.id}`,
-        }));
-        json(res, 200, { event });
+        const { event: patched, nextEvent } = await applyEventPatch(found.rows[0], body, user.tenantId, {
+          tenantKey: user.tenantKey,
+        });
+        const event = {
+          ...patched,
+          photos: (patched.photos || []).map((p) => ({
+            ...p,
+            url: `/api/field/maintenance/photos/${p.id}`,
+          })),
+        };
+        json(res, 200, { event, nextEvent: nextEvent || null });
         return true;
       }
 

@@ -17,6 +17,11 @@ type AdminTenant = {
   entitlements: Entitlements;
   hasWebhookSecret: boolean;
   hasToken: boolean;
+  notifyEmails?: string;
+  notifyWhatsapp?: string;
+  wablasBaseUrl?: string;
+  hasWablasToken?: boolean;
+  hasWablasSecret?: boolean;
   notifierUrlTemplate: string;
   notifierUrlMaintenance?: string;
   updatedAt?: string;
@@ -27,6 +32,8 @@ type FieldUserRow = {
   username: string;
   role: string;
   displayName: string;
+  phone?: string;
+  email?: string;
   enabled: boolean;
 };
 
@@ -38,6 +45,11 @@ type Draft = {
   webhookSecret: string;
   userIds: string;
   groupIds: string;
+  notifyEmails: string;
+  notifyWhatsapp: string;
+  wablasBaseUrl: string;
+  wablasToken: string;
+  wablasSecret: string;
   enabled: boolean;
   entitlements: Entitlements;
 };
@@ -57,6 +69,11 @@ function emptyDraft(): Draft {
     webhookSecret: "",
     userIds: "",
     groupIds: "",
+    notifyEmails: "",
+    notifyWhatsapp: "",
+    wablasBaseUrl: "https://wablas.com",
+    wablasToken: "",
+    wablasSecret: "",
     enabled: true,
     entitlements: defaultEntitlements(),
   };
@@ -71,6 +88,11 @@ function draftFromTenant(t: AdminTenant): Draft {
     webhookSecret: "",
     userIds: t.userIds.join(", "),
     groupIds: t.groupIds.join(", "),
+    notifyEmails: t.notifyEmails || "",
+    notifyWhatsapp: t.notifyWhatsapp || "",
+    wablasBaseUrl: t.wablasBaseUrl || "https://wablas.com",
+    wablasToken: "",
+    wablasSecret: "",
     enabled: t.enabled,
     entitlements: t.entitlements,
   };
@@ -143,6 +165,8 @@ export default function AdminConsole() {
   const [fuPassword, setFuPassword] = useState("");
   const [fuRole, setFuRole] = useState("operator");
   const [fuDisplayName, setFuDisplayName] = useState("");
+  const [fuPhone, setFuPhone] = useState("");
+  const [fuEmail, setFuEmail] = useState("");
   const [fuResetPass, setFuResetPass] = useState<Record<string, string>>({});
 
   const refreshMe = useCallback(async () => {
@@ -241,8 +265,13 @@ export default function AdminConsole() {
         groupIds: parseIdList(draft.groupIds),
         enabled: draft.enabled,
         entitlements: draft.entitlements,
+        notifyEmails: draft.notifyEmails.trim(),
+        notifyWhatsapp: draft.notifyWhatsapp.trim(),
+        wablasBaseUrl: draft.wablasBaseUrl.trim(),
         ...(draft.token.trim() ? { token: draft.token.trim() } : {}),
         ...(draft.webhookSecret.trim() ? { webhookSecret: draft.webhookSecret.trim() } : {}),
+        ...(draft.wablasToken.trim() ? { wablasToken: draft.wablasToken.trim() } : {}),
+        ...(draft.wablasSecret.trim() ? { wablasSecret: draft.wablasSecret.trim() } : {}),
       };
       if (selectedId === "new") {
         if (!payload.token) throw new Error("Armada token is required for new tenants");
@@ -302,11 +331,15 @@ export default function AdminConsole() {
           password: fuPassword,
           role: fuRole,
           displayName: fuDisplayName.trim(),
+          phone: fuPhone.trim(),
+          email: fuEmail.trim(),
         }),
       });
       setFuUsername("");
       setFuPassword("");
       setFuDisplayName("");
+      setFuPhone("");
+      setFuEmail("");
       setFuRole("operator");
       setNotice("Field user created");
       await loadFieldUsers(selectedId);
@@ -497,6 +530,50 @@ export default function AdminConsole() {
                     placeholder="empty = all"
                   />
                 </label>
+                <label className="span-2">
+                  Notify emails (comma-separated)
+                  <input
+                    value={draft.notifyEmails}
+                    onChange={(e) => setDraft({ ...draft, notifyEmails: e.target.value })}
+                    placeholder="ops@company.com"
+                  />
+                </label>
+                <label className="span-2">
+                  Notify WhatsApp numbers (comma-separated)
+                  <input
+                    value={draft.notifyWhatsapp}
+                    onChange={(e) => setDraft({ ...draft, notifyWhatsapp: e.target.value })}
+                    placeholder="62812…, 62813…"
+                  />
+                </label>
+                <label className="span-2">
+                  Wablas API base URL
+                  <input
+                    value={draft.wablasBaseUrl}
+                    onChange={(e) => setDraft({ ...draft, wablasBaseUrl: e.target.value })}
+                    placeholder="https://wablas.com or https://pati.wablas.com"
+                  />
+                </label>
+                <label>
+                  Wablas token {selectedId !== "new" ? "(leave blank to keep)" : ""}
+                  <input
+                    type="password"
+                    value={draft.wablasToken}
+                    onChange={(e) => setDraft({ ...draft, wablasToken: e.target.value })}
+                    autoComplete="off"
+                    placeholder={selected?.hasWablasToken ? "•••••••• (set)" : ""}
+                  />
+                </label>
+                <label>
+                  Wablas secret key {selectedId !== "new" ? "(leave blank to keep)" : ""}
+                  <input
+                    type="password"
+                    value={draft.wablasSecret}
+                    onChange={(e) => setDraft({ ...draft, wablasSecret: e.target.value })}
+                    autoComplete="off"
+                    placeholder={selected?.hasWablasSecret ? "•••••••• (set)" : ""}
+                  />
+                </label>
               </div>
 
               <ToggleGrid
@@ -600,6 +677,23 @@ export default function AdminConsole() {
                         ))}
                       </select>
                     </label>
+                    <label>
+                      Phone (WhatsApp)
+                      <input
+                        value={fuPhone}
+                        onChange={(e) => setFuPhone(e.target.value)}
+                        placeholder="62812…"
+                      />
+                    </label>
+                    <label>
+                      Email
+                      <input
+                        type="email"
+                        value={fuEmail}
+                        onChange={(e) => setFuEmail(e.target.value)}
+                        placeholder="tech@…"
+                      />
+                    </label>
                     <div className="span-2 admin-actions">
                       <button type="submit" className="btn" disabled={busy}>
                         Add field user
@@ -616,6 +710,8 @@ export default function AdminConsole() {
                             {" "}
                             · {u.role}
                             {u.displayName ? ` · ${u.displayName}` : ""}
+                            {u.phone ? ` · ${u.phone}` : ""}
+                            {u.email ? ` · ${u.email}` : ""}
                             {!u.enabled ? " · disabled" : ""}
                           </span>
                         </div>

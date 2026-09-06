@@ -132,6 +132,13 @@ export function tenantFromRequest(req) {
   return vault().get("") || null;
 }
 
+/** @param {string} key */
+export function tenantByKey(key) {
+  const k = String(key || "").trim();
+  if (!k) return vault().get("") || null;
+  return vault().get(k) || null;
+}
+
 export function publicTenant(tenant) {
   if (!tenant) return null;
   return {

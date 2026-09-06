@@ -95,6 +95,7 @@ const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, 
   assigned_field_user_id,
   remind_due_at, remind_interval_days, remind_interval_km, remind_baseline_odometer_km,
   remind_interval_hours, remind_hours_since_at,
+  remind_before_days, remind_before_km, remind_before_hours, parent_event_id,
   created_at, updated_at`;
 
 export function publicLine(row) {
@@ -156,6 +157,10 @@ export function publicEvent(row, extras = {}) {
     remindIntervalHours:
       row.remind_interval_hours == null ? null : Number(row.remind_interval_hours),
     remindHoursSinceAt: row.remind_hours_since_at || null,
+    remindBeforeDays: row.remind_before_days == null ? null : Number(row.remind_before_days),
+    remindBeforeKm: row.remind_before_km == null ? null : Number(row.remind_before_km),
+    remindBeforeHours: row.remind_before_hours == null ? null : Number(row.remind_before_hours),
+    parentEventId: row.parent_event_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...extras,
@@ -255,8 +260,10 @@ export async function replaceLines(eventId, linesInput) {
  * @param {object} current
  * @param {object} body
  * @param {string} tenantId
+ * @param {{ tenantKey?: string, vaultTenant?: { key: string, appId: number, token: string } }} [opts]
  */
-export async function applyEventPatch(current, body, tenantId) {
+export async function applyEventPatch(current, body, tenantId, opts = {}) {
+  const prevStatus = current.status;
   let status = current.status;
   if (body.status !== undefined) {
     status = String(body.status || "").trim();
@@ -402,14 +409,32 @@ export async function applyEventPatch(current, body, tenantId) {
     remindHoursSinceAt = current.created_at || new Date().toISOString();
   }
 
-  const updated = await dbQuery(
+  let remindBeforeDays = current.remind_before_days;
+  if (body.remindBeforeDays !== undefined) {
+    const n = Number(body.remindBeforeDays);
+    remindBeforeDays = Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+  }
+  let remindBeforeKm = current.remind_before_km;
+  if (body.remindBeforeKm !== undefined) {
+    const n = Number(body.remindBeforeKm);
+    remindBeforeKm = Number.isFinite(n) && n >= 0 ? n : null;
+  }
+  let remindBeforeHours = current.remind_before_hours;
+  if (body.remindBeforeHours !== undefined) {
+    const n = Number(body.remindBeforeHours);
+    remindBeforeHours = Number.isFinite(n) && n >= 0 ? n : null;
+  }
+
+  await dbQuery(
     `UPDATE service_events SET
        status = $3, title = $4, notes = $5, started_at = $6, ended_at = $7, odometer_km = $8,
        service_point_id = $9, service_point_name = $10, service_point_lat = $11, service_point_lon = $12,
        assigned_field_user_id = $13,
        remind_due_at = $14, remind_interval_days = $15, remind_interval_km = $16,
        remind_baseline_odometer_km = $17,
-       remind_interval_hours = $18, remind_hours_since_at = $19, updated_at = now()
+       remind_interval_hours = $18, remind_hours_since_at = $19,
+       remind_before_days = $20, remind_before_km = $21, remind_before_hours = $22,
+       updated_at = now()
      WHERE id = $1 AND tenant_id = $2
      RETURNING ${SELECT_COLS}`,
     [
@@ -432,6 +457,9 @@ export async function applyEventPatch(current, body, tenantId) {
       remindBaselineOdometerKm,
       remindIntervalHours,
       remindHoursSinceAt,
+      remindBeforeDays,
+      remindBeforeKm,
+      remindBeforeHours,
     ],
   );
 
@@ -439,7 +467,121 @@ export async function applyEventPatch(current, body, tenantId) {
     await replaceLines(current.id, body.lines);
   }
 
-  return loadEventDetail(tenantId, current.id);
+  const event = await loadEventDetail(tenantId, current.id);
+  let nextEvent = null;
+
+  if (prevStatus !== "done" && status === "done" && event) {
+    nextEvent = await spawnNextDueEvent(event, tenantId, {
+      vaultTenant: opts.vaultTenant,
+      completionOdo: odometerKm,
+    });
+    if (nextEvent) {
+      try {
+        const { fanOutEventReminder } = await import("./maintenance-remind.mjs");
+        await fanOutEventReminder({
+          tenantId,
+          tenantKey: opts.tenantKey || opts.vaultTenant?.key || "",
+          event: nextEvent,
+          kind: "next_due",
+          title: `Next maintenance due · ${nextEvent.userDisplayName || nextEvent.armadaUsername || "Vehicle"}`,
+          body: `${nextEvent.title} scheduled after completion.`,
+          payload: { parentEventId: event.id },
+        });
+      } catch (err) {
+        console.error("[maintenance] next_due notify", err);
+      }
+    }
+  }
+
+  return { event, nextEvent };
+}
+
+function scheduleConfigured(ev) {
+  return Boolean(
+    (ev.remindIntervalDays != null && ev.remindIntervalDays > 0) ||
+      (ev.remindIntervalKm != null && ev.remindIntervalKm > 0) ||
+      (ev.remindIntervalHours != null && ev.remindIntervalHours > 0) ||
+      (ev.remindDueAt && ev.remindIntervalDays),
+  );
+}
+
+/**
+ * @param {ReturnType<typeof publicEvent>} completed
+ * @param {string} tenantId
+ */
+async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionOdo } = {}) {
+  if (!scheduleConfigured(completed)) return null;
+
+  let nextBaseline = completionOdo ?? completed.odometerKm ?? completed.remindBaselineOdometerKm;
+  if (
+    (nextBaseline == null || !Number.isFinite(nextBaseline)) &&
+    completed.remindIntervalKm != null &&
+    vaultTenant?.token &&
+    completed.armadaUserId
+  ) {
+    try {
+      const km = await computeKmAccrued(completed, vaultTenant);
+      if (km.currentOdoKm != null) nextBaseline = km.currentOdoKm;
+    } catch {
+      /* ignore */
+    }
+  }
+  if (
+    nextBaseline == null &&
+    completed.remindBaselineOdometerKm != null &&
+    completed.remindIntervalKm != null
+  ) {
+    nextBaseline = completed.remindBaselineOdometerKm + completed.remindIntervalKm;
+  }
+
+  let nextDueAt = null;
+  const ended = completed.endedAt || new Date().toISOString();
+  if (completed.remindIntervalDays != null && completed.remindIntervalDays > 0) {
+    const base = Date.parse(completed.remindDueAt || ended);
+    if (Number.isFinite(base)) {
+      nextDueAt = new Date(base + completed.remindIntervalDays * 86400000).toISOString();
+    }
+  } else if (completed.remindDueAt && completed.remindIntervalDays) {
+    const base = Date.parse(completed.remindDueAt);
+    if (Number.isFinite(base)) {
+      nextDueAt = new Date(base + completed.remindIntervalDays * 86400000).toISOString();
+    }
+  }
+
+  const inserted = await dbQuery(
+    `INSERT INTO service_events (
+       tenant_id, status, title, notes, armada_user_id, armada_username, user_display_name,
+       lat, lon, odometer_km, assigned_field_user_id,
+       remind_due_at, remind_interval_days, remind_interval_km, remind_baseline_odometer_km,
+       remind_interval_hours, remind_hours_since_at,
+       remind_before_days, remind_before_km, remind_before_hours, parent_event_id
+     ) VALUES (
+       $1,'due',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20
+     ) RETURNING ${SELECT_COLS}`,
+    [
+      tenantId,
+      completed.title,
+      null,
+      completed.armadaUserId,
+      completed.armadaUsername || null,
+      completed.userDisplayName || null,
+      completed.lat,
+      completed.lon,
+      nextBaseline,
+      completed.assignedFieldUserId,
+      nextDueAt,
+      completed.remindIntervalDays,
+      completed.remindIntervalKm,
+      nextBaseline,
+      completed.remindIntervalHours,
+      completed.remindIntervalHours ? new Date().toISOString() : null,
+      completed.remindBeforeDays,
+      completed.remindBeforeKm,
+      completed.remindBeforeHours,
+      completed.id,
+    ],
+  );
+  return publicEvent(inserted.rows[0]);
 }
 
 export async function savePhoto(eventId, tenantId, { buffer, contentType, caption, fieldUserId }) {
@@ -741,10 +883,14 @@ export async function handleMaintenanceRequest(req, res) {
 
     if (url.pathname === "/api/maintenance/events" && req.method === "GET") {
       const status = String(url.searchParams.get("status") || "open").toLowerCase();
+      const healthFilter = String(url.searchParams.get("health") || "").toLowerCase();
       const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 100));
       const clauses = ["tenant_id = $1"];
       const params = [dbTenant.id];
-      if (status === "open") clauses.push("status IN ('due', 'in_progress')");
+      if (healthFilter === "completed" || status === "completed") {
+        params.push("done");
+        clauses.push(`status = $${params.length}`);
+      } else if (status === "open") clauses.push("status IN ('due', 'in_progress')");
       else if (STATUSES.includes(status)) {
         params.push(status);
         clauses.push(`status = $${params.length}`);
@@ -759,7 +905,43 @@ export async function handleMaintenanceRequest(req, res) {
          ORDER BY created_at DESC LIMIT $${params.length}`,
         params,
       );
-      json(res, 200, { events: rows.rows.map((r) => publicEvent(r)) });
+      let events = rows.rows.map((r) => publicEvent(r));
+      const vaultTenant = tenantFromRequest(req);
+      const { enrichEventsWithSchedule, summarizeSchedule } = await import("./maintenance-schedule.mjs");
+      events = await enrichEventsWithSchedule(events, vaultTenant || null);
+      const summary = summarizeSchedule(events);
+      if (healthFilter && ["upcoming", "due", "overdue", "ok", "none"].includes(healthFilter)) {
+        events = events.filter((e) => e.scheduleHealth === healthFilter);
+      }
+      if (["upcoming", "due", "overdue"].includes(healthFilter) || healthFilter === "") {
+        events = [...events].sort(
+          (a, b) => (b.scheduleUrgency ?? 0) - (a.scheduleUrgency ?? 0),
+        );
+      }
+      json(res, 200, { events, summary });
+      return true;
+    }
+
+    if (url.pathname === "/api/maintenance/schedule-summary" && req.method === "GET") {
+      const vaultTenant = tenantFromRequest(req);
+      const openRows = await dbQuery(
+        `SELECT ${SELECT_COLS} FROM service_events
+         WHERE tenant_id = $1 AND status IN ('due', 'in_progress')
+         ORDER BY created_at DESC LIMIT 200`,
+        [dbTenant.id],
+      );
+      const doneCount = await dbQuery(
+        `SELECT count(*)::int AS n FROM service_events WHERE tenant_id = $1 AND status = 'done'`,
+        [dbTenant.id],
+      );
+      const { enrichEventsWithSchedule, summarizeSchedule } = await import("./maintenance-schedule.mjs");
+      const enriched = await enrichEventsWithSchedule(
+        openRows.rows.map((r) => publicEvent(r)),
+        vaultTenant || null,
+      );
+      const summary = summarizeSchedule(enriched);
+      summary.completed = doneCount.rows[0]?.n || 0;
+      json(res, 200, { summary });
       return true;
     }
 
@@ -803,12 +985,21 @@ export async function handleMaintenanceRequest(req, res) {
       if (remindHoursSinceAt && Number.isNaN(Date.parse(remindHoursSinceAt))) {
         remindHoursSinceAt = null;
       }
+      const beforeDaysRaw = Number(body.remindBeforeDays);
+      const remindBeforeDays =
+        Number.isFinite(beforeDaysRaw) && beforeDaysRaw >= 0 ? Math.round(beforeDaysRaw) : null;
+      const beforeKmRaw = Number(body.remindBeforeKm);
+      const remindBeforeKm = Number.isFinite(beforeKmRaw) && beforeKmRaw >= 0 ? beforeKmRaw : null;
+      const beforeHoursRaw = Number(body.remindBeforeHours);
+      const remindBeforeHours =
+        Number.isFinite(beforeHoursRaw) && beforeHoursRaw >= 0 ? beforeHoursRaw : null;
       const inserted = await dbQuery(
         `INSERT INTO service_events (
            tenant_id, status, title, notes, armada_user_id, armada_username, user_display_name, lat, lon, odometer_km,
            remind_due_at, remind_interval_days, remind_interval_km, remind_baseline_odometer_km,
-           remind_interval_hours, remind_hours_since_at
-         ) VALUES ($1, 'due', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+           remind_interval_hours, remind_hours_since_at,
+           remind_before_days, remind_before_km, remind_before_hours
+         ) VALUES ($1, 'due', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
          RETURNING ${SELECT_COLS}`,
         [
           dbTenant.id,
@@ -826,9 +1017,64 @@ export async function handleMaintenanceRequest(req, res) {
           remindBaseline,
           remindIntervalHours,
           remindHoursSinceAt,
+          remindBeforeDays,
+          remindBeforeKm,
+          remindBeforeHours,
         ],
       );
       json(res, 201, { event: publicEvent(inserted.rows[0]) });
+      return true;
+    }
+
+    if (url.pathname === "/api/maintenance/reminders" && req.method === "GET") {
+      const status = String(url.searchParams.get("status") || "open").toLowerCase();
+      const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));
+      const clauses = ["tenant_id = $1"];
+      const params = [dbTenant.id];
+      if (status === "open") clauses.push("acked_at IS NULL");
+      else if (status === "acked") clauses.push("acked_at IS NOT NULL");
+      else if (status !== "all") {
+        json(res, 400, { error: "Invalid status filter" });
+        return true;
+      }
+      params.push(limit);
+      const rows = await dbQuery(
+        `SELECT * FROM maintenance_reminders
+         WHERE ${clauses.join(" AND ")}
+         ORDER BY created_at DESC LIMIT $${params.length}`,
+        params,
+      );
+      const { publicReminder } = await import("./maintenance-remind.mjs");
+      json(res, 200, { reminders: rows.rows.map(publicReminder) });
+      return true;
+    }
+
+    const remindAck = /^\/api\/maintenance\/reminders\/([0-9a-f-]{36})\/ack$/i.exec(url.pathname);
+    if (remindAck && req.method === "POST") {
+      const updated = await dbQuery(
+        `UPDATE maintenance_reminders SET acked_at = now()
+         WHERE id = $1 AND tenant_id = $2
+         RETURNING *`,
+        [remindAck[1], dbTenant.id],
+      );
+      if (!updated.rows[0]) {
+        json(res, 404, { error: "Reminder not found" });
+        return true;
+      }
+      const { publicReminder } = await import("./maintenance-remind.mjs");
+      json(res, 200, { reminder: publicReminder(updated.rows[0]) });
+      return true;
+    }
+
+    if (url.pathname === "/api/maintenance/reminders/evaluate" && req.method === "POST") {
+      const vaultTenant = tenantFromRequest(req);
+      if (!vaultTenant?.token) {
+        json(res, 503, { error: "No Armada token for this tenant" });
+        return true;
+      }
+      const { evaluateTenantReminders } = await import("./maintenance-remind.mjs");
+      const result = await evaluateTenantReminders(dbTenant.id, vaultTenant);
+      json(res, 200, result);
       return true;
     }
 
@@ -928,7 +1174,21 @@ export async function handleMaintenanceRequest(req, res) {
         json(res, 404, { error: "Service event not found" });
         return true;
       }
-      json(res, 200, { event: detail });
+      const vaultTenant = tenantFromRequest(req);
+      let hoursByEventId = {};
+      if (detail.remindIntervalHours && vaultTenant?.token) {
+        try {
+          const hrs = await computeHoursAccrued(detail, vaultTenant);
+          if (hrs.hoursAccrued != null) hoursByEventId = { [detail.id]: hrs.hoursAccrued };
+        } catch {
+          /* ignore */
+        }
+      }
+      const { enrichEventsWithSchedule } = await import("./maintenance-schedule.mjs");
+      const [enriched] = await enrichEventsWithSchedule([detail], vaultTenant || null, {
+        hoursByEventId,
+      });
+      json(res, 200, { event: { ...detail, ...enriched } });
       return true;
     }
 
@@ -942,8 +1202,12 @@ export async function handleMaintenanceRequest(req, res) {
         return true;
       }
       const body = await readJson(req);
-      const event = await applyEventPatch(found.rows[0], body, dbTenant.id);
-      json(res, 200, { event });
+      const vaultTenant = tenantFromRequest(req);
+      const { event, nextEvent } = await applyEventPatch(found.rows[0], body, dbTenant.id, {
+        tenantKey: dbTenant.key,
+        vaultTenant: vaultTenant || undefined,
+      });
+      json(res, 200, { event, nextEvent: nextEvent || null });
       return true;
     }
 

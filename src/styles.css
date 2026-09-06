@@ -858,6 +858,11 @@ table.metrics tbody tr:hover {
   color: var(--danger);
 }
 
+.banner.ok {
+  background: #e7f3ea;
+  color: #1e5c34;
+}
+
 .progress-track {
   flex: 1;
   height: 6px;
@@ -2700,6 +2705,51 @@ html.onesheet-root body {
   align-items: center;
 }
 
+.maintenance-reminders {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #d5cbb9;
+  background: #fff8ef;
+}
+
+.maintenance-reminders-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.maintenance-reminders h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.maintenance-reminder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.maintenance-reminder-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e0d6c4;
+  background: #fffdf8;
+}
+
+.maintenance-reminder-list li > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
 .maintenance-create {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2888,6 +2938,81 @@ html.onesheet-root body {
   padding: 2px 8px;
   border: 1px solid #c9bfae;
   background: #f4f1ea;
+}
+
+.maintenance-schedule-dash {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.maint-dash-tile {
+  display: grid;
+  gap: 4px;
+  padding: 12px 10px;
+  text-align: left;
+  border: 1px solid #d5cbb9;
+  background: #fffdf8;
+  font: inherit;
+  cursor: pointer;
+  color: inherit;
+}
+
+.maint-dash-tile strong {
+  font-size: 1.35rem;
+  font-weight: 650;
+}
+
+.maint-dash-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #6b6458;
+}
+
+.maint-dash-tile.is-active {
+  border-color: #4a463e;
+  background: #f4f1ea;
+}
+
+.maint-dash-tile.maint-health-upcoming.is-active,
+.maint-badge.maint-health-upcoming {
+  border-color: #b7a56a;
+  background: #f7f1de;
+  color: #6a5414;
+}
+
+.maint-dash-tile.maint-health-due.is-active,
+.maint-badge.maint-health-due {
+  border-color: #c49a5a;
+  background: #f8ead8;
+  color: #7a4b12;
+}
+
+.maint-dash-tile.maint-health-overdue.is-active,
+.maint-badge.maint-health-overdue {
+  border-color: #c97a7a;
+  background: #f8e4e4;
+  color: #7a1f1f;
+}
+
+.maint-dash-tile.maint-health-completed.is-active,
+.maint-badge.maint-health-completed {
+  border-color: #8aaf8f;
+  background: #e8f3ea;
+  color: #1e5c34;
+}
+
+.maintenance-row-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (max-width: 720px) {
+  .maintenance-schedule-dash {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .maintenance-detail-links {
