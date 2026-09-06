@@ -26,6 +26,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   pdf: "PDF export",
   ai: "AI analysis",
   reverseGeocode: "Reverse geocode columns",
+  deleteMaintenance: "Delete maintenance jobs (manager)",
 };
 
 export function defaultEntitlements(): Entitlements {
@@ -48,6 +49,7 @@ export function defaultEntitlements(): Entitlements {
       pdf: true,
       ai: true,
       reverseGeocode: true,
+      deleteMaintenance: false,
     },
     actions: {
       ackException: false,

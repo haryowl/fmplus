@@ -9,6 +9,7 @@ import {
   fetchServiceEvent,
   fetchServicePoints,
   formatServiceDuration,
+  deleteServiceEvent,
   patchServiceEvent,
   SERVICE_STATUS_LABELS,
   SCHEDULE_HEALTH_LABELS,
@@ -32,6 +33,8 @@ type Props = {
   onClose: () => void;
   onSaved: (event: ServiceEvent) => void;
   onOpenEvent?: (eventId: string) => void;
+  canDelete?: boolean;
+  onDeleted?: (eventId: string) => void;
 };
 
 function toLocalInput(iso: string | null | undefined): string {
@@ -71,7 +74,14 @@ function vehicleSearch(userId: number): string {
   return q ? `?${q}` : "";
 }
 
-export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent }: Props) {
+export function MaintenanceEventDetail({
+  eventId,
+  onClose,
+  onSaved,
+  onOpenEvent,
+  canDelete,
+  onDeleted,
+}: Props) {
   const [event, setEvent] = useState<ServiceEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -367,6 +377,28 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
 
   async function setStatus(status: ServiceEventStatus) {
     await save({ status });
+  }
+
+  async function onDelete() {
+    if (!event || !canDelete) return;
+    if (
+      !window.confirm(
+        `Delete “${event.title || "this job"}” permanently? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await deleteServiceEvent(event.id);
+      onDeleted?.(event.id);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function onPhoto(e: ChangeEvent<HTMLInputElement>) {
@@ -812,6 +844,11 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
               Reopen
             </button>
           )}
+          {canDelete ? (
+            <button type="button" className="btn-ghost" disabled={busy} onClick={() => void onDelete()}>
+              Delete
+            </button>
+          ) : null}
         </div>
       </form>
 

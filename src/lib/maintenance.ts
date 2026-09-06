@@ -415,6 +415,15 @@ export async function patchServiceEvent(
   return { event: data.event, nextEvent: data.nextEvent || null };
 }
 
+export async function deleteServiceEvent(id: string): Promise<void> {
+  const res = await fetch(`/api/maintenance/events/${id}`, {
+    method: "DELETE",
+    headers: { accept: "application/json", ...tenantHeaders() },
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(data.error || `Delete ${res.status}`);
+}
+
 export type MaintenanceReminder = {
   id: string;
   eventId: string | null;

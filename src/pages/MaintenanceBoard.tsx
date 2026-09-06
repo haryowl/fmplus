@@ -3,6 +3,7 @@ import { fetchGroups, fetchUsersForGroup, fetchUsersStatus, groupOptionLabel } f
 import { TIMEZONES } from "../lib/config";
 import {
   createServiceEvent,
+  deleteServiceEvent,
   downloadMaintenanceExcel,
   eventVehicleLabel,
   eventWhen,
@@ -167,6 +168,7 @@ export default function MaintenanceBoard() {
   const [boardPanel, setBoardPanel] = useState<"jobs" | "catalog" | "costs">("jobs");
 
   const excelOk = entitlements.features.excel !== false;
+  const deleteOk = entitlements.features.deleteMaintenance === true;
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
 
   const statusById = useMemo(() => {
@@ -494,6 +496,37 @@ export default function MaintenanceBoard() {
     }
   }
 
+  async function deleteJob(ev: ServiceEvent) {
+    if (!deleteOk) return;
+    const label = ev.title || "this job";
+    if (
+      !window.confirm(
+        `Delete “${label}” permanently? This cannot be undone.${
+          ev.status === "approved" || ev.status === "done" ? ` (status: ${ev.status})` : ""
+        }`,
+      )
+    ) {
+      return;
+    }
+    setBusyId(ev.id);
+    setError("");
+    try {
+      await deleteServiceEvent(ev.id);
+      setEvents((prev) => prev.filter((x) => x.id !== ev.id));
+      if (eventId === ev.id) setEventId("");
+      void fetchScheduleSummary()
+        .then((dash) => {
+          setScheduleDash(dash);
+          setScheduleSummary(dash.summary);
+        })
+        .catch(() => {});
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <div className="app maintenance-page">
       <header className="topbar">
@@ -633,17 +666,22 @@ export default function MaintenanceBoard() {
             >
               <span className="maint-dash-label">Completed</span>
               <strong>{scheduleSummary?.completed ?? "—"}</strong>
-              {scheduleSummary?.awaitingApprove ? (
-                <span className="muted maint-dash-sub">{scheduleSummary.awaitingApprove} to approve</span>
-              ) : null}
+              <span className="muted maint-dash-sub">Awaiting approve</span>
             </button>
             <button
               type="button"
-              className={`maint-dash-tile${boardPanel === "costs" ? " is-active" : ""}`}
-              onClick={() => setBoardPanel("costs")}
+              className={`maint-dash-tile${
+                boardPanel === "costs" || statusFilter === "approved" ? " is-active" : ""
+              }`}
+              onClick={() => {
+                setBoardPanel("jobs");
+                setHealthFilter("");
+                setStatusFilter("approved");
+              }}
             >
               <span className="maint-dash-label">Approved</span>
               <strong>{scheduleSummary?.approved ?? "—"}</strong>
+              <span className="muted maint-dash-sub">Locked</span>
             </button>
             <div className="maint-dash-tile maint-dash-stat" title="Average Start→Done time (last 90 days)">
               <span className="maint-dash-label">Avg service</span>
@@ -700,6 +738,9 @@ export default function MaintenanceBoard() {
           </button>
           <button type="button" className="btn-secondary" onClick={() => setBoardPanel("catalog")}>
             Catalog
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => setBoardPanel("costs")}>
+            Cost dashboard
           </button>
           {showCreate && (
             <button type="button" className="btn-secondary" onClick={() => setShowCreate(false)}>
@@ -995,8 +1036,19 @@ export default function MaintenanceBoard() {
         {eventId ? (
           <MaintenanceEventDetail
             eventId={eventId}
+            canDelete={deleteOk}
             onClose={() => setEventId("")}
             onOpenEvent={(id) => setEventId(id)}
+            onDeleted={(id) => {
+              setEvents((prev) => prev.filter((x) => x.id !== id));
+              setEventId("");
+              void fetchScheduleSummary()
+                .then((dash) => {
+                  setScheduleDash(dash);
+                  setScheduleSummary(dash.summary);
+                })
+                .catch(() => {});
+            }}
             onSaved={(updated) => {
               setEvents((prev) => {
                 const exists = prev.some((x) => x.id === updated.id);
@@ -1005,7 +1057,8 @@ export default function MaintenanceBoard() {
                     statusFilter === "open" ||
                     statusFilter === "due" ||
                     statusFilter === "all" ||
-                    healthFilter === "completed"
+                    (healthFilter === "completed" && updated.status === "done") ||
+                    (statusFilter === "approved" && updated.status === "approved")
                   ) {
                     return [updated, ...prev];
                   }
@@ -1019,17 +1072,26 @@ export default function MaintenanceBoard() {
                 ) {
                   return prev.filter((x) => x.id !== updated.id);
                 }
+                if (healthFilter === "completed" && updated.status !== "done") {
+                  return prev.filter((x) => x.id !== updated.id);
+                }
                 if (
                   statusFilter !== "all" &&
                   statusFilter !== "open" &&
                   statusFilter !== updated.status &&
-                  !(healthFilter === "completed" && (updated.status === "done" || updated.status === "approved"))
+                  healthFilter !== "completed"
                 ) {
                   return prev.filter((x) => x.id !== updated.id);
                 }
                 return prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x));
               });
               void fetchMaintReminders("open").then(setReminders).catch(() => {});
+              void fetchScheduleSummary()
+                .then((dash) => {
+                  setScheduleDash(dash);
+                  setScheduleSummary(dash.summary);
+                })
+                .catch(() => {});
             }}
           />
         ) : boardPanel === "jobs" ? (
@@ -1212,6 +1274,16 @@ export default function MaintenanceBoard() {
                                   Reopen
                                 </button>
                               )}
+                              {deleteOk ? (
+                                <button
+                                  type="button"
+                                  className="btn-ghost btn-compact"
+                                  disabled={busyId === ev.id}
+                                  onClick={() => void deleteJob(ev)}
+                                >
+                                  Delete
+                                </button>
+                              ) : null}
                             </div>
                           </li>
                         );

@@ -12,6 +12,13 @@ describe("entitlements", () => {
     expect(merged.modules.maintenance).toBe(true);
     expect(merged.features.ai).toBe(false);
     expect(merged.features.excel).toBe(true);
+    expect(merged.features.deleteMaintenance).toBe(false);
+  });
+
+  it("can enable deleteMaintenance", () => {
+    expect(mergeEntitlements({ features: { deleteMaintenance: true } }).features.deleteMaintenance).toBe(
+      true,
+    );
   });
 
   it("ignores unknown junk", () => {

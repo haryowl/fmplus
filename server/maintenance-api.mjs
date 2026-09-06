@@ -22,10 +22,10 @@ import {
   createCatalogItem,
   deleteCatalogItem,
   ensureCatalog,
-  loadCatalog,
   normalizeLineKind,
   updateCatalogItem,
 } from "./maintenance-catalog.mjs";
+import { mergeEntitlements } from "./entitlements.mjs";
 
 export { canTransition, serviceDurationMinutes, nextScheduleDueAt } from "./maintenance-lifecycle.mjs";
 
@@ -1335,7 +1335,8 @@ export async function handleMaintenanceRequest(req, res) {
       const clauses = ["tenant_id = $1"];
       const params = [dbTenant.id];
       if (healthFilter === "completed" || status === "completed") {
-        clauses.push("status IN ('done', 'approved')");
+        // Completed board = Done awaiting Approve (Approved has its own tile/dashboard).
+        clauses.push("status = 'done'");
       } else if (status === "open") {
         clauses.push("status IN ('due', 'in_progress')");
         // Unassigned auto-follow-ups stay off the open board until a manager assigns them.
@@ -1385,15 +1386,11 @@ export async function handleMaintenanceRequest(req, res) {
         [dbTenant.id],
       );
       const doneCount = await dbQuery(
-        `SELECT count(*)::int AS n FROM service_events WHERE tenant_id = $1 AND status IN ('done', 'approved')`,
+        `SELECT count(*)::int AS n FROM service_events WHERE tenant_id = $1 AND status = 'done'`,
         [dbTenant.id],
       );
       const approvedCount = await dbQuery(
         `SELECT count(*)::int AS n FROM service_events WHERE tenant_id = $1 AND status = 'approved'`,
-        [dbTenant.id],
-      );
-      const awaitingApprove = await dbQuery(
-        `SELECT count(*)::int AS n FROM service_events WHERE tenant_id = $1 AND status = 'done'`,
         [dbTenant.id],
       );
       const { enrichEventsWithSchedule, summarizeSchedule } = await import("./maintenance-schedule.mjs");
@@ -1404,7 +1401,7 @@ export async function handleMaintenanceRequest(req, res) {
       const summary = summarizeSchedule(enriched);
       summary.completed = doneCount.rows[0]?.n || 0;
       summary.approved = approvedCount.rows[0]?.n || 0;
-      summary.awaitingApprove = awaitingApprove.rows[0]?.n || 0;
+      summary.awaitingApprove = summary.completed;
 
       const serviceAvg = await dbQuery(
         `SELECT
@@ -1748,6 +1745,42 @@ export async function handleMaintenanceRequest(req, res) {
         actor: "manager",
       });
       json(res, 200, { event, nextEvent: nextEvent || null });
+      return true;
+    }
+
+    if (eventMatch && req.method === "DELETE") {
+      const entRow = await dbQuery(`SELECT entitlements FROM tenants WHERE id = $1`, [dbTenant.id]);
+      const entitlements = mergeEntitlements(entRow.rows[0]?.entitlements);
+      if (entitlements.features.deleteMaintenance !== true) {
+        json(res, 403, {
+          error: "Deleting maintenance jobs is disabled for this tenant (enable in Admin → Features)",
+        });
+        return true;
+      }
+      const found = await dbQuery(
+        `SELECT id, title, status FROM service_events WHERE id = $1 AND tenant_id = $2`,
+        [eventMatch[1], dbTenant.id],
+      );
+      if (!found.rows[0]) {
+        json(res, 404, { error: "Service event not found" });
+        return true;
+      }
+      // Clear parent links from follow-ups, then delete (lines/photos CASCADE).
+      await dbQuery(`UPDATE service_events SET parent_event_id = NULL WHERE parent_event_id = $1`, [
+        eventMatch[1],
+      ]);
+      await dbQuery(`DELETE FROM service_events WHERE id = $1 AND tenant_id = $2`, [
+        eventMatch[1],
+        dbTenant.id,
+      ]);
+      json(res, 200, {
+        ok: true,
+        deleted: {
+          id: found.rows[0].id,
+          title: found.rows[0].title || "",
+          status: found.rows[0].status,
+        },
+      });
       return true;
     }
 

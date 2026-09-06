@@ -17,7 +17,7 @@ export const MODULE_KEYS = [
   "routePlan",
 ];
 
-export const FEATURE_KEYS = ["excel", "pdf", "ai", "reverseGeocode"];
+export const FEATURE_KEYS = ["excel", "pdf", "ai", "reverseGeocode", "deleteMaintenance"];
 
 export const ACTION_KEYS = [
   "ackException",
@@ -47,6 +47,7 @@ export function defaultEntitlements() {
       pdf: true,
       ai: true,
       reverseGeocode: true,
+      deleteMaintenance: false,
     },
     actions: {
       ackException: false,
