@@ -177,6 +177,7 @@ https://81.17.100.7:4173/maintenance?k=YOUR_TENANT_KEY
 
 - Armada Maintenance Schedule → Command notifier URL with `kind=maintenance` (and webhook `secret`) creates a **due** service event automatically.
 - Managers can also **Open for vehicle**: pick any fleet unit from group / last-status (name, odo, position filled automatically). From **Live** or **Status**, use the **Maintenance** link on a vehicle (`/maintenance?k=…&userId=…&open=1`).
+- On create (and in event detail), set optional **Schedule / remind**: due date, interval days, interval km (live **odometer from `/usersstatus`** vs baseline → accrued/due on detail), and/or **interval hours** (ignition-on time from Armada day tracks / cache — not a CAN engine-hour meter). Hours since defaults to create time; hour accrual lookback is capped at **90 days**. Detail shows accrued vs interval for both km and hours when set.
 - Board filters: open / due / in progress / done / skipped; Start / Done / Skip / Reopen; Excel export; Trips/Full when Armada user id is known.
 
 **Event detail (D2)** — click a row or **Detail** (`?eventId=`):

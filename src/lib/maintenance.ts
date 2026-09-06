@@ -46,6 +46,12 @@ export type ServiceEvent = {
   servicePointLat?: number | null;
   servicePointLon?: number | null;
   assignedFieldUserId?: string | null;
+  remindDueAt?: string | null;
+  remindIntervalDays?: number | null;
+  remindIntervalKm?: number | null;
+  remindBaselineOdometerKm?: number | null;
+  remindIntervalHours?: number | null;
+  remindHoursSinceAt?: string | null;
   createdAt: string;
   updatedAt: string;
   lines?: ServiceLine[];
@@ -119,6 +125,12 @@ export async function createServiceEvent(body: {
   lat?: number | null;
   lon?: number | null;
   odometerKm?: number | null;
+  remindDueAt?: string | null;
+  remindIntervalDays?: number | null;
+  remindIntervalKm?: number | null;
+  remindBaselineOdometerKm?: number | null;
+  remindIntervalHours?: number | null;
+  remindHoursSinceAt?: string | null;
 }): Promise<ServiceEvent> {
   const res = await fetch("/api/maintenance/events", {
     method: "POST",
@@ -180,10 +192,115 @@ export function eventVehicleLabel(ev: ServiceEvent): string {
   return ev.userDisplayName || ev.armadaUsername || (ev.armadaUserId ? `#${ev.armadaUserId}` : "—");
 }
 
+export function scheduleLabel(ev: ServiceEvent): string {
+  const parts: string[] = [];
+  if (ev.remindDueAt) {
+    const d = new Date(ev.remindDueAt);
+    if (Number.isFinite(d.getTime())) parts.push(`date ${d.toISOString().slice(0, 10)}`);
+  }
+  if (ev.remindIntervalDays != null && ev.remindIntervalDays > 0) {
+    parts.push(`every ${ev.remindIntervalDays}d`);
+  }
+  if (ev.remindIntervalKm != null && ev.remindIntervalKm > 0) {
+    parts.push(`every ${formatScheduleKm(ev.remindIntervalKm)} km`);
+    if (ev.remindBaselineOdometerKm != null) {
+      const next = ev.remindBaselineOdometerKm + ev.remindIntervalKm;
+      parts.push(`next @ ${formatScheduleKm(next)} km`);
+    }
+  }
+  if (ev.remindIntervalHours != null && ev.remindIntervalHours > 0) {
+    parts.push(`every ${ev.remindIntervalHours}h ign-on`);
+  }
+  return parts.join(" · ");
+}
+
+function formatScheduleKm(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
 export function eventWhen(ev: ServiceEvent, now = Date.now()): string {
   const ms = Date.parse(ev.createdAt);
   if (!Number.isFinite(ms)) return "—";
   return ageLabel(ms, now);
+}
+
+export async function fetchHoursAccrued(
+  eventId: string,
+  signal?: AbortSignal,
+): Promise<{
+  hoursAccrued: number | null;
+  intervalHours: number | null;
+  due: boolean;
+  lookbackCapped: boolean;
+  reason: string | null;
+  daysLoaded?: number;
+  daysRequested?: number;
+  sinceAt?: string;
+}> {
+  const res = await fetch(`/api/maintenance/events/${eventId}/hours-accrued`, {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    hoursAccrued?: number | null;
+    intervalHours?: number | null;
+    due?: boolean;
+    lookbackCapped?: boolean;
+    reason?: string | null;
+    daysLoaded?: number;
+    daysRequested?: number;
+    sinceAt?: string;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Hours ${res.status}`);
+  return {
+    hoursAccrued: data.hoursAccrued ?? null,
+    intervalHours: data.intervalHours ?? null,
+    due: Boolean(data.due),
+    lookbackCapped: Boolean(data.lookbackCapped),
+    reason: data.reason ?? null,
+    daysLoaded: data.daysLoaded,
+    daysRequested: data.daysRequested,
+    sinceAt: data.sinceAt,
+  };
+}
+
+export async function fetchKmAccrued(
+  eventId: string,
+  signal?: AbortSignal,
+): Promise<{
+  kmAccrued: number | null;
+  intervalKm: number | null;
+  baselineKm: number | null;
+  currentOdoKm: number | null;
+  nextDueOdoKm: number | null;
+  due: boolean;
+  reason: string | null;
+}> {
+  const res = await fetch(`/api/maintenance/events/${eventId}/km-accrued`, {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    kmAccrued?: number | null;
+    intervalKm?: number | null;
+    baselineKm?: number | null;
+    currentOdoKm?: number | null;
+    nextDueOdoKm?: number | null;
+    due?: boolean;
+    reason?: string | null;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Km ${res.status}`);
+  return {
+    kmAccrued: data.kmAccrued ?? null,
+    intervalKm: data.intervalKm ?? null,
+    baselineKm: data.baselineKm ?? null,
+    currentOdoKm: data.currentOdoKm ?? null,
+    nextDueOdoKm: data.nextDueOdoKm ?? null,
+    due: Boolean(data.due),
+    reason: data.reason ?? null,
+  };
 }
 
 export function emptyLine(): ServiceLine {
@@ -199,7 +316,11 @@ export function downloadMaintenanceExcel(events: ServiceEvent[]): void {
     "User ID",
     "Notes",
     "Service point",
-    "Created",
+    "Due date",
+      "Interval days",
+      "Interval km",
+      "Interval hours",
+      "Created",
     "Started",
     "Ended",
     "Odometer km",
@@ -216,6 +337,10 @@ export function downloadMaintenanceExcel(events: ServiceEvent[]): void {
       ev.armadaUserId ?? "",
       ev.notes,
       ev.servicePointName || "",
+      ev.remindDueAt || "",
+      ev.remindIntervalDays ?? "",
+      ev.remindIntervalKm ?? "",
+      ev.remindIntervalHours ?? "",
       ev.createdAt,
       ev.startedAt || "",
       ev.endedAt || "",

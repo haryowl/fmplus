@@ -6,6 +6,20 @@ import { databaseUrlConfigured, dbQuery } from "./db.mjs";
 import { tenantFromRequest } from "./tenants.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 import { getObject, objectStorageConfigured, putObject } from "./storage.mjs";
+import { armadaFetch } from "./armada-fetch.mjs";
+import {
+  isPastDay,
+  readCachedDay,
+  tenantCacheScope,
+  todayKeyFromOffset,
+  writeCachedDay,
+} from "./day-tracks-cache.mjs";
+import { slimAsync } from "./slim-pool.mjs";
+import { eachDateYmd, sumIgnitionOnHours } from "./ignition-hours.mjs";
+import { evaluateKmInterval, findOdometerKmInStatus } from "./odometer-status.mjs";
+
+const HOURS_LOOKBACK_DAYS = 90;
+const DAY_FETCH_TIMEOUT_MS = 120_000;
 
 const STATUSES = ["due", "in_progress", "done", "skipped"];
 const LINE_KINDS = ["part", "labor", "other"];
@@ -78,7 +92,10 @@ export async function resolveDbTenant(req) {
 const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
   lat, lon, notification_id, started_at, ended_at, odometer_km,
   service_point_id, service_point_name, service_point_lat, service_point_lon,
-  assigned_field_user_id, created_at, updated_at`;
+  assigned_field_user_id,
+  remind_due_at, remind_interval_days, remind_interval_km, remind_baseline_odometer_km,
+  remind_interval_hours, remind_hours_since_at,
+  created_at, updated_at`;
 
 export function publicLine(row) {
   const qty = Number(row.qty) || 0;
@@ -129,6 +146,16 @@ export function publicEvent(row, extras = {}) {
     servicePointLat: row.service_point_lat == null ? null : Number(row.service_point_lat),
     servicePointLon: row.service_point_lon == null ? null : Number(row.service_point_lon),
     assignedFieldUserId: row.assigned_field_user_id || null,
+    remindDueAt: row.remind_due_at || null,
+    remindIntervalDays:
+      row.remind_interval_days == null ? null : Number(row.remind_interval_days),
+    remindIntervalKm:
+      row.remind_interval_km == null ? null : Number(row.remind_interval_km),
+    remindBaselineOdometerKm:
+      row.remind_baseline_odometer_km == null ? null : Number(row.remind_baseline_odometer_km),
+    remindIntervalHours:
+      row.remind_interval_hours == null ? null : Number(row.remind_interval_hours),
+    remindHoursSinceAt: row.remind_hours_since_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...extras,
@@ -341,11 +368,48 @@ export async function applyEventPatch(current, body, tenantId) {
     }
   }
 
+  let remindDueAt = current.remind_due_at;
+  if (body.remindDueAt !== undefined) {
+    remindDueAt = body.remindDueAt ? new Date(String(body.remindDueAt)).toISOString() : null;
+  }
+  let remindIntervalDays = current.remind_interval_days;
+  if (body.remindIntervalDays !== undefined) {
+    const n = Number(body.remindIntervalDays);
+    remindIntervalDays = Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+  }
+  let remindIntervalKm = current.remind_interval_km;
+  if (body.remindIntervalKm !== undefined) {
+    const n = Number(body.remindIntervalKm);
+    remindIntervalKm = Number.isFinite(n) && n > 0 ? n : null;
+  }
+  let remindBaselineOdometerKm = current.remind_baseline_odometer_km;
+  if (body.remindBaselineOdometerKm !== undefined) {
+    const n = Number(body.remindBaselineOdometerKm);
+    remindBaselineOdometerKm = Number.isFinite(n) ? n : null;
+  }
+  let remindIntervalHours = current.remind_interval_hours;
+  if (body.remindIntervalHours !== undefined) {
+    const n = Number(body.remindIntervalHours);
+    remindIntervalHours = Number.isFinite(n) && n > 0 ? n : null;
+  }
+  let remindHoursSinceAt = current.remind_hours_since_at;
+  if (body.remindHoursSinceAt !== undefined) {
+    remindHoursSinceAt = body.remindHoursSinceAt
+      ? new Date(String(body.remindHoursSinceAt)).toISOString()
+      : null;
+  }
+  if (remindIntervalHours && !remindHoursSinceAt) {
+    remindHoursSinceAt = current.created_at || new Date().toISOString();
+  }
+
   const updated = await dbQuery(
     `UPDATE service_events SET
        status = $3, title = $4, notes = $5, started_at = $6, ended_at = $7, odometer_km = $8,
        service_point_id = $9, service_point_name = $10, service_point_lat = $11, service_point_lon = $12,
-       assigned_field_user_id = $13, updated_at = now()
+       assigned_field_user_id = $13,
+       remind_due_at = $14, remind_interval_days = $15, remind_interval_km = $16,
+       remind_baseline_odometer_km = $17,
+       remind_interval_hours = $18, remind_hours_since_at = $19, updated_at = now()
      WHERE id = $1 AND tenant_id = $2
      RETURNING ${SELECT_COLS}`,
     [
@@ -362,6 +426,12 @@ export async function applyEventPatch(current, body, tenantId) {
       servicePointLat,
       servicePointLon,
       assignedFieldUserId,
+      remindDueAt,
+      remindIntervalDays,
+      remindIntervalKm,
+      remindBaselineOdometerKm,
+      remindIntervalHours,
+      remindHoursSinceAt,
     ],
   );
 
@@ -387,6 +457,153 @@ export async function savePhoto(eventId, tenantId, { buffer, contentType, captio
     [eventId, key, contentType || "image/jpeg", buffer.length, caption || null, fieldUserId || null],
   );
   return publicPhoto(inserted.rows[0]);
+}
+
+async function loadDayTrackPoints(vaultTenant, userId, date, todayYmd) {
+  const scope = tenantCacheScope(vaultTenant.key);
+  const cached = await readCachedDay(scope, vaultTenant.appId, userId, date);
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      /* fetch fresh */
+    }
+  }
+  if (!vaultTenant.token) return [];
+  const url = `https://armada.id/lt/api/v.1/applications/${vaultTenant.appId}/users/${userId}/tracks?Date=${encodeURIComponent(date)}&Filtered=true`;
+  try {
+    const res = await armadaFetch(url, {
+      method: "GET",
+      headers: {
+        authorization: vaultTenant.token,
+        accept: "application/json",
+      },
+      timeoutMs: DAY_FETCH_TIMEOUT_MS,
+    });
+    if (res.status === 404) return [];
+    if (!res.ok) return [];
+    const raw = res.buffer || (await res.text());
+    const slim = await slimAsync(raw);
+    if (isPastDay(date, todayYmd)) {
+      await writeCachedDay(scope, vaultTenant.appId, userId, date, slim).catch(() => {});
+    }
+    try {
+      const parsed = JSON.parse(slim);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * @param {object} eventRow public or DB-shaped event with camel or snake fields
+ * @param {import('./tenants.mjs').Tenant} vaultTenant
+ */
+export async function computeHoursAccrued(eventRow, vaultTenant) {
+  const userId = Number(eventRow.armadaUserId ?? eventRow.armada_user_id);
+  const intervalHours = Number(eventRow.remindIntervalHours ?? eventRow.remind_interval_hours);
+  let sinceAt = eventRow.remindHoursSinceAt ?? eventRow.remind_hours_since_at;
+  if (!sinceAt) sinceAt = eventRow.createdAt ?? eventRow.created_at;
+
+  if (!Number.isInteger(userId) || userId < 1) {
+    return { hoursAccrued: null, intervalHours: null, due: false, lookbackCapped: false, reason: "no_vehicle" };
+  }
+  if (!Number.isFinite(intervalHours) || intervalHours <= 0) {
+    return { hoursAccrued: null, intervalHours: null, due: false, lookbackCapped: false, reason: "no_interval" };
+  }
+  const sinceMs = Date.parse(String(sinceAt || ""));
+  if (!Number.isFinite(sinceMs)) {
+    return {
+      hoursAccrued: null,
+      intervalHours,
+      due: false,
+      lookbackCapped: false,
+      reason: "no_since",
+    };
+  }
+
+  const todayYmd = todayKeyFromOffset("+00:00");
+  const lookbackStart = new Date();
+  lookbackStart.setUTCDate(lookbackStart.getUTCDate() - HOURS_LOOKBACK_DAYS);
+  const lookbackMs = lookbackStart.getTime();
+  const lookbackCapped = sinceMs < lookbackMs;
+  const windowStartMs = Math.max(sinceMs, lookbackMs);
+  const fromYmd = new Date(windowStartMs).toISOString().slice(0, 10);
+  const dates = eachDateYmd(fromYmd, todayYmd);
+
+  let hoursAccrued = 0;
+  let daysLoaded = 0;
+  for (const date of dates) {
+    const points = await loadDayTrackPoints(vaultTenant, userId, date, todayYmd);
+    if (points.length) {
+      hoursAccrued += sumIgnitionOnHours(points, {
+        sinceMs: windowStartMs,
+        untilMs: null,
+      });
+      daysLoaded += 1;
+    }
+  }
+
+  const rounded = Math.round(hoursAccrued * 100) / 100;
+  return {
+    hoursAccrued: rounded,
+    intervalHours,
+    due: rounded >= intervalHours,
+    lookbackCapped,
+    daysLoaded,
+    daysRequested: dates.length,
+    sinceAt: new Date(sinceMs).toISOString(),
+    reason: null,
+  };
+}
+
+/**
+ * Live km interval check from Armada /usersstatus odometerAcc.
+ * @param {ReturnType<typeof publicEvent>} event
+ * @param {{ appId: number, token: string }} vaultTenant
+ */
+export async function computeKmAccrued(event, vaultTenant) {
+  const userId = Number(event.armadaUserId);
+  const intervalKm = event.remindIntervalKm;
+  let baselineKm = event.remindBaselineOdometerKm;
+  if (baselineKm == null && event.odometerKm != null) baselineKm = event.odometerKm;
+
+  if (!Number.isInteger(userId) || userId < 1) {
+    return { ...evaluateKmInterval({ currentOdoKm: null, baselineKm, intervalKm }), reason: "no_vehicle" };
+  }
+  if (intervalKm == null || !(intervalKm > 0)) {
+    return evaluateKmInterval({ currentOdoKm: null, baselineKm, intervalKm: null });
+  }
+
+  const url = `https://armada.id/lt/api/v.1/applications/${vaultTenant.appId}/usersstatus`;
+  try {
+    const res = await armadaFetch(url, {
+      method: "GET",
+      headers: {
+        authorization: vaultTenant.token,
+        accept: "application/json",
+      },
+      timeoutMs: 45_000,
+    });
+    if (!res.ok) {
+      return {
+        ...evaluateKmInterval({ currentOdoKm: null, baselineKm, intervalKm }),
+        reason: `status_${res.status}`,
+      };
+    }
+    const raw = await res.json();
+    const currentOdoKm = findOdometerKmInStatus(raw, userId);
+    return evaluateKmInterval({ currentOdoKm, baselineKm, intervalKm });
+  } catch (err) {
+    return {
+      ...evaluateKmInterval({ currentOdoKm: null, baselineKm, intervalKm }),
+      reason: err instanceof Error ? err.message : "status_fetch_failed",
+    };
+  }
 }
 
 export async function handleMaintenanceRequest(req, res) {
@@ -561,10 +778,37 @@ export async function handleMaintenanceRequest(req, res) {
       const lat = body.lat == null || body.lat === "" ? null : Number(body.lat);
       const lon = body.lon == null || body.lon === "" ? null : Number(body.lon);
       const odoRaw = body.odometerKm == null || body.odometerKm === "" ? null : Number(body.odometerKm);
+      const remindDueAt = body.remindDueAt ? new Date(String(body.remindDueAt)).toISOString() : null;
+      const intervalDaysRaw = Number(body.remindIntervalDays);
+      const remindIntervalDays =
+        Number.isFinite(intervalDaysRaw) && intervalDaysRaw > 0 ? Math.round(intervalDaysRaw) : null;
+      const intervalKmRaw = Number(body.remindIntervalKm);
+      const remindIntervalKm =
+        Number.isFinite(intervalKmRaw) && intervalKmRaw > 0 ? intervalKmRaw : null;
+      const baselineRaw =
+        body.remindBaselineOdometerKm == null || body.remindBaselineOdometerKm === ""
+          ? odoRaw
+          : Number(body.remindBaselineOdometerKm);
+      const remindBaseline =
+        Number.isFinite(baselineRaw) ? baselineRaw : Number.isFinite(odoRaw) ? odoRaw : null;
+      const intervalHoursRaw = Number(body.remindIntervalHours);
+      const remindIntervalHours =
+        Number.isFinite(intervalHoursRaw) && intervalHoursRaw > 0 ? intervalHoursRaw : null;
+      let remindHoursSinceAt = body.remindHoursSinceAt
+        ? new Date(String(body.remindHoursSinceAt)).toISOString()
+        : null;
+      if (remindIntervalHours && !remindHoursSinceAt) {
+        remindHoursSinceAt = new Date().toISOString();
+      }
+      if (remindHoursSinceAt && Number.isNaN(Date.parse(remindHoursSinceAt))) {
+        remindHoursSinceAt = null;
+      }
       const inserted = await dbQuery(
         `INSERT INTO service_events (
-           tenant_id, status, title, notes, armada_user_id, armada_username, user_display_name, lat, lon, odometer_km
-         ) VALUES ($1, 'due', $2, $3, $4, $5, $6, $7, $8, $9)
+           tenant_id, status, title, notes, armada_user_id, armada_username, user_display_name, lat, lon, odometer_km,
+           remind_due_at, remind_interval_days, remind_interval_km, remind_baseline_odometer_km,
+           remind_interval_hours, remind_hours_since_at
+         ) VALUES ($1, 'due', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          RETURNING ${SELECT_COLS}`,
         [
           dbTenant.id,
@@ -576,9 +820,55 @@ export async function handleMaintenanceRequest(req, res) {
           Number.isFinite(lat) ? lat : null,
           Number.isFinite(lon) ? lon : null,
           Number.isFinite(odoRaw) ? odoRaw : null,
+          remindDueAt && !Number.isNaN(Date.parse(remindDueAt)) ? remindDueAt : null,
+          remindIntervalDays,
+          remindIntervalKm,
+          remindBaseline,
+          remindIntervalHours,
+          remindHoursSinceAt,
         ],
       );
       json(res, 201, { event: publicEvent(inserted.rows[0]) });
+      return true;
+    }
+
+    const hoursMatch = /^\/api\/maintenance\/events\/([0-9a-f-]{36})\/hours-accrued$/i.exec(url.pathname);
+    if (hoursMatch && req.method === "GET") {
+      const found = await dbQuery(`SELECT ${SELECT_COLS} FROM service_events WHERE id = $1 AND tenant_id = $2`, [
+        hoursMatch[1],
+        dbTenant.id,
+      ]);
+      if (!found.rows[0]) {
+        json(res, 404, { error: "Service event not found" });
+        return true;
+      }
+      const vaultTenant = tenantFromRequest(req);
+      if (!vaultTenant?.token) {
+        json(res, 503, { error: "No Armada token for this tenant" });
+        return true;
+      }
+      const result = await computeHoursAccrued(publicEvent(found.rows[0]), vaultTenant);
+      json(res, 200, result);
+      return true;
+    }
+
+    const kmMatch = /^\/api\/maintenance\/events\/([0-9a-f-]{36})\/km-accrued$/i.exec(url.pathname);
+    if (kmMatch && req.method === "GET") {
+      const found = await dbQuery(`SELECT ${SELECT_COLS} FROM service_events WHERE id = $1 AND tenant_id = $2`, [
+        kmMatch[1],
+        dbTenant.id,
+      ]);
+      if (!found.rows[0]) {
+        json(res, 404, { error: "Service event not found" });
+        return true;
+      }
+      const vaultTenant = tenantFromRequest(req);
+      if (!vaultTenant?.token) {
+        json(res, 503, { error: "No Armada token for this tenant" });
+        return true;
+      }
+      const result = await computeKmAccrued(publicEvent(found.rows[0]), vaultTenant);
+      json(res, 200, result);
       return true;
     }
 

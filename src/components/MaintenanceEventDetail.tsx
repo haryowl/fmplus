@@ -2,6 +2,8 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   emptyLine,
   eventVehicleLabel,
+  fetchHoursAccrued,
+  fetchKmAccrued,
   fetchMaintFieldUsers,
   fetchServiceEvent,
   fetchServicePoints,
@@ -41,6 +43,19 @@ function fromLocalInput(value: string): string | null {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
+function toLocalDateInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return "";
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function fromLocalDateInput(value: string): string | null {
+  if (!value.trim()) return null;
+  const ms = Date.parse(`${value.trim()}T00:00:00`);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
 function vehicleSearch(userId: number): string {
   const params = new URLSearchParams(window.location.search);
   params.set("userId", String(userId));
@@ -68,6 +83,30 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
   const [servicePointLon, setServicePointLon] = useState("");
   const [servicePointId, setServicePointId] = useState<string | null>(null);
   const [assignedFieldUserId, setAssignedFieldUserId] = useState("");
+  const [remindDueAt, setRemindDueAt] = useState("");
+  const [remindIntervalDays, setRemindIntervalDays] = useState("");
+  const [remindIntervalKm, setRemindIntervalKm] = useState("");
+  const [remindBaselineOdometerKm, setRemindBaselineOdometerKm] = useState("");
+  const [remindIntervalHours, setRemindIntervalHours] = useState("");
+  const [remindHoursSinceAt, setRemindHoursSinceAt] = useState("");
+  const [hoursAccrued, setHoursAccrued] = useState<{
+    hoursAccrued: number | null;
+    intervalHours: number | null;
+    due: boolean;
+    lookbackCapped: boolean;
+    reason: string | null;
+  } | null>(null);
+  const [hoursLoading, setHoursLoading] = useState(false);
+  const [kmAccrued, setKmAccrued] = useState<{
+    kmAccrued: number | null;
+    intervalKm: number | null;
+    baselineKm: number | null;
+    currentOdoKm: number | null;
+    nextDueOdoKm: number | null;
+    due: boolean;
+    reason: string | null;
+  } | null>(null);
+  const [kmLoading, setKmLoading] = useState(false);
   const [lines, setLines] = useState<ServiceLine[]>([emptyLine()]);
 
   useEffect(() => {
@@ -103,8 +142,80 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
     setServicePointLon(ev.servicePointLon != null ? String(ev.servicePointLon) : "");
     setServicePointId(ev.servicePointId || null);
     setAssignedFieldUserId(ev.assignedFieldUserId || "");
+    setRemindDueAt(toLocalDateInput(ev.remindDueAt));
+    setRemindIntervalDays(ev.remindIntervalDays != null ? String(ev.remindIntervalDays) : "");
+    setRemindIntervalKm(ev.remindIntervalKm != null ? String(ev.remindIntervalKm) : "");
+    setRemindBaselineOdometerKm(
+      ev.remindBaselineOdometerKm != null ? String(ev.remindBaselineOdometerKm) : "",
+    );
+    setRemindIntervalHours(ev.remindIntervalHours != null ? String(ev.remindIntervalHours) : "");
+    setRemindHoursSinceAt(toLocalInput(ev.remindHoursSinceAt));
     setLines(ev.lines?.length ? ev.lines.map((l) => ({ ...l })) : [emptyLine()]);
   }
+
+  useEffect(() => {
+    if (!event?.id || !(event.remindIntervalHours != null && event.remindIntervalHours > 0)) {
+      setHoursAccrued(null);
+      return;
+    }
+    const ac = new AbortController();
+    setHoursLoading(true);
+    void fetchHoursAccrued(event.id, ac.signal)
+      .then((r) => {
+        if (!ac.signal.aborted) setHoursAccrued(r);
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") {
+          setHoursAccrued({
+            hoursAccrued: null,
+            intervalHours: event.remindIntervalHours ?? null,
+            due: false,
+            lookbackCapped: false,
+            reason: err.message,
+          });
+        }
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setHoursLoading(false);
+      });
+    return () => ac.abort();
+  }, [event?.id, event?.remindIntervalHours, event?.remindHoursSinceAt, event?.updatedAt]);
+
+  useEffect(() => {
+    if (!event?.id || !(event.remindIntervalKm != null && event.remindIntervalKm > 0)) {
+      setKmAccrued(null);
+      return;
+    }
+    const ac = new AbortController();
+    setKmLoading(true);
+    void fetchKmAccrued(event.id, ac.signal)
+      .then((r) => {
+        if (!ac.signal.aborted) setKmAccrued(r);
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") {
+          setKmAccrued({
+            kmAccrued: null,
+            intervalKm: event.remindIntervalKm ?? null,
+            baselineKm: event.remindBaselineOdometerKm ?? null,
+            currentOdoKm: null,
+            nextDueOdoKm: null,
+            due: false,
+            reason: err.message,
+          });
+        }
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setKmLoading(false);
+      });
+    return () => ac.abort();
+  }, [
+    event?.id,
+    event?.remindIntervalKm,
+    event?.remindBaselineOdometerKm,
+    event?.odometerKm,
+    event?.updatedAt,
+  ]);
 
   async function searchPoints(q: string) {
     setServicePointName(q);
@@ -166,6 +277,13 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
         servicePointLat: servicePointLat.trim() === "" ? null : Number(servicePointLat),
         servicePointLon: servicePointLon.trim() === "" ? null : Number(servicePointLon),
         assignedFieldUserId: assignedFieldUserId || null,
+        remindDueAt: fromLocalDateInput(remindDueAt),
+        remindIntervalDays: remindIntervalDays.trim() === "" ? null : Number(remindIntervalDays),
+        remindIntervalKm: remindIntervalKm.trim() === "" ? null : Number(remindIntervalKm),
+        remindBaselineOdometerKm:
+          remindBaselineOdometerKm.trim() === "" ? null : Number(remindBaselineOdometerKm),
+        remindIntervalHours: remindIntervalHours.trim() === "" ? null : Number(remindIntervalHours),
+        remindHoursSinceAt: fromLocalInput(remindHoursSinceAt),
         upsertServicePoint: Boolean(servicePointName.trim()),
         lines: lines
           .filter((l) => l.description.trim() || l.unitPrice != null || l.unitCost != null)
@@ -227,7 +345,7 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
     return (
       <section className="maintenance-detail">
         {error && <div className="banner error">{error}</div>}
-        <button type="button" className="btn-ghost" onClick={onClose}>
+        <button type="button" className="btn-secondary" onClick={onClose}>
           Back to board
         </button>
       </section>
@@ -239,7 +357,7 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
   return (
     <section className="maintenance-detail">
       <div className="maintenance-detail-head">
-        <button type="button" className="btn-ghost" onClick={onClose}>
+        <button type="button" className="btn-secondary" onClick={onClose}>
           ← Board
         </button>
         <span className={`maint-badge maint-status-${event.status}`}>
@@ -248,10 +366,10 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
         <span className="muted">{eventVehicleLabel(event)}</span>
         {event.armadaUserId ? (
           <span className="maintenance-detail-links">
-            <a className="btn-ghost" href={tripsHref(search)}>
+            <a className="btn-link" href={tripsHref(search)}>
               Trips
             </a>
-            <a className="btn-ghost" href={fullHref(search)}>
+            <a className="btn-link" href={fullHref(search)}>
               Full
             </a>
           </span>
@@ -304,6 +422,123 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
           </select>
         </label>
 
+        <fieldset className="span-2 maintenance-schedule">
+          <legend>Schedule / remind</legend>
+          <p className="muted maintenance-hint">
+            Independent due rules (optional). Use a calendar date, day interval, km interval, and/or
+            ignition-on hours from tracks — not only Armada notifier.
+          </p>
+          <div className="maintenance-schedule-grid">
+            <label>
+              Due date
+              <input type="date" value={remindDueAt} onChange={(e) => setRemindDueAt(e.target.value)} />
+            </label>
+            <label>
+              Interval (days)
+              <input
+                type="number"
+                min={1}
+                step={1}
+                placeholder="e.g. 90"
+                value={remindIntervalDays}
+                onChange={(e) => setRemindIntervalDays(e.target.value)}
+              />
+            </label>
+            <label>
+              Interval (km)
+              <input
+                type="number"
+                min={1}
+                step="any"
+                placeholder="e.g. 5000"
+                value={remindIntervalKm}
+                onChange={(e) => setRemindIntervalKm(e.target.value)}
+              />
+            </label>
+            <label>
+              Baseline odo (km)
+              <input
+                type="number"
+                step="any"
+                placeholder="Start of km interval"
+                value={remindBaselineOdometerKm}
+                onChange={(e) => setRemindBaselineOdometerKm(e.target.value)}
+              />
+            </label>
+            <label>
+              Interval (hours, ign-on)
+              <input
+                type="number"
+                min={1}
+                step="any"
+                placeholder="e.g. 250"
+                value={remindIntervalHours}
+                onChange={(e) => setRemindIntervalHours(e.target.value)}
+              />
+            </label>
+            <label>
+              Hours since
+              <input
+                type="datetime-local"
+                value={remindHoursSinceAt}
+                onChange={(e) => setRemindHoursSinceAt(e.target.value)}
+              />
+            </label>
+          </div>
+          {remindIntervalKm.trim() && remindBaselineOdometerKm.trim() ? (
+            <p className="muted maintenance-hint">
+              Next km due around{" "}
+              {(Number(remindBaselineOdometerKm) + Number(remindIntervalKm)).toLocaleString()} km
+            </p>
+          ) : null}
+          {remindIntervalKm.trim() ? (
+            <p className="muted maintenance-hint">
+              {kmLoading
+                ? "Reading odometer from live status…"
+                : kmAccrued?.kmAccrued != null && kmAccrued.intervalKm != null
+                  ? `Odo ${kmAccrued.currentOdoKm?.toLocaleString() ?? "—"} km · accrued ${kmAccrued.kmAccrued.toLocaleString()} / ${kmAccrued.intervalKm.toLocaleString()} km${
+                      kmAccrued.due ? " — due" : ""
+                    }${
+                      kmAccrued.nextDueOdoKm != null
+                        ? ` · next @ ${kmAccrued.nextDueOdoKm.toLocaleString()} km`
+                        : ""
+                    }`
+                  : kmAccrued?.reason === "no_baseline"
+                    ? "Set baseline odo (or create with vehicle status) to evaluate km interval."
+                    : kmAccrued?.reason === "no_status_odo"
+                      ? "No odometer on live status for this vehicle."
+                      : kmAccrued?.reason
+                        ? `Km: ${kmAccrued.reason}`
+                        : "Save to evaluate km against live status odometer."}
+              {kmAccrued?.currentOdoKm != null ? (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => setRemindBaselineOdometerKm(String(kmAccrued.currentOdoKm))}
+                  >
+                    Use live odo as baseline
+                  </button>
+                </>
+              ) : null}
+            </p>
+          ) : null}
+          {remindIntervalHours.trim() ? (
+            <p className="muted maintenance-hint">
+              {hoursLoading
+                ? "Computing ignition-on hours from tracks…"
+                : hoursAccrued?.hoursAccrued != null && hoursAccrued.intervalHours != null
+                  ? `Accrued ${hoursAccrued.hoursAccrued.toFixed(1)} / ${hoursAccrued.intervalHours} h${
+                      hoursAccrued.due ? " — due" : ""
+                    }${hoursAccrued.lookbackCapped ? " (lookback capped at 90 days)" : ""}`
+                  : hoursAccrued?.reason
+                    ? `Hours: ${hoursAccrued.reason}`
+                    : "Save to compute ignition-on hours from tracks."}
+            </p>
+          ) : null}
+        </fieldset>
+
         <fieldset className="span-2 maintenance-point">
           <legend>Service point</legend>
           <label>
@@ -324,7 +559,7 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
             <ul className="maintenance-point-hints">
               {pointHints.slice(0, 6).map((p) => (
                 <li key={p.id}>
-                  <button type="button" className="btn-ghost" onClick={() => pickPoint(p)}>
+                  <button type="button" className="btn-link" onClick={() => pickPoint(p)}>
                     {p.name}
                     {p.lat != null && p.lon != null ? ` · ${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}` : ""}
                   </button>
@@ -341,7 +576,7 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
               Lon
               <input value={servicePointLon} onChange={(e) => setServicePointLon(e.target.value)} />
             </label>
-            <button type="button" className="btn-ghost" onClick={useVehiclePin} disabled={event.lat == null}>
+            <button type="button" className="btn-secondary" onClick={useVehiclePin} disabled={event.lat == null}>
               Use vehicle pin
             </button>
           </div>
@@ -402,13 +637,19 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
                 value={line.vendor}
                 onChange={(e) => updateLine(idx, { vendor: e.target.value })}
               />
-              <button type="button" className="btn-ghost" onClick={() => removeLine(idx)}>
+              <button
+                type="button"
+                className="btn-icon"
+                title="Remove line"
+                aria-label="Remove line"
+                onClick={() => removeLine(idx)}
+              >
                 ×
               </button>
             </div>
           ))}
           <div className="maintenance-lines-footer">
-            <button type="button" className="btn-ghost" onClick={() => setLines((p) => [...p, emptyLine()])}>
+            <button type="button" className="btn-secondary" onClick={() => setLines((p) => [...p, emptyLine()])}>
               Add line
             </button>
             <span className="muted">
@@ -418,26 +659,31 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
         </fieldset>
 
         <div className="span-2 maintenance-detail-actions">
-          <button type="submit" className="btn" disabled={busy}>
+          <button type="submit" className="btn btn-primary" disabled={busy}>
             Save
           </button>
           {event.status === "due" && (
-            <button type="button" className="btn" disabled={busy} onClick={() => void setStatus("in_progress")}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy}
+              onClick={() => void setStatus("in_progress")}
+            >
               Start
             </button>
           )}
           {(event.status === "due" || event.status === "in_progress") && (
             <>
-              <button type="button" className="btn" disabled={busy} onClick={() => void setStatus("done")}>
+              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void setStatus("done")}>
                 Done
               </button>
-              <button type="button" className="btn-ghost" disabled={busy} onClick={() => void setStatus("skipped")}>
+              <button type="button" className="btn-secondary" disabled={busy} onClick={() => void setStatus("skipped")}>
                 Skip
               </button>
             </>
           )}
           {(event.status === "done" || event.status === "skipped") && (
-            <button type="button" className="btn-ghost" disabled={busy} onClick={() => void setStatus("due")}>
+            <button type="button" className="btn-secondary" disabled={busy} onClick={() => void setStatus("due")}>
               Reopen
             </button>
           )}
@@ -447,7 +693,7 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved }: Props) {
       <div className="maintenance-photos">
         <div className="maintenance-photos-head">
           <h3>Proof of maintenance</h3>
-          <label className="btn-ghost maint-photo-upload">
+          <label className="btn-secondary maint-photo-upload">
             Add photo
             <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void onPhoto(e)} />
           </label>

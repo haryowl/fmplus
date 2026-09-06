@@ -8,6 +8,7 @@ import {
   eventWhen,
   fetchServiceEvents,
   patchServiceEvent,
+  scheduleLabel,
   SERVICE_STATUS_LABELS,
   type MaintenanceStatusFilter,
   type ServiceEvent,
@@ -64,6 +65,10 @@ export default function MaintenanceBoard() {
   const [notes, setNotes] = useState("");
   const [selectedUserId, setSelectedUserId] = useState(query.userId || "");
   const [vehicleQuery, setVehicleQuery] = useState("");
+  const [remindDueAt, setRemindDueAt] = useState("");
+  const [remindIntervalDays, setRemindIntervalDays] = useState("");
+  const [remindIntervalKm, setRemindIntervalKm] = useState("");
+  const [remindIntervalHours, setRemindIntervalHours] = useState("");
   const [eventId, setEventId] = useState(
     () => new URLSearchParams(window.location.search).get("eventId") || "",
   );
@@ -238,9 +243,20 @@ export default function MaintenanceBoard() {
         lat: st?.lat ?? null,
         lon: st?.lon ?? null,
         odometerKm: st?.odometerKm ?? null,
+        remindDueAt: remindDueAt.trim()
+          ? new Date(`${remindDueAt.trim()}T00:00:00`).toISOString()
+          : null,
+        remindIntervalDays: remindIntervalDays.trim() === "" ? null : Number(remindIntervalDays),
+        remindIntervalKm: remindIntervalKm.trim() === "" ? null : Number(remindIntervalKm),
+        remindIntervalHours: remindIntervalHours.trim() === "" ? null : Number(remindIntervalHours),
+        remindBaselineOdometerKm: st?.odometerKm ?? null,
       });
       setNotes("");
       setTitle(defaultTitle());
+      setRemindDueAt("");
+      setRemindIntervalDays("");
+      setRemindIntervalKm("");
+      setRemindIntervalHours("");
       setShowCreate(false);
       setEventId(created.id);
       setReload((n) => n + 1);
@@ -355,7 +371,7 @@ export default function MaintenanceBoard() {
         <div className="maintenance-toolbar">
           <button
             type="button"
-            className="btn"
+            className="btn btn-primary"
             onClick={() => {
               setShowCreate(true);
               if (!title.trim()) setTitle(defaultTitle());
@@ -364,7 +380,7 @@ export default function MaintenanceBoard() {
             Open for vehicle
           </button>
           {showCreate && (
-            <button type="button" className="btn-ghost" onClick={() => setShowCreate(false)}>
+            <button type="button" className="btn-secondary" onClick={() => setShowCreate(false)}>
               Cancel
             </button>
           )}
@@ -418,8 +434,59 @@ export default function MaintenanceBoard() {
               Notes (optional)
               <input value={notes} onChange={(e) => setNotes(e.target.value)} />
             </label>
+            <fieldset className="span-2 maintenance-schedule">
+              <legend>Schedule / remind (optional)</legend>
+              <div className="maintenance-schedule-grid">
+                <label>
+                  Due date
+                  <input type="date" value={remindDueAt} onChange={(e) => setRemindDueAt(e.target.value)} />
+                </label>
+                <label>
+                  Interval (days)
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    placeholder="e.g. 90"
+                    value={remindIntervalDays}
+                    onChange={(e) => setRemindIntervalDays(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Interval (km)
+                  <input
+                    type="number"
+                    min={1}
+                    step="any"
+                    placeholder="e.g. 5000"
+                    value={remindIntervalKm}
+                    onChange={(e) => setRemindIntervalKm(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Interval (hours, ign-on)
+                  <input
+                    type="number"
+                    min={1}
+                    step="any"
+                    placeholder="e.g. 250"
+                    value={remindIntervalHours}
+                    onChange={(e) => setRemindIntervalHours(e.target.value)}
+                  />
+                </label>
+              </div>
+              <p className="muted maintenance-hint">
+                Baseline odo for km interval is taken from the vehicle’s last status when you create.
+                Detail re-checks live `/usersstatus` odometer for accrued km. Hour intervals accrue
+                ignition-on track time from create (lookback capped at 90 days).
+              </p>
+            </fieldset>
             <div className="span-2">
-              <button type="submit" className="btn" disabled={busyId === "create" || !selectedUserId || !title.trim()}>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={busyId === "create" || !selectedUserId || !title.trim()}
+              >
                 Create due event
               </button>
             </div>
@@ -473,18 +540,19 @@ export default function MaintenanceBoard() {
                     {ev.odometerKm != null ? ` · ${formatKm(ev.odometerKm)} km` : ""}
                     {ev.servicePointName ? ` · ${ev.servicePointName}` : ""}
                   </span>
+                  {scheduleLabel(ev) ? <span className="muted">Remind: {scheduleLabel(ev)}</span> : null}
                   {ev.notes ? <span className="muted">{ev.notes}</span> : null}
                 </div>
                 <div className="maintenance-row-actions">
-                  <button type="button" className="btn-ghost" onClick={() => setEventId(ev.id)}>
+                  <button type="button" className="btn-secondary" onClick={() => setEventId(ev.id)}>
                     Detail
                   </button>
                   {ev.armadaUserId ? (
                     <>
-                      <a className="btn-ghost" href={tripsHref(search)}>
+                      <a className="btn-link" href={tripsHref(search)}>
                         Trips
                       </a>
-                      <a className="btn-ghost" href={fullHref(search)}>
+                      <a className="btn-link" href={fullHref(search)}>
                         Full
                       </a>
                     </>
@@ -492,7 +560,7 @@ export default function MaintenanceBoard() {
                   {ev.status === "due" && (
                     <button
                       type="button"
-                      className="btn"
+                      className="btn btn-primary"
                       disabled={busyId === ev.id}
                       onClick={() => void setStatus(ev.id, "in_progress")}
                     >
@@ -503,7 +571,7 @@ export default function MaintenanceBoard() {
                     <>
                       <button
                         type="button"
-                        className="btn"
+                        className="btn btn-primary"
                         disabled={busyId === ev.id}
                         onClick={() => void setStatus(ev.id, "done")}
                       >
@@ -511,7 +579,7 @@ export default function MaintenanceBoard() {
                       </button>
                       <button
                         type="button"
-                        className="btn-ghost"
+                        className="btn-secondary"
                         disabled={busyId === ev.id}
                         onClick={() => void setStatus(ev.id, "skipped")}
                       >
@@ -522,7 +590,7 @@ export default function MaintenanceBoard() {
                   {(ev.status === "done" || ev.status === "skipped") && (
                     <button
                       type="button"
-                      className="btn-ghost"
+                      className="btn-secondary"
                       disabled={busyId === ev.id}
                       onClick={() => void setStatus(ev.id, "due")}
                     >

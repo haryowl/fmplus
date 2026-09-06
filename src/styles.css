@@ -103,7 +103,7 @@ a.btn-ghost {
   display: inline-flex;
   align-items: center;
   text-decoration: none;
-  color: inherit;
+  color: var(--nav-text);
 }
 
 span.btn-ghost {
@@ -2780,6 +2780,83 @@ html.onesheet-root body {
   align-items: center;
 }
 
+.maintenance-page .btn {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+}
+
+.maintenance-page .btn.btn-primary,
+.maintenance-page button.btn-primary {
+  background: var(--accent);
+  color: #f6fffc;
+  border-color: transparent;
+}
+
+.maintenance-page .btn-secondary,
+.maintenance-page a.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.maintenance-page .btn-secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.maintenance-page .btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.maintenance-page .btn-link {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.maintenance-page .btn-icon {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.maintenance-page .btn-icon:hover {
+  border-color: #b44;
+  color: #b44;
+}
+
+.maintenance-page label.btn-secondary {
+  cursor: pointer;
+}
+
 .maintenance-row-title {
   display: block;
   padding: 0;
@@ -2845,12 +2922,25 @@ html.onesheet-root body {
 }
 
 .maintenance-point,
-.maintenance-lines {
+.maintenance-lines,
+.maintenance-schedule {
   border: 1px solid #e0d6c4;
   padding: 10px;
   margin: 0;
   display: grid;
   gap: 8px;
+}
+
+.maintenance-schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.maintenance-schedule-grid label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.9rem;
 }
 
 .maintenance-point-hints {
@@ -2939,6 +3029,9 @@ html.onesheet-root body {
   }
   .maintenance-detail-form {
     grid-template-columns: 1fr;
+  }
+  .maintenance-schedule-grid {
+    grid-template-columns: 1fr 1fr;
   }
   .maintenance-line-row {
     grid-template-columns: 1fr 1fr;

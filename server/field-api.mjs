@@ -20,7 +20,10 @@ import { mergeEntitlements } from "./entitlements.mjs";
 const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
   lat, lon, notification_id, started_at, ended_at, odometer_km,
   service_point_id, service_point_name, service_point_lat, service_point_lon,
-  assigned_field_user_id, created_at, updated_at`;
+  assigned_field_user_id,
+  remind_due_at, remind_interval_days, remind_interval_km, remind_baseline_odometer_km,
+  remind_interval_hours, remind_hours_since_at,
+  created_at, updated_at`;
 
 function send(res, status, headers, body) {
   res.writeHead(status, securityHeaders(headers));
