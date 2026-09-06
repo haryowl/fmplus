@@ -12,7 +12,7 @@ import {
   LIVE_OPS_COLORS,
   LIVE_OPS_LABELS,
 } from "../lib/liveOps";
-import { fullHref, tripsHref, writeLocationSearch } from "../lib/routing";
+import { fullHref, maintenanceHref, tripsHref, writeLocationSearch } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
 import { BrandMark } from "../components/BrandMark";
@@ -20,11 +20,20 @@ import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
 
 function vehicleSearch(userId: number): string {
-  const params = new URLSearchParams(window.location.search);
+  const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   params.set("userId", String(userId));
   params.delete("userIds");
   const q = params.toString();
   return q ? `?${q}` : "";
+}
+
+function maintenanceOpenHref(userId: number): string {
+  const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  params.set("userId", String(userId));
+  params.set("open", "1");
+  params.delete("userIds");
+  const q = params.toString();
+  return maintenanceHref(q ? `?${q}` : "?open=1");
 }
 
 export default function LiveOps() {
@@ -291,6 +300,7 @@ export default function LiveOps() {
                       <div className="live-ops-list-links">
                         <a href={tripsHref(vehicleSearch(row.id))}>Trips</a>
                         <a href={fullHref(vehicleSearch(row.id))}>Full</a>
+                        <a href={maintenanceOpenHref(row.id)}>Maintenance</a>
                       </div>
                     </li>
                   );

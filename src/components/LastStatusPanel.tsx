@@ -12,7 +12,7 @@ import {
   type LastStatusRow,
   type LastStatusSortId,
 } from "../lib/lastStatus";
-import { fullHref } from "../lib/routing";
+import { fullHref, maintenanceHref } from "../lib/routing";
 
 type Props = {
   groupId: string;
@@ -28,6 +28,15 @@ function vehicleHref(userId: number): string {
   params.delete("userIds");
   const q = params.toString();
   return fullHref(q ? `?${q}` : "");
+}
+
+function maintenanceOpenHref(userId: number): string {
+  const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  params.set("userId", String(userId));
+  params.set("open", "1");
+  params.delete("userIds");
+  const q = params.toString();
+  return maintenanceHref(q ? `?${q}` : "?open=1");
 }
 
 export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Props) {
@@ -188,7 +197,12 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
                       <a className="status-vehicle" href={vehicleHref(row.id)}>
                         {row.name}
                       </a>
-                      <div className="status-id">{row.id}</div>
+                      <div className="status-id">
+                        {row.id} ·{" "}
+                        <a className="status-maint-link" href={maintenanceOpenHref(row.id)}>
+                          Maintenance
+                        </a>
+                      </div>
                     </td>
                     <td className="num">{row.utc ? formatStatusTime(row.utc, timezone) : "—"}</td>
                     <td>

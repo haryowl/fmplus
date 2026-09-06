@@ -13,6 +13,14 @@ import {
 } from "./field-auth.mjs";
 import { readCookies } from "./admin-auth.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
+import { applyEventPatch, loadEventDetail, publicEvent, savePhoto } from "./maintenance-api.mjs";
+import { getObject } from "./storage.mjs";
+import { mergeEntitlements } from "./entitlements.mjs";
+
+const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
+  lat, lon, notification_id, started_at, ended_at, odometer_km,
+  service_point_id, service_point_name, service_point_lat, service_point_lon,
+  assigned_field_user_id, created_at, updated_at`;
 
 function send(res, status, headers, body) {
   res.writeHead(status, securityHeaders(headers));
@@ -33,7 +41,7 @@ function json(res, status, obj, extraHeaders = {}) {
 }
 
 /** @param {import('node:http').IncomingMessage} req */
-function readBody(req, limit = 64_000) {
+function readBody(req, limit = 8_000_000) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -46,15 +54,16 @@ function readBody(req, limit = 64_000) {
       }
       chunks.push(chunk);
     });
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
 }
 
 async function readJson(req) {
   const raw = await readBody(req);
-  if (!raw.trim()) return {};
-  return JSON.parse(raw);
+  const text = raw.toString("utf8");
+  if (!text.trim()) return {};
+  return JSON.parse(text);
 }
 
 function publicFieldUser(user) {
@@ -65,7 +74,14 @@ function publicFieldUser(user) {
     displayName: user.displayName || user.display_name || "",
     tenantKey: user.tenantKey || user.tenant_key,
     appId: user.appId ?? user.app_id,
+    tenantId: user.tenantId || user.tenant_id,
   };
+}
+
+async function tenantMobileMaintenanceEnabled(tenantId) {
+  const row = await dbQuery(`SELECT entitlements FROM tenants WHERE id = $1`, [tenantId]);
+  const ent = mergeEntitlements(row.rows[0]?.entitlements);
+  return ent.mobile?.maintenance === true;
 }
 
 export async function handleFieldRequest(req, res) {
@@ -89,7 +105,7 @@ export async function handleFieldRequest(req, res) {
       }
       const found = await dbQuery(
         `SELECT u.id, u.username, u.password_hash, u.role, u.display_name, u.enabled,
-                t.key AS tenant_key, t.app_id, t.enabled AS tenant_enabled
+                t.id AS tenant_id, t.key AS tenant_key, t.app_id, t.enabled AS tenant_enabled
          FROM field_users u
          JOIN tenants t ON t.id = u.tenant_id
          WHERE t.key = $1 AND u.username = $2`,
@@ -107,6 +123,7 @@ export async function handleFieldRequest(req, res) {
       }
       const session = await createFieldSession(row.id);
       const maxAge = Math.floor((session.expiresAt.getTime() - Date.now()) / 1000);
+      const mobileOk = await tenantMobileMaintenanceEnabled(row.tenant_id);
       json(
         res,
         200,
@@ -118,8 +135,10 @@ export async function handleFieldRequest(req, res) {
             role: row.role,
             displayName: row.display_name,
             tenantKey: row.tenant_key,
+            tenantId: row.tenant_id,
             appId: Number(row.app_id),
           }),
+          mobileMaintenance: mobileOk,
         },
         { "Set-Cookie": fieldSessionCookieHeader(session.token, maxAge) },
       );
@@ -139,7 +158,136 @@ export async function handleFieldRequest(req, res) {
         json(res, 401, { error: "Not logged in" });
         return true;
       }
-      json(res, 200, { user: publicFieldUser(user) });
+      const mobileOk = await tenantMobileMaintenanceEnabled(user.tenantId);
+      json(res, 200, { user: publicFieldUser(user), mobileMaintenance: mobileOk });
+      return true;
+    }
+
+    const photoGet = /^\/api\/field\/maintenance\/photos\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (photoGet && req.method === "GET") {
+      const user = await fieldFromRequest(req);
+      if (!user) {
+        json(res, 401, { error: "Not logged in" });
+        return true;
+      }
+      const found = await dbQuery(
+        `SELECT p.storage_key, p.content_type
+         FROM service_event_photos p
+         JOIN service_events e ON e.id = p.event_id
+         WHERE p.id = $1 AND e.tenant_id = $2`,
+        [photoGet[1], user.tenantId],
+      );
+      if (!found.rows[0]) {
+        json(res, 404, { error: "Photo not found" });
+        return true;
+      }
+      const obj = await getObject(found.rows[0].storage_key);
+      send(
+        res,
+        200,
+        {
+          "Content-Type": obj.contentType || found.rows[0].content_type || "image/jpeg",
+          "Cache-Control": "private, max-age=3600",
+        },
+        obj.body,
+      );
+      return true;
+    }
+
+    if (url.pathname.startsWith("/api/field/maintenance")) {
+      const user = await fieldFromRequest(req);
+      if (!user) {
+        json(res, 401, { error: "Not logged in" });
+        return true;
+      }
+      if (!(await tenantMobileMaintenanceEnabled(user.tenantId))) {
+        json(res, 403, { error: "Maintenance PWA is disabled for this tenant" });
+        return true;
+      }
+
+      if (url.pathname === "/api/field/maintenance/events" && req.method === "GET") {
+        const rows = await dbQuery(
+          `SELECT ${SELECT_COLS} FROM service_events
+           WHERE tenant_id = $1
+             AND status IN ('due', 'in_progress')
+             AND (assigned_field_user_id IS NULL OR assigned_field_user_id = $2)
+           ORDER BY created_at DESC
+           LIMIT 100`,
+          [user.tenantId, user.id],
+        );
+        json(res, 200, { events: rows.rows.map((r) => publicEvent(r)) });
+        return true;
+      }
+
+      const evMatch = /^\/api\/field\/maintenance\/events\/([0-9a-f-]{36})$/i.exec(url.pathname);
+      if (evMatch && req.method === "GET") {
+        const detail = await loadEventDetail(user.tenantId, evMatch[1]);
+        if (!detail) {
+          json(res, 404, { error: "Not found" });
+          return true;
+        }
+        detail.photos = (detail.photos || []).map((p) => ({
+          ...p,
+          url: `/api/field/maintenance/photos/${p.id}`,
+        }));
+        json(res, 200, { event: detail });
+        return true;
+      }
+
+      if (evMatch && req.method === "PATCH") {
+        const found = await dbQuery(
+          `SELECT ${SELECT_COLS} FROM service_events WHERE id = $1 AND tenant_id = $2`,
+          [evMatch[1], user.tenantId],
+        );
+        if (!found.rows[0]) {
+          json(res, 404, { error: "Not found" });
+          return true;
+        }
+        const body = await readJson(req);
+        delete body.assignedFieldUserId;
+        const event = await applyEventPatch(found.rows[0], body, user.tenantId);
+        event.photos = (event.photos || []).map((p) => ({
+          ...p,
+          url: `/api/field/maintenance/photos/${p.id}`,
+        }));
+        json(res, 200, { event });
+        return true;
+      }
+
+      const photoPost = /^\/api\/field\/maintenance\/events\/([0-9a-f-]{36})\/photos$/i.exec(url.pathname);
+      if (photoPost && req.method === "POST") {
+        const found = await dbQuery(`SELECT id FROM service_events WHERE id = $1 AND tenant_id = $2`, [
+          photoPost[1],
+          user.tenantId,
+        ]);
+        if (!found.rows[0]) {
+          json(res, 404, { error: "Not found" });
+          return true;
+        }
+        const body = await readJson(req);
+        const dataUrl = String(body.dataUrl || body.data || "");
+        const m = /^data:([^;]+);base64,(.+)$/i.exec(dataUrl);
+        if (!m) {
+          json(res, 400, { error: "dataUrl (base64 data URI) required" });
+          return true;
+        }
+        const buffer = Buffer.from(m[2], "base64");
+        if (buffer.length < 32 || buffer.length > 6_000_000) {
+          json(res, 400, { error: "Image must be between 32B and 6MB" });
+          return true;
+        }
+        const photo = await savePhoto(photoPost[1], user.tenantId, {
+          buffer,
+          contentType: m[1],
+          caption: String(body.caption || "").trim(),
+          fieldUserId: user.id,
+        });
+        photo.url = `/api/field/maintenance/photos/${photo.id}`;
+        json(res, 201, { photo });
+        return true;
+      }
+
+      json(res, 404, { error: "Not found" });
       return true;
     }
 

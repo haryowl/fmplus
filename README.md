@@ -143,7 +143,7 @@ Open `/m` (or `/dispatch`) with the tenant embed key:
 https://81.17.100.7:4173/m?k=YOUR_TENANT_KEY
 ```
 
-Sign in with a field user created in Admin. Jobs / PoM come in later phases — login only for now.
+Sign in with a field user created in Admin. For maintenance jobs + PoM photo upload, enable **Mobile apps → Maintenance PWA** on the tenant (see Maintenance section below).
 
 ## Live Ops
 
@@ -165,7 +165,7 @@ https://81.17.100.7:4173/exceptions?k=YOUR_TENANT_KEY
 
 Shows Armada Command notifier events (`kind=exception`) with local **Ack** / **Unack**, plus optional derived stale positions from `/usersstatus`. Deep-link to Trips / Full when `USER_ID` is present on the payload (or on derived rows).
 
-## Maintenance due board (D0–D1)
+## Maintenance (D0–D3)
 
 Enable the **Maintenance** module on the tenant in Admin. Then open:
 
@@ -173,11 +173,29 @@ Enable the **Maintenance** module on the tenant in Admin. Then open:
 https://81.17.100.7:4173/maintenance?k=YOUR_TENANT_KEY
 ```
 
+**Open / due board**
+
 - Armada Maintenance Schedule → Command notifier URL with `kind=maintenance` (and webhook `secret`) creates a **due** service event automatically.
-- Managers can also **Open service event** manually.
+- Managers can also **Open for vehicle**: pick any fleet unit from group / last-status (name, odo, position filled automatically). From **Live** or **Status**, use the **Maintenance** link on a vehicle (`/maintenance?k=…&userId=…&open=1`).
 - Board filters: open / due / in progress / done / skipped; Start / Done / Skip / Reopen; Excel export; Trips/Full when Armada user id is known.
 
-Line items, service points, and PoM PWA come in later D2/D3.
+**Event detail (D2)** — click a row or **Detail** (`?eventId=`):
+
+- Optional service time (started / ended), odometer, notes.
+- Line items: part / labor / other with qty, unit price, unit cost, vendor; roll-up totals.
+- Service point: name + lat/lon (typeahead from tenant catalog; **Use vehicle pin** from last fix). Saved points upsert into the catalog.
+- Optional assign to a field user (Admin-created). Unassigned jobs are visible to all field operators for the tenant.
+- Proof-of-maintenance photo gallery (read + upload from embed).
+
+**Field PoM (/m, D3)** — enable **Mobile apps → Maintenance PWA** in Admin entitlements (login still works if the flag is off; jobs UI shows an empty / disabled state).
+
+```
+https://81.17.100.7:4173/m?k=YOUR_TENANT_KEY
+```
+
+Field users sign in, see open jobs (assigned to them or unassigned), open a job, upload camera/file photos (MinIO/`S3_*` required), then **Done** or **Skip**.
+
+Deploy notes: `npm run db:migrate` (migration `006_maintenance_d2.sql`), build, restart. MinIO must be configured for photo upload.
 
 ## Armada Command notifier (Phase B0)
 

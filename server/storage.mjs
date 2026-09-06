@@ -1,7 +1,7 @@
 /**
  * S3-compatible object storage (MinIO / R2 / AWS). Optional until S3_* env is set.
  */
-import { PutObjectCommand, S3Client, HeadBucketCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand, GetObjectCommand, S3Client, HeadBucketCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
 
 /** @type {S3Client | null} */
 let client = null;
@@ -79,4 +79,22 @@ export async function putObject(key, body, contentType = "application/octet-stre
     }),
   );
   return { bucket: objectBucket(), key };
+}
+
+/**
+ * @param {string} key
+ * @returns {Promise<{ body: Buffer, contentType: string }>}
+ */
+export async function getObject(key) {
+  const s3 = getClient();
+  if (!s3) throw new Error("Object storage is not configured (S3_*)");
+  const out = await s3.send(new GetObjectCommand({ Bucket: objectBucket(), Key: key }));
+  const chunks = [];
+  for await (const chunk of out.Body) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return {
+    body: Buffer.concat(chunks),
+    contentType: out.ContentType || "application/octet-stream",
+  };
 }
