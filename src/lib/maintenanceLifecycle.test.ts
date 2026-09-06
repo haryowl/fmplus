@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { canTransition, serviceDurationMinutes } from "../../server/maintenance-lifecycle.mjs";
+import {
+  canTransition,
+  nextScheduleDueAt,
+  serviceDurationMinutes,
+} from "../../server/maintenance-lifecycle.mjs";
 
 describe("maintenance work-order lifecycle", () => {
   it("requires Start before Done", () => {
@@ -24,5 +28,15 @@ describe("maintenance work-order lifecycle", () => {
       serviceDurationMinutes("2026-09-06T10:00:00.000Z", "2026-09-06T11:30:00.000Z"),
     ).toBe(90);
     expect(serviceDurationMinutes(null, "2026-09-06T11:30:00.000Z")).toBe(null);
+  });
+
+  it("rolls next calendar due from completion, not the old due date", () => {
+    const next = nextScheduleDueAt({
+      endedAt: "2026-09-06T12:00:00.000Z",
+      remindIntervalDays: 30,
+      // Old due was today — must NOT produce another same-day / same-window due.
+      remindDueAt: "2026-09-06T00:00:00.000Z",
+    });
+    expect(next).toBe("2026-10-06T12:00:00.000Z");
   });
 });

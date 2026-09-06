@@ -17,9 +17,9 @@ import {
 import { slimAsync } from "./slim-pool.mjs";
 import { eachDateYmd, sumIgnitionOnHours } from "./ignition-hours.mjs";
 import { evaluateKmInterval, findOdometerKmInStatus } from "./odometer-status.mjs";
-import { canTransition, serviceDurationMinutes } from "./maintenance-lifecycle.mjs";
+import { canTransition, serviceDurationMinutes, nextScheduleDueAt } from "./maintenance-lifecycle.mjs";
 
-export { canTransition, serviceDurationMinutes } from "./maintenance-lifecycle.mjs";
+export { canTransition, serviceDurationMinutes, nextScheduleDueAt } from "./maintenance-lifecycle.mjs";
 
 const HOURS_LOOKBACK_DAYS = 90;
 const DAY_FETCH_TIMEOUT_MS = 120_000;
@@ -561,9 +561,10 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
   }
 
   if (prevStatus !== "done" && status === "done" && event) {
-    // Field Done must close the job only. Auto-spawning a same-titled Due job made
-    // /maintenance look like the work never finished and hid parts/photos under Completed.
-    const allowAutoNext = opts.actor !== "field" && process.env.MAINTENANCE_AUTO_NEXT_DUE !== "0";
+    // Repeat next cycle when the job has a schedule. Field and manager Done both may spawn.
+    // Next due is rolled forward from completion time (not a same-day twin). Unassigned
+    // until a manager assigns; open board hides those follow-ups.
+    const allowAutoNext = process.env.MAINTENANCE_AUTO_NEXT_DUE !== "0";
     if (allowAutoNext) {
       try {
         const spawned = await spawnNextDueEvent(event, tenantId, {
@@ -574,13 +575,18 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
         if (spawned?.created && nextEvent) {
           try {
             const { fanOutEventReminder } = await import("./maintenance-remind.mjs");
+            const dueLabel = nextEvent.remindDueAt
+              ? ` Next due ${String(nextEvent.remindDueAt).slice(0, 10)}.`
+              : nextEvent.remindIntervalKm
+                ? ` Next at +${nextEvent.remindIntervalKm} km.`
+                : "";
             await fanOutEventReminder({
               tenantId,
               tenantKey: opts.tenantKey || opts.vaultTenant?.key || "",
               event: nextEvent,
               kind: "next_due",
-              title: `Next maintenance due · ${nextEvent.userDisplayName || nextEvent.armadaUsername || "Vehicle"}`,
-              body: `${nextEvent.title} scheduled after completion.`,
+              title: `Next maintenance scheduled · ${nextEvent.userDisplayName || nextEvent.armadaUsername || "Vehicle"}`,
+              body: `${nextEvent.title} created after completion.${dueLabel} Assign when the window opens.`,
               payload: { parentEventId: event.id },
             });
           } catch (err) {
@@ -658,19 +664,19 @@ async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionO
     nextBaseline = completed.remindBaselineOdometerKm + completed.remindIntervalKm;
   }
 
-  let nextDueAt = null;
+  let nextDueAt = nextScheduleDueAt(completed);
   const ended = completed.endedAt || new Date().toISOString();
-  if (completed.remindIntervalDays != null && completed.remindIntervalDays > 0) {
-    const base = Date.parse(completed.remindDueAt || ended);
-    if (Number.isFinite(base)) {
-      nextDueAt = new Date(base + completed.remindIntervalDays * 86400000).toISOString();
-    }
-  } else if (completed.remindDueAt && completed.remindIntervalDays) {
-    const base = Date.parse(completed.remindDueAt);
-    if (Number.isFinite(base)) {
-      nextDueAt = new Date(base + completed.remindIntervalDays * 86400000).toISOString();
-    }
+  const endedMs = Date.parse(ended);
+
+  // Km-only / hours-only schedules have no calendar due; date interval always lands in the future.
+  if (nextDueAt && Number.isFinite(endedMs) && Date.parse(nextDueAt) <= endedMs) {
+    const days = Math.max(1, Number(completed.remindIntervalDays) || 1);
+    nextDueAt = new Date(endedMs + days * 86400000).toISOString();
   }
+
+  const baseTitle = String(completed.title || "Service").replace(/^Next · /i, "").slice(0, 160);
+  const dueStamp = nextDueAt ? String(nextDueAt).slice(0, 10) : null;
+  const nextTitle = dueStamp ? `Next · ${baseTitle} · ${dueStamp}` : `Next · ${baseTitle}`;
 
   const inserted = await dbQuery(
     `INSERT INTO service_events (
@@ -684,9 +690,7 @@ async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionO
      ) RETURNING ${SELECT_COLS}`,
     [
       tenantId,
-      completed.title.startsWith("Next · ")
-        ? completed.title
-        : `Next · ${String(completed.title || "Service").slice(0, 190)}`,
+      nextTitle.slice(0, 200),
       null,
       completed.armadaUserId,
       completed.armadaUsername || null,
@@ -694,15 +698,15 @@ async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionO
       completed.lat,
       completed.lon,
       nextBaseline,
-      // Leave unassigned — manager assigns the next cycle. Copying the tech made Done
-      // look like the same job bounced back to Due with an empty sheet.
+      // Leave unassigned — manager assigns when the next window should be worked.
       null,
       nextDueAt,
       completed.remindIntervalDays,
       completed.remindIntervalKm,
       nextBaseline,
       completed.remindIntervalHours,
-      completed.remindIntervalHours ? new Date().toISOString() : null,
+      // Hours meter restarts at completion (next interval from now).
+      completed.remindIntervalHours ? ended : null,
       completed.remindBeforeDays,
       completed.remindBeforeKm,
       completed.remindBeforeHours,

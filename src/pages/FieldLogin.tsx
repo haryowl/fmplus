@@ -307,7 +307,13 @@ export default function FieldLogin() {
         setDetail(null);
         if (status === "done") {
           setNotice(
-            "Job completed. Service time and sheet are saved. On desktop open Maintenance → Completed to review this job.",
+            data.nextEvent
+              ? `Job completed and saved under Completed. Next cycle scheduled${
+                  data.nextEvent.remindDueAt
+                    ? ` for ${String(data.nextEvent.remindDueAt).slice(0, 10)}`
+                    : ""
+                } (unassigned until a manager assigns it).`
+              : "Job completed. Service time and sheet are saved. On desktop open Maintenance → Completed to review this job.",
           );
         } else {
           setNotice("Job skipped.");
