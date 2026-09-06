@@ -165,6 +165,20 @@ https://81.17.100.7:4173/exceptions?k=YOUR_TENANT_KEY
 
 Shows Armada Command notifier events (`kind=exception`) with local **Ack** / **Unack**, plus optional derived stale positions from `/usersstatus`. Deep-link to Trips / Full when `USER_ID` is present on the payload (or on derived rows).
 
+## Maintenance due board (D0–D1)
+
+Enable the **Maintenance** module on the tenant in Admin. Then open:
+
+```
+https://81.17.100.7:4173/maintenance?k=YOUR_TENANT_KEY
+```
+
+- Armada Maintenance Schedule → Command notifier URL with `kind=maintenance` (and webhook `secret`) creates a **due** service event automatically.
+- Managers can also **Open service event** manually.
+- Board filters: open / due / in progress / done / skipped; Start / Done / Skip / Reopen; Excel export; Trips/Full when Armada user id is known.
+
+Line items, service points, and PoM PWA come in later D2/D3.
+
 ## Armada Command notifier (Phase B0)
 
 1. In Admin, set **Webhook secret** on the tenant and Save.

@@ -2584,12 +2584,91 @@ html.onesheet-root body {
   align-items: center;
 }
 
+/* —— Maintenance board —— */
+.maintenance-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.maintenance-create {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #d5cbb9;
+  background: #fffdf8;
+}
+
+.maintenance-create label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.maintenance-create input {
+  padding: 8px 10px;
+  border: 1px solid #c9bfae;
+  background: #fff;
+}
+
+.maintenance-create .span-2 {
+  grid-column: 1 / -1;
+}
+
+.maintenance-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.maintenance-empty {
+  padding: 20px;
+  border: 1px dashed #d5cbb9;
+  background: rgba(255, 252, 245, 0.8);
+}
+
+.maintenance-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid #d5cbb9;
+  background: #fffdf8;
+}
+
+.maintenance-list li.maint-status-done,
+.maintenance-list li.maint-status-skipped {
+  opacity: 0.72;
+}
+
+.maintenance-row-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.maintenance-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 @media (max-width: 900px) {
   .live-ops-layout {
     grid-template-columns: 1fr;
   }
   .live-ops-list {
     max-height: 320px;
+  }
+  .maintenance-create {
+    grid-template-columns: 1fr;
   }
 }
 

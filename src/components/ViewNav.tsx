@@ -5,6 +5,7 @@ import {
   fleetHref,
   fullHref,
   liveHref,
+  maintenanceHref,
   navigateView,
   statusHref,
   tripsHref,
@@ -22,6 +23,7 @@ const LINKS: { view: AppView; label: string; href: (search: string) => string }[
   { view: "status", label: "Status", href: statusHref },
   { view: "live", label: "Live", href: liveHref },
   { view: "exceptions", label: "Exceptions", href: exceptionsHref },
+  { view: "maintenance", label: "Maintenance", href: maintenanceHref },
 ];
 
 type Props = {

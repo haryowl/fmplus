@@ -165,12 +165,16 @@ export async function handleArmadaNotifyRequest(req, res) {
     const lon = parseCoord(payload.POS_LONGITUDE || payload.POS_LON || payload.lon);
     const dedupeKey = buildDedupeKey(kind, payload);
 
-    await dbQuery(
+    const userIdRaw = Number(payload.USER_ID || payload.userId || payload.UserId);
+    const armadaUserId = Number.isInteger(userIdRaw) && userIdRaw > 0 ? userIdRaw : null;
+
+    const inserted = await dbQuery(
       `INSERT INTO armada_notifications (
          tenant_id, kind, rule_name, event_time, armada_username, user_display_name,
          lat, lon, payload, dedupe_key
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)
-       ON CONFLICT (tenant_id, dedupe_key) DO NOTHING`,
+       ON CONFLICT (tenant_id, dedupe_key) DO NOTHING
+       RETURNING id`,
       [
         tenant.id,
         kind,
@@ -184,6 +188,36 @@ export async function handleArmadaNotifyRequest(req, res) {
         dedupeKey,
       ],
     );
+
+    let notificationId = inserted.rows[0]?.id || null;
+    if (!notificationId) {
+      const existing = await dbQuery(
+        `SELECT id FROM armada_notifications WHERE tenant_id = $1 AND dedupe_key = $2`,
+        [tenant.id, dedupeKey],
+      );
+      notificationId = existing.rows[0]?.id || null;
+    }
+
+    if (kind === "maintenance" && notificationId) {
+      const title = (ruleName && String(ruleName).trim()) || "Maintenance due";
+      await dbQuery(
+        `INSERT INTO service_events (
+           tenant_id, status, title, armada_user_id, armada_username, user_display_name,
+           lat, lon, notification_id
+         ) VALUES ($1, 'due', $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (notification_id) DO NOTHING`,
+        [
+          tenant.id,
+          title,
+          armadaUserId,
+          armadaUsername,
+          userDisplayName,
+          lat,
+          lon,
+          notificationId,
+        ],
+      );
+    }
 
     plain(res, 200, "OK");
     return true;
