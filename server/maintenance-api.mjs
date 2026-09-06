@@ -561,33 +561,36 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
   }
 
   if (prevStatus !== "done" && status === "done" && event) {
-    try {
-      const spawned = await spawnNextDueEvent(event, tenantId, {
-        vaultTenant: opts.vaultTenant,
-        completionOdo: odometerKm,
-      });
-      nextEvent = spawned?.event || null;
-      // Notify only when a brand-new follow-up is inserted — not on every Done/Save retry
-      // that merely returns the existing next-due row (that spam filled the alert inbox).
-      if (spawned?.created && nextEvent) {
-        try {
-          const { fanOutEventReminder } = await import("./maintenance-remind.mjs");
-          await fanOutEventReminder({
-            tenantId,
-            tenantKey: opts.tenantKey || opts.vaultTenant?.key || "",
-            event: nextEvent,
-            kind: "next_due",
-            title: `Next maintenance due · ${nextEvent.userDisplayName || nextEvent.armadaUsername || "Vehicle"}`,
-            body: `${nextEvent.title} scheduled after completion.`,
-            payload: { parentEventId: event.id },
-          });
-        } catch (err) {
-          console.error("[maintenance] next_due notify", err);
+    // Field Done must close the job only. Auto-spawning a same-titled Due job made
+    // /maintenance look like the work never finished and hid parts/photos under Completed.
+    const allowAutoNext = opts.actor !== "field" && process.env.MAINTENANCE_AUTO_NEXT_DUE !== "0";
+    if (allowAutoNext) {
+      try {
+        const spawned = await spawnNextDueEvent(event, tenantId, {
+          vaultTenant: opts.vaultTenant,
+          completionOdo: odometerKm,
+        });
+        nextEvent = spawned?.event || null;
+        if (spawned?.created && nextEvent) {
+          try {
+            const { fanOutEventReminder } = await import("./maintenance-remind.mjs");
+            await fanOutEventReminder({
+              tenantId,
+              tenantKey: opts.tenantKey || opts.vaultTenant?.key || "",
+              event: nextEvent,
+              kind: "next_due",
+              title: `Next maintenance due · ${nextEvent.userDisplayName || nextEvent.armadaUsername || "Vehicle"}`,
+              body: `${nextEvent.title} scheduled after completion.`,
+              payload: { parentEventId: event.id },
+            });
+          } catch (err) {
+            console.error("[maintenance] next_due notify", err);
+          }
         }
+      } catch (err) {
+        console.error("[maintenance] spawn next due", err);
+        nextEvent = null;
       }
-    } catch (err) {
-      console.error("[maintenance] spawn next due", err);
-      nextEvent = null;
     }
   }
 
@@ -681,7 +684,9 @@ async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionO
      ) RETURNING ${SELECT_COLS}`,
     [
       tenantId,
-      completed.title,
+      completed.title.startsWith("Next · ")
+        ? completed.title
+        : `Next · ${String(completed.title || "Service").slice(0, 190)}`,
       null,
       completed.armadaUserId,
       completed.armadaUsername || null,
@@ -1035,8 +1040,15 @@ export async function handleMaintenanceRequest(req, res) {
       if (healthFilter === "completed" || status === "completed") {
         params.push("done");
         clauses.push(`status = $${params.length}`);
-      } else if (status === "open") clauses.push("status IN ('due', 'in_progress')");
-      else if (STATUSES.includes(status)) {
+      } else if (status === "open") {
+        clauses.push("status IN ('due', 'in_progress')");
+        // Unassigned auto-follow-ups stay off the open board until a manager assigns them.
+        // Otherwise field Done looked like the same job was still Due with an empty sheet.
+        const showFollowUps = String(url.searchParams.get("followUps") || "") === "1";
+        if (!showFollowUps) {
+          clauses.push("(parent_event_id IS NULL OR assigned_field_user_id IS NOT NULL)");
+        }
+      } else if (STATUSES.includes(status)) {
         params.push(status);
         clauses.push(`status = $${params.length}`);
       } else if (status !== "all") {
@@ -1072,6 +1084,7 @@ export async function handleMaintenanceRequest(req, res) {
       const openRows = await dbQuery(
         `SELECT ${SELECT_COLS} FROM service_events
          WHERE tenant_id = $1 AND status IN ('due', 'in_progress')
+           AND (parent_event_id IS NULL OR assigned_field_user_id IS NOT NULL)
          ORDER BY created_at DESC LIMIT 200`,
         [dbTenant.id],
       );

@@ -923,7 +923,9 @@ export default function MaintenanceBoard() {
               {query.tenantKey
                 ? listQuery.trim()
                   ? "No jobs match this filter."
-                  : "No service events yet. Open for a fleet vehicle above, or wire Armada Maintenance Schedule (kind=maintenance)."
+                  : healthFilter === "completed" || statusFilter === "done"
+                    ? "No completed jobs yet. When a technician presses Done on /m, the job appears here with parts, photos, and service time."
+                    : "No open jobs. Field completions are under Completed (not Open). Unassigned next-cycle jobs stay hidden until you assign them."
                 : "Add k= to the URL."}
             </li>
           )}
@@ -963,6 +965,7 @@ export default function MaintenanceBoard() {
                   <span className={`maint-badge maint-status-${ev.status}`}>
                     {SERVICE_STATUS_LABELS[ev.status]}
                   </span>
+                  {ev.parentEventId ? <span className="maint-badge">Follow-up</span> : null}
                   {health ? (
                     <span className={`maint-badge maint-health-${health}`}>
                       {SCHEDULE_HEALTH_LABELS[health as ScheduleHealth]}

@@ -435,6 +435,26 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
 
       {error && <div className="banner error">{error}</div>}
       {notice && <div className="banner ok">{notice}</div>}
+      {event.parentEventId ? (
+        <div className="banner ok">
+          This is a <strong>follow-up</strong> job after a previous completion. Field Done work
+          (parts, photos, service time) is on the completed parent — open it from the{" "}
+          <strong>Completed</strong> filter, or{" "}
+          <button type="button" className="btn-link" onClick={() => onOpenEvent?.(event.parentEventId!)}>
+            open parent job
+          </button>
+          .
+        </div>
+      ) : null}
+      {event.status === "done" ? (
+        <div className="banner ok">
+          Completed
+          {event.serviceDurationMinutes != null
+            ? ` · service time ${formatServiceDuration(event.serviceDurationMinutes)}`
+            : ""}
+          . Parts and photos below are the field/manager closeout for this job.
+        </div>
+      ) : null}
 
       <form
         className="maintenance-detail-form"

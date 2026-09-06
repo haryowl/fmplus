@@ -307,9 +307,7 @@ export default function FieldLogin() {
         setDetail(null);
         if (status === "done") {
           setNotice(
-            data.nextEvent
-              ? "Job completed. Service time saved. Next service was scheduled for the manager to assign — it will not appear in your list until assigned."
-              : "Job completed. Service time recorded.",
+            "Job completed. Service time and sheet are saved. On desktop open Maintenance → Completed to review this job.",
           );
         } else {
           setNotice("Job skipped.");
