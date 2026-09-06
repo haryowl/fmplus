@@ -283,8 +283,6 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
       const body: Record<string, unknown> = {
         title: title.trim(),
         notes: notes.trim(),
-        startedAt: fromLocalInput(startedAt),
-        endedAt: fromLocalInput(endedAt),
         odometerKm: odometerKm.trim() === "" ? null : Number(odometerKm),
         servicePointName: servicePointName.trim() || null,
         servicePointLat: servicePointLat.trim() === "" ? null : Number(servicePointLat),
@@ -314,12 +312,32 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
           })),
         ...extra,
       };
+      // Status transitions own the service clock on the server — do not send empty
+      // Started/Ended fields or Start/Done will wipe started_at and block Done.
+      if (!extra.status) {
+        body.startedAt = fromLocalInput(startedAt);
+        body.endedAt = fromLocalInput(endedAt);
+      }
       if (servicePointId) body.servicePointId = servicePointId;
       const { event: updated, nextEvent } = await patchServiceEvent(event.id, body);
       setEvent(updated);
       applyForm(updated);
       onSaved(updated);
-      if (nextEvent) {
+      if (extra.status === "in_progress") setNotice("Started — service clock is running.");
+      else if (extra.status === "done") {
+        setNotice(
+          nextEvent
+            ? "Done — service time recorded. Opening next due job."
+            : "Done — service time recorded.",
+        );
+        if (nextEvent) {
+          onSaved(nextEvent);
+          onOpenEvent?.(nextEvent.id);
+        }
+      } else if (extra.status === "due" && event.status === "in_progress") setNotice("Start cancelled.");
+      else if (extra.status === "skipped") setNotice("Job skipped.");
+      else if (extra.status === "due") setNotice("Reopened.");
+      else if (nextEvent) {
         setNotice("Next due created — opening the new event.");
         onSaved(nextEvent);
         onOpenEvent?.(nextEvent.id);
@@ -328,6 +346,14 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
+      try {
+        const refreshed = await fetchServiceEvent(event.id);
+        setEvent(refreshed);
+        applyForm(refreshed);
+        onSaved(refreshed);
+      } catch {
+        /* keep form */
+      }
     } finally {
       setBusy(false);
     }

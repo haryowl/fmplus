@@ -302,15 +302,48 @@ export default function FieldLogin() {
       if (status === "done" || status === "skipped") {
         setSelectedId(null);
         setDetail(null);
-        setNotice(status === "done" ? "Job completed." : "Job skipped.");
+        setNotice(status === "done" ? "Job completed. Service time recorded." : "Job skipped.");
         await loadJobs();
+      } else if (status === "in_progress" && extra.status === "in_progress") {
+        setJobs((prev) => prev.map((j) => (j.id === data.event.id ? { ...j, ...data.event } : j)));
+        if (!opts.quiet) setNotice("Started — clock is running. Save notes anytime, then Done.");
+      } else if (extra.status === "due") {
+        setJobs((prev) => prev.map((j) => (j.id === data.event.id ? { ...j, ...data.event } : j)));
+        if (!opts.quiet) setNotice("Start cancelled. Press Start again when ready.");
       } else {
         setJobs((prev) => prev.map((j) => (j.id === data.event.id ? { ...j, ...data.event } : j)));
         if (!opts.quiet) setNotice("Saved.");
       }
       return data.event;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Update failed");
+      const msg = err instanceof Error ? err.message : "Update failed";
+      // If Done already committed but the response failed, sync from server.
+      if (selectedId && (extra.status === "done" || extra.status === "skipped" || extra.status === "in_progress")) {
+        try {
+          const refreshed = await api<{ event: ServiceEvent }>(
+            `/api/field/maintenance/events/${selectedId}`,
+          );
+          setDetail(refreshed.event);
+          setLines(linesFromEvent(refreshed.event));
+          if (refreshed.event.status === "done" || refreshed.event.status === "skipped") {
+            setSelectedId(null);
+            setDetail(null);
+            setNotice(
+              refreshed.event.status === "done"
+                ? "Job completed. Service time recorded."
+                : "Job skipped.",
+            );
+            await loadJobs();
+            return refreshed.event;
+          }
+          setJobs((prev) =>
+            prev.map((j) => (j.id === refreshed.event.id ? { ...j, ...refreshed.event } : j)),
+          );
+        } catch {
+          /* keep error */
+        }
+      }
+      setError(msg);
       return null;
     } finally {
       setBusy(false);
@@ -409,6 +442,26 @@ export default function FieldLogin() {
               </div>
               <h2>{detail.title}</h2>
               <p className="field-vehicle">{eventVehicleLabel(detail)}</p>
+              <ol className="field-flow-steps">
+                <li className={detail.status !== "due" ? "is-done" : "is-current"}>1. Start</li>
+                <li
+                  className={
+                    detail.status === "in_progress"
+                      ? "is-current"
+                      : detail.status === "done" || detail.status === "skipped"
+                        ? "is-done"
+                        : ""
+                  }
+                >
+                  2. Work + Save
+                </li>
+                <li className={detail.status === "done" ? "is-done" : detail.status === "in_progress" ? "is-current" : ""}>
+                  3. Done
+                </li>
+              </ol>
+              {detail.status === "due" ? (
+                <p className="muted">Press <strong>Start</strong> before Done. Save only stores notes/parts.</p>
+              ) : null}
               {detail.status === "in_progress" && detail.startedAt ? (
                 <p className="field-service-clock muted">
                   Service clock running since {new Date(detail.startedAt).toLocaleString()}

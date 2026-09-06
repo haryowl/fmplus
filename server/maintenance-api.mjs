@@ -332,6 +332,10 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
     endedAt = null;
   }
   if (status === "done") {
+    // Heal jobs stuck in_progress without a clock (e.g. old Start bug cleared started_at).
+    if (!startedAt && prevStatus === "in_progress") {
+      startedAt = current.updated_at || new Date().toISOString();
+    }
     if (!startedAt) {
       const err = new Error("Start the job before marking Done");
       err.status = 400;
@@ -342,14 +346,18 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
     endedAt = new Date().toISOString();
   }
 
-  // Manager may correct timestamps on open jobs; ignore field overrides of the clock.
-  if (actor === "manager") {
+  // Manager may correct timestamps on a plain Save.
+  // Never let empty form fields wipe the clock during Start / Done / Skip / Cancel.
+  if (actor === "manager" && body.status === undefined) {
     if (body.startedAt !== undefined) {
       startedAt = body.startedAt ? new Date(String(body.startedAt)).toISOString() : null;
     }
     if (body.endedAt !== undefined) {
       endedAt = body.endedAt ? new Date(String(body.endedAt)).toISOString() : null;
     }
+  } else if (actor === "manager") {
+    if (body.startedAt) startedAt = new Date(String(body.startedAt)).toISOString();
+    if (body.endedAt) endedAt = new Date(String(body.endedAt)).toISOString();
   }
 
   if (status === "done" && !startedAt) {
@@ -553,10 +561,15 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
   }
 
   if (prevStatus !== "done" && status === "done" && event) {
-    nextEvent = await spawnNextDueEvent(event, tenantId, {
-      vaultTenant: opts.vaultTenant,
-      completionOdo: odometerKm,
-    });
+    try {
+      nextEvent = await spawnNextDueEvent(event, tenantId, {
+        vaultTenant: opts.vaultTenant,
+        completionOdo: odometerKm,
+      });
+    } catch (err) {
+      console.error("[maintenance] spawn next due", err);
+      nextEvent = null;
+    }
     if (nextEvent) {
       try {
         const { fanOutEventReminder } = await import("./maintenance-remind.mjs");

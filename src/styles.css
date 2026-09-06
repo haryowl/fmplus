@@ -2849,6 +2849,43 @@ html.onesheet-root body {
 }
 .field-status-due { background: #f8ead8; border-color: #c49a5a; color: #7a4b12; }
 .field-status-in_progress { background: var(--accent-soft); border-color: var(--accent); color: #08443e; }
+.field-service-clock {
+  margin: 4px 0 0;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.field-flow-steps {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.field-flow-steps li {
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--ink-faint);
+  background: #fff;
+}
+
+.field-flow-steps li.is-current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: #08443e;
+}
+
+.field-flow-steps li.is-done {
+  border-color: #8aaf8f;
+  background: #e8f3ea;
+  color: #1e5c34;
+}
+
 .field-map-link { color: var(--accent); font-weight: 600; font-size: 0.9rem; width: fit-content; }
 
 .field-label { display: grid; gap: 6px; font-size: 0.86rem; color: var(--ink-soft); }
