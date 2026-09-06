@@ -614,7 +614,21 @@ async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionO
      ORDER BY created_at ASC LIMIT 1`,
     [completed.id],
   );
-  if (existingOpen.rows[0]) return publicEvent(existingOpen.rows[0]);
+  if (existingOpen.rows[0]) {
+    const row = existingOpen.rows[0];
+    // Empty auto-follow-ups must not stay on the technician queue — that looked like
+    // "Done reverted to Due and wiped the sheet".
+    const lines = await loadLines(row.id);
+    if (row.assigned_field_user_id && !row.notes && lines.length === 0) {
+      const cleared = await dbQuery(
+        `UPDATE service_events SET assigned_field_user_id = NULL, updated_at = now()
+         WHERE id = $1 RETURNING ${SELECT_COLS}`,
+        [row.id],
+      );
+      return publicEvent(cleared.rows[0] || row);
+    }
+    return publicEvent(row);
+  }
 
   let nextBaseline = completionOdo ?? completed.odometerKm ?? completed.remindBaselineOdometerKm;
   if (
@@ -672,7 +686,9 @@ async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionO
       completed.lat,
       completed.lon,
       nextBaseline,
-      completed.assignedFieldUserId,
+      // Leave unassigned — manager assigns the next cycle. Copying the tech made Done
+      // look like the same job bounced back to Due with an empty sheet.
+      null,
       nextDueAt,
       completed.remindIntervalDays,
       completed.remindIntervalKm,

@@ -283,9 +283,12 @@ export default function FieldLogin() {
         odometerKm: odometerKm.trim() === "" ? null : Number(odometerKm),
         ...extra,
       };
-      // Only replace lines when the tech edited them — empty default row must not wipe DB lines.
-      if (linesDirty || extra.status === "done" || extra.status === "skipped") {
+      // Never send an empty lines[] on Done/Skip — that wiped parts on the completed job.
+      if (linesDirty) {
         body.lines = serializeLines();
+      } else if (extra.status === "done" || extra.status === "skipped") {
+        const serialized = serializeLines();
+        if (serialized.length > 0) body.lines = serialized;
       }
       const data = await api<{ event: ServiceEvent; nextEvent?: ServiceEvent | null }>(
         `/api/field/maintenance/events/${selectedId}`,
@@ -302,7 +305,15 @@ export default function FieldLogin() {
       if (status === "done" || status === "skipped") {
         setSelectedId(null);
         setDetail(null);
-        setNotice(status === "done" ? "Job completed. Service time recorded." : "Job skipped.");
+        if (status === "done") {
+          setNotice(
+            data.nextEvent
+              ? "Job completed. Service time saved. Next service was scheduled for the manager to assign — it will not appear in your list until assigned."
+              : "Job completed. Service time recorded.",
+          );
+        } else {
+          setNotice("Job skipped.");
+        }
         await loadJobs();
       } else if (status === "in_progress" && extra.status === "in_progress") {
         setJobs((prev) => prev.map((j) => (j.id === data.event.id ? { ...j, ...data.event } : j)));
