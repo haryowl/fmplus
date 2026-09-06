@@ -34,6 +34,56 @@ import { MaintenanceEventDetail } from "../components/MaintenanceEventDetail";
 import { MaintenanceScheduleCharts } from "../components/MaintenanceScheduleCharts";
 import { ViewNav } from "../components/ViewNav";
 
+const COMPLETED_PREVIEW = 1;
+
+type VehicleGroup = {
+  key: string;
+  label: string;
+  events: ServiceEvent[];
+};
+
+function vehicleGroupKey(ev: ServiceEvent): string {
+  if (ev.armadaUserId != null) return `u:${ev.armadaUserId}`;
+  return `n:${eventVehicleLabel(ev)}`;
+}
+
+function eventSortMs(ev: ServiceEvent): number {
+  const raw = ev.endedAt || ev.updatedAt || ev.createdAt || "";
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function groupEventsByVehicle(events: ServiceEvent[]): VehicleGroup[] {
+  const map = new Map<string, VehicleGroup>();
+  for (const ev of events) {
+    const key = vehicleGroupKey(ev);
+    let g = map.get(key);
+    if (!g) {
+      g = { key, label: eventVehicleLabel(ev), events: [] };
+      map.set(key, g);
+    }
+    g.events.push(ev);
+  }
+  for (const g of map.values()) {
+    g.events.sort((a, b) => eventSortMs(b) - eventSortMs(a));
+  }
+  return [...map.values()].sort((a, b) => {
+    const au = Math.max(0, ...a.events.map((e) => e.scheduleUrgency ?? 0));
+    const bu = Math.max(0, ...b.events.map((e) => e.scheduleUrgency ?? 0));
+    if (bu !== au) return bu - au;
+    return a.label.localeCompare(b.label);
+  });
+}
+
+function groupNeedsAttention(g: VehicleGroup): boolean {
+  return g.events.some(
+    (e) =>
+      e.status === "in_progress" ||
+      e.scheduleHealth === "overdue" ||
+      e.scheduleHealth === "due",
+  );
+}
+
 function vehicleSearch(userId: number): string {
   const params = new URLSearchParams(window.location.search);
   params.set("userId", String(userId));
@@ -107,6 +157,8 @@ export default function MaintenanceBoard() {
     "all",
   );
   const [listQuery, setListQuery] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [historyExtra, setHistoryExtra] = useState<Record<string, number>>({});
   const [eventId, setEventId] = useState(
     () => new URLSearchParams(window.location.search).get("eventId") || "",
   );
@@ -177,6 +229,28 @@ export default function MaintenanceBoard() {
       return hay.includes(q);
     });
   }, [events, listQuery]);
+
+  const isHistoryView =
+    healthFilter === "completed" || statusFilter === "done" || statusFilter === "all" || statusFilter === "skipped";
+
+  const vehicleGroups = useMemo(() => groupEventsByVehicle(filteredEvents), [filteredEvents]);
+
+  useEffect(() => {
+    // Collapse quiet vehicle groups when the list is long (esp. Completed history).
+    if (filteredEvents.length < 12) return;
+    setCollapsedGroups((prev) => {
+      const next = { ...prev };
+      for (const g of vehicleGroups) {
+        if (next[g.key] !== undefined) continue;
+        next[g.key] = isHistoryView ? !groupNeedsAttention(g) : g.events.length > 3 && !groupNeedsAttention(g);
+      }
+      return next;
+    });
+  }, [vehicleGroups, filteredEvents.length, isHistoryView]);
+
+  useEffect(() => {
+    setHistoryExtra({});
+  }, [statusFilter, healthFilter]);
 
   useEffect(() => {
     writeLocationSearch({
@@ -909,128 +983,207 @@ export default function MaintenanceBoard() {
             <input
               value={listQuery}
               onChange={(e) => setListQuery(e.target.value)}
-              placeholder="Filter jobs by vehicle, title, schedule…"
+              placeholder="Filter by vehicle, title, schedule…"
             />
           </label>
           <span className="muted maintenance-list-count">
-            {filteredEvents.length}
-            {listQuery.trim() ? ` of ${events.length}` : ""} jobs
+            {filteredEvents.length} jobs · {vehicleGroups.length} vehicles
           </span>
-        </div>
-        <ul className="maintenance-list">
-          {filteredEvents.length === 0 && !loading && (
-            <li className="muted maintenance-empty">
-              {query.tenantKey
-                ? listQuery.trim()
-                  ? "No jobs match this filter."
-                  : healthFilter === "completed" || statusFilter === "done"
-                    ? "No completed jobs yet. When a technician presses Done on /m, the job appears here with parts, photos, and service time."
-                    : "No open jobs. Field completions are under Completed (not Open). Unassigned next-cycle jobs stay hidden until you assign them."
-                : "Add k= to the URL."}
-            </li>
-          )}
-          {filteredEvents.map((ev) => {
-            const search = ev.armadaUserId ? vehicleSearch(ev.armadaUserId) : "";
-            const health =
-              ev.scheduleHealth && ev.scheduleHealth !== "none" && ev.scheduleHealth !== "completed"
-                ? ev.scheduleHealth
-                : "";
-            const scheduleText =
-              ev.scheduleBits && ev.scheduleBits.length > 0
-                ? ev.scheduleBits.join("; ")
-                : scheduleLabel(ev) || "";
-            return (
-              <li
-                key={ev.id}
-                className={`maint-row maint-status-${ev.status}${health ? ` maint-health-${health}` : ""}`}
+          {vehicleGroups.length > 1 ? (
+            <div className="maintenance-list-fold">
+              <button
+                type="button"
+                className="btn-ghost btn-compact"
+                onClick={() => {
+                  const next: Record<string, boolean> = {};
+                  for (const g of vehicleGroups) next[g.key] = false;
+                  setCollapsedGroups(next);
+                }}
               >
-                <div className={`maint-row-rail${health ? ` is-${health}` : ""}`} aria-hidden />
-                <div className="maint-row-main">
-                  <button type="button" className="maintenance-row-title" onClick={() => setEventId(ev.id)}>
-                    <strong>{ev.title}</strong>
+                Expand all
+              </button>
+              <button
+                type="button"
+                className="btn-ghost btn-compact"
+                onClick={() => {
+                  const next: Record<string, boolean> = {};
+                  for (const g of vehicleGroups) next[g.key] = true;
+                  setCollapsedGroups(next);
+                }}
+              >
+                Collapse all
+              </button>
+            </div>
+          ) : null}
+        </div>
+        {filteredEvents.length === 0 && !loading ? (
+          <p className="muted maintenance-empty">
+            {query.tenantKey
+              ? listQuery.trim()
+                ? "No jobs match this filter."
+                : healthFilter === "completed" || statusFilter === "done"
+                  ? "No completed jobs yet. When a technician presses Done on /m, the job appears here with parts, photos, and service time."
+                  : "No open jobs. Field completions are under Completed. Unassigned next-cycle jobs stay hidden until you assign them."
+              : "Add k= to the URL."}
+          </p>
+        ) : (
+          <div className="maintenance-vehicle-list">
+            {vehicleGroups.map((group) => {
+              const collapsed = Boolean(collapsedGroups[group.key]);
+              const preview =
+                isHistoryView
+                  ? COMPLETED_PREVIEW + (historyExtra[group.key] || 0)
+                  : group.events.length;
+              const visible = collapsed ? [] : group.events.slice(0, preview);
+              const hiddenCount = collapsed ? group.events.length : Math.max(0, group.events.length - preview);
+              const openCount = group.events.filter((e) => e.status === "due" || e.status === "in_progress").length;
+              const doneCount = group.events.filter((e) => e.status === "done").length;
+              return (
+                <section key={group.key} className="maint-vehicle-group">
+                  <button
+                    type="button"
+                    className="maint-vehicle-head"
+                    aria-expanded={!collapsed}
+                    onClick={() =>
+                      setCollapsedGroups((prev) => ({ ...prev, [group.key]: !collapsed }))
+                    }
+                  >
+                    <span className="maint-vehicle-chevron" aria-hidden>
+                      {collapsed ? "›" : "▾"}
+                    </span>
+                    <strong>{group.label}</strong>
+                    <span className="muted">
+                      {group.events.length} job{group.events.length === 1 ? "" : "s"}
+                      {openCount ? ` · ${openCount} open` : ""}
+                      {doneCount ? ` · ${doneCount} done` : ""}
+                    </span>
                   </button>
-                  <span className="maint-row-meta muted">
-                    {eventVehicleLabel(ev)}
-                    <span>·</span>
-                    {eventWhen(ev, now)}
-                    {ev.odometerKm != null ? (
-                      <>
-                        <span>·</span>
-                        {formatKm(ev.odometerKm)} km
-                      </>
-                    ) : null}
-                  </span>
-                </div>
-                <div className="maintenance-row-badges">
-                  <span className={`maint-badge maint-status-${ev.status}`}>
-                    {SERVICE_STATUS_LABELS[ev.status]}
-                  </span>
-                  {ev.parentEventId ? <span className="maint-badge">Follow-up</span> : null}
-                  {health ? (
-                    <span className={`maint-badge maint-health-${health}`}>
-                      {SCHEDULE_HEALTH_LABELS[health as ScheduleHealth]}
-                    </span>
+                  {!collapsed ? (
+                    <ul className="maintenance-list">
+                      {visible.map((ev) => {
+                        const search = ev.armadaUserId ? vehicleSearch(ev.armadaUserId) : "";
+                        const health =
+                          ev.scheduleHealth &&
+                          ev.scheduleHealth !== "none" &&
+                          ev.scheduleHealth !== "completed"
+                            ? ev.scheduleHealth
+                            : "";
+                        const scheduleText =
+                          ev.scheduleBits && ev.scheduleBits.length > 0
+                            ? ev.scheduleBits.join("; ")
+                            : scheduleLabel(ev) || "";
+                        return (
+                          <li
+                            key={ev.id}
+                            className={`maint-row maint-row-compact maint-status-${ev.status}${
+                              health ? ` maint-health-${health}` : ""
+                            }`}
+                          >
+                            <div className={`maint-row-rail${health ? ` is-${health}` : ""}`} aria-hidden />
+                            <button
+                              type="button"
+                              className="maint-row-main maintenance-row-title"
+                              onClick={() => setEventId(ev.id)}
+                            >
+                              <strong>{ev.title}</strong>
+                              <span className="maint-row-meta muted">
+                                <span className={`maint-badge maint-status-${ev.status}`}>
+                                  {SERVICE_STATUS_LABELS[ev.status]}
+                                </span>
+                                {ev.parentEventId ? <span className="maint-badge">Follow-up</span> : null}
+                                {health ? (
+                                  <span className={`maint-badge maint-health-${health}`}>
+                                    {SCHEDULE_HEALTH_LABELS[health as ScheduleHealth]}
+                                  </span>
+                                ) : null}
+                                <span>{eventWhen(ev, now)}</span>
+                                {ev.odometerKm != null ? <span>{formatKm(ev.odometerKm)} km</span> : null}
+                                {ev.serviceDurationMinutes != null ? (
+                                  <span>{formatServiceDuration(ev.serviceDurationMinutes)}</span>
+                                ) : null}
+                                {scheduleText ? <span title={scheduleText}>{scheduleText}</span> : null}
+                              </span>
+                            </button>
+                            <div className="maintenance-row-actions">
+                              {ev.armadaUserId ? (
+                                <span className="maint-row-links">
+                                  <a className="btn-link" href={tripsHref(search)}>
+                                    Trips
+                                  </a>
+                                  <a className="btn-link" href={fullHref(search)}>
+                                    Full
+                                  </a>
+                                </span>
+                              ) : null}
+                              {ev.status === "due" && (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-compact"
+                                  disabled={busyId === ev.id}
+                                  onClick={() => void setStatus(ev.id, "in_progress")}
+                                >
+                                  Start
+                                </button>
+                              )}
+                              {ev.status === "in_progress" && (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-compact"
+                                  disabled={busyId === ev.id}
+                                  onClick={() => void setStatus(ev.id, "done")}
+                                >
+                                  Done
+                                </button>
+                              )}
+                              {(ev.status === "due" || ev.status === "in_progress") && (
+                                <button
+                                  type="button"
+                                  className="btn-ghost btn-compact"
+                                  disabled={busyId === ev.id}
+                                  onClick={() => void setStatus(ev.id, "skipped")}
+                                >
+                                  Skip
+                                </button>
+                              )}
+                              {(ev.status === "done" || ev.status === "skipped") && (
+                                <button
+                                  type="button"
+                                  className="btn-secondary btn-compact"
+                                  disabled={busyId === ev.id}
+                                  onClick={() => void setStatus(ev.id, "due")}
+                                >
+                                  Reopen
+                                </button>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
                   ) : null}
-                </div>
-                <div className="maint-row-schedule muted" title={scheduleText || undefined}>
-                  {scheduleText || "—"}
-                </div>
-                <div className="maintenance-row-actions">
-                  {ev.armadaUserId ? (
-                    <span className="maint-row-links">
-                      <a className="btn-link" href={tripsHref(search)}>
-                        Trips
-                      </a>
-                      <a className="btn-link" href={fullHref(search)}>
-                        Full
-                      </a>
-                    </span>
-                  ) : null}
-                  {ev.status === "due" && (
+                  {hiddenCount > 0 ? (
                     <button
                       type="button"
-                      className="btn btn-primary btn-compact"
-                      disabled={busyId === ev.id}
-                      onClick={() => void setStatus(ev.id, "in_progress")}
+                      className="maint-vehicle-more"
+                      onClick={() => {
+                        if (collapsed) {
+                          setCollapsedGroups((prev) => ({ ...prev, [group.key]: false }));
+                          return;
+                        }
+                        setHistoryExtra((prev) => ({
+                          ...prev,
+                          [group.key]: (prev[group.key] || 0) + 5,
+                        }));
+                      }}
                     >
-                      Start
+                      {collapsed ? `Show ${hiddenCount} jobs` : `Show ${Math.min(5, hiddenCount)} older… (${hiddenCount} hidden)`}
                     </button>
-                  )}
-                  {(ev.status === "due" || ev.status === "in_progress") && (
-                    <>
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-compact"
-                        disabled={busyId === ev.id}
-                        onClick={() => void setStatus(ev.id, "done")}
-                      >
-                        Done
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-ghost btn-compact"
-                        disabled={busyId === ev.id}
-                        onClick={() => void setStatus(ev.id, "skipped")}
-                      >
-                        Skip
-                      </button>
-                    </>
-                  )}
-                  {(ev.status === "done" || ev.status === "skipped") && (
-                    <button
-                      type="button"
-                      className="btn-secondary btn-compact"
-                      disabled={busyId === ev.id}
-                      onClick={() => void setStatus(ev.id, "due")}
-                    >
-                      Reopen
-                    </button>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                  ) : null}
+                </section>
+              );
+            })}
+          </div>
+        )}
         </>
         )}
       </main>

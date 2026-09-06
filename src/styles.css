@@ -3432,8 +3432,118 @@ html.onesheet-root body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 0 0 10px;
+}
+
+.maintenance-list-fold {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.maintenance-vehicle-list {
+  display: grid;
+  gap: 8px;
+}
+
+.maint-vehicle-group {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(251, 249, 244, 0.95);
+  overflow: hidden;
+}
+
+.maint-vehicle-head {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 8px 12px;
+  border: 0;
+  background: rgba(23, 22, 20, 0.03);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  color: inherit;
+}
+
+.maint-vehicle-head:hover {
+  background: rgba(217, 239, 233, 0.35);
+}
+
+.maint-vehicle-head strong {
+  font-size: 0.95rem;
+}
+
+.maint-vehicle-chevron {
+  width: 1rem;
+  color: var(--ink-faint);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.maint-vehicle-group .maintenance-list {
+  border: 0;
+  border-radius: 0;
+  border-top: 1px solid rgba(217, 210, 198, 0.75);
+}
+
+.maint-vehicle-more {
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-top: 1px solid rgba(217, 210, 198, 0.75);
+  background: transparent;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  text-align: left;
+}
+
+.maint-vehicle-more:hover {
+  background: rgba(217, 239, 233, 0.28);
+}
+
+.maintenance-list li.maint-row-compact {
+  grid-template-columns: 4px minmax(0, 1fr) auto;
+  padding: 6px 10px 6px 0;
+  gap: 6px 10px;
+}
+
+.maintenance-list li.maint-row-compact .maint-row-main {
+  display: grid;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.maintenance-list li.maint-row-compact .maint-row-main strong {
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.maintenance-list li.maint-row-compact .maint-row-meta {
+  gap: 4px 8px;
+  align-items: center;
+}
+
+.maintenance-list li.maint-row-compact .maint-row-meta > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 42vw;
 }
 
 .maintenance-list-search {
