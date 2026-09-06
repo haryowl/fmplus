@@ -30,6 +30,8 @@ import { fullHref, tripsHref, writeLocationSearch } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
 import { BrandMark } from "../components/BrandMark";
+import { MaintenanceCatalogPanel } from "../components/MaintenanceCatalogPanel";
+import { MaintenanceCostDashboard } from "../components/MaintenanceCostDashboard";
 import { MaintenanceEventDetail } from "../components/MaintenanceEventDetail";
 import { MaintenanceScheduleCharts } from "../components/MaintenanceScheduleCharts";
 import { ViewNav } from "../components/ViewNav";
@@ -162,6 +164,7 @@ export default function MaintenanceBoard() {
   const [eventId, setEventId] = useState(
     () => new URLSearchParams(window.location.search).get("eventId") || "",
   );
+  const [boardPanel, setBoardPanel] = useState<"jobs" | "catalog" | "costs">("jobs");
 
   const excelOk = entitlements.features.excel !== false;
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
@@ -231,7 +234,11 @@ export default function MaintenanceBoard() {
   }, [events, listQuery]);
 
   const isHistoryView =
-    healthFilter === "completed" || statusFilter === "done" || statusFilter === "all" || statusFilter === "skipped";
+    healthFilter === "completed" ||
+    statusFilter === "done" ||
+    statusFilter === "approved" ||
+    statusFilter === "all" ||
+    statusFilter === "skipped";
 
   const vehicleGroups = useMemo(() => groupEventsByVehicle(filteredEvents), [filteredEvents]);
 
@@ -351,7 +358,7 @@ export default function MaintenanceBoard() {
     setLoading(true);
     setError("");
     const status: MaintenanceStatusFilter =
-      healthFilter === "completed" ? "done" : healthFilter ? "open" : statusFilter;
+      healthFilter === "completed" ? "completed" : healthFilter ? "open" : statusFilter;
     const health =
       healthFilter === "upcoming" || healthFilter === "due" || healthFilter === "overdue"
         ? healthFilter
@@ -530,9 +537,22 @@ export default function MaintenanceBoard() {
               <option value="open">Open (due + in progress)</option>
               <option value="due">Due (workflow)</option>
               <option value="in_progress">In progress</option>
-              <option value="done">Done</option>
+              <option value="done">Done (awaiting approve)</option>
+              <option value="approved">Approved</option>
               <option value="skipped">Skipped</option>
               <option value="all">All</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="maint-panel">Panel</label>
+            <select
+              id="maint-panel"
+              value={boardPanel}
+              onChange={(e) => setBoardPanel(e.target.value as "jobs" | "catalog" | "costs")}
+            >
+              <option value="jobs">Jobs</option>
+              <option value="catalog">Catalog</option>
+              <option value="costs">Approved costs</option>
             </select>
           </div>
           <div className="field">
@@ -606,10 +626,24 @@ export default function MaintenanceBoard() {
             <button
               type="button"
               className={`maint-dash-tile maint-health-completed${healthFilter === "completed" ? " is-active" : ""}`}
-              onClick={() => setHealthFilter("completed")}
+              onClick={() => {
+                setBoardPanel("jobs");
+                setHealthFilter("completed");
+              }}
             >
               <span className="maint-dash-label">Completed</span>
               <strong>{scheduleSummary?.completed ?? "—"}</strong>
+              {scheduleSummary?.awaitingApprove ? (
+                <span className="muted maint-dash-sub">{scheduleSummary.awaitingApprove} to approve</span>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              className={`maint-dash-tile${boardPanel === "costs" ? " is-active" : ""}`}
+              onClick={() => setBoardPanel("costs")}
+            >
+              <span className="maint-dash-label">Approved</span>
+              <strong>{scheduleSummary?.approved ?? "—"}</strong>
             </button>
             <div className="maint-dash-tile maint-dash-stat" title="Average Start→Done time (last 90 days)">
               <span className="maint-dash-label">Avg service</span>
@@ -623,7 +657,20 @@ export default function MaintenanceBoard() {
           </section>
         )}
 
-        {!eventId && (scheduleSummary || scheduleDash) && (
+        {!eventId && boardPanel === "catalog" && (
+          <MaintenanceCatalogPanel onClose={() => setBoardPanel("jobs")} />
+        )}
+
+        {!eventId && boardPanel === "costs" && (
+          <MaintenanceCostDashboard
+            onOpenEvent={(id) => {
+              setEventId(id);
+              setBoardPanel("jobs");
+            }}
+          />
+        )}
+
+        {!eventId && boardPanel === "jobs" && (scheduleSummary || scheduleDash) && (
           <MaintenanceScheduleCharts
             summary={scheduleSummary}
             healthBars={scheduleDash?.healthBars}
@@ -639,7 +686,7 @@ export default function MaintenanceBoard() {
           />
         )}
 
-        {!eventId && (
+        {!eventId && boardPanel === "jobs" && (
         <div className="maintenance-toolbar">
           <button
             type="button"
@@ -651,6 +698,9 @@ export default function MaintenanceBoard() {
           >
             Open for vehicle
           </button>
+          <button type="button" className="btn-secondary" onClick={() => setBoardPanel("catalog")}>
+            Catalog
+          </button>
           {showCreate && (
             <button type="button" className="btn-secondary" onClick={() => setShowCreate(false)}>
               Cancel
@@ -659,7 +709,7 @@ export default function MaintenanceBoard() {
         </div>
         )}
 
-        {!eventId && showCreate && (
+        {!eventId && boardPanel === "jobs" && showCreate && (
           <form className="maintenance-create" onSubmit={(e) => void onCreate(e)}>
             <label className="span-2">
               Search vehicle
@@ -800,7 +850,7 @@ export default function MaintenanceBoard() {
 
         {error && <div className="banner error">{error}</div>}
 
-        {!eventId && (
+        {!eventId && boardPanel === "jobs" && (
           <section className={`maintenance-inbox${remindersOpen ? " is-open" : ""}`}>
             <div className="maintenance-inbox-head">
               <button
@@ -954,19 +1004,26 @@ export default function MaintenanceBoard() {
                   if (
                     statusFilter === "open" ||
                     statusFilter === "due" ||
-                    statusFilter === "all"
+                    statusFilter === "all" ||
+                    healthFilter === "completed"
                   ) {
                     return [updated, ...prev];
                   }
                   return prev;
                 }
-                if (statusFilter === "open" && (updated.status === "done" || updated.status === "skipped")) {
+                if (
+                  statusFilter === "open" &&
+                  (updated.status === "done" ||
+                    updated.status === "skipped" ||
+                    updated.status === "approved")
+                ) {
                   return prev.filter((x) => x.id !== updated.id);
                 }
                 if (
                   statusFilter !== "all" &&
                   statusFilter !== "open" &&
-                  statusFilter !== updated.status
+                  statusFilter !== updated.status &&
+                  !(healthFilter === "completed" && (updated.status === "done" || updated.status === "approved"))
                 ) {
                   return prev.filter((x) => x.id !== updated.id);
                 }
@@ -975,7 +1032,7 @@ export default function MaintenanceBoard() {
               void fetchMaintReminders("open").then(setReminders).catch(() => {});
             }}
           />
-        ) : (
+        ) : boardPanel === "jobs" ? (
         <>
         <div className="maintenance-list-toolbar">
           <label className="maintenance-list-search">
@@ -1185,7 +1242,7 @@ export default function MaintenanceBoard() {
           </div>
         )}
         </>
-        )}
+        ) : null}
       </main>
     </div>
   );

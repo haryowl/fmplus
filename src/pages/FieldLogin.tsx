@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { BrandMark } from "../components/BrandMark";
+import { CatalogLineEditor } from "../components/CatalogLineEditor";
 import { prepareImageDataUrl } from "../lib/imageUpload";
 import {
   emptyLine,
   eventVehicleLabel,
-  LINE_KIND_LABELS,
   SERVICE_STATUS_LABELS,
-  type LineKind,
+  type CatalogGroup,
   type ServiceEvent,
   type ServiceEventStatus,
   type ServiceLine,
@@ -93,6 +93,7 @@ export default function FieldLogin() {
   const [lines, setLines] = useState<ServiceLine[]>([emptyLine()]);
   const [linesDirty, setLinesDirty] = useState(false);
   const [jobFilter, setJobFilter] = useState<"all" | "due" | "in_progress">("all");
+  const [catalog, setCatalog] = useState<CatalogGroup[]>([]);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -133,6 +134,24 @@ export default function FieldLogin() {
   useEffect(() => {
     if (user && mobileMaintenance) void loadJobs();
   }, [user, mobileMaintenance, loadJobs]);
+
+  useEffect(() => {
+    if (!user || !mobileMaintenance) {
+      setCatalog([]);
+      return;
+    }
+    let cancelled = false;
+    void api<{ groups: CatalogGroup[] }>("/api/field/maintenance/catalog")
+      .then((data) => {
+        if (!cancelled) setCatalog(data.groups || []);
+      })
+      .catch(() => {
+        if (!cancelled) setCatalog([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, mobileMaintenance]);
 
   useEffect(() => {
     if (!selectedId || !mobileMaintenance) {
@@ -227,7 +246,8 @@ export default function FieldLogin() {
           String(l.vendor || "").trim(),
       )
       .map((l, i) => ({
-        kind: l.kind,
+        kind: l.kind === "labor" ? "service" : l.kind,
+        catalogItemId: l.catalogItemId || null,
         description: l.description,
         qty: Number(l.qty) || 1,
         unitPrice: l.unitPrice,
@@ -555,90 +575,19 @@ export default function FieldLogin() {
 
             <section className="field-panel">
               <header className="field-panel-head">
-                <h3>Parts & labor</h3>
-                <p className="muted">Add what you used or charged on this job</p>
+                <h3>Parts &amp; service</h3>
+                <p className="muted">Pick from catalog or enter Others as free text</p>
               </header>
               <div className="field-lines">
                 {lines.map((line, idx) => (
-                  <article key={idx} className="field-line-card">
-                    <div className="field-line-top">
-                      <select
-                        value={line.kind}
-                        onChange={(e) => updateLine(idx, { kind: e.target.value as LineKind })}
-                        aria-label="Line kind"
-                      >
-                        {(Object.keys(LINE_KIND_LABELS) as LineKind[]).map((k) => (
-                          <option key={k} value={k}>
-                            {LINE_KIND_LABELS[k]}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="btn-ghost btn-compact"
-                        onClick={() => removeLine(idx)}
-                        aria-label="Remove line"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <input
-                      placeholder="Description (part / work)"
-                      value={line.description}
-                      onChange={(e) => updateLine(idx, { description: e.target.value })}
-                    />
-                    <div className="field-line-grid">
-                      <label>
-                        Qty
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min={0}
-                          step="any"
-                          value={line.qty}
-                          onChange={(e) => updateLine(idx, { qty: Number(e.target.value) || 0 })}
-                        />
-                      </label>
-                      <label>
-                        Unit price
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          step="any"
-                          placeholder="0"
-                          value={line.unitPrice ?? ""}
-                          onChange={(e) =>
-                            updateLine(idx, {
-                              unitPrice: e.target.value === "" ? null : Number(e.target.value),
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        Unit cost
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          step="any"
-                          placeholder="0"
-                          value={line.unitCost ?? ""}
-                          onChange={(e) =>
-                            updateLine(idx, {
-                              unitCost: e.target.value === "" ? null : Number(e.target.value),
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        Vendor
-                        <input
-                          value={line.vendor}
-                          onChange={(e) => updateLine(idx, { vendor: e.target.value })}
-                          placeholder="Optional"
-                        />
-                      </label>
-                    </div>
-                  </article>
+                  <CatalogLineEditor
+                    key={idx}
+                    line={line}
+                    catalog={catalog}
+                    compact
+                    onChange={(patch) => updateLine(idx, patch)}
+                    onRemove={() => removeLine(idx)}
+                  />
                 ))}
               </div>
               <div className="field-lines-footer">

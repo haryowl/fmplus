@@ -1,22 +1,21 @@
 /**
  * Pure work-order lifecycle helpers (shared by API + tests).
  *
- * Lifecycle (CMMS-aligned):
+ * Lifecycle:
  *   due → in_progress (Start)
- *   in_progress → due (Cancel start, before Done)
- *   in_progress → done (Done; records service time)
+ *   in_progress → due (Cancel start)
+ *   in_progress → done (Done)
+ *   done → approved (manager Approve — terminal lock)
  *   due|in_progress → skipped
- *   done|skipped → due (Reopen — manager only in API)
- *
- * Next schedule after Done anchors on completion time (endedAt), then adds the
- * interval — never reuses the same due timestamp as the job just closed.
+ *   done|skipped → due (manager Reopen; not from approved)
  */
 
 export function canTransition(from, to) {
   if (from === to) return true;
   if (from === "due" && (to === "in_progress" || to === "skipped")) return true;
   if (from === "in_progress" && (to === "done" || to === "skipped" || to === "due")) return true;
-  if ((from === "done" || from === "skipped") && to === "due") return true;
+  if (from === "done" && (to === "approved" || to === "due")) return true;
+  if (from === "skipped" && to === "due") return true;
   return false;
 }
 
@@ -40,7 +39,6 @@ export function nextScheduleDueAt(completed, nowIso) {
   if (!Number.isFinite(intervalDays) || intervalDays <= 0) return null;
   const endedMs = Date.parse(completed?.endedAt || nowIso || new Date().toISOString());
   if (!Number.isFinite(endedMs)) return null;
-  // Always roll from completion — not the previous due date (that created “same window” twins).
   const nextMs = endedMs + intervalDays * 86400000;
   return new Date(nextMs).toISOString();
 }

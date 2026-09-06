@@ -23,6 +23,7 @@ const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, 
   remind_due_at, remind_interval_days, remind_interval_km, remind_baseline_odometer_km,
   remind_interval_hours, remind_hours_since_at,
   remind_before_days, remind_before_km, remind_before_hours, parent_event_id,
+  approved_at, approved_by,
   created_at, updated_at`;
 
 function send(res, status, headers, body) {
@@ -236,6 +237,18 @@ export async function handleFieldRequest(req, res) {
         return true;
       }
 
+      if (url.pathname === "/api/field/maintenance/catalog" && req.method === "GET") {
+        const { ensureCatalog } = await import("./maintenance-catalog.mjs");
+        const groups = await ensureCatalog(user.tenantId);
+        json(res, 200, {
+          groups: groups.map((g) => ({
+            ...g,
+            items: (g.items || []).filter((it) => it.enabled !== false),
+          })),
+        });
+        return true;
+      }
+
       const evMatch = /^\/api\/field\/maintenance\/events\/([0-9a-f-]{36})$/i.exec(url.pathname);
       if (evMatch && req.method === "GET") {
         const row = await loadAssignedEventRow(user.tenantId, evMatch[1], user.id);
@@ -286,7 +299,7 @@ export async function handleFieldRequest(req, res) {
           json(res, 404, { error: "Job not found or not assigned to you" });
           return true;
         }
-        if (found.status === "done" || found.status === "skipped") {
+        if (found.status === "done" || found.status === "skipped" || found.status === "approved") {
           json(res, 403, { error: "Completed jobs can only be edited by a manager" });
           return true;
         }

@@ -23,6 +23,13 @@ describe("maintenance work-order lifecycle", () => {
     expect(canTransition("skipped", "due")).toBe(true);
   });
 
+  it("allows Approve from Done and blocks edits from Approved", () => {
+    expect(canTransition("done", "approved")).toBe(true);
+    expect(canTransition("approved", "due")).toBe(false);
+    expect(canTransition("approved", "done")).toBe(false);
+    expect(canTransition("in_progress", "approved")).toBe(false);
+  });
+
   it("computes service duration in minutes", () => {
     expect(
       serviceDurationMinutes("2026-09-06T10:00:00.000Z", "2026-09-06T11:30:00.000Z"),

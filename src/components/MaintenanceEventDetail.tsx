@@ -5,16 +5,16 @@ import {
   fetchHoursAccrued,
   fetchKmAccrued,
   fetchMaintFieldUsers,
+  fetchMaintenanceCatalog,
   fetchServiceEvent,
   fetchServicePoints,
   formatServiceDuration,
-  LINE_KIND_LABELS,
   patchServiceEvent,
   SERVICE_STATUS_LABELS,
   SCHEDULE_HEALTH_LABELS,
   uploadMaintPhoto,
+  type CatalogGroup,
   type FieldUserOption,
-  type LineKind,
   type ScheduleHealth,
   type ServiceEvent,
   type ServiceEventStatus,
@@ -25,6 +25,7 @@ import { prepareImageDataUrl } from "../lib/imageUpload";
 import { formatKm } from "../lib/format";
 import { fullHref, tripsHref } from "../lib/routing";
 import { tenantHeaders } from "../lib/tenant";
+import { CatalogLineEditor } from "./CatalogLineEditor";
 
 type Props = {
   eventId: string;
@@ -117,6 +118,7 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
   } | null>(null);
   const [kmLoading, setKmLoading] = useState(false);
   const [lines, setLines] = useState<ServiceLine[]>([emptyLine()]);
+  const [catalog, setCatalog] = useState<CatalogGroup[]>([]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -125,10 +127,12 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
     void Promise.all([
       fetchServiceEvent(eventId, ac.signal),
       fetchMaintFieldUsers().catch(() => [] as FieldUserOption[]),
+      fetchMaintenanceCatalog(ac.signal).catch(() => [] as CatalogGroup[]),
     ])
-      .then(([ev, users]) => {
+      .then(([ev, users, groups]) => {
         setEvent(ev);
         setFieldUsers(users.filter((u) => u.enabled));
+        setCatalog(groups);
         applyForm(ev);
       })
       .catch((err: Error) => {
@@ -302,7 +306,8 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
         lines: lines
           .filter((l) => l.description.trim() || l.unitPrice != null || l.unitCost != null)
           .map((l, i) => ({
-            kind: l.kind,
+            kind: l.kind === "labor" ? "service" : l.kind,
+            catalogItemId: l.catalogItemId || null,
             description: l.description,
             qty: Number(l.qty) || 1,
             unitPrice: l.unitPrice,
@@ -337,6 +342,7 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
       } else if (extra.status === "due" && event.status === "in_progress") setNotice("Start cancelled.");
       else if (extra.status === "skipped") setNotice("Job skipped.");
       else if (extra.status === "due") setNotice("Reopened.");
+      else if (extra.status === "approved") setNotice("Approved — job is locked.");
       else if (nextEvent) {
         setNotice("Next due created — opening the new event.");
         onSaved(nextEvent);
@@ -402,6 +408,7 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
   }
 
   const search = event.armadaUserId ? vehicleSearch(event.armadaUserId) : "";
+  const locked = event.status === "approved";
 
   return (
     <section className="maintenance-detail">
@@ -448,11 +455,18 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
       ) : null}
       {event.status === "done" ? (
         <div className="banner ok">
-          Completed
+          Done — awaiting Approve
           {event.serviceDurationMinutes != null
             ? ` · service time ${formatServiceDuration(event.serviceDurationMinutes)}`
             : ""}
-          . Parts and photos below are the field/manager closeout for this job.
+          . Review parts and photos, then Approve to lock for the cost dashboard.
+        </div>
+      ) : null}
+      {event.status === "approved" ? (
+        <div className="banner ok">
+          Approved
+          {event.approvedAt ? ` · ${String(event.approvedAt).slice(0, 10)}` : ""}
+          {event.approvedBy ? ` by ${event.approvedBy}` : ""}. This job is locked.
         </div>
       ) : null}
 
@@ -460,24 +474,40 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
         className="maintenance-detail-form"
         onSubmit={(e: FormEvent) => {
           e.preventDefault();
-          void save();
+          if (!locked) void save();
         }}
       >
         <label className="span-2">
           Title
-          <input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} />
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+            maxLength={200}
+            disabled={locked}
+          />
         </label>
         <label className="span-2">
           Notes
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} disabled={locked} />
         </label>
         <label>
           Started
-          <input type="datetime-local" value={startedAt} onChange={(e) => setStartedAt(e.target.value)} />
+          <input
+            type="datetime-local"
+            value={startedAt}
+            onChange={(e) => setStartedAt(e.target.value)}
+            disabled={locked}
+          />
         </label>
         <label>
           Ended
-          <input type="datetime-local" value={endedAt} onChange={(e) => setEndedAt(e.target.value)} />
+          <input
+            type="datetime-local"
+            value={endedAt}
+            onChange={(e) => setEndedAt(e.target.value)}
+            disabled={locked}
+          />
         </label>
         <p className="span-2 muted maintenance-service-time">
           Service time (Start → Done):{" "}
@@ -492,11 +522,16 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
             value={odometerKm}
             onChange={(e) => setOdometerKm(e.target.value)}
             placeholder={event.odometerKm != null ? formatKm(event.odometerKm) : ""}
+            disabled={locked}
           />
         </label>
         <label>
           Assign field user
-          <select value={assignedFieldUserId} onChange={(e) => setAssignedFieldUserId(e.target.value)}>
+          <select
+            value={assignedFieldUserId}
+            onChange={(e) => setAssignedFieldUserId(e.target.value)}
+            disabled={locked}
+          >
             <option value="">Unassigned (all operators see it)</option>
             {fieldUsers.map((u) => (
               <option key={u.id} value={u.id}>
@@ -702,71 +737,22 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
         <fieldset className="span-2 maintenance-lines">
           <legend>Line items</legend>
           {lines.map((line, idx) => (
-            <div key={idx} className="maintenance-line-row">
-              <select
-                value={line.kind}
-                onChange={(e) => updateLine(idx, { kind: e.target.value as LineKind })}
-                aria-label="Kind"
-              >
-                {(Object.keys(LINE_KIND_LABELS) as LineKind[]).map((k) => (
-                  <option key={k} value={k}>
-                    {LINE_KIND_LABELS[k]}
-                  </option>
-                ))}
-              </select>
-              <input
-                placeholder="Description"
-                value={line.description}
-                onChange={(e) => updateLine(idx, { description: e.target.value })}
-              />
-              <input
-                type="number"
-                step="any"
-                min={0}
-                placeholder="Qty"
-                value={line.qty}
-                onChange={(e) => updateLine(idx, { qty: Number(e.target.value) || 0 })}
-              />
-              <input
-                type="number"
-                step="any"
-                placeholder="Unit price"
-                value={line.unitPrice ?? ""}
-                onChange={(e) =>
-                  updateLine(idx, {
-                    unitPrice: e.target.value === "" ? null : Number(e.target.value),
-                  })
-                }
-              />
-              <input
-                type="number"
-                step="any"
-                placeholder="Unit cost"
-                value={line.unitCost ?? ""}
-                onChange={(e) =>
-                  updateLine(idx, {
-                    unitCost: e.target.value === "" ? null : Number(e.target.value),
-                  })
-                }
-              />
-              <input
-                placeholder="Vendor"
-                value={line.vendor}
-                onChange={(e) => updateLine(idx, { vendor: e.target.value })}
-              />
-              <button
-                type="button"
-                className="btn-icon"
-                title="Remove line"
-                aria-label="Remove line"
-                onClick={() => removeLine(idx)}
-              >
-                ×
-              </button>
-            </div>
+            <CatalogLineEditor
+              key={idx}
+              line={line}
+              catalog={catalog}
+              disabled={locked}
+              onChange={(patch) => updateLine(idx, patch)}
+              onRemove={() => removeLine(idx)}
+            />
           ))}
           <div className="maintenance-lines-footer">
-            <button type="button" className="btn-secondary" onClick={() => setLines((p) => [...p, emptyLine()])}>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={locked}
+              onClick={() => setLines((p) => [...p, emptyLine()])}
+            >
               Add line
             </button>
             <span className="muted">
@@ -776,9 +762,11 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
         </fieldset>
 
         <div className="span-2 maintenance-detail-actions">
-          <button type="submit" className="btn btn-primary" disabled={busy}>
-            Save
-          </button>
+          {!locked && (
+            <button type="submit" className="btn btn-primary" disabled={busy}>
+              Save
+            </button>
+          )}
           {event.status === "due" && (
             <button
               type="button"
@@ -809,6 +797,16 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
               Skip
             </button>
           )}
+          {event.status === "done" && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy}
+              onClick={() => void setStatus("approved")}
+            >
+              Approve
+            </button>
+          )}
           {(event.status === "done" || event.status === "skipped") && (
             <button type="button" className="btn-secondary" disabled={busy} onClick={() => void setStatus("due")}>
               Reopen
@@ -820,10 +818,12 @@ export function MaintenanceEventDetail({ eventId, onClose, onSaved, onOpenEvent 
       <div className="maintenance-photos">
         <div className="maintenance-photos-head">
           <h3>Proof of maintenance</h3>
-          <label className="btn-secondary maint-photo-upload">
-            Add photo
-            <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void onPhoto(e)} />
-          </label>
+          {!locked ? (
+            <label className="btn-secondary maint-photo-upload">
+              Add photo
+              <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void onPhoto(e)} />
+            </label>
+          ) : null}
         </div>
         {(event.photos || []).length === 0 ? (
           <p className="muted">No photos yet. Field users can upload from /m.</p>

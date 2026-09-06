@@ -156,10 +156,10 @@ export async function enrichEventsWithSchedule(events, vaultTenant, opts = {}) {
   }
 
   return events.map((ev) => {
-    if (ev.status === "done" || ev.status === "skipped") {
+    if (ev.status === "done" || ev.status === "skipped" || ev.status === "approved") {
       return {
         ...ev,
-        scheduleHealth: ev.status === "done" ? "completed" : "none",
+        scheduleHealth: ev.status === "skipped" ? "none" : "completed",
         scheduleBits: [],
       };
     }
@@ -179,7 +179,7 @@ export async function enrichEventsWithSchedule(events, vaultTenant, opts = {}) {
 export function summarizeSchedule(enriched) {
   const summary = { upcoming: 0, due: 0, overdue: 0, completed: 0, ok: 0, none: 0, open: 0 };
   for (const ev of enriched) {
-    if (ev.status === "done") {
+    if (ev.status === "done" || ev.status === "approved") {
       summary.completed += 1;
       continue;
     }

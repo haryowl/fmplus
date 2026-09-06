@@ -2,13 +2,14 @@ import { ageLabel } from "./lastStatus";
 import { tenantHeaders } from "./tenant";
 import { downloadXlsx, excelFilename, type ExcelCell } from "./xlsxDownload";
 
-export type ServiceEventStatus = "due" | "in_progress" | "done" | "skipped";
+export type ServiceEventStatus = "due" | "in_progress" | "done" | "skipped" | "approved";
 export type ScheduleHealth = "none" | "ok" | "upcoming" | "due" | "overdue" | "completed";
-export type LineKind = "part" | "labor" | "other";
+export type LineKind = "part" | "service" | "other" | "labor";
 
 export type ServiceLine = {
   id?: string;
   kind: LineKind;
+  catalogItemId?: string | null;
   description: string;
   qty: number;
   unitPrice: number | null;
@@ -59,6 +60,8 @@ export type ServiceEvent = {
   remindBeforeKm?: number | null;
   remindBeforeHours?: number | null;
   parentEventId?: string | null;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
   scheduleHealth?: ScheduleHealth;
   scheduleBits?: string[];
   scheduleUrgency?: number;
@@ -101,6 +104,8 @@ export type ScheduleSummary = {
   due: number;
   overdue: number;
   completed: number;
+  approved?: number;
+  awaitingApprove?: number;
   ok: number;
   none: number;
   open: number;
@@ -141,6 +146,7 @@ export const SERVICE_STATUS_LABELS: Record<ServiceEventStatus, string> = {
   in_progress: "In progress",
   done: "Done",
   skipped: "Skipped",
+  approved: "Approved",
 };
 
 export const SCHEDULE_HEALTH_LABELS: Record<ScheduleHealth, string> = {
@@ -152,10 +158,58 @@ export const SCHEDULE_HEALTH_LABELS: Record<ScheduleHealth, string> = {
   completed: "Completed",
 };
 
-export const LINE_KIND_LABELS: Record<LineKind, string> = {
+export const LINE_KIND_LABELS: Record<"part" | "service" | "other", string> = {
   part: "Part",
-  labor: "Labor",
-  other: "Other",
+  service: "Service",
+  other: "Others",
+};
+
+export type CatalogItem = {
+  id: string;
+  groupId: string;
+  groupKey: string;
+  name: string;
+  unitPrice: number | null;
+  unitCost: number | null;
+  enabled: boolean;
+  sortOrder: number;
+};
+
+export type CatalogGroup = {
+  id: string;
+  key: "part" | "service" | "other" | string;
+  name: string;
+  sortOrder: number;
+  items: CatalogItem[];
+};
+
+export type MaintStatusCell = {
+  label: string;
+  status: string | null;
+  health: string;
+  eventId: string | null;
+  title: string;
+};
+
+export type CostDashboard = {
+  days: number;
+  totals: { price: number; cost: number; margin: number; jobs: number };
+  byDay: { day: string; price: number; cost: number; count: number }[];
+  byVehicle: { label: string; userId: number | null; price: number; cost: number; count: number }[];
+  byGroup: Record<string, { price: number; cost: number }>;
+  topItems: { name: string; kind: string; price: number; cost: number; qty: number }[];
+  table: {
+    id: string;
+    title: string;
+    vehicle: string;
+    armadaUserId: number | null;
+    approvedAt: string | null;
+    approvedBy: string;
+    serviceDurationMinutes: number | null;
+    priceTotal: number | null;
+    costTotal: number | null;
+    margin: number | null;
+  }[];
 };
 
 export async function fetchServiceEvents(
@@ -196,6 +250,8 @@ export async function fetchScheduleSummary(signal?: AbortSignal): Promise<Schedu
       due: 0,
       overdue: 0,
       completed: 0,
+      approved: 0,
+      awaitingApprove: 0,
       ok: 0,
       none: 0,
       open: 0,
@@ -205,6 +261,98 @@ export async function fetchScheduleSummary(signal?: AbortSignal): Promise<Schedu
     healthBars: data.healthBars,
     timeline: data.timeline,
   };
+}
+
+export async function fetchMaintenanceCatalog(signal?: AbortSignal): Promise<CatalogGroup[]> {
+  const res = await fetch("/api/maintenance/catalog", {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as { groups?: CatalogGroup[]; error?: string };
+  if (!res.ok) throw new Error(data.error || `Catalog ${res.status}`);
+  return data.groups || [];
+}
+
+export async function createMaintCatalogItem(body: {
+  groupId: string;
+  name: string;
+  unitPrice?: number | null;
+  unitCost?: number | null;
+}): Promise<CatalogItem> {
+  const res = await fetch("/api/maintenance/catalog/items", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as { item?: CatalogItem; error?: string };
+  if (!res.ok) throw new Error(data.error || `Create item ${res.status}`);
+  if (!data.item) throw new Error("Create failed");
+  return data.item;
+}
+
+export async function patchMaintCatalogItem(
+  id: string,
+  body: Record<string, unknown>,
+): Promise<CatalogItem> {
+  const res = await fetch(`/api/maintenance/catalog/items/${id}`, {
+    method: "PATCH",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as { item?: CatalogItem; error?: string };
+  if (!res.ok) throw new Error(data.error || `Update item ${res.status}`);
+  if (!data.item) throw new Error("Update failed");
+  return data.item;
+}
+
+export async function deleteMaintCatalogItem(id: string): Promise<void> {
+  const res = await fetch(`/api/maintenance/catalog/items/${id}`, {
+    method: "DELETE",
+    headers: { accept: "application/json", ...tenantHeaders() },
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(data.error || `Delete ${res.status}`);
+}
+
+export async function fetchCostDashboard(
+  opts?: { days?: number; userId?: number; group?: string },
+  signal?: AbortSignal,
+): Promise<CostDashboard> {
+  const params = new URLSearchParams();
+  if (opts?.days) params.set("days", String(opts.days));
+  if (opts?.userId) params.set("userId", String(opts.userId));
+  if (opts?.group) params.set("group", opts.group);
+  const res = await fetch(`/api/maintenance/cost-dashboard?${params}`, {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as CostDashboard & { error?: string };
+  if (!res.ok) throw new Error(data.error || `Cost dashboard ${res.status}`);
+  return data;
+}
+
+export async function fetchMaintStatusSummary(
+  userIds: number[],
+  signal?: AbortSignal,
+): Promise<Record<string, MaintStatusCell>> {
+  if (!userIds.length) return {};
+  const params = new URLSearchParams({ userIds: userIds.join(",") });
+  const res = await fetch(`/api/maintenance/status-summary?${params}`, {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    byUserId?: Record<string, MaintStatusCell>;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Status summary ${res.status}`);
+  return data.byUserId || {};
+}
+
+export function normalizeLineKindUi(kind: string): "part" | "service" | "other" {
+  if (kind === "labor" || kind === "service") return "service";
+  if (kind === "part") return "part";
+  return "other";
 }
 
 export async function fetchServiceEvent(id: string, signal?: AbortSignal): Promise<ServiceEvent> {
@@ -473,7 +621,15 @@ export async function fetchKmAccrued(
 }
 
 export function emptyLine(): ServiceLine {
-  return { kind: "part", description: "", qty: 1, unitPrice: null, unitCost: null, vendor: "" };
+  return {
+    kind: "part",
+    catalogItemId: null,
+    description: "",
+    qty: 1,
+    unitPrice: null,
+    unitCost: null,
+    vendor: "",
+  };
 }
 
 export function downloadMaintenanceExcel(events: ServiceEvent[]): void {

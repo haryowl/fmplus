@@ -12,6 +12,10 @@ import {
   type LastStatusRow,
   type LastStatusSortId,
 } from "../lib/lastStatus";
+import {
+  fetchMaintStatusSummary,
+  type MaintStatusCell,
+} from "../lib/maintenance";
 import { fullHref, maintenanceHref } from "../lib/routing";
 
 type Props = {
@@ -30,13 +34,26 @@ function vehicleHref(userId: number): string {
   return fullHref(q ? `?${q}` : "");
 }
 
-function maintenanceOpenHref(userId: number): string {
+function maintenanceOpenHref(userId: number, eventId?: string | null): string {
   const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   params.set("userId", String(userId));
   params.set("open", "1");
+  if (eventId) params.set("eventId", eventId);
   params.delete("userIds");
   const q = params.toString();
   return maintenanceHref(q ? `?${q}` : "?open=1");
+}
+
+function maintToneClass(cell: MaintStatusCell | undefined): string {
+  if (!cell || cell.label === "—") return "";
+  const h = cell.health || "";
+  if (h === "overdue" || cell.label === "Overdue") return "is-overdue";
+  if (h === "in_progress" || cell.label === "In progress") return "is-progress";
+  if (h === "due" || cell.label === "Due") return "is-due";
+  if (h === "upcoming" || cell.label === "Upcoming") return "is-upcoming";
+  if (h === "approved" || cell.label === "Approved") return "is-approved";
+  if (h === "done" || cell.label === "Done") return "is-done";
+  return "";
 }
 
 export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Props) {
@@ -48,6 +65,7 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
   const [dir, setDir] = useState<"asc" | "desc">("desc");
   const [reload, setReload] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const [maintByUser, setMaintByUser] = useState<Record<string, MaintStatusCell>>({});
 
   useEffect(() => {
     const tick = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -89,6 +107,27 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
       : scoped;
     return sortStatusRows(filtered, sortId, dir);
   }, [scoped, query, sortId, dir]);
+
+  const visibleIdsKey = useMemo(() => visible.map((r) => r.id).join(","), [visible]);
+
+  useEffect(() => {
+    const ids = visibleIdsKey
+      ? visibleIdsKey.split(",").map((s) => Number(s)).filter((n) => Number.isInteger(n) && n > 0)
+      : [];
+    if (!ids.length) {
+      setMaintByUser({});
+      return;
+    }
+    const ac = new AbortController();
+    void fetchMaintStatusSummary(ids, ac.signal)
+      .then((by) => {
+        if (!ac.signal.aborted) setMaintByUser(by);
+      })
+      .catch(() => {
+        if (!ac.signal.aborted) setMaintByUser({});
+      });
+    return () => ac.abort();
+  }, [visibleIdsKey, reload]);
 
   function toggle(id: LastStatusSortId) {
     if (sortId === id) setDir((d) => (d === "desc" ? "asc" : "desc"));
@@ -184,6 +223,7 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
                     Odo{sortMark("odometerKm")}
                   </button>
                 </th>
+                <th>Maintenance</th>
                 <th>Position</th>
               </tr>
             </thead>
@@ -191,18 +231,15 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
               {visible.map((row) => {
                 const tone = ageTone(row.lastMs, now);
                 const hasPos = row.lat !== null && row.lon !== null;
+                const maint = maintByUser[String(row.id)];
+                const maintClass = maintToneClass(maint);
                 return (
                   <tr key={row.id}>
                     <td>
                       <a className="status-vehicle" href={vehicleHref(row.id)}>
                         {row.name}
                       </a>
-                      <div className="status-id">
-                        {row.id} ·{" "}
-                        <a className="status-maint-link" href={maintenanceOpenHref(row.id)}>
-                          Maintenance
-                        </a>
-                      </div>
+                      <div className="status-id">{row.id}</div>
                     </td>
                     <td className="num">{row.utc ? formatStatusTime(row.utc, timezone) : "—"}</td>
                     <td>
@@ -220,6 +257,15 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
                     <td className="num">{row.speedKmh === null ? "—" : `${formatSpeed(row.speedKmh)} km/h`}</td>
                     <td className="num">{row.fuelLevel === null ? "—" : formatSpeed(row.fuelLevel)}</td>
                     <td className="num">{row.odometerKm === null ? "—" : formatKm(row.odometerKm)}</td>
+                    <td>
+                      <a
+                        className={`status-maint-pill${maintClass ? ` ${maintClass}` : ""}`}
+                        href={maintenanceOpenHref(row.id, maint?.eventId)}
+                        title={maint?.title || "Open maintenance"}
+                      >
+                        {maint?.label || "—"}
+                      </a>
+                    </td>
                     <td>
                       {hasPos ? (
                         <a

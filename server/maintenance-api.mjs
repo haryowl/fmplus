@@ -18,14 +18,23 @@ import { slimAsync } from "./slim-pool.mjs";
 import { eachDateYmd, sumIgnitionOnHours } from "./ignition-hours.mjs";
 import { evaluateKmInterval, findOdometerKmInStatus } from "./odometer-status.mjs";
 import { canTransition, serviceDurationMinutes, nextScheduleDueAt } from "./maintenance-lifecycle.mjs";
+import {
+  createCatalogItem,
+  deleteCatalogItem,
+  ensureCatalog,
+  loadCatalog,
+  normalizeLineKind,
+  updateCatalogItem,
+} from "./maintenance-catalog.mjs";
 
 export { canTransition, serviceDurationMinutes, nextScheduleDueAt } from "./maintenance-lifecycle.mjs";
 
 const HOURS_LOOKBACK_DAYS = 90;
 const DAY_FETCH_TIMEOUT_MS = 120_000;
 
-const STATUSES = ["due", "in_progress", "done", "skipped"];
-const LINE_KINDS = ["part", "labor", "other"];
+const STATUSES = ["due", "in_progress", "done", "skipped", "approved"];
+/** labor kept for legacy rows; new writes normalize labor → service */
+const LINE_KINDS = ["part", "labor", "service", "other"];
 
 function send(res, status, headers, body) {
   res.writeHead(status, securityHeaders(headers));
@@ -109,15 +118,19 @@ const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, 
   remind_due_at, remind_interval_days, remind_interval_km, remind_baseline_odometer_km,
   remind_interval_hours, remind_hours_since_at,
   remind_before_days, remind_before_km, remind_before_hours, parent_event_id,
+  approved_at, approved_by,
   created_at, updated_at`;
 
 export function publicLine(row) {
   const qty = Number(row.qty) || 0;
   const unitPrice = row.unit_price == null ? null : Number(row.unit_price);
   const unitCost = row.unit_cost == null ? null : Number(row.unit_cost);
+  const kindRaw = String(row.kind || "other");
+  const kind = kindRaw === "labor" ? "service" : kindRaw;
   return {
     id: row.id,
-    kind: row.kind,
+    kind: LINE_KINDS.includes(kind) ? kind : "other",
+    catalogItemId: row.catalog_item_id || null,
     description: row.description || "",
     qty,
     unitPrice,
@@ -177,6 +190,8 @@ export function publicEvent(row, extras = {}) {
     remindBeforeKm: row.remind_before_km == null ? null : Number(row.remind_before_km),
     remindBeforeHours: row.remind_before_hours == null ? null : Number(row.remind_before_hours),
     parentEventId: row.parent_event_id || null,
+    approvedAt: row.approved_at || null,
+    approvedBy: row.approved_by || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...extras,
@@ -188,15 +203,15 @@ export function publicEvent(row, extras = {}) {
  *   due → in_progress (Start)
  *   in_progress → due (Cancel start, before Done)
  *   in_progress → done (Done; requires Start)
+ *   done → approved (manager Approve — terminal)
  *   due|in_progress → skipped
- *   done|skipped → due (Reopen — manager only)
- * Done is never allowed directly from due.
+ *   done|skipped → due (Reopen — manager only; not from approved)
  */
 // canTransition + serviceDurationMinutes imported from maintenance-lifecycle.mjs
 
 export async function loadLines(eventId) {
   const rows = await dbQuery(
-    `SELECT id, kind, description, qty, unit_price, unit_cost, vendor, sort_order
+    `SELECT id, kind, description, qty, unit_price, unit_cost, vendor, sort_order, catalog_item_id
      FROM service_event_lines WHERE event_id = $1 ORDER BY sort_order ASC, created_at ASC`,
     [eventId],
   );
@@ -250,15 +265,17 @@ export async function replaceLines(eventId, linesInput) {
   await dbQuery(`DELETE FROM service_event_lines WHERE event_id = $1`, [eventId]);
   let i = 0;
   for (const raw of list) {
-    const kind = LINE_KINDS.includes(String(raw.kind || "")) ? String(raw.kind) : "other";
+    const kind = normalizeLineKind(raw.kind);
     const description = String(raw.description || "").trim().slice(0, 500);
     const qty = Number(raw.qty);
     const unitPrice = raw.unitPrice == null || raw.unitPrice === "" ? null : Number(raw.unitPrice);
     const unitCost = raw.unitCost == null || raw.unitCost === "" ? null : Number(raw.unitCost);
     const vendor = String(raw.vendor || "").trim().slice(0, 200) || null;
+    const catalogItemId = raw.catalogItemId ? String(raw.catalogItemId) : null;
     await dbQuery(
-      `INSERT INTO service_event_lines (event_id, kind, description, qty, unit_price, unit_cost, vendor, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      `INSERT INTO service_event_lines
+         (event_id, kind, description, qty, unit_price, unit_cost, vendor, sort_order, catalog_item_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [
         eventId,
         kind,
@@ -268,6 +285,7 @@ export async function replaceLines(eventId, linesInput) {
         Number.isFinite(unitCost) ? unitCost : null,
         vendor,
         i,
+        catalogItemId,
       ],
     );
     i += 1;
@@ -285,7 +303,13 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
   const actor = opts.actor === "field" ? "field" : "manager";
   const prevStatus = current.status;
 
-  if (actor === "field" && (prevStatus === "done" || prevStatus === "skipped")) {
+  if (prevStatus === "approved") {
+    const err = new Error("Approved jobs are locked and cannot be edited");
+    err.status = 403;
+    throw err;
+  }
+
+  if (actor === "field" && (prevStatus === "done" || prevStatus === "skipped" || prevStatus === "approved")) {
     const err = new Error("Completed jobs can only be edited by a manager");
     err.status = 403;
     throw err;
@@ -306,6 +330,11 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
           : `Cannot transition from ${current.status} to ${status}`,
       );
       err.status = 400;
+      throw err;
+    }
+    if (actor === "field" && status === "approved") {
+      const err = new Error("Only a manager can approve a completed job");
+      err.status = 403;
       throw err;
     }
     if (actor === "field" && (status === "due") && prevStatus !== "in_progress" && prevStatus !== "due") {
@@ -344,6 +373,13 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
     if (prevStatus !== "done") endedAt = new Date().toISOString();
   } else if (status === "skipped" && prevStatus !== "skipped") {
     endedAt = new Date().toISOString();
+  }
+
+  let approvedAt = current.approved_at || null;
+  let approvedBy = current.approved_by || null;
+  if (status === "approved" && prevStatus !== "approved") {
+    approvedAt = new Date().toISOString();
+    approvedBy = String(opts.approvedBy || opts.actorLabel || actor).slice(0, 200);
   }
 
   // Manager may correct timestamps on a plain Save.
@@ -503,6 +539,7 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
        remind_baseline_odometer_km = $17,
        remind_interval_hours = $18, remind_hours_since_at = $19,
        remind_before_days = $20, remind_before_km = $21, remind_before_hours = $22,
+       approved_at = $23, approved_by = $24,
        updated_at = now()
      WHERE id = $1 AND tenant_id = $2
      RETURNING ${SELECT_COLS}`,
@@ -529,6 +566,8 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
       remindBeforeDays,
       remindBeforeKm,
       remindBeforeHours,
+      approvedAt,
+      approvedBy,
     ],
   );
 
@@ -969,6 +1008,260 @@ export async function handleMaintenanceRequest(req, res) {
       return true;
     }
 
+    if (url.pathname === "/api/maintenance/catalog" && req.method === "GET") {
+      const groups = await ensureCatalog(dbTenant.id);
+      json(res, 200, { groups });
+      return true;
+    }
+
+    if (url.pathname === "/api/maintenance/catalog/items" && req.method === "POST") {
+      const body = await readJson(req);
+      const item = await createCatalogItem(dbTenant.id, body);
+      json(res, 201, { item });
+      return true;
+    }
+
+    const catalogItemMatch = /^\/api\/maintenance\/catalog\/items\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (catalogItemMatch && req.method === "PATCH") {
+      const body = await readJson(req);
+      const item = await updateCatalogItem(dbTenant.id, catalogItemMatch[1], body);
+      json(res, 200, { item });
+      return true;
+    }
+    if (catalogItemMatch && req.method === "DELETE") {
+      await deleteCatalogItem(dbTenant.id, catalogItemMatch[1]);
+      json(res, 200, { ok: true });
+      return true;
+    }
+
+    if (url.pathname === "/api/maintenance/status-summary" && req.method === "GET") {
+      const rawIds = String(url.searchParams.get("userIds") || "")
+        .split(",")
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isInteger(n) && n > 0);
+      const byUserId = {};
+      if (rawIds.length === 0) {
+        json(res, 200, { byUserId });
+        return true;
+      }
+      const { enrichEventsWithSchedule } = await import("./maintenance-schedule.mjs");
+      const vaultTenant = tenantFromRequest(req);
+      const openRows = await dbQuery(
+        `SELECT ${SELECT_COLS} FROM service_events
+         WHERE tenant_id = $1 AND armada_user_id = ANY($2::int[])
+           AND status IN ('due', 'in_progress')
+           AND (parent_event_id IS NULL OR assigned_field_user_id IS NOT NULL)
+         ORDER BY updated_at DESC`,
+        [dbTenant.id, rawIds],
+      );
+      const closedRows = await dbQuery(
+        `SELECT DISTINCT ON (armada_user_id) ${SELECT_COLS}
+         FROM service_events
+         WHERE tenant_id = $1 AND armada_user_id = ANY($2::int[])
+           AND status IN ('done', 'approved')
+         ORDER BY armada_user_id, COALESCE(ended_at, updated_at) DESC NULLS LAST`,
+        [dbTenant.id, rawIds],
+      );
+      const openEnriched = await enrichEventsWithSchedule(
+        openRows.rows.map((r) => publicEvent(r)),
+        vaultTenant || null,
+      );
+      const openByUser = new Map();
+      for (const ev of openEnriched) {
+        const uid = ev.armadaUserId;
+        if (uid == null) continue;
+        const prev = openByUser.get(uid);
+        if (!prev) {
+          openByUser.set(uid, ev);
+          continue;
+        }
+        // Prefer in_progress, then higher urgency
+        if (ev.status === "in_progress" && prev.status !== "in_progress") {
+          openByUser.set(uid, ev);
+        } else if (ev.status === prev.status && (ev.scheduleUrgency ?? 0) > (prev.scheduleUrgency ?? 0)) {
+          openByUser.set(uid, ev);
+        }
+      }
+      const closedByUser = new Map();
+      for (const r of closedRows.rows) {
+        if (r.armada_user_id != null) closedByUser.set(Number(r.armada_user_id), publicEvent(r));
+      }
+      for (const uid of rawIds) {
+        const open = openByUser.get(uid);
+        if (open) {
+          let label = "Due";
+          let health = open.scheduleHealth || "due";
+          if (open.status === "in_progress") {
+            label = "In progress";
+            health = "in_progress";
+          } else if (health === "overdue") label = "Overdue";
+          else if (health === "upcoming") label = "Upcoming";
+          else if (health === "ok" || health === "none") label = "Due";
+          byUserId[String(uid)] = {
+            label,
+            status: open.status,
+            health,
+            eventId: open.id,
+            title: open.title,
+          };
+          continue;
+        }
+        const closed = closedByUser.get(uid);
+        if (closed) {
+          byUserId[String(uid)] = {
+            label: closed.status === "approved" ? "Approved" : "Done",
+            status: closed.status,
+            health: closed.status === "approved" ? "approved" : "done",
+            eventId: closed.id,
+            title: closed.title,
+          };
+        } else {
+          byUserId[String(uid)] = {
+            label: "—",
+            status: null,
+            health: "none",
+            eventId: null,
+            title: "",
+          };
+        }
+      }
+      json(res, 200, { byUserId });
+      return true;
+    }
+
+    if (url.pathname === "/api/maintenance/cost-dashboard" && req.method === "GET") {
+      const days = Math.min(365, Math.max(7, Number(url.searchParams.get("days")) || 90));
+      const vehicleIdRaw = Number(url.searchParams.get("userId"));
+      const vehicleId = Number.isInteger(vehicleIdRaw) && vehicleIdRaw > 0 ? vehicleIdRaw : null;
+      const groupKey = String(url.searchParams.get("group") || "").trim(); // part|service|other
+      const params = [dbTenant.id, days];
+      let vehicleClause = "";
+      if (vehicleId) {
+        params.push(vehicleId);
+        vehicleClause = ` AND e.armada_user_id = $${params.length}`;
+      }
+      const events = await dbQuery(
+        `SELECT e.id, e.title, e.armada_user_id, e.armada_username, e.user_display_name,
+                e.started_at, e.ended_at, e.approved_at, e.approved_by
+         FROM service_events e
+         WHERE e.tenant_id = $1 AND e.status = 'approved'
+           AND COALESCE(e.approved_at, e.ended_at, e.updated_at) >= (CURRENT_DATE - ($2::int - 1))::timestamptz
+           ${vehicleClause}
+         ORDER BY COALESCE(e.approved_at, e.ended_at) DESC
+         LIMIT 200`,
+        params,
+      );
+      const eventIds = events.rows.map((r) => r.id);
+      let lines = { rows: [] };
+      if (eventIds.length) {
+        lines = await dbQuery(
+          `SELECT l.event_id, l.kind, l.description, l.qty, l.unit_price, l.unit_cost, l.catalog_item_id,
+                  c.name AS catalog_name, g.key AS group_key
+           FROM service_event_lines l
+           LEFT JOIN maintenance_catalog_items c ON c.id = l.catalog_item_id
+           LEFT JOIN maintenance_catalog_groups g ON g.id = c.group_id
+           WHERE l.event_id = ANY($1::uuid[])`,
+          [eventIds],
+        );
+      }
+      const linesByEvent = new Map();
+      for (const ln of lines.rows) {
+        const list = linesByEvent.get(ln.event_id) || [];
+        list.push(ln);
+        linesByEvent.set(ln.event_id, list);
+      }
+      const byDayMap = new Map();
+      const byVehicleMap = new Map();
+      const byGroupMap = { part: { price: 0, cost: 0 }, service: { price: 0, cost: 0 }, other: { price: 0, cost: 0 } };
+      const topItemsMap = new Map();
+      const table = [];
+      let priceGrand = 0;
+      let costGrand = 0;
+
+      for (const ev of events.rows) {
+        const evLines = linesByEvent.get(ev.id) || [];
+        let priceTotal = 0;
+        let costTotal = 0;
+        let hasPrice = false;
+        let hasCost = false;
+        for (const ln of evLines) {
+          const kind = normalizeLineKind(ln.group_key || ln.kind);
+          if (groupKey && kind !== groupKey) continue;
+          const qty = Number(ln.qty) || 0;
+          const up = ln.unit_price == null ? null : Number(ln.unit_price);
+          const uc = ln.unit_cost == null ? null : Number(ln.unit_cost);
+          if (up != null) {
+            priceTotal += up * qty;
+            hasPrice = true;
+            byGroupMap[kind].price += up * qty;
+          }
+          if (uc != null) {
+            costTotal += uc * qty;
+            hasCost = true;
+            byGroupMap[kind].cost += uc * qty;
+          }
+          const itemKey = ln.catalog_name || ln.description || "—";
+          const tip = topItemsMap.get(itemKey) || { name: itemKey, kind, price: 0, cost: 0, qty: 0 };
+          tip.qty += qty;
+          if (up != null) tip.price += up * qty;
+          if (uc != null) tip.cost += uc * qty;
+          topItemsMap.set(itemKey, tip);
+        }
+        if (groupKey && !hasPrice && !hasCost && evLines.length) continue;
+        if (hasPrice) priceGrand += priceTotal;
+        if (hasCost) costGrand += costTotal;
+        const day = String(ev.approved_at || ev.ended_at || "").slice(0, 10);
+        if (day) {
+          const d = byDayMap.get(day) || { price: 0, cost: 0, count: 0 };
+          d.count += 1;
+          if (hasPrice) d.price += priceTotal;
+          if (hasCost) d.cost += costTotal;
+          byDayMap.set(day, d);
+        }
+        const vKey = ev.armada_user_id != null ? String(ev.armada_user_id) : `n:${ev.user_display_name || ev.armada_username || "—"}`;
+        const vLabel = ev.user_display_name || ev.armada_username || (ev.armada_user_id != null ? `User ${ev.armada_user_id}` : "—");
+        const v = byVehicleMap.get(vKey) || { label: vLabel, userId: ev.armada_user_id, price: 0, cost: 0, count: 0 };
+        v.count += 1;
+        if (hasPrice) v.price += priceTotal;
+        if (hasCost) v.cost += costTotal;
+        byVehicleMap.set(vKey, v);
+        table.push({
+          id: ev.id,
+          title: ev.title || "",
+          vehicle: vLabel,
+          armadaUserId: ev.armada_user_id == null ? null : Number(ev.armada_user_id),
+          approvedAt: ev.approved_at,
+          approvedBy: ev.approved_by || "",
+          serviceDurationMinutes: serviceDurationMinutes(ev.started_at, ev.ended_at),
+          priceTotal: hasPrice ? priceTotal : null,
+          costTotal: hasCost ? costTotal : null,
+          margin: hasPrice || hasCost ? (hasPrice ? priceTotal : 0) - (hasCost ? costTotal : 0) : null,
+        });
+      }
+
+      const byDay = [...byDayMap.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([day, v]) => ({ day, ...v }));
+      const byVehicle = [...byVehicleMap.values()].sort((a, b) => b.cost - a.cost || b.price - a.price);
+      const topItems = [...topItemsMap.values()].sort((a, b) => b.cost - a.cost || b.price - a.price).slice(0, 15);
+
+      json(res, 200, {
+        days,
+        totals: {
+          price: priceGrand,
+          cost: costGrand,
+          margin: priceGrand - costGrand,
+          jobs: table.length,
+        },
+        byDay,
+        byVehicle,
+        byGroup: byGroupMap,
+        topItems,
+        table,
+      });
+      return true;
+    }
+
     if (url.pathname === "/api/maintenance/service-points" && req.method === "GET") {
       const q = String(url.searchParams.get("q") || "").trim();
       const params = [dbTenant.id];
@@ -1042,8 +1335,7 @@ export async function handleMaintenanceRequest(req, res) {
       const clauses = ["tenant_id = $1"];
       const params = [dbTenant.id];
       if (healthFilter === "completed" || status === "completed") {
-        params.push("done");
-        clauses.push(`status = $${params.length}`);
+        clauses.push("status IN ('done', 'approved')");
       } else if (status === "open") {
         clauses.push("status IN ('due', 'in_progress')");
         // Unassigned auto-follow-ups stay off the open board until a manager assigns them.
@@ -1093,6 +1385,14 @@ export async function handleMaintenanceRequest(req, res) {
         [dbTenant.id],
       );
       const doneCount = await dbQuery(
+        `SELECT count(*)::int AS n FROM service_events WHERE tenant_id = $1 AND status IN ('done', 'approved')`,
+        [dbTenant.id],
+      );
+      const approvedCount = await dbQuery(
+        `SELECT count(*)::int AS n FROM service_events WHERE tenant_id = $1 AND status = 'approved'`,
+        [dbTenant.id],
+      );
+      const awaitingApprove = await dbQuery(
         `SELECT count(*)::int AS n FROM service_events WHERE tenant_id = $1 AND status = 'done'`,
         [dbTenant.id],
       );
@@ -1103,6 +1403,8 @@ export async function handleMaintenanceRequest(req, res) {
       );
       const summary = summarizeSchedule(enriched);
       summary.completed = doneCount.rows[0]?.n || 0;
+      summary.approved = approvedCount.rows[0]?.n || 0;
+      summary.awaitingApprove = awaitingApprove.rows[0]?.n || 0;
 
       const serviceAvg = await dbQuery(
         `SELECT
@@ -1110,7 +1412,7 @@ export async function handleMaintenanceRequest(req, res) {
            ROUND(AVG(EXTRACT(EPOCH FROM (ended_at - started_at)) / 60.0))::int AS avg_minutes
          FROM service_events
          WHERE tenant_id = $1
-           AND status = 'done'
+           AND status IN ('done', 'approved')
            AND started_at IS NOT NULL
            AND ended_at IS NOT NULL
            AND ended_at >= started_at
@@ -1132,7 +1434,7 @@ export async function handleMaintenanceRequest(req, res) {
          completed AS (
            SELECT (COALESCE(ended_at, updated_at) AT TIME ZONE 'UTC')::date AS day, count(*)::int AS n
            FROM service_events
-           WHERE tenant_id = $1 AND status = 'done'
+           WHERE tenant_id = $1 AND status IN ('done', 'approved')
              AND COALESCE(ended_at, updated_at) >= (CURRENT_DATE - ($2::int - 1))::timestamptz
            GROUP BY 1
          ),
@@ -1352,12 +1654,16 @@ export async function handleMaintenanceRequest(req, res) {
     const linesMatch = /^\/api\/maintenance\/events\/([0-9a-f-]{36})\/lines$/i.exec(url.pathname);
     if (linesMatch && req.method === "PUT") {
       const id = linesMatch[1];
-      const found = await dbQuery(`SELECT id FROM service_events WHERE id = $1 AND tenant_id = $2`, [
+      const found = await dbQuery(`SELECT id, status FROM service_events WHERE id = $1 AND tenant_id = $2`, [
         id,
         dbTenant.id,
       ]);
       if (!found.rows[0]) {
         json(res, 404, { error: "Service event not found" });
+        return true;
+      }
+      if (found.rows[0].status === "approved") {
+        json(res, 403, { error: "Approved jobs are locked and cannot be edited" });
         return true;
       }
       const body = await readJson(req);
@@ -1369,12 +1675,16 @@ export async function handleMaintenanceRequest(req, res) {
     const photoPostMatch = /^\/api\/maintenance\/events\/([0-9a-f-]{36})\/photos$/i.exec(url.pathname);
     if (photoPostMatch && req.method === "POST") {
       const id = photoPostMatch[1];
-      const found = await dbQuery(`SELECT id FROM service_events WHERE id = $1 AND tenant_id = $2`, [
+      const found = await dbQuery(`SELECT id, status FROM service_events WHERE id = $1 AND tenant_id = $2`, [
         id,
         dbTenant.id,
       ]);
       if (!found.rows[0]) {
         json(res, 404, { error: "Service event not found" });
+        return true;
+      }
+      if (found.rows[0].status === "approved") {
+        json(res, 403, { error: "Approved jobs are locked and cannot be edited" });
         return true;
       }
       const body = await readJson(req);
