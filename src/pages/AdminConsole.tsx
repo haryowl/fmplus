@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   defaultEntitlements,
   FEATURE_LABELS,
   MODULE_LABELS,
   type Entitlements,
 } from "../lib/entitlements";
+import { BrandMark } from "../components/BrandMark";
 
 type AdminTenant = {
   id: string;
@@ -120,13 +121,19 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return data;
 }
 
+async function copyText(text: string) {
+  await navigator.clipboard.writeText(text);
+}
+
 function ToggleGrid({
   title,
+  hint,
   labels,
   values,
   onChange,
 }: {
   title: string;
+  hint?: string;
   labels: Record<string, string>;
   values: Record<string, boolean>;
   onChange: (key: string, next: boolean) => void;
@@ -134,20 +141,28 @@ function ToggleGrid({
   return (
     <fieldset className="admin-fieldset">
       <legend>{title}</legend>
+      {hint ? <p className="admin-section-hint muted">{hint}</p> : null}
       <div className="admin-toggle-grid">
-        {Object.keys(labels).map((key) => (
-          <label key={key} className="admin-toggle">
-            <input
-              type="checkbox"
-              checked={values[key] === true}
-              onChange={(e) => onChange(key, e.target.checked)}
-            />
-            <span>{labels[key] || key}</span>
-          </label>
-        ))}
+        {Object.keys(labels).map((key) => {
+          const on = values[key] === true;
+          return (
+            <label key={key} className={`admin-chip-toggle${on ? " is-on" : ""}`}>
+              <input
+                type="checkbox"
+                checked={on}
+                onChange={(e) => onChange(key, e.target.checked)}
+              />
+              <span>{labels[key] || key}</span>
+            </label>
+          );
+        })}
       </div>
     </fieldset>
   );
+}
+
+function StatusPill({ ok, label }: { ok: boolean; label: string }) {
+  return <span className={`admin-pill${ok ? " is-ok" : " is-off"}`}>{label}</span>;
 }
 
 export default function AdminConsole() {
@@ -160,6 +175,7 @@ export default function AdminConsole() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tenantQuery, setTenantQuery] = useState("");
   const [fieldUsers, setFieldUsers] = useState<FieldUserRow[]>([]);
   const [fuUsername, setFuUsername] = useState("");
   const [fuPassword, setFuPassword] = useState("");
@@ -205,10 +221,30 @@ export default function AdminConsole() {
     void loadFieldUsers(selectedId).catch((err: Error) => setError(err.message));
   }, [selectedId, loadFieldUsers]);
 
+  const filteredTenants = useMemo(() => {
+    const q = tenantQuery.trim().toLowerCase();
+    if (!q) return tenants;
+    return tenants.filter(
+      (t) =>
+        t.key.toLowerCase().includes(q) ||
+        (t.displayName || "").toLowerCase().includes(q) ||
+        String(t.appId).includes(q),
+    );
+  }, [tenants, tenantQuery]);
+
+  const stats = useMemo(() => {
+    const enabled = tenants.filter((t) => t.enabled).length;
+    const withNotify = tenants.filter(
+      (t) => (t.notifyEmails || "").trim() || (t.notifyWhatsapp || "").trim(),
+    ).length;
+    const withWablas = tenants.filter((t) => t.hasWablasToken && t.hasWablasSecret).length;
+    return { total: tenants.length, enabled, withNotify, withWablas };
+  }, [tenants]);
+
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
-    setError("");
     setBusy(true);
+    setError("");
     try {
       await api("/api/admin/login", {
         method: "POST",
@@ -227,7 +263,7 @@ export default function AdminConsole() {
   async function handleLogout() {
     setBusy(true);
     try {
-      await api("/api/admin/logout", { method: "POST", body: "{}" });
+      await api("/api/admin/logout", { method: "POST" });
       setUsername(null);
       setTenants([]);
       setSelectedId(null);
@@ -287,7 +323,7 @@ export default function AdminConsole() {
           method: "PATCH",
           body: JSON.stringify(payload),
         });
-        setNotice("Saved");
+        setNotice(`Saved ${updated.tenant.key}`);
         setDraft(draftFromTenant(updated.tenant));
         await loadTenants();
       }
@@ -300,8 +336,8 @@ export default function AdminConsole() {
 
   async function disableTenant() {
     if (!selectedId || selectedId === "new") return;
-    if (!window.confirm("Disable this tenant? Embed k= will stop resolving from the database.")) return;
     setBusy(true);
+    setError("");
     try {
       await api(`/api/admin/tenants/${selectedId}`, {
         method: "PATCH",
@@ -368,9 +404,9 @@ export default function AdminConsole() {
     }
   }
 
-  async function deleteFieldUser(userId: string, username: string) {
+  async function deleteFieldUser(userId: string, uname: string) {
     if (!selectedId || selectedId === "new") return;
-    if (!window.confirm(`Delete field user “${username}”?`)) return;
+    if (!window.confirm(`Delete field user “${uname}”?`)) return;
     setBusy(true);
     setError("");
     try {
@@ -386,28 +422,36 @@ export default function AdminConsole() {
 
   if (!username) {
     return (
-      <div className="admin-app">
-        <form className="admin-login" onSubmit={handleLogin}>
-          <h1>FM Plus Admin</h1>
-          <p className="muted">Control plane for tenants, tokens, and embed entitlements.</p>
-          {error && <p className="admin-error">{error}</p>}
-          <label>
-            Username
-            <input value={loginUser} onChange={(e) => setLoginUser(e.target.value)} autoComplete="username" />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              value={loginPass}
-              onChange={(e) => setLoginPass(e.target.value)}
-              autoComplete="current-password"
-            />
-          </label>
-          <button type="submit" className="btn" disabled={busy}>
-            Sign in
-          </button>
-        </form>
+      <div className="admin-app admin-app-login">
+        <div className="admin-login-shell">
+          <div className="admin-login-brand">
+            <BrandMark size={28} />
+            <div>
+              <p className="admin-kicker">FM Plus</p>
+              <h1>Control plane</h1>
+              <p className="muted">Tenants, Armada tokens, entitlements, and notify channels.</p>
+            </div>
+          </div>
+          <form className="admin-login" onSubmit={(e) => void handleLogin(e)}>
+            {error && <p className="admin-error">{error}</p>}
+            <label>
+              Username
+              <input value={loginUser} onChange={(e) => setLoginUser(e.target.value)} autoComplete="username" />
+            </label>
+            <label>
+              Password
+              <input
+                type="password"
+                value={loginPass}
+                onChange={(e) => setLoginPass(e.target.value)}
+                autoComplete="current-password"
+              />
+            </label>
+            <button type="submit" className="btn btn-primary" disabled={busy}>
+              Sign in
+            </button>
+          </form>
+        </div>
       </div>
     );
   }
@@ -416,15 +460,40 @@ export default function AdminConsole() {
 
   return (
     <div className="admin-app">
-      <header className="admin-header">
-        <div>
-          <h1>FM Plus Admin</h1>
-          <p className="muted">Signed in as {username}</p>
+      <header className="admin-topbar">
+        <div className="admin-brand">
+          <BrandMark size={22} />
+          <div>
+            <p className="admin-kicker">FM Plus</p>
+            <h1>Admin</h1>
+          </div>
         </div>
-        <button type="button" className="btn-ghost" onClick={() => void handleLogout()} disabled={busy}>
-          Sign out
-        </button>
+        <div className="admin-topbar-meta">
+          <span className="admin-user-chip">{username}</span>
+          <button type="button" className="btn-ghost" onClick={() => void handleLogout()} disabled={busy}>
+            Sign out
+          </button>
+        </div>
       </header>
+
+      <section className="admin-stats" aria-label="Tenant overview">
+        <div className="admin-stat">
+          <span className="admin-stat-label">Tenants</span>
+          <strong>{stats.total}</strong>
+        </div>
+        <div className="admin-stat">
+          <span className="admin-stat-label">Enabled</span>
+          <strong>{stats.enabled}</strong>
+        </div>
+        <div className="admin-stat">
+          <span className="admin-stat-label">Notify set</span>
+          <strong>{stats.withNotify}</strong>
+        </div>
+        <div className="admin-stat">
+          <span className="admin-stat-label">Wablas ready</span>
+          <strong>{stats.withWablas}</strong>
+        </div>
+      </section>
 
       {(error || notice) && (
         <div className="admin-banner">
@@ -435,206 +504,311 @@ export default function AdminConsole() {
 
       <div className="admin-layout">
         <aside className="admin-sidebar">
-          <button type="button" className="btn" onClick={selectNew}>
-            + New tenant
-          </button>
+          <div className="admin-sidebar-head">
+            <h2>Tenants</h2>
+            <button type="button" className="btn btn-primary" onClick={selectNew}>
+              New
+            </button>
+          </div>
+          <label className="admin-search">
+            <span className="visually-hidden">Search tenants</span>
+            <input
+              value={tenantQuery}
+              onChange={(e) => setTenantQuery(e.target.value)}
+              placeholder="Search key, name, app…"
+            />
+          </label>
           <ul className="admin-tenant-list">
-            {tenants.map((t) => (
+            {filteredTenants.map((t) => (
               <li key={t.id}>
                 <button
                   type="button"
                   className={selectedId === t.id ? "active" : ""}
                   onClick={() => selectTenant(t)}
                 >
-                  <strong>{t.key}</strong>
-                  <span>
-                    app {t.appId}
-                    {!t.enabled ? " · disabled" : ""}
+                  <span className="admin-tenant-row">
+                    <strong>{t.displayName || t.key}</strong>
+                    <span className={`admin-dot${t.enabled ? " is-on" : ""}`} title={t.enabled ? "Enabled" : "Disabled"} />
+                  </span>
+                  <span className="admin-tenant-meta">
+                    <code>{t.key}</code> · app {t.appId}
                   </span>
                 </button>
               </li>
             ))}
-            {tenants.length === 0 && <li className="muted">No database tenants yet.</li>}
+            {filteredTenants.length === 0 && (
+              <li className="muted admin-empty">{tenants.length ? "No match." : "No database tenants yet."}</li>
+            )}
           </ul>
         </aside>
 
         <main className="admin-main">
           {selectedId ? (
             <>
-              <h2>{selectedId === "new" ? "New tenant" : `Edit ${draft.key}`}</h2>
-              <div className="admin-form-grid">
-                <label>
-                  Embed key (k=)
-                  <input
-                    value={draft.key}
-                    onChange={(e) => setDraft({ ...draft, key: e.target.value })}
-                    disabled={selectedId !== "new"}
-                  />
-                </label>
-                <label>
-                  App ID
-                  <input
-                    value={draft.appId}
-                    onChange={(e) => setDraft({ ...draft, appId: e.target.value })}
-                    inputMode="numeric"
-                  />
-                </label>
-                <label>
-                  Display name
-                  <input
-                    value={draft.displayName}
-                    onChange={(e) => setDraft({ ...draft, displayName: e.target.value })}
-                  />
-                </label>
-                <label className="admin-toggle">
-                  <input
-                    type="checkbox"
-                    checked={draft.enabled}
-                    onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
-                  />
-                  <span>Enabled</span>
-                </label>
-                <label className="span-2">
-                  Armada token {selectedId !== "new" ? "(leave blank to keep)" : ""}
-                  <input
-                    type="password"
-                    value={draft.token}
-                    onChange={(e) => setDraft({ ...draft, token: e.target.value })}
-                    autoComplete="off"
-                    placeholder={selected?.hasToken ? "•••••••• (set)" : ""}
-                  />
-                </label>
-                <label className="span-2">
-                  Webhook secret {selectedId !== "new" ? "(leave blank to keep / clear with space+save later)" : ""}
-                  <input
-                    type="password"
-                    value={draft.webhookSecret}
-                    onChange={(e) => setDraft({ ...draft, webhookSecret: e.target.value })}
-                    autoComplete="off"
-                    placeholder={selected?.hasWebhookSecret ? "•••••••• (set)" : ""}
-                  />
-                </label>
-                <label>
-                  Allowed user IDs
-                  <input
-                    value={draft.userIds}
-                    onChange={(e) => setDraft({ ...draft, userIds: e.target.value })}
-                    placeholder="empty = all"
-                  />
-                </label>
-                <label>
-                  Allowed group IDs
-                  <input
-                    value={draft.groupIds}
-                    onChange={(e) => setDraft({ ...draft, groupIds: e.target.value })}
-                    placeholder="empty = all"
-                  />
-                </label>
-                <label className="span-2">
-                  Notify emails (comma-separated)
-                  <input
-                    value={draft.notifyEmails}
-                    onChange={(e) => setDraft({ ...draft, notifyEmails: e.target.value })}
-                    placeholder="ops@company.com"
-                  />
-                </label>
-                <label className="span-2">
-                  Notify WhatsApp numbers (comma-separated)
-                  <input
-                    value={draft.notifyWhatsapp}
-                    onChange={(e) => setDraft({ ...draft, notifyWhatsapp: e.target.value })}
-                    placeholder="62812…, 62813…"
-                  />
-                </label>
-                <label className="span-2">
-                  Wablas API base URL
-                  <input
-                    value={draft.wablasBaseUrl}
-                    onChange={(e) => setDraft({ ...draft, wablasBaseUrl: e.target.value })}
-                    placeholder="https://wablas.com or https://pati.wablas.com"
-                  />
-                </label>
-                <label>
-                  Wablas token {selectedId !== "new" ? "(leave blank to keep)" : ""}
-                  <input
-                    type="password"
-                    value={draft.wablasToken}
-                    onChange={(e) => setDraft({ ...draft, wablasToken: e.target.value })}
-                    autoComplete="off"
-                    placeholder={selected?.hasWablasToken ? "•••••••• (set)" : ""}
-                  />
-                </label>
-                <label>
-                  Wablas secret key {selectedId !== "new" ? "(leave blank to keep)" : ""}
-                  <input
-                    type="password"
-                    value={draft.wablasSecret}
-                    onChange={(e) => setDraft({ ...draft, wablasSecret: e.target.value })}
-                    autoComplete="off"
-                    placeholder={selected?.hasWablasSecret ? "•••••••• (set)" : ""}
-                  />
-                </label>
+              <div className="admin-main-head">
+                <div>
+                  <p className="admin-kicker">{selectedId === "new" ? "Create" : "Edit tenant"}</p>
+                  <h2>{selectedId === "new" ? "New tenant" : draft.displayName || draft.key}</h2>
+                </div>
+                {selected && (
+                  <div className="admin-status-row">
+                    <StatusPill ok={selected.enabled} label={selected.enabled ? "Enabled" : "Disabled"} />
+                    <StatusPill ok={selected.hasToken} label={selected.hasToken ? "Token set" : "No token"} />
+                    <StatusPill
+                      ok={selected.hasWebhookSecret}
+                      label={selected.hasWebhookSecret ? "Webhook set" : "No webhook"}
+                    />
+                    <StatusPill
+                      ok={Boolean(selected.hasWablasToken && selected.hasWablasSecret)}
+                      label={
+                        selected.hasWablasToken && selected.hasWablasSecret ? "Wablas set" : "No Wablas"
+                      }
+                    />
+                  </div>
+                )}
               </div>
 
-              <ToggleGrid
-                title="Modules visible in embed"
-                labels={MODULE_LABELS}
-                values={draft.entitlements.modules}
-                onChange={(key, next) =>
-                  setDraft({
-                    ...draft,
-                    entitlements: {
-                      ...draft.entitlements,
-                      modules: { ...draft.entitlements.modules, [key]: next },
-                    },
-                  })
-                }
-              />
-              <ToggleGrid
-                title="Features"
-                labels={FEATURE_LABELS}
-                values={draft.entitlements.features}
-                onChange={(key, next) =>
-                  setDraft({
-                    ...draft,
-                    entitlements: {
-                      ...draft.entitlements,
-                      features: { ...draft.entitlements.features, [key]: next },
-                    },
-                  })
-                }
-              />
-              <ToggleGrid
-                title="Mobile apps"
-                labels={{ maintenance: "Maintenance PWA", dispatch: "Dispatch PWA" }}
-                values={draft.entitlements.mobile}
-                onChange={(key, next) =>
-                  setDraft({
-                    ...draft,
-                    entitlements: {
-                      ...draft.entitlements,
-                      mobile: { ...draft.entitlements.mobile, [key]: next },
-                    },
-                  })
-                }
-              />
+              <section className="admin-panel">
+                <header className="admin-panel-head">
+                  <h3>Identity</h3>
+                  <p className="muted">Embed key and Armada application binding</p>
+                </header>
+                <div className="admin-form-grid">
+                  <label>
+                    Embed key (k=)
+                    <input
+                      value={draft.key}
+                      onChange={(e) => setDraft({ ...draft, key: e.target.value })}
+                      disabled={selectedId !== "new"}
+                    />
+                  </label>
+                  <label>
+                    App ID
+                    <input
+                      value={draft.appId}
+                      onChange={(e) => setDraft({ ...draft, appId: e.target.value })}
+                      inputMode="numeric"
+                    />
+                  </label>
+                  <label>
+                    Display name
+                    <input
+                      value={draft.displayName}
+                      onChange={(e) => setDraft({ ...draft, displayName: e.target.value })}
+                    />
+                  </label>
+                  <label className="admin-toggle admin-toggle-inline">
+                    <input
+                      type="checkbox"
+                      checked={draft.enabled}
+                      onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
+                    />
+                    <span>Tenant enabled</span>
+                  </label>
+                </div>
+              </section>
+
+              <section className="admin-panel">
+                <header className="admin-panel-head">
+                  <h3>Access & secrets</h3>
+                  <p className="muted">Armada token, webhook, and fleet scope</p>
+                </header>
+                <div className="admin-form-grid">
+                  <label className="span-2">
+                    Armada token {selectedId !== "new" ? "(leave blank to keep)" : ""}
+                    <input
+                      type="password"
+                      value={draft.token}
+                      onChange={(e) => setDraft({ ...draft, token: e.target.value })}
+                      autoComplete="off"
+                      placeholder={selected?.hasToken ? "•••••••• (set)" : ""}
+                    />
+                  </label>
+                  <label className="span-2">
+                    Webhook secret {selectedId !== "new" ? "(leave blank to keep)" : ""}
+                    <input
+                      type="password"
+                      value={draft.webhookSecret}
+                      onChange={(e) => setDraft({ ...draft, webhookSecret: e.target.value })}
+                      autoComplete="off"
+                      placeholder={selected?.hasWebhookSecret ? "•••••••• (set)" : ""}
+                    />
+                  </label>
+                  <label>
+                    Allowed user IDs
+                    <input
+                      value={draft.userIds}
+                      onChange={(e) => setDraft({ ...draft, userIds: e.target.value })}
+                      placeholder="empty = all"
+                    />
+                  </label>
+                  <label>
+                    Allowed group IDs
+                    <input
+                      value={draft.groupIds}
+                      onChange={(e) => setDraft({ ...draft, groupIds: e.target.value })}
+                      placeholder="empty = all"
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <section className="admin-panel">
+                <header className="admin-panel-head">
+                  <h3>Notifications</h3>
+                  <p className="muted">
+                    Recipients for maintenance reminders. SMTP is set on the server (`.env.local`); Wablas
+                    secrets are stored encrypted here.
+                  </p>
+                </header>
+                <div className="admin-form-grid">
+                  <label className="span-2">
+                    Notify emails
+                    <input
+                      value={draft.notifyEmails}
+                      onChange={(e) => setDraft({ ...draft, notifyEmails: e.target.value })}
+                      placeholder="ops@company.com, manager@…"
+                    />
+                  </label>
+                  <label className="span-2">
+                    Notify WhatsApp numbers
+                    <input
+                      value={draft.notifyWhatsapp}
+                      onChange={(e) => setDraft({ ...draft, notifyWhatsapp: e.target.value })}
+                      placeholder="62812…, 62813…"
+                    />
+                  </label>
+                  <label className="span-2">
+                    Wablas API base URL
+                    <input
+                      value={draft.wablasBaseUrl}
+                      onChange={(e) => setDraft({ ...draft, wablasBaseUrl: e.target.value })}
+                      placeholder="https://wablas.com or https://pati.wablas.com"
+                    />
+                  </label>
+                  <label>
+                    Wablas token {selectedId !== "new" ? "(leave blank to keep)" : ""}
+                    <input
+                      type="password"
+                      value={draft.wablasToken}
+                      onChange={(e) => setDraft({ ...draft, wablasToken: e.target.value })}
+                      autoComplete="off"
+                      placeholder={selected?.hasWablasToken ? "•••••••• (set)" : ""}
+                    />
+                  </label>
+                  <label>
+                    Wablas secret key {selectedId !== "new" ? "(leave blank to keep)" : ""}
+                    <input
+                      type="password"
+                      value={draft.wablasSecret}
+                      onChange={(e) => setDraft({ ...draft, wablasSecret: e.target.value })}
+                      autoComplete="off"
+                      placeholder={selected?.hasWablasSecret ? "•••••••• (set)" : ""}
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <section className="admin-panel">
+                <header className="admin-panel-head">
+                  <h3>Entitlements</h3>
+                  <p className="muted">What this tenant can see in the embed and mobile apps</p>
+                </header>
+                <ToggleGrid
+                  title="Modules"
+                  hint="Visible tabs in the embed"
+                  labels={MODULE_LABELS}
+                  values={draft.entitlements.modules}
+                  onChange={(key, next) =>
+                    setDraft({
+                      ...draft,
+                      entitlements: {
+                        ...draft.entitlements,
+                        modules: { ...draft.entitlements.modules, [key]: next },
+                      },
+                    })
+                  }
+                />
+                <ToggleGrid
+                  title="Features"
+                  labels={FEATURE_LABELS}
+                  values={draft.entitlements.features}
+                  onChange={(key, next) =>
+                    setDraft({
+                      ...draft,
+                      entitlements: {
+                        ...draft.entitlements,
+                        features: { ...draft.entitlements.features, [key]: next },
+                      },
+                    })
+                  }
+                />
+                <ToggleGrid
+                  title="Mobile apps"
+                  labels={{ maintenance: "Maintenance PWA", dispatch: "Dispatch PWA" }}
+                  values={draft.entitlements.mobile}
+                  onChange={(key, next) =>
+                    setDraft({
+                      ...draft,
+                      entitlements: {
+                        ...draft.entitlements,
+                        mobile: { ...draft.entitlements.mobile, [key]: next },
+                      },
+                    })
+                  }
+                />
+              </section>
 
               {selected && (
-                <div className="admin-notifier muted">
-                  <p>
-                    Exception notifier: <code>{selected.notifierUrlTemplate}</code>
-                  </p>
-                  {selected.notifierUrlMaintenance && (
-                    <p>
-                      Maintenance notifier: <code>{selected.notifierUrlMaintenance}</code>
-                    </p>
-                  )}
-                </div>
+                <section className="admin-panel">
+                  <header className="admin-panel-head">
+                    <h3>Armada Command notifiers</h3>
+                    <p className="muted">Paste into Armada Custom Server URLs (replace webhook secret)</p>
+                  </header>
+                  <div className="admin-notifier-list">
+                    <div className="admin-notifier-row">
+                      <div>
+                        <span className="admin-stat-label">Exception</span>
+                        <code>{selected.notifierUrlTemplate}</code>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() =>
+                          void copyText(selected.notifierUrlTemplate).then(() =>
+                            setNotice("Exception notifier URL copied"),
+                          )
+                        }
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    {selected.notifierUrlMaintenance && (
+                      <div className="admin-notifier-row">
+                        <div>
+                          <span className="admin-stat-label">Maintenance</span>
+                          <code>{selected.notifierUrlMaintenance}</code>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() =>
+                            void copyText(selected.notifierUrlMaintenance || "").then(() =>
+                              setNotice("Maintenance notifier URL copied"),
+                            )
+                          }
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </section>
               )}
 
-              <div className="admin-actions">
-                <button type="button" className="btn" disabled={busy} onClick={() => void saveDraft()}>
-                  Save
+              <div className="admin-actions sticky">
+                <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveDraft()}>
+                  Save tenant
                 </button>
                 {selectedId !== "new" && (
                   <button type="button" className="btn-ghost" disabled={busy} onClick={() => void disableTenant()}>
@@ -643,10 +817,14 @@ export default function AdminConsole() {
                 )}
               </div>
 
-              {selectedId && selectedId !== "new" && (
-                <section className="admin-field-users">
-                  <h3>Field users</h3>
-                  <p className="muted">Login at /m (Maintenance) or /dispatch — scoped to this tenant.</p>
+              {selectedId !== "new" && (
+                <section className="admin-panel admin-field-users">
+                  <header className="admin-panel-head">
+                    <h3>Field users</h3>
+                    <p className="muted">
+                      Sign-in at <code>/m</code> or <code>/dispatch</code> — scoped to this tenant
+                    </p>
+                  </header>
                   <form className="admin-form-grid" onSubmit={(e) => void createFieldUser(e)}>
                     <label>
                       Username
@@ -695,7 +873,7 @@ export default function AdminConsole() {
                       />
                     </label>
                     <div className="span-2 admin-actions">
-                      <button type="submit" className="btn" disabled={busy}>
+                      <button type="submit" className="btn btn-primary" disabled={busy}>
                         Add field user
                       </button>
                     </div>
@@ -704,15 +882,14 @@ export default function AdminConsole() {
                   <ul className="admin-field-list">
                     {fieldUsers.map((u) => (
                       <li key={u.id}>
-                        <div>
+                        <div className="admin-field-identity">
                           <strong>{u.username}</strong>
+                          <div className="admin-field-tags">
+                            <span className="admin-pill is-muted">{u.role}</span>
+                            {!u.enabled ? <span className="admin-pill is-off">disabled</span> : null}
+                          </div>
                           <span className="muted">
-                            {" "}
-                            · {u.role}
-                            {u.displayName ? ` · ${u.displayName}` : ""}
-                            {u.phone ? ` · ${u.phone}` : ""}
-                            {u.email ? ` · ${u.email}` : ""}
-                            {!u.enabled ? " · disabled" : ""}
+                            {[u.displayName, u.phone, u.email].filter(Boolean).join(" · ") || "No contact set"}
                           </span>
                         </div>
                         <div className="admin-field-row-actions">
@@ -770,13 +947,20 @@ export default function AdminConsole() {
                         </div>
                       </li>
                     ))}
-                    {fieldUsers.length === 0 && <li className="muted">No field users yet.</li>}
+                    {fieldUsers.length === 0 && <li className="muted admin-empty">No field users yet.</li>}
                   </ul>
                 </section>
               )}
             </>
           ) : (
-            <p className="muted">Select a tenant or create a new one.</p>
+            <div className="admin-empty-state">
+              <BrandMark size={36} />
+              <h2>Select a tenant</h2>
+              <p className="muted">Pick from the list or create a new embed tenant to manage tokens and notify channels.</p>
+              <button type="button" className="btn btn-primary" onClick={selectNew}>
+                Create tenant
+              </button>
+            </div>
           )}
         </main>
       </div>
