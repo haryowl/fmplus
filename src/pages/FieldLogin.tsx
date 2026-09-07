@@ -441,12 +441,15 @@ export default function FieldLogin() {
   }
 
   async function goBackToJobs() {
-    if (selectedId && (linesDirty || notes.trim() || odometerKm.trim())) {
-      const ok = await saveJob({}, { quiet: true });
-      if (!ok) return;
+    // Completed/skipped/approved jobs are locked server-side — never block ← Jobs on a failed save.
+    const locked = detail ? isCompletedStatus(detail.status) : false;
+    if (!locked && selectedId && (linesDirty || notes.trim() || odometerKm.trim())) {
+      await saveJob({}, { quiet: true });
     }
     setSelectedId(null);
     setDetail(null);
+    setError("");
+    setNotice("");
   }
 
   async function onPhoto(e: ChangeEvent<HTMLInputElement>) {
@@ -482,6 +485,7 @@ export default function FieldLogin() {
   }
 
   if (user) {
+    const jobLocked = detail ? isCompletedStatus(detail.status) : false;
     return (
       <div className="field-app">
         <header className="field-topbar">
@@ -598,7 +602,13 @@ export default function FieldLogin() {
               </header>
               <label className="field-label">
                 Notes
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  disabled={jobLocked || busy}
+                  readOnly={jobLocked}
+                />
               </label>
               <label className="field-label">
                 Odometer (km)
@@ -608,6 +618,8 @@ export default function FieldLogin() {
                   value={odometerKm}
                   onChange={(e) => setOdometerKm(e.target.value)}
                   placeholder="Optional"
+                  disabled={jobLocked || busy}
+                  readOnly={jobLocked}
                 />
               </label>
             </section>
@@ -615,12 +627,16 @@ export default function FieldLogin() {
             <section className="field-panel field-photos-panel">
               <header className="field-panel-head">
                 <h3>Proof photos</h3>
-                <p className="muted">Take a picture — it saves with the job sheet</p>
+                <p className="muted">
+                  {jobLocked ? "Photos saved with this job" : "Take a picture — it saves with the job sheet"}
+                </p>
               </header>
-              <label className="field-photo-btn">
-                Take / upload photo
-                <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void onPhoto(e)} />
-              </label>
+              {!jobLocked ? (
+                <label className="field-photo-btn">
+                  Take / upload photo
+                  <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void onPhoto(e)} />
+                </label>
+              ) : null}
               {(detail.photos || []).length > 0 ? (
                 <ul className="field-photo-grid">
                   {(detail.photos || []).map((p) => (
@@ -646,30 +662,42 @@ export default function FieldLogin() {
                     line={line}
                     catalog={catalog}
                     compact
+                    disabled={jobLocked || busy}
                     onChange={(patch) => updateLine(idx, patch)}
                     onRemove={() => removeLine(idx)}
                   />
                 ))}
               </div>
-              <div className="field-lines-footer">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => {
-                    setLinesDirty(true);
-                    setLines((p) => [...p, emptyLine()]);
-                  }}
-                >
-                  Add line
-                </button>
-                <span className="field-totals">
-                  Price Σ {priceTotal.toFixed(2)}
-                  <span>·</span>
-                  Cost Σ {costTotal.toFixed(2)}
-                </span>
-              </div>
+              {!jobLocked ? (
+                <div className="field-lines-footer">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => {
+                      setLinesDirty(true);
+                      setLines((p) => [...p, emptyLine()]);
+                    }}
+                  >
+                    Add line
+                  </button>
+                  <span className="field-totals">
+                    Price Σ {priceTotal.toFixed(2)}
+                    <span>·</span>
+                    Cost Σ {costTotal.toFixed(2)}
+                  </span>
+                </div>
+              ) : (
+                <div className="field-lines-footer">
+                  <span className="field-totals">
+                    Price Σ {priceTotal.toFixed(2)}
+                    <span>·</span>
+                    Cost Σ {costTotal.toFixed(2)}
+                  </span>
+                </div>
+              )}
             </section>
 
+            {!jobLocked ? (
             <div className="field-job-actions">
               <button type="button" className="btn-secondary" disabled={busy} onClick={() => void saveJob()}>
                 Save
@@ -715,6 +743,7 @@ export default function FieldLogin() {
                 </button>
               )}
             </div>
+            ) : null}
           </div>
         ) : (
           <div className="field-jobs">

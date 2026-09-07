@@ -2723,6 +2723,8 @@ html.onesheet-root body {
 /* —— Field login (/m, /dispatch) —— */
 .field-app {
   min-height: 100vh;
+  max-width: 100%;
+  overflow-x: hidden;
   background:
     radial-gradient(900px 420px at 0% -10%, rgba(11, 107, 98, 0.16), transparent 55%),
     linear-gradient(165deg, #f4f1ea 0%, #e8ebe8 55%, #e4ebe8 100%);
@@ -2778,18 +2780,28 @@ html.onesheet-root body {
 .field-jobs, .field-job-detail {
   max-width: 640px; margin: 10px auto 0; padding: 0 12px; display: grid; gap: 10px;
   width: 100%; box-sizing: border-box;
+  min-width: 0;
 }
 
 .field-panel {
   display: grid; gap: 8px; padding: 12px; border: 1px solid rgba(200, 191, 176, 0.7);
   background: rgba(251, 249, 244, 0.96); border-radius: 14px;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 8px 22px rgba(23, 22, 20, 0.05);
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .field-panel-head h3 { margin: 0; font-size: 0.98rem; }
 .field-panel-head p { margin: 2px 0 0; font-size: 0.82rem; }
 .field-job-hero-top { display: flex; flex-wrap: wrap; gap: 6px; }
-.field-job-hero h2 { margin: 4px 0 0; font-size: 1.35rem; letter-spacing: -0.02em; }
-.field-vehicle { margin: 0; font-weight: 600; }
+.field-job-hero h2 {
+  margin: 4px 0 0;
+  font-size: 1.2rem;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.field-vehicle { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 
 .field-status, .field-pill {
   display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px;
@@ -2845,19 +2857,23 @@ html.onesheet-root body {
 
 .field-map-link { color: var(--accent); font-weight: 600; font-size: 0.9rem; width: fit-content; }
 
-.field-label { display: grid; gap: 6px; font-size: 0.86rem; color: var(--ink-soft); }
+.field-label { display: grid; gap: 6px; font-size: 0.86rem; color: var(--ink-soft); min-width: 0; }
 .field-label input, .field-label textarea, .field-line-card input, .field-line-card select {
   padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
   background: #fff; font: inherit; color: var(--ink);
+  width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;
 }
 .field-label input:focus, .field-label textarea:focus, .field-line-card input:focus, .field-line-card select:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.field-lines { display: grid; gap: 10px; }
-.field-line-card { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; }
-.field-line-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
-.field-line-top select { flex: 1; }
+.field-lines { display: grid; gap: 10px; min-width: 0; }
+.field-line-card {
+  display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: #fff; min-width: 0; max-width: 100%; box-sizing: border-box;
+}
+.field-line-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; min-width: 0; }
+.field-line-top select { flex: 1; min-width: 0; max-width: 100%; }
 .field-line-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .field-line-grid label { display: grid; gap: 4px; font-size: 0.78rem; color: var(--ink-faint); }
 .field-lines-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; }
@@ -2880,6 +2896,7 @@ html.onesheet-root body {
 .field-photos-panel .field-photo-btn {
   min-height: 48px;
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
 }
 
@@ -3130,14 +3147,29 @@ html.onesheet-root body {
   .field-login-shell { grid-template-columns: 1fr; }
   .field-login-brand { min-height: auto; }
   .field-user-chip { display: none; }
+  .field-topbar {
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+  }
   .field-jobs, .field-job-detail {
-    padding: 0 12px;
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
     margin-top: 10px;
   }
   .field-job-detail {
+    padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  }
+  .field-job-detail:has(.field-job-actions) {
     padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
   }
   .field-panel { padding: 12px; }
+  .field-flow-steps {
+    gap: 5px;
+  }
+  .field-flow-steps li {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+  }
   .field-label input,
   .field-label textarea,
   .field-line-card input,
@@ -3147,12 +3179,15 @@ html.onesheet-root body {
   }
   .field-line-grid {
     grid-template-columns: 1fr 1fr;
+    min-width: 0;
   }
   .field-job-actions {
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
+    width: 100%;
+    max-width: 100%;
     margin: 0;
     border-radius: 0;
     border-left: 0;
@@ -3161,18 +3196,21 @@ html.onesheet-root body {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    padding: 10px max(12px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
     background: rgba(251, 249, 244, 0.98);
     z-index: 30;
+    box-sizing: border-box;
   }
   .field-job-actions .btn,
   .field-job-actions .btn-primary,
   .field-job-actions .btn-secondary,
   .field-job-actions .btn-ghost {
     width: 100%;
-    min-width: 0;
+    min-width: 0 !important;
+    max-width: 100%;
     height: 44px;
     justify-content: center;
+    box-sizing: border-box;
   }
   .field-photo-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
