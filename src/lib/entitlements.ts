@@ -60,6 +60,7 @@ export function defaultEntitlements(): Entitlements {
     },
     mobile: {
       maintenance: false,
+      managerMaintenance: false,
       dispatch: false,
     },
   };

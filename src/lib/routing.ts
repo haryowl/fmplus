@@ -9,7 +9,8 @@ export type AppView =
   | "exceptions"
   | "maintenance"
   | "admin"
-  | "field";
+  | "field"
+  | "manager";
 
 export function viewFromPath(pathname: string): AppView {
   const parts = (pathname.replace(/\/+$/, "") || "/").split("/").filter(Boolean);
@@ -17,6 +18,7 @@ export function viewFromPath(pathname: string): AppView {
   const next = parts[1] ?? "";
   if (!leaf || leaf === "admin") return "admin";
   if (leaf === "full" || leaf === "full.html" || leaf === "index.html") return "full";
+  if (leaf === "mm") return "manager";
   if (leaf === "m" || leaf === "dispatch") return "field";
   if (leaf === "live" || leaf === "live.html") return "live";
   if (leaf === "exceptions" || leaf === "exceptions.html") return "exceptions";
@@ -76,6 +78,14 @@ export function exceptionsHref(search: string): string {
 
 export function maintenanceHref(search: string): string {
   return withSearch("/maintenance", search);
+}
+
+export function managerHref(search = ""): string {
+  return withSearch("/mm", search);
+}
+
+export function fieldHref(search = ""): string {
+  return withSearch("/m", search);
 }
 
 export const VIEW_CHANGE = "fms-embed:view";

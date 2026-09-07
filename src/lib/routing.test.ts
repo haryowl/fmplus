@@ -35,6 +35,8 @@ describe("viewFromPath", () => {
     expect(viewFromPath("/admin/")).toBe("admin");
     expect(viewFromPath("/m")).toBe("field");
     expect(viewFromPath("/m/")).toBe("field");
+    expect(viewFromPath("/mm")).toBe("manager");
+    expect(viewFromPath("/mm/")).toBe("manager");
     expect(viewFromPath("/dispatch")).toBe("field");
     expect(viewFromPath("/")).toBe("admin");
     expect(viewFromPath("/full")).toBe("full");

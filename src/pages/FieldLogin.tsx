@@ -127,6 +127,12 @@ export default function FieldLogin() {
   const refreshMe = useCallback(async () => {
     try {
       const me = await api<{ user: FieldUser; mobileMaintenance?: boolean }>("/api/field/me");
+      if (me.user.role === "manager") {
+        setUser(null);
+        setMobileMaintenance(false);
+        setError("Manager accounts sign in at /mm, not /m.");
+        return false;
+      }
       setUser(me.user);
       setMobileMaintenance(Boolean(me.mobileMaintenance));
       return true;
@@ -322,6 +328,12 @@ export default function FieldLogin() {
         body: JSON.stringify({ tenantKey: tenantKey.trim(), username, password }),
       });
       setPassword("");
+      if (data.user.role === "manager") {
+        await api("/api/field/logout", { method: "POST", body: "{}" });
+        setUser(null);
+        setError("Manager accounts sign in at /mm, not /m.");
+        return;
+      }
       setUser(data.user);
       setMobileMaintenance(Boolean(data.mobileMaintenance));
     } catch (err) {

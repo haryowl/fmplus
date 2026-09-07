@@ -98,6 +98,15 @@ async function tenantMobileMaintenanceEnabled(tenantId) {
   return ent.mobile?.maintenance === true;
 }
 
+async function mobileFlagsForTenant(tenantId) {
+  const row = await dbQuery(`SELECT entitlements FROM tenants WHERE id = $1`, [tenantId]);
+  const ent = mergeEntitlements(row.rows[0]?.entitlements);
+  return {
+    mobileMaintenance: ent.mobile?.maintenance === true,
+    managerMaintenance: ent.mobile?.managerMaintenance === true,
+  };
+}
+
 export async function handleFieldRequest(req, res) {
   const url = new URL(req.url || "/", "http://localhost");
   if (!url.pathname.startsWith("/api/field")) return false;
@@ -137,7 +146,7 @@ export async function handleFieldRequest(req, res) {
       }
       const session = await createFieldSession(row.id);
       const maxAge = Math.floor((session.expiresAt.getTime() - Date.now()) / 1000);
-      const mobileOk = await tenantMobileMaintenanceEnabled(row.tenant_id);
+      const flags = await mobileFlagsForTenant(row.tenant_id);
       json(
         res,
         200,
@@ -152,7 +161,8 @@ export async function handleFieldRequest(req, res) {
             tenantId: row.tenant_id,
             appId: Number(row.app_id),
           }),
-          mobileMaintenance: mobileOk,
+          mobileMaintenance: flags.mobileMaintenance,
+          managerMaintenance: flags.managerMaintenance,
         },
         { "Set-Cookie": fieldSessionCookieHeader(session.token, maxAge) },
       );
@@ -172,8 +182,12 @@ export async function handleFieldRequest(req, res) {
         json(res, 401, { error: "Not logged in" });
         return true;
       }
-      const mobileOk = await tenantMobileMaintenanceEnabled(user.tenantId);
-      json(res, 200, { user: publicFieldUser(user), mobileMaintenance: mobileOk });
+      const flags = await mobileFlagsForTenant(user.tenantId);
+      json(res, 200, {
+        user: publicFieldUser(user),
+        mobileMaintenance: flags.mobileMaintenance,
+        managerMaintenance: flags.managerMaintenance,
+      });
       return true;
     }
 

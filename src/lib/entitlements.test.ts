@@ -13,6 +13,13 @@ describe("entitlements", () => {
     expect(merged.features.ai).toBe(false);
     expect(merged.features.excel).toBe(true);
     expect(merged.features.deleteMaintenance).toBe(false);
+    expect(merged.mobile.managerMaintenance).toBe(false);
+  });
+
+  it("can enable managerMaintenance mobile flag", () => {
+    expect(
+      mergeEntitlements({ mobile: { managerMaintenance: true } }).mobile.managerMaintenance,
+    ).toBe(true);
   });
 
   it("can enable deleteMaintenance", () => {

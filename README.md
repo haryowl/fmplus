@@ -59,6 +59,8 @@ Open [http://localhost:5173/](http://localhost:5173/) (Admin). Embed dashboards 
 | Compact (one screen) | `/compact` |
 | Fleet comparison | `/fleet` |
 | Fleet ranking | `/fleet/compact` |
+| Field Maintenance PWA | `/m` |
+| Manager Maintenance PWA | `/mm` |
 
 Embed query: `k`, `appId`, `groupId`, `userId`, `userIds`, `from`, `to`, `tz`, `period`, `embed=1`.
 
@@ -131,7 +133,7 @@ Open `/` or `/admin` after Postgres + `FMS_SECRETS_KEY` are configured.
 2. Restart the app (`npm run dev` or `systemctl restart fmplus`). The first admin is created only when `admin_users` is empty.
 3. Sign in at `/` (or `/admin`), create tenants (embed `k`, appId, Armada token, webhook secret, module visibility).
 4. Armada tokens are encrypted at rest and **never** returned to the browser.
-5. Per tenant, add **field users** (operator / driver / dispatcher) for `/m` and `/dispatch` login.
+5. Per tenant, add **field users** (operator / driver / dispatcher for `/m`; **manager** for `/mm`) for mobile login.
 6. Set a **webhook secret** on the tenant, then copy the Exception / Maintenance notifier URLs into Armada Command notifier.
 
 Optional: set `PUBLIC_BASE_URL=https://81.17.100.7:4173` so Admin shows absolute notifier URLs.
@@ -199,7 +201,7 @@ https://81.17.100.7:4173/maintenance?k=YOUR_TENANT_KEY
 - Email sends only when SMTP is configured: `SMTP_HOST`, `SMTP_PORT` (default 465), `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`. Otherwise email is skipped quietly.
 - PWA Web Push is out of scope for this ship.
 
-**Field PoM (/m, D3)** — enable **Mobile apps → Maintenance PWA** in Admin entitlements (login still works if the flag is off; jobs UI shows an empty / disabled state).
+**Field PoM (/m, D3)** — enable **Mobile apps → Field Maintenance PWA** in Admin entitlements (login still works if the flag is off; jobs UI shows an empty / disabled state).
 
 ```
 https://81.17.100.7:4173/m?k=YOUR_TENANT_KEY
@@ -207,9 +209,17 @@ https://81.17.100.7:4173/m?k=YOUR_TENANT_KEY
 
 Field users are created **under that tenant** in Admin (not a new tenant each time). They sign in at `/m?k=TENANT_KEY`, see **only jobs assigned to them**, open a job, add **parts / labor / prices**, notes, odometer, upload camera/file photos, then follow **Start → Done** (or Skip). Photos store in MinIO/`S3_*` when configured; otherwise they are saved in Postgres.
 
-**Job lifecycle:** `due` → **Start** → `in_progress` → **Done** → `done` (service time = ended − started). **Done is blocked until Start.** **Cancel start** returns `in_progress` → `due` (clears the clock) until Done is pressed. After Done/Skip, field users cannot edit; managers may **Reopen**. Skip can happen from due without Start (work cancelled, not completed). Scheduled intervals spawn at most one open next-due child per completed job.
+**Manager Maintenance PWA (/mm)** — create a field user with role **Manager**, enable **Mobile apps → Manager Maintenance PWA**, then open:
 
-Deploy notes: `npm run db:migrate` (through migration `010_photo_payload.sql`), build, restart. For HTTPS deployments set `ADMIN_COOKIE_SECURE=1` so session cookies are Secure. Configure SMTP and/or Admin Wablas + notify recipients for outbound channels.
+```
+https://81.17.100.7:4173/mm?k=YOUR_TENANT_KEY
+```
+
+Managers sign in with that account (same cookie family as Field). v1: list open / awaiting-approve / approved jobs (including unassigned follow-ups), assign technicians, review notes/parts/photos, and **Approve** Done jobs. Desktop `/maintenance?k=` is unchanged.
+
+**Job lifecycle:** `due` → **Start** → `in_progress` → **Done** → `done` (service time = ended − started). **Done is blocked until Start.** **Cancel start** returns `in_progress` → `due` (clears the clock) until Done is pressed. After Done/Skip, field users cannot edit; managers may **Approve** (`done` → `approved`, locked) or edit Done jobs from desktop/manager PWA. Skip can happen from due without Start (work cancelled, not completed). Scheduled intervals spawn at most one open next-due child per completed job.
+
+Deploy notes: `npm run db:migrate` (through migration `013_field_manager_role.sql`), build, restart. For HTTPS deployments set `ADMIN_COOKIE_SECURE=1` so session cookies are Secure. Configure SMTP and/or Admin Wablas + notify recipients for outbound channels.
 
 ## Armada Command notifier (Phase B0)
 

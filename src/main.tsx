@@ -12,6 +12,7 @@ import MaintenanceBoard from "./pages/MaintenanceBoard";
 import TripDetail from "./pages/TripDetail";
 import AdminConsole from "./pages/AdminConsole";
 import FieldLogin from "./pages/FieldLogin";
+import ManagerMaintenance from "./pages/ManagerMaintenance";
 import { VIEW_CHANGE, viewFromPath, type AppView } from "./lib/routing";
 import { bootTenantFromSearch } from "./lib/tenant";
 import "./styles.css";
@@ -20,6 +21,7 @@ bootTenantFromSearch(window.location.search);
 
 function pageFor(view: AppView) {
   if (view === "admin") return AdminConsole;
+  if (view === "manager") return ManagerMaintenance;
   if (view === "field") return FieldLogin;
   if (view === "live") return LiveOps;
   if (view === "exceptions") return ExceptionsInbox;

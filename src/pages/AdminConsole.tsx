@@ -59,6 +59,7 @@ const FIELD_ROLE_OPTIONS = [
   { value: "operator", label: "Operator" },
   { value: "driver", label: "Driver" },
   { value: "dispatcher", label: "Dispatcher" },
+  { value: "manager", label: "Manager" },
 ];
 
 function emptyDraft(): Draft {
@@ -759,7 +760,11 @@ export default function AdminConsole() {
                 />
                 <ToggleGrid
                   title="Mobile apps"
-                  labels={{ maintenance: "Maintenance PWA", dispatch: "Dispatch PWA" }}
+                  labels={{
+                    maintenance: "Field Maintenance PWA (/m)",
+                    managerMaintenance: "Manager Maintenance PWA (/mm)",
+                    dispatch: "Dispatch PWA",
+                  }}
                   values={draft.entitlements.mobile}
                   onChange={(key, next) =>
                     setDraft({

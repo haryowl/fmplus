@@ -58,6 +58,7 @@ export function defaultEntitlements() {
     },
     mobile: {
       maintenance: false,
+      managerMaintenance: false,
       dispatch: false,
     },
   };

@@ -21,6 +21,7 @@ import { handleNearbyFuelRequest } from "./server/nearby-fuel.mjs";
 import { handleHealthRequest } from "./server/health.mjs";
 import { handleAdminRequest, maybeBootstrapAdmin } from "./server/admin-api.mjs";
 import { handleFieldRequest } from "./server/field-api.mjs";
+import { handleManagerRequest } from "./server/manager-api.mjs";
 import { handleArmadaNotifyRequest } from "./server/armada-notify.mjs";
 import { handleExceptionsRequest } from "./server/exceptions-api.mjs";
 import { handleMaintenanceRequest } from "./server/maintenance-api.mjs";
@@ -106,6 +107,7 @@ function onRequest(req, res) {
     if (await handleExceptionsRequest(req, res)) return;
     if (await handleMaintenanceRequest(req, res)) return;
     if (await handleAdminRequest(req, res)) return;
+    if (await handleManagerRequest(req, res)) return;
     if (await handleFieldRequest(req, res)) return;
     if (await handleEmbedContextRequest(req, res)) return;
     if (await handleTracksBatchRequest(req, res)) return;
