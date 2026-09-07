@@ -594,164 +594,188 @@ export function MaintenanceEventDetail({
         <div className="maint-section span-2">
           <header className="maint-section-head">
             <h3>Schedule / remind</h3>
-            <p>Optional calendar, km, or ignition-hour intervals</p>
+            <p>Fill only the rules you need — calendar, distance, and engine hours are independent</p>
           </header>
-          <div className="maint-section-body">
-            <div className="maintenance-schedule-grid">
-              <label>
-                Due date
-                <input
-                  type="date"
-                  value={remindDueAt}
-                  onChange={(e) => setRemindDueAt(e.target.value)}
-                  disabled={locked}
-                />
-              </label>
-              <label>
-                Interval (days)
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  placeholder="e.g. 90"
-                  value={remindIntervalDays}
-                  onChange={(e) => setRemindIntervalDays(e.target.value)}
-                  disabled={locked}
-                />
-              </label>
-              <label>
-                Interval (km)
-                <input
-                  type="number"
-                  min={1}
-                  step="any"
-                  placeholder="e.g. 5000"
-                  value={remindIntervalKm}
-                  onChange={(e) => setRemindIntervalKm(e.target.value)}
-                  disabled={locked}
-                />
-              </label>
-              <label>
-                Baseline odo (km)
-                <input
-                  type="number"
-                  step="any"
-                  placeholder="Start of km interval"
-                  value={remindBaselineOdometerKm}
-                  onChange={(e) => setRemindBaselineOdometerKm(e.target.value)}
-                  disabled={locked}
-                />
-              </label>
-              <label>
-                Interval (hours, ign-on)
-                <input
-                  type="number"
-                  min={1}
-                  step="any"
-                  placeholder="e.g. 250"
-                  value={remindIntervalHours}
-                  onChange={(e) => setRemindIntervalHours(e.target.value)}
-                  disabled={locked}
-                />
-              </label>
-              <label>
-                Hours since
-                <input
-                  type="datetime-local"
-                  value={remindHoursSinceAt}
-                  onChange={(e) => setRemindHoursSinceAt(e.target.value)}
-                  disabled={locked}
-                />
-              </label>
-              <label>
-                Remind before (days)
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  placeholder="7"
-                  value={remindBeforeDays}
-                  onChange={(e) => setRemindBeforeDays(e.target.value)}
-                  disabled={locked}
-                />
-              </label>
-              <label>
-                Remind before (km)
-                <input
-                  type="number"
-                  min={0}
-                  step="any"
-                  placeholder="500"
-                  value={remindBeforeKm}
-                  onChange={(e) => setRemindBeforeKm(e.target.value)}
-                  disabled={locked}
-                />
-              </label>
-              <label>
-                Remind before (hours)
-                <input
-                  type="number"
-                  min={0}
-                  step="any"
-                  placeholder="auto"
-                  value={remindBeforeHours}
-                  onChange={(e) => setRemindBeforeHours(e.target.value)}
-                  disabled={locked}
-                />
-              </label>
+          <div className="maint-section-body maint-schedule-rules">
+            <div className="maint-schedule-rule">
+              <header>
+                <h4>By calendar</h4>
+                <p>Due on a date, and/or every N days</p>
+              </header>
+              <div className="maint-schedule-rule-grid">
+                <label>
+                  Due date
+                  <input
+                    type="date"
+                    value={remindDueAt}
+                    onChange={(e) => setRemindDueAt(e.target.value)}
+                    disabled={locked}
+                  />
+                </label>
+                <label>
+                  Repeat every (days)
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    placeholder="e.g. 90"
+                    value={remindIntervalDays}
+                    onChange={(e) => setRemindIntervalDays(e.target.value)}
+                    disabled={locked}
+                  />
+                </label>
+                <label>
+                  Remind before (days)
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="e.g. 7"
+                    value={remindBeforeDays}
+                    onChange={(e) => setRemindBeforeDays(e.target.value)}
+                    disabled={locked}
+                  />
+                </label>
+              </div>
             </div>
-            {remindIntervalKm.trim() && remindBaselineOdometerKm.trim() ? (
-              <p className="muted maintenance-hint">
-                Next km due around{" "}
-                {(Number(remindBaselineOdometerKm) + Number(remindIntervalKm)).toLocaleString()} km
-              </p>
-            ) : null}
-            {remindIntervalKm.trim() ? (
-              <p className="muted maintenance-hint">
-                {kmLoading
-                  ? "Reading odometer from live status…"
-                  : kmAccrued?.kmAccrued != null && kmAccrued.intervalKm != null
-                    ? `Odo ${kmAccrued.currentOdoKm?.toLocaleString() ?? "—"} km · accrued ${kmAccrued.kmAccrued.toLocaleString()} / ${kmAccrued.intervalKm.toLocaleString()} km${
-                        kmAccrued.due ? " — due" : ""
-                      }${
-                        kmAccrued.nextDueOdoKm != null
-                          ? ` · next @ ${kmAccrued.nextDueOdoKm.toLocaleString()} km`
-                          : ""
-                      }`
-                    : kmAccrued?.reason === "no_baseline"
-                      ? "Set baseline odo (or create with vehicle status) to evaluate km interval."
-                      : kmAccrued?.reason === "no_status_odo"
-                        ? "No odometer on live status for this vehicle."
-                        : kmAccrued?.reason
-                          ? `Km: ${kmAccrued.reason}`
-                          : "Save to evaluate km against live status odometer."}
-                {kmAccrued?.currentOdoKm != null ? (
-                  <>
-                    {" "}
-                    <button
-                      type="button"
-                      className="btn-link"
-                      onClick={() => setRemindBaselineOdometerKm(String(kmAccrued.currentOdoKm))}
-                    >
-                      Use live odo as baseline
-                    </button>
-                  </>
-                ) : null}
-              </p>
-            ) : null}
-            {remindIntervalHours.trim() ? (
-              <p className="muted maintenance-hint">
-                {hoursLoading
-                  ? "Computing ignition-on hours from tracks…"
-                  : hoursAccrued?.hoursAccrued != null && hoursAccrued.intervalHours != null
-                    ? `Accrued ${hoursAccrued.hoursAccrued.toFixed(1)} / ${hoursAccrued.intervalHours} h${
-                        hoursAccrued.due ? " — due" : ""
-                      }${hoursAccrued.lookbackCapped ? " (lookback capped at 90 days)" : ""}`
-                    : hoursAccrued?.reason
-                      ? `Hours: ${hoursAccrued.reason}`
-                      : "Save to compute ignition-on hours from tracks."}
-              </p>
-            ) : null}
+
+            <div className="maint-schedule-rule">
+              <header>
+                <h4>By distance</h4>
+                <p>Due after km from a baseline odometer</p>
+              </header>
+              <div className="maint-schedule-rule-grid">
+                <label>
+                  Repeat every (km)
+                  <input
+                    type="number"
+                    min={1}
+                    step="any"
+                    placeholder="e.g. 5000"
+                    value={remindIntervalKm}
+                    onChange={(e) => setRemindIntervalKm(e.target.value)}
+                    disabled={locked}
+                  />
+                </label>
+                <label>
+                  Baseline odometer (km)
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Start of this interval"
+                    value={remindBaselineOdometerKm}
+                    onChange={(e) => setRemindBaselineOdometerKm(e.target.value)}
+                    disabled={locked}
+                  />
+                </label>
+                <label>
+                  Remind before (km)
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="e.g. 500"
+                    value={remindBeforeKm}
+                    onChange={(e) => setRemindBeforeKm(e.target.value)}
+                    disabled={locked}
+                  />
+                </label>
+              </div>
+              {remindIntervalKm.trim() && remindBaselineOdometerKm.trim() ? (
+                <p className="muted maintenance-hint">
+                  Next km due around{" "}
+                  {(Number(remindBaselineOdometerKm) + Number(remindIntervalKm)).toLocaleString()} km
+                </p>
+              ) : null}
+              {remindIntervalKm.trim() ? (
+                <p className="muted maintenance-hint">
+                  {kmLoading
+                    ? "Reading odometer from live status…"
+                    : kmAccrued?.kmAccrued != null && kmAccrued.intervalKm != null
+                      ? `Odo ${kmAccrued.currentOdoKm?.toLocaleString() ?? "—"} km · accrued ${kmAccrued.kmAccrued.toLocaleString()} / ${kmAccrued.intervalKm.toLocaleString()} km${
+                          kmAccrued.due ? " — due" : ""
+                        }${
+                          kmAccrued.nextDueOdoKm != null
+                            ? ` · next @ ${kmAccrued.nextDueOdoKm.toLocaleString()} km`
+                            : ""
+                        }`
+                      : kmAccrued?.reason === "no_baseline"
+                        ? "Set baseline odo (or create with vehicle status) to evaluate km interval."
+                        : kmAccrued?.reason === "no_status_odo"
+                          ? "No odometer on live status for this vehicle."
+                          : kmAccrued?.reason
+                            ? `Km: ${kmAccrued.reason}`
+                            : "Save to evaluate km against live status odometer."}
+                  {kmAccrued?.currentOdoKm != null ? (
+                    <>
+                      {" "}
+                      <button
+                        type="button"
+                        className="btn-link"
+                        onClick={() => setRemindBaselineOdometerKm(String(kmAccrued.currentOdoKm))}
+                      >
+                        Use live odo as baseline
+                      </button>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="maint-schedule-rule">
+              <header>
+                <h4>By engine hours</h4>
+                <p>Due after ignition-on hours from tracks</p>
+              </header>
+              <div className="maint-schedule-rule-grid">
+                <label>
+                  Repeat every (hours)
+                  <input
+                    type="number"
+                    min={1}
+                    step="any"
+                    placeholder="e.g. 250"
+                    value={remindIntervalHours}
+                    onChange={(e) => setRemindIntervalHours(e.target.value)}
+                    disabled={locked}
+                  />
+                </label>
+                <label>
+                  Hours counted from
+                  <input
+                    type="datetime-local"
+                    value={remindHoursSinceAt}
+                    onChange={(e) => setRemindHoursSinceAt(e.target.value)}
+                    disabled={locked}
+                  />
+                </label>
+                <label>
+                  Remind before (hours)
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="optional"
+                    value={remindBeforeHours}
+                    onChange={(e) => setRemindBeforeHours(e.target.value)}
+                    disabled={locked}
+                  />
+                </label>
+              </div>
+              {remindIntervalHours.trim() ? (
+                <p className="muted maintenance-hint">
+                  {hoursLoading
+                    ? "Computing ignition-on hours from tracks…"
+                    : hoursAccrued?.hoursAccrued != null && hoursAccrued.intervalHours != null
+                      ? `Accrued ${hoursAccrued.hoursAccrued.toFixed(1)} / ${hoursAccrued.intervalHours} h${
+                          hoursAccrued.due ? " — due" : ""
+                        }${hoursAccrued.lookbackCapped ? " (lookback capped at 90 days)" : ""}`
+                      : hoursAccrued?.reason
+                        ? `Hours: ${hoursAccrued.reason}`
+                        : "Save to compute ignition-on hours from tracks."}
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
 

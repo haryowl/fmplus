@@ -4916,3 +4916,56 @@ html.onesheet-root body {
     font-size: 1.28rem;
   }
 }
+
+/* Schedule rules grouped by type */
+.maint-schedule-rules {
+  display: grid;
+  gap: 12px;
+}
+
+.maint-schedule-rule {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(217, 210, 198, 0.75);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.maint-schedule-rule > header h4 {
+  margin: 0;
+  font-size: 0.9rem;
+  letter-spacing: -0.01em;
+}
+
+.maint-schedule-rule > header p {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+}
+
+.maint-schedule-rule-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.maintenance-create .maint-schedule-rules {
+  margin-top: 8px;
+}
+
+.maintenance-create .maint-schedule-rule {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+@media (max-width: 900px) {
+  .maint-schedule-rule-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .maint-schedule-rule-grid {
+    grid-template-columns: 1fr;
+  }
+}

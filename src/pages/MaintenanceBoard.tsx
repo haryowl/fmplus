@@ -799,83 +799,105 @@ export default function MaintenanceBoard() {
             </label>
             <fieldset className="span-2 maintenance-schedule">
               <legend>Schedule / remind (optional)</legend>
-              <div className="maintenance-schedule-grid">
-                <label>
-                  Due date
-                  <input type="date" value={remindDueAt} onChange={(e) => setRemindDueAt(e.target.value)} />
-                </label>
-                <label>
-                  Interval (days)
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    placeholder="e.g. 90"
-                    value={remindIntervalDays}
-                    onChange={(e) => setRemindIntervalDays(e.target.value)}
-                  />
-                </label>
-                <label>
-                  Interval (km)
-                  <input
-                    type="number"
-                    min={1}
-                    step="any"
-                    placeholder="e.g. 5000"
-                    value={remindIntervalKm}
-                    onChange={(e) => setRemindIntervalKm(e.target.value)}
-                  />
-                </label>
-                <label>
-                  Interval (hours, ign-on)
-                  <input
-                    type="number"
-                    min={1}
-                    step="any"
-                    placeholder="e.g. 250"
-                    value={remindIntervalHours}
-                    onChange={(e) => setRemindIntervalHours(e.target.value)}
-                  />
-                </label>
-                <label>
-                  Remind before (days)
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    placeholder="7"
-                    value={remindBeforeDays}
-                    onChange={(e) => setRemindBeforeDays(e.target.value)}
-                  />
-                </label>
-                <label>
-                  Remind before (km)
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    placeholder="500"
-                    value={remindBeforeKm}
-                    onChange={(e) => setRemindBeforeKm(e.target.value)}
-                  />
-                </label>
-                <label>
-                  Remind before (hours)
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    placeholder="auto"
-                    value={remindBeforeHours}
-                    onChange={(e) => setRemindBeforeHours(e.target.value)}
-                  />
-                </label>
-              </div>
               <p className="muted maintenance-hint">
-                Baseline odo for km interval is taken from the vehicle’s last status when you create.
-                Detail re-checks live `/usersstatus` odometer for accrued km. Hour intervals accrue
-                ignition-on track time from create (lookback capped at 90 days).
+                Fill only the rules you need — calendar, distance, and engine hours are independent.
               </p>
+              <div className="maint-schedule-rules">
+                <div className="maint-schedule-rule">
+                  <header>
+                    <h4>By calendar</h4>
+                    <p>Due on a date, and/or every N days</p>
+                  </header>
+                  <div className="maint-schedule-rule-grid">
+                    <label>
+                      Due date
+                      <input type="date" value={remindDueAt} onChange={(e) => setRemindDueAt(e.target.value)} />
+                    </label>
+                    <label>
+                      Repeat every (days)
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        placeholder="e.g. 90"
+                        value={remindIntervalDays}
+                        onChange={(e) => setRemindIntervalDays(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Remind before (days)
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        placeholder="e.g. 7"
+                        value={remindBeforeDays}
+                        onChange={(e) => setRemindBeforeDays(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                </div>
+                <div className="maint-schedule-rule">
+                  <header>
+                    <h4>By distance</h4>
+                    <p>Baseline odo is taken from last status when you create</p>
+                  </header>
+                  <div className="maint-schedule-rule-grid">
+                    <label>
+                      Repeat every (km)
+                      <input
+                        type="number"
+                        min={1}
+                        step="any"
+                        placeholder="e.g. 5000"
+                        value={remindIntervalKm}
+                        onChange={(e) => setRemindIntervalKm(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Remind before (km)
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        placeholder="e.g. 500"
+                        value={remindBeforeKm}
+                        onChange={(e) => setRemindBeforeKm(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                </div>
+                <div className="maint-schedule-rule">
+                  <header>
+                    <h4>By engine hours</h4>
+                    <p>Ignition-on hours from tracks (from create time)</p>
+                  </header>
+                  <div className="maint-schedule-rule-grid">
+                    <label>
+                      Repeat every (hours)
+                      <input
+                        type="number"
+                        min={1}
+                        step="any"
+                        placeholder="e.g. 250"
+                        value={remindIntervalHours}
+                        onChange={(e) => setRemindIntervalHours(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Remind before (hours)
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        placeholder="optional"
+                        value={remindBeforeHours}
+                        onChange={(e) => setRemindBeforeHours(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
             </fieldset>
             <div className="span-2">
               <button
