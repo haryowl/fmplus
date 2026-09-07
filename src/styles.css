@@ -222,10 +222,19 @@ span.btn-ghost {
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  background: var(--accent);
+  background: #000;
   display: grid;
   place-items: center;
   flex-shrink: 0;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .brand h1 {
@@ -2222,12 +2231,13 @@ html.onesheet-root body {
 }
 
 .admin-login-brand .mark {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
+  background: #000;
   display: grid;
   place-items: center;
+  overflow: hidden;
 }
 
 .admin-login {
@@ -2319,9 +2329,10 @@ html.onesheet-root body {
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
+  background: #000;
   display: grid;
   place-items: center;
+  overflow: hidden;
 }
 
 .admin-topbar-meta {
@@ -2722,9 +2733,10 @@ html.onesheet-root body {
   width: 52px;
   height: 52px;
   border-radius: 14px;
-  background: var(--nav);
+  background: #000;
   display: grid;
   place-items: center;
+  overflow: hidden;
 }
 
 @keyframes admin-rise {
@@ -2792,8 +2804,13 @@ html.onesheet-root body {
 .field-login-brand .muted { color: #b7b0a4; }
 
 .field-login-brand .mark {
-  width: 44px; height: 44px; border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08); display: grid; place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
 }
 
 .field-login-form { display: grid; gap: 12px; padding: 32px 28px; }
@@ -2813,8 +2830,13 @@ html.onesheet-root body {
 .field-brand h1 { margin: 0; font-size: 1.15rem; letter-spacing: -0.02em; }
 .field-brand .field-kicker { color: var(--nav-muted); }
 .field-brand .mark {
-  width: 36px; height: 36px; border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08); display: grid; place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
 }
 
 .field-topbar-meta { display: flex; align-items: center; gap: 8px; }
