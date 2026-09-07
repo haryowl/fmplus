@@ -5,9 +5,10 @@
 import { armadaFetch } from "./armada-fetch.mjs";
 import { RECOVER_SUCCESS_STREAK, reducedCapOn429, isRetryableArmadaStatus, planArmadaRetry } from "./armada-retry.mjs";
 import {
-  isPastDay,
+  dayCacheLookup,
   maybePurgeDayCache,
   readCachedDay,
+  shouldWriteDayCache,
   tenantCacheScope,
   todayKeyFromOffset,
   writeCachedDay,
@@ -200,7 +201,7 @@ export async function handleUserDayTracksRequest(req, res) {
           slimAsync(raw).then(
             (text) => {
               writeDay(day.key, text, false);
-              if (isPastDay(day.date, todayYmd)) {
+              if (shouldWriteDayCache(day.date, todayYmd)) {
                 void writeCachedDay(cacheScope, tenant.appId, day.userId, day.date, text).catch(() => {});
               }
             },
@@ -212,11 +213,12 @@ export async function handleUserDayTracksRequest(req, res) {
       let cacheHits = 0;
       const missDays = [];
       for (const day of days) {
-        if (!isPastDay(day.date, todayYmd)) {
+        const lookup = dayCacheLookup(day.date, todayYmd);
+        if (!lookup) {
           missDays.push(day);
           continue;
         }
-        const hit = await readCachedDay(cacheScope, tenant.appId, day.userId, day.date);
+        const hit = await readCachedDay(cacheScope, tenant.appId, day.userId, day.date, lookup);
         if (hit != null) {
           writeDay(day.key, hit, false);
           cacheHits += 1;

@@ -8,8 +8,9 @@ import { securityHeaders } from "./proxy-lt.mjs";
 import { getObject, objectStorageConfigured, putObject } from "./storage.mjs";
 import { armadaFetch } from "./armada-fetch.mjs";
 import {
-  isPastDay,
+  dayCacheLookup,
   readCachedDay,
+  shouldWriteDayCache,
   tenantCacheScope,
   todayKeyFromOffset,
   writeCachedDay,
@@ -804,13 +805,16 @@ export async function loadPhotoBytes(photoId, tenantId) {
 
 async function loadDayTrackPoints(vaultTenant, userId, date, todayYmd) {
   const scope = tenantCacheScope(vaultTenant.key);
-  const cached = await readCachedDay(scope, vaultTenant.appId, userId, date);
-  if (cached) {
-    try {
-      const parsed = JSON.parse(cached);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      /* fetch fresh */
+  const lookup = dayCacheLookup(date, todayYmd);
+  if (lookup) {
+    const cached = await readCachedDay(scope, vaultTenant.appId, userId, date, lookup);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        /* fetch fresh */
+      }
     }
   }
   if (!vaultTenant.token) return [];
@@ -828,7 +832,7 @@ async function loadDayTrackPoints(vaultTenant, userId, date, todayYmd) {
     if (!res.ok) return [];
     const raw = res.buffer || (await res.text());
     const slim = await slimAsync(raw);
-    if (isPastDay(date, todayYmd)) {
+    if (shouldWriteDayCache(date, todayYmd)) {
       await writeCachedDay(scope, vaultTenant.appId, userId, date, slim).catch(() => {});
     }
     try {

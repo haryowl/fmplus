@@ -1,6 +1,7 @@
 /**
  * Disk cache for slimmed vehicle-day GPS points.
- * Past calendar days are reusable; "today" is never treated as final.
+ * Past calendar days are reusable indefinitely (until purge).
+ * "Today" may be soft-cached briefly to skip repeat Armada downloads.
  */
 import fs from "node:fs";
 import fsp from "node:fs/promises";
@@ -13,6 +14,8 @@ const TENANT_RE = /^[A-Za-z0-9._-]{8,80}$/;
 
 /** Keep cached past days at most this long. */
 export const CACHE_MAX_AGE_DAYS = 60;
+/** Default soft-cache window for the current calendar day. */
+export const TODAY_SOFT_CACHE_MS_DEFAULT = 3 * 60 * 1000;
 /** How often a request may trigger a purge walk. */
 export const PURGE_EVERY_MS = 60 * 60 * 1000;
 
@@ -35,6 +38,35 @@ export function isPastDay(date, todayYmd) {
   return date < todayYmd;
 }
 
+/** Soft-cache TTL for today. Override with DAY_TRACKS_TODAY_SOFT_CACHE_MS (0 disables). */
+export function todaySoftCacheMs() {
+  const raw = String(process.env.DAY_TRACKS_TODAY_SOFT_CACHE_MS || "").trim();
+  if (raw === "") return TODAY_SOFT_CACHE_MS_DEFAULT;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return TODAY_SOFT_CACHE_MS_DEFAULT;
+  return n;
+}
+
+/**
+ * How to look up disk cache for a calendar day.
+ * @returns {{ maxAgeMs?: number, touch?: boolean } | null} null = skip cache (miss).
+ */
+export function dayCacheLookup(date, todayYmd) {
+  if (isPastDay(date, todayYmd)) return { touch: true };
+  if (date === todayYmd) {
+    const ms = todaySoftCacheMs();
+    if (ms <= 0) return null;
+    return { maxAgeMs: ms, touch: false };
+  }
+  return null;
+}
+
+export function shouldWriteDayCache(date, todayYmd) {
+  if (isPastDay(date, todayYmd)) return true;
+  if (date === todayYmd) return todaySoftCacheMs() > 0;
+  return false;
+}
+
 export function todayKeyFromOffset(offset, nowMs = Date.now()) {
   const match = /^([+-])(\d{2}):(\d{2})$/.exec(String(offset || "").trim());
   const minutes = match
@@ -53,13 +85,28 @@ export function dayCachePath(scope, appId, userId, date) {
   return path.join(cacheRoot(), safeScope, String(app), String(user), `${date}.json`);
 }
 
-export async function readCachedDay(scope, appId, userId, date) {
+/**
+ * @param {object} [opts]
+ * @param {number} [opts.maxAgeMs] Reject file if mtime older than this (today soft-cache).
+ * @param {boolean} [opts.touch=true] Update mtime on hit (past-day LRU). Off for today so TTL is from write.
+ * @param {number} [opts.nowMs]
+ */
+export async function readCachedDay(scope, appId, userId, date, opts = {}) {
   try {
     const file = dayCachePath(scope, appId, userId, date);
+    const maxAgeMs = opts.maxAgeMs;
+    const touch = opts.touch !== false;
+    const nowMs = opts.nowMs ?? Date.now();
+
+    if (maxAgeMs != null) {
+      const st = await fsp.stat(file);
+      if (nowMs - st.mtimeMs > maxAgeMs) return null;
+    }
+
     const text = await fsp.readFile(file, "utf8");
     if (!text || text[0] !== "[") return null;
-    // Touch mtime so LRU-ish purge prefers older unread files.
-    void fsp.utimes(file, new Date(), new Date()).catch(() => {});
+    // Touch mtime so LRU-ish purge prefers older unread files (past days only).
+    if (touch) void fsp.utimes(file, new Date(), new Date()).catch(() => {});
     return text;
   } catch {
     return null;
