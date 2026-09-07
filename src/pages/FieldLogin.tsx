@@ -716,16 +716,29 @@ export default function FieldLogin() {
 
   return (
     <div className="field-app field-app-login">
-      <div className="field-login-shell">
-        <div className="field-login-brand">
-          <BrandMark size={28} />
-          <div>
+      <div className="field-login-shell auth-login-shell">
+        <div className="field-login-brand auth-login-brand">
+          <div className="auth-login-brand-top">
+            <BrandMark size={28} />
             <p className="field-kicker">FM Plus</p>
-            <h1>Field</h1>
-            <p className="muted">Jobs, parts, photos — assigned work for this tenant’s technicians and drivers.</p>
           </div>
+          <div className="auth-login-brand-copy">
+            <h1>Field</h1>
+            <p className="muted">
+              Jobs, parts, and proof photos for technicians and drivers assigned on this tenant.
+            </p>
+          </div>
+          <ul className="auth-login-points" aria-hidden="true">
+            <li>Assigned work orders</li>
+            <li>Parts &amp; service lines</li>
+            <li>Photo proof from site</li>
+          </ul>
         </div>
-        <form className="field-login-form" onSubmit={(e) => void handleLogin(e)}>
+        <form className="field-login-form auth-login-form" onSubmit={(e) => void handleLogin(e)}>
+          <header className="auth-login-form-head">
+            <h2>Sign in</h2>
+            <p className="muted">Use the tenant key from your manager</p>
+          </header>
           {error && <p className="field-error">{error}</p>}
           <label className="field-label">
             Tenant key (k)
@@ -744,8 +757,8 @@ export default function FieldLogin() {
               autoComplete="current-password"
             />
           </label>
-          <button type="submit" className="btn btn-primary" disabled={busy}>
-            Sign in
+          <button type="submit" className="btn btn-primary auth-login-submit" disabled={busy}>
+            {busy ? "Signing in…" : "Sign in"}
           </button>
         </form>
       </div>

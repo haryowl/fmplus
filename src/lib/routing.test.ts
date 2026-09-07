@@ -36,7 +36,9 @@ describe("viewFromPath", () => {
     expect(viewFromPath("/m")).toBe("field");
     expect(viewFromPath("/m/")).toBe("field");
     expect(viewFromPath("/dispatch")).toBe("field");
-    expect(viewFromPath("/")).toBe("full");
+    expect(viewFromPath("/")).toBe("admin");
+    expect(viewFromPath("/full")).toBe("full");
+    expect(viewFromPath("/full/")).toBe("full");
   });
 });
 
@@ -48,6 +50,7 @@ describe("isCompactPath", () => {
 
   it("rejects the full dashboard and fleet pages", () => {
     expect(isCompactPath("/")).toBe(false);
+    expect(isCompactPath("/full")).toBe(false);
     expect(isCompactPath("/index.html")).toBe(false);
     expect(isCompactPath("/metrics")).toBe(false);
     expect(isCompactPath("/fleet")).toBe(false);
@@ -61,7 +64,7 @@ describe("withSearch", () => {
   it("keeps the query string on each view", () => {
     const q = "?groupId=12&userId=99&embed=1";
     expect(compactHref(q)).toBe("/compact?groupId=12&userId=99&embed=1");
-    expect(fullHref(q)).toBe("/?groupId=12&userId=99&embed=1");
+    expect(fullHref(q)).toBe("/full?groupId=12&userId=99&embed=1");
     expect(fleetHref(q)).toBe("/fleet?groupId=12&userId=99&embed=1");
     expect(fleetCompactHref(q)).toBe("/fleet/compact?groupId=12&userId=99&embed=1");
     expect(statusHref(q)).toBe("/status?groupId=12&userId=99&embed=1");

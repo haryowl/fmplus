@@ -15,7 +15,8 @@ export function viewFromPath(pathname: string): AppView {
   const parts = (pathname.replace(/\/+$/, "") || "/").split("/").filter(Boolean);
   const leaf = parts[0] ?? "";
   const next = parts[1] ?? "";
-  if (leaf === "admin") return "admin";
+  if (!leaf || leaf === "admin") return "admin";
+  if (leaf === "full" || leaf === "full.html" || leaf === "index.html") return "full";
   if (leaf === "m" || leaf === "dispatch") return "field";
   if (leaf === "live" || leaf === "live.html") return "live";
   if (leaf === "exceptions" || leaf === "exceptions.html") return "exceptions";
@@ -25,7 +26,7 @@ export function viewFromPath(pathname: string): AppView {
   if (leaf === "compact" || leaf === "compact.html") return "compact";
   if (leaf === "status" || leaf === "status.html") return "status";
   if (leaf === "trips" || leaf === "trips.html") return "trips";
-  return "full";
+  return "admin";
 }
 
 /** True for the single-vehicle compact page only (`/fleet/compact` is not this). */
@@ -42,6 +43,10 @@ export function compactHref(search: string): string {
 }
 
 export function fullHref(search: string): string {
+  return withSearch("/full", search);
+}
+
+export function adminHref(search = ""): string {
   return withSearch("/", search);
 }
 

@@ -50,11 +50,12 @@ journalctl -u fmplus -f
 
 If you copied the unit by hand before `git pull`, install it from this file after pulling. The app listens on port **4173**. If `ssl/server.key` and `ssl/server.crt` are present (do not commit them), `npm start` serves HTTPS.
 
-Open [http://localhost:5173/](http://localhost:5173/).
+Open [http://localhost:5173/](http://localhost:5173/) (Admin). Embed dashboards live under `/full`, `/compact`, etc.
 
 | Page | URL |
 | --- | --- |
-| Full dashboard | `/` |
+| Admin console | `/` or `/admin` |
+| Full dashboard | `/full` |
 | Compact (one screen) | `/compact` |
 | Fleet comparison | `/fleet` |
 | Fleet ranking | `/fleet/compact` |
@@ -63,7 +64,7 @@ Embed query: `k`, `appId`, `groupId`, `userId`, `userIds`, `from`, `to`, `tz`, `
 
 ## Multi-operator embed
 
-`http://81.17.100.7:4173/` with **no** `k` is the standalone app: `ARMADA_AUTH_HEADER` and **app 36** only.
+`http://81.17.100.7:4173/full` with **no** `k` is the standalone app: `ARMADA_AUTH_HEADER` and **app 36** only.
 
 Any other GpsGate application (37, 40, …) needs a row in server-side `tenants.json` (copy `tenants.example.json`; gitignored). The token is per operator/app, so **`userIds` and `groupIds` are optional**.
 
@@ -81,7 +82,7 @@ Leave the allowlists out. Open the Full page with only `k` and `appId`. Group an
 ```
 
 ```
-http://81.17.100.7:4173/?k=emb_app37_browse&appId=37
+http://81.17.100.7:4173/full?k=emb_app37_browse&appId=37
 ```
 
 Restart after editing the file (`systemctl restart fmplus`) — tenants are loaded once at process start.
@@ -120,7 +121,7 @@ Tenant load order: `tenants.json` → `TENANTS_JSON` → default `ARMADA_AUTH_HE
 
 ## Admin console
 
-Open `/admin` after Postgres + `FMS_SECRETS_KEY` are configured.
+Open `/` or `/admin` after Postgres + `FMS_SECRETS_KEY` are configured.
 
 1. Set bootstrap credentials once in `.env.local`:
    ```
@@ -128,7 +129,7 @@ Open `/admin` after Postgres + `FMS_SECRETS_KEY` are configured.
    ADMIN_BOOTSTRAP_PASSWORD=change-me-now
    ```
 2. Restart the app (`npm run dev` or `systemctl restart fmplus`). The first admin is created only when `admin_users` is empty.
-3. Sign in at `/admin`, create tenants (embed `k`, appId, Armada token, webhook secret, module visibility).
+3. Sign in at `/` (or `/admin`), create tenants (embed `k`, appId, Armada token, webhook secret, module visibility).
 4. Armada tokens are encrypted at rest and **never** returned to the browser.
 5. Per tenant, add **field users** (operator / driver / dispatcher) for `/m` and `/dispatch` login.
 6. Set a **webhook secret** on the tenant, then copy the Exception / Maintenance notifier URLs into Armada Command notifier.

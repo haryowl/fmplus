@@ -423,16 +423,30 @@ export default function AdminConsole() {
   if (!username) {
     return (
       <div className="admin-app admin-app-login">
-        <div className="admin-login-shell">
-          <div className="admin-login-brand">
-            <BrandMark size={28} />
-            <div>
+        <div className="admin-login-shell auth-login-shell">
+          <div className="admin-login-brand auth-login-brand">
+            <div className="auth-login-brand-top">
+              <BrandMark size={28} />
               <p className="admin-kicker">FM Plus</p>
-              <h1>Control plane</h1>
-              <p className="muted">Tenants, Armada tokens, entitlements, and notify channels.</p>
             </div>
+            <div className="auth-login-brand-copy">
+              <h1>Control plane</h1>
+              <p className="muted">
+                Tenants, Armada tokens, entitlements, and notify channels — one place to run the
+                embed.
+              </p>
+            </div>
+            <ul className="auth-login-points" aria-hidden="true">
+              <li>Tenant keys &amp; tokens</li>
+              <li>Module entitlements</li>
+              <li>Notify / WhatsApp channels</li>
+            </ul>
           </div>
-          <form className="admin-login" onSubmit={(e) => void handleLogin(e)}>
+          <form className="admin-login auth-login-form" onSubmit={(e) => void handleLogin(e)}>
+            <header className="auth-login-form-head">
+              <h2>Sign in</h2>
+              <p className="muted">Admin access for this FM Plus server</p>
+            </header>
             {error && <p className="admin-error">{error}</p>}
             <label>
               Username
@@ -447,8 +461,8 @@ export default function AdminConsole() {
                 autoComplete="current-password"
               />
             </label>
-            <button type="submit" className="btn btn-primary" disabled={busy}>
-              Sign in
+            <button type="submit" className="btn btn-primary auth-login-submit" disabled={busy}>
+              {busy ? "Signing in…" : "Sign in"}
             </button>
           </form>
         </div>
