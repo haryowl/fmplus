@@ -227,10 +227,26 @@ export async function handleFieldRequest(req, res) {
         const rows = await dbQuery(
           `SELECT ${SELECT_COLS} FROM service_events
            WHERE tenant_id = $1
-             AND status IN ('due', 'in_progress')
              AND assigned_field_user_id = $2
-           ORDER BY created_at DESC
-           LIMIT 100`,
+             AND (
+               status IN ('due', 'in_progress')
+               OR (
+                 status IN ('done', 'skipped', 'approved')
+                 AND COALESCE(ended_at, approved_at, updated_at) > now() - interval '180 days'
+               )
+             )
+           ORDER BY
+             CASE status
+               WHEN 'in_progress' THEN 0
+               WHEN 'due' THEN 1
+               ELSE 2
+             END,
+             CASE WHEN status IN ('due', 'in_progress')
+               THEN COALESCE(remind_due_at, created_at)
+               ELSE COALESCE(ended_at, approved_at, updated_at)
+             END ASC,
+             created_at DESC
+           LIMIT 200`,
           [user.tenantId, user.id],
         );
         json(res, 200, { events: rows.rows.map((r) => publicEvent(r)) });

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { CatalogLineEditor } from "../components/CatalogLineEditor";
+import { FieldJobsChart } from "../components/FieldJobsChart";
 import { prepareImageDataUrl } from "../lib/imageUpload";
 import {
   emptyLine,
@@ -21,6 +22,34 @@ type FieldUser = {
   tenantKey: string;
   appId: number;
 };
+
+type JobListFilter = "all" | "due" | "in_progress" | "completed";
+
+function isCompletedStatus(status: ServiceEventStatus | string) {
+  return status === "done" || status === "skipped" || status === "approved";
+}
+
+function formatFieldDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function jobPrimaryDate(job: ServiceEvent): { kind: "due" | "completed"; label: string; value: string } {
+  if (isCompletedStatus(job.status)) {
+    return {
+      kind: "completed",
+      label: job.status === "skipped" ? "Skipped" : "Completed",
+      value: formatFieldDate(job.endedAt || job.approvedAt || job.updatedAt),
+    };
+  }
+  return {
+    kind: "due",
+    label: "Due",
+    value: job.remindDueAt ? formatFieldDate(job.remindDueAt) : "No due date",
+  };
+}
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -92,7 +121,7 @@ export default function FieldLogin() {
   const [odometerKm, setOdometerKm] = useState("");
   const [lines, setLines] = useState<ServiceLine[]>([emptyLine()]);
   const [linesDirty, setLinesDirty] = useState(false);
-  const [jobFilter, setJobFilter] = useState<"all" | "due" | "in_progress">("all");
+  const [jobFilter, setJobFilter] = useState<JobListFilter>("all");
   const [catalog, setCatalog] = useState<CatalogGroup[]>([]);
 
   const refreshMe = useCallback(async () => {
@@ -212,10 +241,36 @@ export default function FieldLogin() {
     saveDraft(selectedId, { notes, odometerKm, lines });
   }, [selectedId, detail, notes, odometerKm, lines]);
 
+  const jobCounts = useMemo(() => {
+    let due = 0;
+    let inProgress = 0;
+    let completed = 0;
+    for (const j of jobs) {
+      if (j.status === "due") due += 1;
+      else if (j.status === "in_progress") inProgress += 1;
+      else if (isCompletedStatus(j.status)) completed += 1;
+    }
+    return { due, inProgress, completed };
+  }, [jobs]);
+
   const visibleJobs = useMemo(() => {
     if (jobFilter === "all") return jobs;
+    if (jobFilter === "completed") return jobs.filter((j) => isCompletedStatus(j.status));
     return jobs.filter((j) => j.status === jobFilter);
   }, [jobs, jobFilter]);
+
+  const openJobs = useMemo(
+    () => visibleJobs.filter((j) => !isCompletedStatus(j.status)),
+    [visibleJobs],
+  );
+  const completedJobs = useMemo(() => {
+    const list = visibleJobs.filter((j) => isCompletedStatus(j.status));
+    return [...list].sort((a, b) => {
+      const ta = Date.parse(a.endedAt || a.approvedAt || a.updatedAt || "") || 0;
+      const tb = Date.parse(b.endedAt || b.approvedAt || b.updatedAt || "") || 0;
+      return tb - ta;
+    });
+  }, [visibleJobs]);
 
   const priceTotal = lines.reduce((s, l) => {
     const p = l.unitPrice;
@@ -477,6 +532,12 @@ export default function FieldLogin() {
               </div>
               <h2>{detail.title}</h2>
               <p className="field-vehicle">{eventVehicleLabel(detail)}</p>
+              <p className="field-detail-date muted">
+                {(() => {
+                  const date = jobPrimaryDate(detail);
+                  return `${date.label} · ${date.value}`;
+                })()}
+              </p>
               <ol className="field-flow-steps">
                 <li className={detail.status !== "due" ? "is-done" : "is-current"}>1. Start</li>
                 <li
@@ -657,57 +718,127 @@ export default function FieldLogin() {
           </div>
         ) : (
           <div className="field-jobs">
+            <section className="field-panel field-jobs-summary">
+              <FieldJobsChart counts={jobCounts} />
+            </section>
+
             <div className="field-jobs-toolbar">
-              <div className="field-job-filters">
+              <div className="field-job-filters" role="tablist" aria-label="Job filters">
                 {(
                   [
-                    ["all", "All"],
-                    ["due", "Due"],
-                    ["in_progress", "In progress"],
+                    ["all", "All", jobs.length],
+                    ["due", "Due", jobCounts.due],
+                    ["in_progress", "Active", jobCounts.inProgress],
+                    ["completed", "Done", jobCounts.completed],
                   ] as const
-                ).map(([key, label]) => (
+                ).map(([key, label, count]) => (
                   <button
                     key={key}
                     type="button"
+                    role="tab"
+                    aria-selected={jobFilter === key}
                     className={`field-filter-chip${jobFilter === key ? " is-active" : ""}`}
                     onClick={() => setJobFilter(key)}
                   >
                     {label}
+                    <span className="field-filter-count">{count}</span>
                   </button>
                 ))}
               </div>
-              <button type="button" className="btn-ghost" disabled={loadingJobs} onClick={() => void loadJobs()}>
-                Refresh
+              <button
+                type="button"
+                className="btn-ghost field-refresh-btn"
+                disabled={loadingJobs}
+                onClick={() => void loadJobs()}
+              >
+                {loadingJobs ? "…" : "Refresh"}
               </button>
             </div>
-            {loadingJobs && <p className="muted field-loading">Loading jobs…</p>}
+
+            {loadingJobs && jobs.length === 0 && <p className="muted field-loading">Loading jobs…</p>}
+
             {!loadingJobs && visibleJobs.length === 0 && (
               <div className="field-panel field-empty">
-                <h2>No jobs assigned to you</h2>
+                <h2>No jobs here</h2>
                 <p className="muted">
-                  A manager assigns work from Maintenance (desktop). You only see jobs assigned to your
-                  login under this tenant.
+                  {jobFilter === "completed"
+                    ? "No completed jobs assigned to you in the last 6 months."
+                    : "A manager assigns work from Maintenance (desktop). You only see jobs assigned to your login under this tenant."}
                 </p>
               </div>
             )}
-            <ul className="field-job-list">
-              {visibleJobs.map((job) => (
-                <li key={job.id}>
-                  <button type="button" className="field-job-row" onClick={() => setSelectedId(job.id)}>
-                    <span className={`field-row-rail field-status-${job.status}`} aria-hidden />
-                    <span className="field-job-row-main">
-                      <strong>{job.title}</strong>
-                      <span className="muted">
-                        {SERVICE_STATUS_LABELS[job.status]} · {eventVehicleLabel(job)}
-                      </span>
-                    </span>
-                    <span className="field-job-chevron" aria-hidden>
-                      ›
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+
+            {openJobs.length > 0 && (
+              <section className="field-jobs-section">
+                {jobFilter === "all" ? <h2 className="field-jobs-section-title">Open</h2> : null}
+                <ul className="field-job-list">
+                  {openJobs.map((job) => {
+                    const date = jobPrimaryDate(job);
+                    return (
+                      <li key={job.id}>
+                        <button type="button" className="field-job-row" onClick={() => setSelectedId(job.id)}>
+                          <span className={`field-row-rail field-status-${job.status}`} aria-hidden />
+                          <span className="field-job-row-main">
+                            <span className="field-job-row-top">
+                              <strong>{job.title}</strong>
+                              <span className={`field-job-date field-job-date-${date.kind}`}>
+                                {date.label} {date.value}
+                              </span>
+                            </span>
+                            <span className="field-job-row-meta muted">
+                              <span className={`field-status-dot field-status-${job.status}`} />
+                              {SERVICE_STATUS_LABELS[job.status]} · {eventVehicleLabel(job)}
+                            </span>
+                          </span>
+                          <span className="field-job-chevron" aria-hidden>
+                            ›
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
+
+            {completedJobs.length > 0 && (
+              <section className="field-jobs-section">
+                {jobFilter === "all" || jobFilter === "completed" ? (
+                  <h2 className="field-jobs-section-title">Completed</h2>
+                ) : null}
+                <ul className="field-job-list">
+                  {completedJobs.map((job) => {
+                    const date = jobPrimaryDate(job);
+                    return (
+                      <li key={job.id}>
+                        <button
+                          type="button"
+                          className="field-job-row field-job-row-done"
+                          onClick={() => setSelectedId(job.id)}
+                        >
+                          <span className={`field-row-rail field-status-${job.status}`} aria-hidden />
+                          <span className="field-job-row-main">
+                            <span className="field-job-row-top">
+                              <strong>{job.title}</strong>
+                              <span className={`field-job-date field-job-date-${date.kind}`}>
+                                {date.label} {date.value}
+                              </span>
+                            </span>
+                            <span className="field-job-row-meta muted">
+                              <span className={`field-status-dot field-status-${job.status}`} />
+                              {SERVICE_STATUS_LABELS[job.status]} · {eventVehicleLabel(job)}
+                            </span>
+                          </span>
+                          <span className="field-job-chevron" aria-hidden>
+                            ›
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
           </div>
         )}
       </div>
