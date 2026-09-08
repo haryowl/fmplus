@@ -677,7 +677,7 @@ export default function ManagerMaintenance() {
         <div className="field-login-brand auth-login-brand">
           <div className="auth-login-brand-top">
             <BrandMark size={28} />
-            <p className="field-kicker">FM Plus</p>
+            <p className="field-kicker">ARMADA M.1</p>
           </div>
           <div className="auth-login-brand-copy">
             <h1>Manager</h1>

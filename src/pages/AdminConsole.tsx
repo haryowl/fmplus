@@ -428,7 +428,7 @@ export default function AdminConsole() {
           <div className="admin-login-brand auth-login-brand">
             <div className="auth-login-brand-top">
               <BrandMark size={28} />
-              <p className="admin-kicker">FM Plus</p>
+              <p className="admin-kicker">ARMADA M.1</p>
             </div>
             <div className="auth-login-brand-copy">
               <h1>Control plane</h1>
@@ -446,7 +446,7 @@ export default function AdminConsole() {
           <form className="admin-login auth-login-form" onSubmit={(e) => void handleLogin(e)}>
             <header className="auth-login-form-head">
               <h2>Sign in</h2>
-              <p className="muted">Admin access for this FM Plus server</p>
+              <p className="muted">Admin access for this ARMADA M.1 server</p>
             </header>
             {error && <p className="admin-error">{error}</p>}
             <label>
