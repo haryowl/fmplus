@@ -1133,6 +1133,303 @@ export async function handleMaintenanceRequest(req, res) {
       return true;
     }
 
+    if (url.pathname === "/api/maintenance/analyze-summary" && req.method === "GET") {
+      const days = Math.min(365, Math.max(7, Number(url.searchParams.get("days")) || 90));
+      const since = `(CURRENT_DATE - ($2::int - 1))::timestamptz`;
+      const vaultTenant = tenantFromRequest(req);
+
+      const workflow = await dbQuery(
+        `SELECT status, count(*)::int AS n
+         FROM service_events WHERE tenant_id = $1
+         GROUP BY status`,
+        [dbTenant.id],
+      );
+      const workflowCounts = {
+        due: 0,
+        in_progress: 0,
+        done: 0,
+        approved: 0,
+        skipped: 0,
+      };
+      for (const r of workflow.rows) {
+        if (r.status in workflowCounts) workflowCounts[r.status] = Number(r.n) || 0;
+      }
+      workflowCounts.open = workflowCounts.due + workflowCounts.in_progress;
+
+      const assignment = await dbQuery(
+        `SELECT
+           count(*) FILTER (
+             WHERE status IN ('due', 'in_progress') AND assigned_field_user_id IS NOT NULL
+           )::int AS open_assigned,
+           count(*) FILTER (
+             WHERE status IN ('due', 'in_progress') AND assigned_field_user_id IS NULL
+           )::int AS open_unassigned,
+           count(*) FILTER (
+             WHERE status IN ('due', 'in_progress')
+               AND parent_event_id IS NOT NULL
+               AND assigned_field_user_id IS NULL
+           )::int AS unassigned_follow_ups
+         FROM service_events WHERE tenant_id = $1`,
+        [dbTenant.id],
+      );
+
+      const pipeline = await dbQuery(
+        `SELECT
+           count(DISTINCT e.id)::int AS jobs,
+           COALESCE(SUM(l.qty * l.unit_price) FILTER (WHERE l.unit_price IS NOT NULL), 0)::float AS price,
+           COALESCE(SUM(l.qty * l.unit_cost) FILTER (WHERE l.unit_cost IS NOT NULL), 0)::float AS cost
+         FROM service_events e
+         LEFT JOIN service_event_lines l ON l.event_id = e.id
+         WHERE e.tenant_id = $1 AND e.status = 'done'`,
+        [dbTenant.id],
+      );
+
+      const approvedPeriod = await dbQuery(
+        `SELECT
+           count(DISTINCT e.id)::int AS jobs,
+           COALESCE(SUM(l.qty * l.unit_price) FILTER (WHERE l.unit_price IS NOT NULL), 0)::float AS price,
+           COALESCE(SUM(l.qty * l.unit_cost) FILTER (WHERE l.unit_cost IS NOT NULL), 0)::float AS cost,
+           ROUND(AVG(EXTRACT(EPOCH FROM (e.ended_at - e.started_at)) / 60.0)
+             FILTER (WHERE e.started_at IS NOT NULL AND e.ended_at IS NOT NULL AND e.ended_at >= e.started_at)
+           )::int AS avg_minutes
+         FROM service_events e
+         LEFT JOIN service_event_lines l ON l.event_id = e.id
+         WHERE e.tenant_id = $1 AND e.status = 'approved'
+           AND COALESCE(e.approved_at, e.ended_at, e.updated_at) >= ${since}`,
+        [dbTenant.id, days],
+      );
+
+      const reminders = await dbQuery(
+        `SELECT
+           count(*) FILTER (WHERE acked_at IS NULL AND channel = 'platform')::int AS open_total,
+           count(*) FILTER (WHERE acked_at IS NULL AND channel = 'platform' AND kind = 'due_soon')::int AS due_soon,
+           count(*) FILTER (WHERE acked_at IS NULL AND channel = 'platform' AND kind = 'overdue')::int AS overdue,
+           count(*) FILTER (WHERE acked_at IS NULL AND channel = 'platform' AND kind = 'next_due')::int AS next_due,
+           count(*) FILTER (WHERE acked_at IS NULL AND channel = 'platform' AND kind = 'assigned')::int AS assigned,
+           count(*) FILTER (
+             WHERE acked_at IS NOT NULL AND channel = 'platform' AND created_at >= ${since}
+           )::int AS acked_in_period,
+           count(*) FILTER (
+             WHERE error IS NOT NULL AND error <> '' AND created_at >= ${since}
+           )::int AS send_errors
+         FROM maintenance_reminders WHERE tenant_id = $1`,
+        [dbTenant.id, days],
+      );
+
+      const quality = await dbQuery(
+        `SELECT
+           count(*)::int AS closed,
+           count(*) FILTER (
+             WHERE EXISTS (SELECT 1 FROM service_event_photos p WHERE p.event_id = e.id)
+           )::int AS with_photos,
+           count(*) FILTER (
+             WHERE EXISTS (SELECT 1 FROM service_event_lines l WHERE l.event_id = e.id)
+           )::int AS with_lines
+         FROM service_events e
+         WHERE e.tenant_id = $1
+           AND e.status IN ('done', 'approved', 'skipped')
+           AND COALESCE(e.ended_at, e.approved_at, e.updated_at) >= ${since}`,
+        [dbTenant.id, days],
+      );
+
+      const agingRows = await dbQuery(
+        `SELECT
+           CASE
+             WHEN age_days <= 3 THEN '0-3d'
+             WHEN age_days <= 7 THEN '4-7d'
+             WHEN age_days <= 14 THEN '8-14d'
+             WHEN age_days <= 30 THEN '15-30d'
+             ELSE '30d+'
+           END AS bucket,
+           count(*)::int AS n
+         FROM (
+           SELECT GREATEST(
+             0,
+             FLOOR(EXTRACT(EPOCH FROM (now() - COALESCE(remind_due_at, created_at))) / 86400.0)
+           )::int AS age_days
+           FROM service_events
+           WHERE tenant_id = $1
+             AND status IN ('due', 'in_progress')
+             AND (
+               (remind_due_at IS NOT NULL AND remind_due_at < now())
+               OR status = 'in_progress'
+             )
+         ) ages
+         GROUP BY 1`,
+        [dbTenant.id],
+      );
+      const agingOrder = ["0-3d", "4-7d", "8-14d", "15-30d", "30d+"];
+      const agingMap = new Map(agingRows.rows.map((r) => [r.bucket, Number(r.n) || 0]));
+      const aging = agingOrder.map((label) => ({ label, count: agingMap.get(label) || 0 }));
+
+      const assigneeRows = await dbQuery(
+        `SELECT
+           e.assigned_field_user_id AS id,
+           COALESCE(NULLIF(u.display_name, ''), u.username, 'Unassigned') AS name,
+           count(*) FILTER (WHERE e.status IN ('due', 'in_progress'))::int AS open,
+           count(*) FILTER (
+             WHERE e.status = 'done'
+               AND COALESCE(e.ended_at, e.updated_at) >= ${since}
+           )::int AS done,
+           count(*) FILTER (
+             WHERE e.status = 'approved'
+               AND COALESCE(e.approved_at, e.ended_at, e.updated_at) >= ${since}
+           )::int AS approved,
+           ROUND(AVG(EXTRACT(EPOCH FROM (e.ended_at - e.started_at)) / 60.0)
+             FILTER (
+               WHERE e.status IN ('done', 'approved')
+                 AND e.started_at IS NOT NULL AND e.ended_at IS NOT NULL AND e.ended_at >= e.started_at
+                 AND COALESCE(e.ended_at, e.approved_at) >= ${since}
+             )
+           )::int AS avg_minutes
+         FROM service_events e
+         LEFT JOIN field_users u ON u.id = e.assigned_field_user_id
+         WHERE e.tenant_id = $1
+           AND (
+             e.status IN ('due', 'in_progress')
+             OR COALESCE(e.ended_at, e.approved_at, e.updated_at) >= ${since}
+           )
+         GROUP BY e.assigned_field_user_id, name
+         ORDER BY open DESC, approved DESC, done DESC
+         LIMIT 25`,
+        [dbTenant.id, days],
+      );
+
+      const openRows = await dbQuery(
+        `SELECT ${SELECT_COLS} FROM service_events
+         WHERE tenant_id = $1 AND status IN ('due', 'in_progress')
+           AND (parent_event_id IS NULL OR assigned_field_user_id IS NOT NULL)
+         ORDER BY created_at DESC LIMIT 200`,
+        [dbTenant.id],
+      );
+      const { enrichEventsWithSchedule, summarizeSchedule } = await import("./maintenance-schedule.mjs");
+      const enriched = await enrichEventsWithSchedule(
+        openRows.rows.map((r) => publicEvent(r)),
+        vaultTenant || null,
+      );
+      const schedule = summarizeSchedule(enriched);
+
+      const timelineDays = Math.min(90, Math.max(14, days >= 90 ? 30 : 14));
+      const timelineRows = await dbQuery(
+        `WITH days AS (
+           SELECT generate_series(
+             (CURRENT_DATE - ($2::int - 1))::date,
+             CURRENT_DATE::date,
+             '1 day'::interval
+           )::date AS day
+         ),
+         completed AS (
+           SELECT (COALESCE(ended_at, updated_at) AT TIME ZONE 'UTC')::date AS day, count(*)::int AS n
+           FROM service_events
+           WHERE tenant_id = $1 AND status IN ('done', 'approved')
+             AND COALESCE(ended_at, updated_at) >= (CURRENT_DATE - ($2::int - 1))::timestamptz
+           GROUP BY 1
+         ),
+         opened AS (
+           SELECT (created_at AT TIME ZONE 'UTC')::date AS day, count(*)::int AS n
+           FROM service_events
+           WHERE tenant_id = $1
+             AND created_at >= (CURRENT_DATE - ($2::int - 1))::timestamptz
+           GROUP BY 1
+         )
+         SELECT d.day::text AS day,
+                COALESCE(c.n, 0)::int AS completed,
+                COALESCE(o.n, 0)::int AS opened
+         FROM days d
+         LEFT JOIN completed c ON c.day = d.day
+         LEFT JOIN opened o ON o.day = d.day
+         ORDER BY d.day ASC`,
+        [dbTenant.id, timelineDays],
+      );
+
+      const ap = approvedPeriod.rows[0] || {};
+      const pipe = pipeline.rows[0] || {};
+      const asg = assignment.rows[0] || {};
+      const rem = reminders.rows[0] || {};
+      const qual = quality.rows[0] || {};
+      const closed = Number(qual.closed) || 0;
+      const withPhotos = Number(qual.with_photos) || 0;
+      const withLines = Number(qual.with_lines) || 0;
+      const apPrice = Number(ap.price) || 0;
+      const apCost = Number(ap.cost) || 0;
+
+      json(res, 200, {
+        days,
+        workflow: workflowCounts,
+        schedule: {
+          upcoming: schedule.upcoming || 0,
+          due: schedule.due || 0,
+          overdue: schedule.overdue || 0,
+          ok: schedule.ok || 0,
+          none: schedule.none || 0,
+          open: schedule.open || 0,
+        },
+        assignment: {
+          openAssigned: Number(asg.open_assigned) || 0,
+          openUnassigned: Number(asg.open_unassigned) || 0,
+          unassignedFollowUps: Number(asg.unassigned_follow_ups) || 0,
+        },
+        pipeline: {
+          jobs: Number(pipe.jobs) || 0,
+          price: Number(pipe.price) || 0,
+          cost: Number(pipe.cost) || 0,
+          margin: (Number(pipe.price) || 0) - (Number(pipe.cost) || 0),
+        },
+        approved: {
+          jobs: Number(ap.jobs) || 0,
+          price: apPrice,
+          cost: apCost,
+          margin: apPrice - apCost,
+          avgServiceMinutes: ap.avg_minutes ?? null,
+        },
+        reminders: {
+          openTotal: Number(rem.open_total) || 0,
+          openByKind: {
+            due_soon: Number(rem.due_soon) || 0,
+            overdue: Number(rem.overdue) || 0,
+            next_due: Number(rem.next_due) || 0,
+            assigned: Number(rem.assigned) || 0,
+          },
+          ackedInPeriod: Number(rem.acked_in_period) || 0,
+          sendErrors: Number(rem.send_errors) || 0,
+        },
+        quality: {
+          closedInPeriod: closed,
+          withPhotos,
+          withLines,
+          photoRate: closed > 0 ? withPhotos / closed : null,
+          lineRate: closed > 0 ? withLines / closed : null,
+        },
+        aging,
+        byAssignee: assigneeRows.rows.map((r) => ({
+          id: r.id || null,
+          name: r.name || "Unassigned",
+          open: Number(r.open) || 0,
+          done: Number(r.done) || 0,
+          approved: Number(r.approved) || 0,
+          avgMinutes: r.avg_minutes ?? null,
+        })),
+        timeline: {
+          days: timelineDays,
+          labels: timelineRows.rows.map((r) => String(r.day).slice(5)),
+          completed: timelineRows.rows.map((r) => Number(r.completed) || 0),
+          opened: timelineRows.rows.map((r) => Number(r.opened) || 0),
+        },
+        healthBars: {
+          labels: ["Upcoming", "Due", "Overdue", "On track", "Unscheduled"],
+          values: [
+            schedule.upcoming || 0,
+            schedule.due || 0,
+            schedule.overdue || 0,
+            schedule.ok || 0,
+            schedule.none || 0,
+          ],
+          keys: ["upcoming", "due", "overdue", "ok", "none"],
+        },
+      });
+      return true;
+    }
+
     if (url.pathname === "/api/maintenance/cost-dashboard" && req.method === "GET") {
       const days = Math.min(365, Math.max(7, Number(url.searchParams.get("days")) || 90));
       const vehicleIdRaw = Number(url.searchParams.get("userId"));

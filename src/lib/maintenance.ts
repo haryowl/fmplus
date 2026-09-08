@@ -331,6 +331,82 @@ export async function fetchCostDashboard(
   return data;
 }
 
+export type AnalyzeSummary = {
+  days: number;
+  workflow: {
+    due: number;
+    in_progress: number;
+    done: number;
+    approved: number;
+    skipped: number;
+    open: number;
+  };
+  schedule: {
+    upcoming: number;
+    due: number;
+    overdue: number;
+    ok: number;
+    none: number;
+    open: number;
+  };
+  assignment: {
+    openAssigned: number;
+    openUnassigned: number;
+    unassignedFollowUps: number;
+  };
+  pipeline: { jobs: number; price: number; cost: number; margin: number };
+  approved: {
+    jobs: number;
+    price: number;
+    cost: number;
+    margin: number;
+    avgServiceMinutes: number | null;
+  };
+  reminders: {
+    openTotal: number;
+    openByKind: {
+      due_soon: number;
+      overdue: number;
+      next_due: number;
+      assigned: number;
+    };
+    ackedInPeriod: number;
+    sendErrors: number;
+  };
+  quality: {
+    closedInPeriod: number;
+    withPhotos: number;
+    withLines: number;
+    photoRate: number | null;
+    lineRate: number | null;
+  };
+  aging: { label: string; count: number }[];
+  byAssignee: {
+    id: string | null;
+    name: string;
+    open: number;
+    done: number;
+    approved: number;
+    avgMinutes: number | null;
+  }[];
+  timeline: ScheduleTimeline;
+  healthBars: ScheduleHealthBars;
+};
+
+export async function fetchAnalyzeSummary(
+  days = 90,
+  signal?: AbortSignal,
+): Promise<AnalyzeSummary> {
+  const params = new URLSearchParams({ days: String(days) });
+  const res = await fetch(`/api/maintenance/analyze-summary?${params}`, {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as AnalyzeSummary & { error?: string };
+  if (!res.ok) throw new Error(data.error || `Analyze summary ${res.status}`);
+  return data;
+}
+
 export async function fetchMaintStatusSummary(
   userIds: number[],
   signal?: AbortSignal,
@@ -684,4 +760,80 @@ export function downloadMaintenanceExcel(events: ServiceEvent[]): void {
     ]),
   ];
   downloadXlsx(excelFilename("maintenance"), "Maintenance", rows);
+}
+
+function pctCell(rate: number | null | undefined): string {
+  if (rate == null || !Number.isFinite(rate)) return "";
+  return `${(rate * 100).toFixed(1)}%`;
+}
+
+export function downloadAnalyzeReportExcel(
+  data: AnalyzeSummary,
+  fleet?: { vehicles: number; withOpen: number; withOverdue: number } | null,
+): void {
+  const kind = data.reminders.openByKind;
+  const rows: ExcelCell[][] = [
+    ["Maintenance Analyze Report", `Last ${data.days} days`],
+    [],
+    ["Section", "Metric", "Value"],
+    ["Workflow", "Open", data.workflow.open],
+    ["Workflow", "Due", data.workflow.due],
+    ["Workflow", "In progress", data.workflow.in_progress],
+    ["Workflow", "Done (awaiting approve)", data.workflow.done],
+    ["Workflow", "Approved (all)", data.workflow.approved],
+    ["Workflow", "Skipped", data.workflow.skipped],
+    ["Schedule", "Upcoming", data.schedule.upcoming],
+    ["Schedule", "Due", data.schedule.due],
+    ["Schedule", "Overdue", data.schedule.overdue],
+    ["Schedule", "On track", data.schedule.ok],
+    ["Schedule", "Unscheduled", data.schedule.none],
+    ["Assignment", "Open assigned", data.assignment.openAssigned],
+    ["Assignment", "Open unassigned", data.assignment.openUnassigned],
+    ["Assignment", "Unassigned follow-ups", data.assignment.unassignedFollowUps],
+    ["Pipeline (done)", "Jobs", data.pipeline.jobs],
+    ["Pipeline (done)", "Est. price", data.pipeline.price],
+    ["Pipeline (done)", "Est. cost", data.pipeline.cost],
+    ["Pipeline (done)", "Est. margin", data.pipeline.margin],
+    ["Approved (period)", "Jobs", data.approved.jobs],
+    ["Approved (period)", "Price", data.approved.price],
+    ["Approved (period)", "Cost", data.approved.cost],
+    ["Approved (period)", "Margin", data.approved.margin],
+    ["Approved (period)", "Avg service minutes", data.approved.avgServiceMinutes ?? ""],
+    ["Reminders", "Open total", data.reminders.openTotal],
+    ["Reminders", "Due soon", kind.due_soon],
+    ["Reminders", "Overdue", kind.overdue],
+    ["Reminders", "Next due", kind.next_due],
+    ["Reminders", "Assigned", kind.assigned],
+    ["Reminders", "Acked in period", data.reminders.ackedInPeriod],
+    ["Reminders", "Send errors in period", data.reminders.sendErrors],
+    ["Quality", "Closed in period", data.quality.closedInPeriod],
+    ["Quality", "With photos", data.quality.withPhotos],
+    ["Quality", "With lines", data.quality.withLines],
+    ["Quality", "Photo rate", pctCell(data.quality.photoRate)],
+    ["Quality", "Line rate", pctCell(data.quality.lineRate)],
+  ];
+  if (fleet) {
+    rows.push(
+      ["Fleet", "Vehicles in scope", fleet.vehicles],
+      ["Fleet", "With open maintenance", fleet.withOpen],
+      ["Fleet", "With overdue", fleet.withOverdue],
+      [
+        "Fleet",
+        "Open %",
+        fleet.vehicles ? pctCell(fleet.withOpen / fleet.vehicles) : "",
+      ],
+      [
+        "Fleet",
+        "Overdue %",
+        fleet.vehicles ? pctCell(fleet.withOverdue / fleet.vehicles) : "",
+      ],
+    );
+  }
+  rows.push([], ["Aging bucket", "Count"]);
+  for (const b of data.aging) rows.push([b.label, b.count]);
+  rows.push([], ["Assignee", "Open", "Done (period)", "Approved (period)", "Avg minutes"]);
+  for (const a of data.byAssignee) {
+    rows.push([a.name, a.open, a.done, a.approved, a.avgMinutes ?? ""]);
+  }
+  downloadXlsx(excelFilename("maintenance-analyze"), "Analyze", rows);
 }

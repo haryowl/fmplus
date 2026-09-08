@@ -33,6 +33,7 @@ import type { Group, User } from "../lib/types";
 import { BrandMark } from "../components/BrandMark";
 import { MaintenanceCatalogPanel } from "../components/MaintenanceCatalogPanel";
 import { MaintenanceCostDashboard } from "../components/MaintenanceCostDashboard";
+import { MaintenanceAnalyzeReport } from "../components/MaintenanceAnalyzeReport";
 import { MaintenanceEventDetail } from "../components/MaintenanceEventDetail";
 import { MaintenanceScheduleCharts } from "../components/MaintenanceScheduleCharts";
 import { ViewNav } from "../components/ViewNav";
@@ -165,11 +166,15 @@ export default function MaintenanceBoard() {
   const [eventId, setEventId] = useState(
     () => new URLSearchParams(window.location.search).get("eventId") || "",
   );
-  const [boardPanel, setBoardPanel] = useState<"jobs" | "catalog" | "costs">("jobs");
+  const [boardPanel, setBoardPanel] = useState<"jobs" | "catalog" | "costs" | "reports">("jobs");
 
   const excelOk = entitlements.features.excel !== false;
   const deleteOk = entitlements.features.deleteMaintenance === true;
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
+  const fleetUserIds = useMemo(() => {
+    if (users.length) return users.map((u) => u.id);
+    return statusRows.map((r) => r.id);
+  }, [users, statusRows]);
 
   const statusById = useMemo(() => {
     const map = new Map<number, LastStatusRow>();
@@ -581,11 +586,12 @@ export default function MaintenanceBoard() {
             <select
               id="maint-panel"
               value={boardPanel}
-              onChange={(e) => setBoardPanel(e.target.value as "jobs" | "catalog" | "costs")}
+              onChange={(e) => setBoardPanel(e.target.value as "jobs" | "catalog" | "costs" | "reports")}
             >
               <option value="jobs">Jobs</option>
               <option value="catalog">Catalog</option>
               <option value="costs">Approved costs</option>
+              <option value="reports">Analyze report</option>
             </select>
           </div>
           <div className="field">
@@ -708,6 +714,30 @@ export default function MaintenanceBoard() {
           />
         )}
 
+        {!eventId && boardPanel === "reports" && (
+          <MaintenanceAnalyzeReport
+            fleetUserIds={fleetUserIds}
+            excelOk={excelOk}
+            onOpenEvent={(id) => {
+              setEventId(id);
+              setBoardPanel("jobs");
+            }}
+            onJumpToJobs={({ status, health }) => {
+              setBoardPanel("jobs");
+              if (health) {
+                setHealthFilter(health);
+                return;
+              }
+              setHealthFilter("");
+              if (status === "done") {
+                setHealthFilter("completed");
+                return;
+              }
+              if (status) setStatusFilter(status);
+            }}
+          />
+        )}
+
         {!eventId && boardPanel === "jobs" && (scheduleSummary || scheduleDash) && (
           <MaintenanceScheduleCharts
             summary={scheduleSummary}
@@ -741,6 +771,9 @@ export default function MaintenanceBoard() {
           </button>
           <button type="button" className="btn-secondary" onClick={() => setBoardPanel("costs")}>
             Cost dashboard
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => setBoardPanel("reports")}>
+            Analyze report
           </button>
           {showCreate && (
             <button type="button" className="btn-secondary" onClick={() => setShowCreate(false)}>

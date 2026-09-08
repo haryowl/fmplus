@@ -4380,6 +4380,49 @@ html.onesheet-root body {
   background: #fffdf8;
 }
 
+.maintenance-analyze-report {
+  display: grid;
+  gap: 16px;
+  padding: 14px 16px 20px;
+  margin-bottom: 16px;
+}
+
+.maint-analyze-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(243, 239, 231, 0.55);
+  border: 1px solid rgba(217, 210, 198, 0.65);
+}
+
+.maint-analyze-strip > div {
+  display: grid;
+  gap: 2px;
+}
+
+.maint-analyze-strip strong {
+  font-size: 0.98rem;
+}
+
+.maint-analyze-quality h3,
+.maint-analyze-commercial h3,
+.maintenance-analyze-report .table-wrap > h3 {
+  margin: 0 0 10px;
+  font-size: 0.98rem;
+}
+
+.maint-analyze-kpis .maint-dash-tile {
+  text-align: left;
+}
+
+.maint-cost-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
 .maintenance-catalog-head,
 .maintenance-cost-head {
   display: flex;
@@ -4459,12 +4502,6 @@ html.onesheet-root body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 8px;
-}
-
-.maint-cost-charts {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 12px;
 }
 
 .maint-cost-chart h3,
@@ -4668,7 +4705,8 @@ html.onesheet-root body {
 .maint-vehicle-group,
 .maintenance-create,
 .maintenance-catalog-panel,
-.maintenance-cost-dash {
+.maintenance-cost-dash,
+.maintenance-analyze-report {
   border: 1px solid rgba(200, 191, 176, 0.65);
   border-radius: 18px;
   background: linear-gradient(180deg, #fffefb, #faf7f1);
@@ -5101,7 +5139,8 @@ html.onesheet-root body {
 }
 
 .maintenance-catalog-panel,
-.maintenance-cost-dash {
+.maintenance-cost-dash,
+.maintenance-analyze-report {
   padding: 16px 18px 18px;
 }
 

@@ -99,6 +99,25 @@ export function MaintenanceCostDashboard({ onOpenEvent }: Props) {
     ],
   };
 
+  const vehicleRows = (data?.byVehicle || []).slice(0, 12);
+  const vehicleData: ChartData<"bar"> = {
+    labels: vehicleRows.map((v) => v.label),
+    datasets: [
+      {
+        label: "Cost",
+        data: vehicleRows.map((v) => v.cost),
+        backgroundColor: "#c9a882",
+        borderRadius: 3,
+      },
+      {
+        label: "Price",
+        data: vehicleRows.map((v) => v.price),
+        backgroundColor: "#8a9a7a",
+        borderRadius: 3,
+      },
+    ],
+  };
+
   return (
     <section className="maintenance-cost-dash">
       <div className="maintenance-cost-head">
@@ -171,6 +190,30 @@ export function MaintenanceCostDashboard({ onOpenEvent }: Props) {
                     },
                   }}
                 />
+              </div>
+            </div>
+            <div className="maint-cost-chart">
+              <h3>By vehicle</h3>
+              <div className="maint-chart-frame">
+                {vehicleRows.length ? (
+                  <Bar
+                    data={vehicleData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: { legend: { position: "bottom" }, tooltip: baseTooltip },
+                      scales: {
+                        x: {
+                          grid: { display: false },
+                          ticks: { color: "#5e584f", maxRotation: 45 },
+                        },
+                        y: { beginAtZero: true, ticks: axisTicks },
+                      },
+                    }}
+                  />
+                ) : (
+                  <p className="muted">No approved vehicle totals in range.</p>
+                )}
               </div>
             </div>
           </div>
