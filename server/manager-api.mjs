@@ -7,6 +7,8 @@ import { fieldFromRequest } from "./field-auth.mjs";
 import { mergeEntitlements } from "./entitlements.mjs";
 import {
   applyEventPatch,
+  endMaintenanceSeries,
+  endOpenMaintenanceForVehicle,
   loadEventDetail,
   loadPhotoBytes,
   parseDataUrl,
@@ -246,6 +248,40 @@ export async function handleManagerRequest(req, res) {
       json(res, 200, {
         event: withManagerPhotoUrls(patched),
         nextEvent: nextEvent || null,
+      });
+      return true;
+    }
+
+    const endSeriesMatch = /^\/api\/manager\/maintenance\/events\/([0-9a-f-]{36})\/end-series$/i.exec(
+      url.pathname,
+    );
+    if (endSeriesMatch && req.method === "POST") {
+      const body = await readJson(req);
+      const result = await endMaintenanceSeries(endSeriesMatch[1], user.tenantId, {
+        reason: body.reason || "Series stopped",
+      });
+      json(res, 200, {
+        ok: true,
+        rootId: result.rootId,
+        endedIds: result.endedIds,
+        ended: result.ended.map((e) => withManagerPhotoUrls(e)),
+        count: result.endedIds.length,
+      });
+      return true;
+    }
+
+    const endVehicleMatch = /^\/api\/manager\/maintenance\/vehicles\/(\d+)\/end-open$/i.exec(url.pathname);
+    if (endVehicleMatch && req.method === "POST") {
+      const body = await readJson(req);
+      const result = await endOpenMaintenanceForVehicle(endVehicleMatch[1], user.tenantId, {
+        reason: body.reason || "Vehicle maintenance stopped",
+      });
+      json(res, 200, {
+        ok: true,
+        armadaUserId: result.armadaUserId,
+        endedIds: result.endedIds,
+        ended: result.ended.map((e) => withManagerPhotoUrls(e)),
+        count: result.endedIds.length,
       });
       return true;
     }

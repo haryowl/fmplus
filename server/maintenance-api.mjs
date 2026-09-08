@@ -653,6 +653,145 @@ function scheduleConfigured(ev) {
 }
 
 /**
+ * Collect open (due / in_progress) jobs in the parent/child series that contains startId.
+ * @returns {Promise<{ rootId: string, ids: string[] } | null>}
+ */
+export async function collectSeriesOpenIds(startId, tenantId) {
+  const found = await dbQuery(`SELECT ${SELECT_COLS} FROM service_events WHERE id = $1 AND tenant_id = $2`, [
+    startId,
+    tenantId,
+  ]);
+  if (!found.rows[0]) return null;
+
+  let cursor = found.rows[0];
+  let rootId = cursor.id;
+  const seen = new Set();
+  while (cursor.parent_event_id) {
+    if (seen.has(cursor.id)) break;
+    seen.add(cursor.id);
+    const parent = await dbQuery(
+      `SELECT ${SELECT_COLS} FROM service_events WHERE id = $1 AND tenant_id = $2`,
+      [cursor.parent_event_id, tenantId],
+    );
+    if (!parent.rows[0]) break;
+    cursor = parent.rows[0];
+    rootId = cursor.id;
+  }
+
+  const allIds = [rootId];
+  let frontier = [rootId];
+  while (frontier.length) {
+    const kids = await dbQuery(
+      `SELECT id FROM service_events
+       WHERE tenant_id = $1 AND parent_event_id = ANY($2::uuid[])`,
+      [tenantId, frontier],
+    );
+    frontier = [];
+    for (const row of kids.rows) {
+      if (!allIds.includes(row.id)) {
+        allIds.push(row.id);
+        frontier.push(row.id);
+      }
+    }
+  }
+
+  const open = await dbQuery(
+    `SELECT id FROM service_events
+     WHERE tenant_id = $1 AND id = ANY($2::uuid[]) AND status IN ('due', 'in_progress')
+     ORDER BY created_at ASC`,
+    [tenantId, allIds],
+  );
+  return { rootId, ids: open.rows.map((r) => r.id) };
+}
+
+/**
+ * Skip open jobs and clear schedule fields so Done/Reopen cannot revive the chain.
+ * Also acks open reminders for those events.
+ * @returns {Promise<{ ended: object[], endedIds: string[] }>}
+ */
+export async function endOpenMaintenanceJobs(eventIds, tenantId, { reason } = {}) {
+  const ids = [...new Set((eventIds || []).filter(Boolean))];
+  if (!ids.length) return { ended: [], endedIds: [] };
+
+  const noteLine = `[Ended] ${String(reason || "Series stopped").trim() || "Series stopped"}`.slice(0, 240);
+  const updated = await dbQuery(
+    `UPDATE service_events SET
+       status = 'skipped',
+       remind_due_at = NULL,
+       remind_interval_days = NULL,
+       remind_interval_km = NULL,
+       remind_baseline_odometer_km = NULL,
+       remind_interval_hours = NULL,
+       remind_hours_since_at = NULL,
+       remind_before_days = NULL,
+       remind_before_km = NULL,
+       remind_before_hours = NULL,
+       notes = CASE
+         WHEN notes IS NULL OR btrim(notes) = '' THEN $3
+         WHEN position($3 in notes) > 0 THEN notes
+         ELSE left(notes || E'\\n' || $3, 4000)
+       END,
+       updated_at = now()
+     WHERE tenant_id = $1
+       AND id = ANY($2::uuid[])
+       AND status IN ('due', 'in_progress')
+     RETURNING ${SELECT_COLS}`,
+    [tenantId, ids, noteLine],
+  );
+
+  const endedIds = updated.rows.map((r) => r.id);
+  if (endedIds.length) {
+    await dbQuery(
+      `UPDATE maintenance_reminders
+       SET acked_at = COALESCE(acked_at, now())
+       WHERE tenant_id = $1
+         AND event_id = ANY($2::uuid[])
+         AND acked_at IS NULL`,
+      [tenantId, endedIds],
+    );
+  }
+
+  return {
+    ended: updated.rows.map((r) => publicEvent(r)),
+    endedIds,
+  };
+}
+
+/** End open jobs in the series containing eventId (keeps done/approved history). */
+export async function endMaintenanceSeries(eventId, tenantId, opts = {}) {
+  const series = await collectSeriesOpenIds(eventId, tenantId);
+  if (!series) {
+    const err = new Error("Service event not found");
+    err.status = 404;
+    throw err;
+  }
+  const result = await endOpenMaintenanceJobs(series.ids, tenantId, opts);
+  return { ...result, rootId: series.rootId };
+}
+
+/** End every open job for a vehicle (sold / leave fleet). */
+export async function endOpenMaintenanceForVehicle(armadaUserId, tenantId, opts = {}) {
+  const uid = Number(armadaUserId);
+  if (!Number.isFinite(uid)) {
+    const err = new Error("armadaUserId required");
+    err.status = 400;
+    throw err;
+  }
+  const open = await dbQuery(
+    `SELECT id FROM service_events
+     WHERE tenant_id = $1 AND armada_user_id = $2 AND status IN ('due', 'in_progress')
+     ORDER BY created_at ASC`,
+    [tenantId, uid],
+  );
+  const result = await endOpenMaintenanceJobs(
+    open.rows.map((r) => r.id),
+    tenantId,
+    { reason: opts.reason || "Vehicle maintenance stopped" },
+  );
+  return { ...result, armadaUserId: uid };
+}
+
+/**
  * Create the next scheduled due job after completion.
  * @returns {Promise<{ event: object, created: boolean } | null>}
  */
@@ -2081,6 +2220,38 @@ export async function handleMaintenanceRequest(req, res) {
           title: found.rows[0].title || "",
           status: found.rows[0].status,
         },
+      });
+      return true;
+    }
+
+    const endSeriesMatch = /^\/api\/maintenance\/events\/([0-9a-f-]{36})\/end-series$/i.exec(url.pathname);
+    if (endSeriesMatch && req.method === "POST") {
+      const body = await readJson(req);
+      const result = await endMaintenanceSeries(endSeriesMatch[1], dbTenant.id, {
+        reason: body.reason || "Series stopped",
+      });
+      json(res, 200, {
+        ok: true,
+        rootId: result.rootId,
+        endedIds: result.endedIds,
+        ended: result.ended,
+        count: result.endedIds.length,
+      });
+      return true;
+    }
+
+    const endVehicleMatch = /^\/api\/maintenance\/vehicles\/(\d+)\/end-open$/i.exec(url.pathname);
+    if (endVehicleMatch && req.method === "POST") {
+      const body = await readJson(req);
+      const result = await endOpenMaintenanceForVehicle(endVehicleMatch[1], dbTenant.id, {
+        reason: body.reason || "Vehicle maintenance stopped",
+      });
+      json(res, 200, {
+        ok: true,
+        armadaUserId: result.armadaUserId,
+        endedIds: result.endedIds,
+        ended: result.ended,
+        count: result.endedIds.length,
       });
       return true;
     }

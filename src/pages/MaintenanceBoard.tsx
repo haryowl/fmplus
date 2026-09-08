@@ -5,8 +5,10 @@ import {
   createServiceEvent,
   deleteServiceEvent,
   downloadMaintenanceExcel,
+  endOpenMaintenanceForVehicle,
   eventVehicleLabel,
   eventWhen,
+  eventIsScheduled,
   fetchMaintReminders,
   ackMaintReminder,
   evaluateMaintReminders,
@@ -155,6 +157,7 @@ export default function MaintenanceBoard() {
   const [remindBeforeDays, setRemindBeforeDays] = useState("");
   const [remindBeforeKm, setRemindBeforeKm] = useState("");
   const [remindBeforeHours, setRemindBeforeHours] = useState("");
+  const [createScheduleMode, setCreateScheduleMode] = useState<"one_time" | "scheduled">("one_time");
   const [reminders, setReminders] = useState<MaintenanceReminder[]>([]);
   const [remindersOpen, setRemindersOpen] = useState(true);
   const [reminderKind, setReminderKind] = useState<"all" | "overdue" | "due_soon" | "next_due" | "assigned">(
@@ -422,6 +425,7 @@ export default function MaintenanceBoard() {
       const st = statusById.get(uid);
       const name = st?.name || selectedUser?.name || displayFallback(uid);
       const uname = st?.username || selectedUser?.username || "";
+      const oneTime = createScheduleMode === "one_time";
       const created = await createServiceEvent({
         title: title.trim() || defaultTitle(),
         notes: notes.trim() || undefined,
@@ -431,16 +435,20 @@ export default function MaintenanceBoard() {
         lat: st?.lat ?? null,
         lon: st?.lon ?? null,
         odometerKm: st?.odometerKm ?? null,
-        remindDueAt: remindDueAt.trim()
-          ? new Date(`${remindDueAt.trim()}T00:00:00`).toISOString()
-          : null,
-        remindIntervalDays: remindIntervalDays.trim() === "" ? null : Number(remindIntervalDays),
-        remindIntervalKm: remindIntervalKm.trim() === "" ? null : Number(remindIntervalKm),
-        remindIntervalHours: remindIntervalHours.trim() === "" ? null : Number(remindIntervalHours),
-        remindBaselineOdometerKm: st?.odometerKm ?? null,
-        remindBeforeDays: remindBeforeDays.trim() === "" ? null : Number(remindBeforeDays),
-        remindBeforeKm: remindBeforeKm.trim() === "" ? null : Number(remindBeforeKm),
-        remindBeforeHours: remindBeforeHours.trim() === "" ? null : Number(remindBeforeHours),
+        remindDueAt:
+          !oneTime && remindDueAt.trim()
+            ? new Date(`${remindDueAt.trim()}T00:00:00`).toISOString()
+            : null,
+        remindIntervalDays:
+          oneTime || remindIntervalDays.trim() === "" ? null : Number(remindIntervalDays),
+        remindIntervalKm: oneTime || remindIntervalKm.trim() === "" ? null : Number(remindIntervalKm),
+        remindIntervalHours:
+          oneTime || remindIntervalHours.trim() === "" ? null : Number(remindIntervalHours),
+        remindBaselineOdometerKm: oneTime ? null : (st?.odometerKm ?? null),
+        remindBeforeDays: oneTime || remindBeforeDays.trim() === "" ? null : Number(remindBeforeDays),
+        remindBeforeKm: oneTime || remindBeforeKm.trim() === "" ? null : Number(remindBeforeKm),
+        remindBeforeHours:
+          oneTime || remindBeforeHours.trim() === "" ? null : Number(remindBeforeHours),
       });
       setNotes("");
       setTitle(defaultTitle());
@@ -451,6 +459,7 @@ export default function MaintenanceBoard() {
       setRemindBeforeDays("");
       setRemindBeforeKm("");
       setRemindBeforeHours("");
+      setCreateScheduleMode("one_time");
       setShowCreate(false);
       setEventId(created.id);
       setReload((n) => n + 1);
@@ -831,9 +840,40 @@ export default function MaintenanceBoard() {
               <input value={notes} onChange={(e) => setNotes(e.target.value)} />
             </label>
             <fieldset className="span-2 maintenance-schedule">
-              <legend>Schedule / remind (optional)</legend>
+              <legend>Job type</legend>
+              <div className="maint-job-mode" role="radiogroup" aria-label="Job type">
+                <label className={`maint-job-mode-option${createScheduleMode === "one_time" ? " is-active" : ""}`}>
+                  <input
+                    type="radio"
+                    name="create-schedule-mode"
+                    checked={createScheduleMode === "one_time"}
+                    onChange={() => setCreateScheduleMode("one_time")}
+                  />
+                  <span>
+                    <strong>One-time / Demand</strong>
+                    <span className="muted">No next cycle after Done</span>
+                  </span>
+                </label>
+                <label className={`maint-job-mode-option${createScheduleMode === "scheduled" ? " is-active" : ""}`}>
+                  <input
+                    type="radio"
+                    name="create-schedule-mode"
+                    checked={createScheduleMode === "scheduled"}
+                    onChange={() => setCreateScheduleMode("scheduled")}
+                  />
+                  <span>
+                    <strong>Scheduled / Repeat</strong>
+                    <span className="muted">Done opens the next due job</span>
+                  </span>
+                </label>
+              </div>
+            </fieldset>
+            {createScheduleMode === "scheduled" ? (
+            <fieldset className="span-2 maintenance-schedule">
+              <legend>Schedule / remind</legend>
               <p className="muted maintenance-hint">
                 Fill only the rules you need — calendar, distance, and engine hours are independent.
+                Done will open the next cycle when any interval is set.
               </p>
               <div className="maint-schedule-rules">
                 <div className="maint-schedule-rule">
@@ -903,7 +943,7 @@ export default function MaintenanceBoard() {
                 <div className="maint-schedule-rule">
                   <header>
                     <h4>By engine hours</h4>
-                    <p>Ignition-on hours from tracks (from create time)</p>
+                    <p>Ignition-on hours from Armada day tracks</p>
                   </header>
                   <div className="maint-schedule-rule-grid">
                     <label>
@@ -923,7 +963,7 @@ export default function MaintenanceBoard() {
                         type="number"
                         min={0}
                         step="any"
-                        placeholder="optional"
+                        placeholder="e.g. 25"
                         value={remindBeforeHours}
                         onChange={(e) => setRemindBeforeHours(e.target.value)}
                       />
@@ -932,6 +972,11 @@ export default function MaintenanceBoard() {
                 </div>
               </div>
             </fieldset>
+            ) : (
+              <p className="span-2 muted maintenance-hint">
+                Demand job — after Done there is no automatic next due. Switch to Scheduled if this should repeat.
+              </p>
+            )}
             <div className="span-2">
               <button
                 type="submit"
@@ -1214,6 +1259,7 @@ export default function MaintenanceBoard() {
               const doneCount = group.events.filter((e) => e.status === "done").length;
               return (
                 <section key={group.key} className="maint-vehicle-group">
+                  <div className="maint-vehicle-head-row">
                   <button
                     type="button"
                     className="maint-vehicle-head"
@@ -1232,6 +1278,42 @@ export default function MaintenanceBoard() {
                       {doneCount ? ` · ${doneCount} done` : ""}
                     </span>
                   </button>
+                  {openCount > 0 && group.events.some((e) => e.armadaUserId != null) ? (
+                    <button
+                      type="button"
+                      className="btn-ghost maint-vehicle-stop"
+                      disabled={Boolean(
+                        busyId &&
+                          String(busyId).startsWith("stop-vehicle-") &&
+                          group.events.some((e) => busyId === `stop-vehicle-${e.armadaUserId}`),
+                      )}
+                      onClick={() => {
+                        const uid = group.events.find((e) => e.armadaUserId != null)?.armadaUserId;
+                        if (uid == null) return;
+                        if (
+                          !window.confirm(
+                            `Stop all ${openCount} open job${openCount === 1 ? "" : "s"} for ${group.label}? Intervals will be cleared.`,
+                          )
+                        ) {
+                          return;
+                        }
+                        setBusyId(`stop-vehicle-${uid}`);
+                        void endOpenMaintenanceForVehicle(uid, "Vehicle maintenance stopped")
+                          .then((result) => {
+                            setError("");
+                            setReload((n) => n + 1);
+                            if (!result.count) setError("No open jobs were ended.");
+                          })
+                          .catch((err) =>
+                            setError(err instanceof Error ? err.message : "Stop open failed"),
+                          )
+                          .finally(() => setBusyId(null));
+                      }}
+                    >
+                      Stop open
+                    </button>
+                  ) : null}
+                  </div>
                   {!collapsed ? (
                     <ul className="maintenance-list">
                       {visible.map((ev) => {
@@ -1265,6 +1347,10 @@ export default function MaintenanceBoard() {
                                   {SERVICE_STATUS_LABELS[ev.status]}
                                 </span>
                                 {ev.parentEventId ? <span className="maint-badge">Follow-up</span> : null}
+                                {!eventIsScheduled(ev) &&
+                                (ev.status === "due" || ev.status === "in_progress") ? (
+                                  <span className="maint-badge maint-badge-onetime">One-time</span>
+                                ) : null}
                                 {health ? (
                                   <span className={`maint-badge maint-health-${health}`}>
                                     {SCHEDULE_HEALTH_LABELS[health as ScheduleHealth]}

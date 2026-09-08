@@ -5173,6 +5173,60 @@ html.onesheet-root body {
   gap: 12px;
 }
 
+.maint-job-mode {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.maint-job-mode-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(217, 210, 198, 0.85);
+  background: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+}
+
+.maint-job-mode-option.is-active {
+  border-color: rgba(138, 154, 122, 0.85);
+  background: rgba(232, 238, 226, 0.7);
+}
+
+.maint-job-mode-option span {
+  display: grid;
+  gap: 2px;
+}
+
+.maint-job-mode-option strong {
+  font-size: 0.9rem;
+}
+
+.maint-badge-onetime {
+  border-color: #8a9a7a;
+  background: #e8eee2;
+}
+
+.maint-vehicle-head-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.maint-vehicle-head-row .maint-vehicle-head {
+  flex: 1;
+  min-width: 0;
+}
+
+.maint-vehicle-stop {
+  align-self: center;
+  margin-right: 8px;
+  white-space: nowrap;
+}
+
 .maint-schedule-rule {
   display: grid;
   gap: 10px;

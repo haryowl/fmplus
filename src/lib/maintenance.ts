@@ -500,6 +500,58 @@ export async function deleteServiceEvent(id: string): Promise<void> {
   if (!res.ok) throw new Error(data.error || `Delete ${res.status}`);
 }
 
+export type EndSeriesResult = {
+  ok: boolean;
+  count: number;
+  endedIds: string[];
+  ended: ServiceEvent[];
+  rootId?: string;
+  armadaUserId?: number;
+};
+
+export async function endMaintenanceSeries(
+  id: string,
+  reason = "Series stopped",
+): Promise<EndSeriesResult> {
+  const res = await fetch(`/api/maintenance/events/${id}/end-series`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify({ reason }),
+  });
+  const data = (await res.json().catch(() => ({}))) as EndSeriesResult & { error?: string };
+  if (!res.ok) throw new Error(data.error || `End series ${res.status}`);
+  return data;
+}
+
+export async function endOpenMaintenanceForVehicle(
+  armadaUserId: number,
+  reason = "Vehicle maintenance stopped",
+): Promise<EndSeriesResult> {
+  const res = await fetch(`/api/maintenance/vehicles/${armadaUserId}/end-open`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify({ reason }),
+  });
+  const data = (await res.json().catch(() => ({}))) as EndSeriesResult & { error?: string };
+  if (!res.ok) throw new Error(data.error || `End vehicle open ${res.status}`);
+  return data;
+}
+
+/** True when Done would spawn a next-cycle follow-up. */
+export function eventIsScheduled(ev: {
+  remindDueAt?: string | null;
+  remindIntervalDays?: number | null;
+  remindIntervalKm?: number | null;
+  remindIntervalHours?: number | null;
+}): boolean {
+  return Boolean(
+    (ev.remindIntervalDays != null && ev.remindIntervalDays > 0) ||
+      (ev.remindIntervalKm != null && ev.remindIntervalKm > 0) ||
+      (ev.remindIntervalHours != null && ev.remindIntervalHours > 0) ||
+      (ev.remindDueAt && ev.remindIntervalDays),
+  );
+}
+
 export type MaintenanceReminder = {
   id: string;
   eventId: string | null;

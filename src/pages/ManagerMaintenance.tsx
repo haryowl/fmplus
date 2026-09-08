@@ -345,6 +345,84 @@ export default function ManagerMaintenance() {
     }
   }
 
+  async function endSeries() {
+    if (!selectedId) return;
+    if (
+      !window.confirm(
+        "End this series? Open jobs in the chain will be skipped and intervals cleared. Past Done/Approved stay.",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api<{ count: number }>(
+        `/api/manager/maintenance/events/${selectedId}/end-series`,
+        { method: "POST", body: JSON.stringify({ reason: "Series stopped" }) },
+      );
+      setNotice(
+        result.count
+          ? `Ended ${result.count} open job${result.count === 1 ? "" : "s"}.`
+          : "No open jobs in this series.",
+      );
+      await loadJobs();
+      const refreshed = await api<{ event: ServiceEvent }>(
+        `/api/manager/maintenance/events/${selectedId}`,
+      );
+      setDetail(refreshed.event);
+      setNotes(refreshed.event.notes || "");
+      setOdometerKm(refreshed.event.odometerKm != null ? String(refreshed.event.odometerKm) : "");
+      setAssignId(refreshed.event.assignedFieldUserId || "");
+      setLines(linesFromEvent(refreshed.event));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "End series failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function endVehicleOpen() {
+    if (!detail?.armadaUserId) return;
+    if (
+      !window.confirm(
+        `Stop all open maintenance for ${eventVehicleLabel(detail)}? Every due / in-progress job will be skipped.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api<{ count: number }>(
+        `/api/manager/maintenance/vehicles/${detail.armadaUserId}/end-open`,
+        { method: "POST", body: JSON.stringify({ reason: "Vehicle maintenance stopped" }) },
+      );
+      setNotice(
+        result.count
+          ? `Stopped ${result.count} open job${result.count === 1 ? "" : "s"} for this vehicle.`
+          : "No open jobs on this vehicle.",
+      );
+      await loadJobs();
+      if (selectedId) {
+        const refreshed = await api<{ event: ServiceEvent }>(
+          `/api/manager/maintenance/events/${selectedId}`,
+        );
+        setDetail(refreshed.event);
+        setNotes(refreshed.event.notes || "");
+        setOdometerKm(refreshed.event.odometerKm != null ? String(refreshed.event.odometerKm) : "");
+        setAssignId(refreshed.event.assignedFieldUserId || "");
+        setLines(linesFromEvent(refreshed.event));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Stop open failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function goBackToJobs() {
     setSelectedId(null);
     setDetail(null);
@@ -593,6 +671,33 @@ export default function ManagerMaintenance() {
                 ) : null}
               </div>
             ) : null}
+            <div className="field-job-actions">
+              {(detail.status === "due" ||
+                detail.status === "in_progress" ||
+                detail.status === "done" ||
+                detail.status === "approved" ||
+                detail.status === "skipped" ||
+                Boolean(detail.parentEventId)) && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={busy}
+                  onClick={() => void endSeries()}
+                >
+                  End series
+                </button>
+              )}
+              {detail.armadaUserId != null ? (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={busy}
+                  onClick={() => void endVehicleOpen()}
+                >
+                  Stop all open
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : (
           <div className="field-jobs">

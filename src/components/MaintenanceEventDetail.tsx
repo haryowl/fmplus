@@ -1,6 +1,9 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   emptyLine,
+  endMaintenanceSeries,
+  endOpenMaintenanceForVehicle,
+  eventIsScheduled,
   eventVehicleLabel,
   fetchHoursAccrued,
   fetchKmAccrued,
@@ -109,6 +112,7 @@ export function MaintenanceEventDetail({
   const [remindBeforeDays, setRemindBeforeDays] = useState("");
   const [remindBeforeKm, setRemindBeforeKm] = useState("");
   const [remindBeforeHours, setRemindBeforeHours] = useState("");
+  const [scheduleMode, setScheduleMode] = useState<"one_time" | "scheduled">("one_time");
   const [hoursAccrued, setHoursAccrued] = useState<{
     hoursAccrued: number | null;
     intervalHours: number | null;
@@ -176,6 +180,7 @@ export function MaintenanceEventDetail({
     setRemindBeforeDays(ev.remindBeforeDays != null ? String(ev.remindBeforeDays) : "");
     setRemindBeforeKm(ev.remindBeforeKm != null ? String(ev.remindBeforeKm) : "");
     setRemindBeforeHours(ev.remindBeforeHours != null ? String(ev.remindBeforeHours) : "");
+    setScheduleMode(eventIsScheduled(ev) ? "scheduled" : "one_time");
     setLines(ev.lines?.length ? ev.lines.map((l) => ({ ...l })) : [emptyLine()]);
   }
 
@@ -302,16 +307,34 @@ export function MaintenanceEventDetail({
         servicePointLat: servicePointLat.trim() === "" ? null : Number(servicePointLat),
         servicePointLon: servicePointLon.trim() === "" ? null : Number(servicePointLon),
         assignedFieldUserId: assignedFieldUserId || null,
-        remindDueAt: fromLocalDateInput(remindDueAt),
-        remindIntervalDays: remindIntervalDays.trim() === "" ? null : Number(remindIntervalDays),
-        remindIntervalKm: remindIntervalKm.trim() === "" ? null : Number(remindIntervalKm),
+        remindDueAt: scheduleMode === "one_time" ? null : fromLocalDateInput(remindDueAt),
+        remindIntervalDays:
+          scheduleMode === "one_time" || remindIntervalDays.trim() === ""
+            ? null
+            : Number(remindIntervalDays),
+        remindIntervalKm:
+          scheduleMode === "one_time" || remindIntervalKm.trim() === ""
+            ? null
+            : Number(remindIntervalKm),
         remindBaselineOdometerKm:
-          remindBaselineOdometerKm.trim() === "" ? null : Number(remindBaselineOdometerKm),
-        remindIntervalHours: remindIntervalHours.trim() === "" ? null : Number(remindIntervalHours),
-        remindHoursSinceAt: fromLocalInput(remindHoursSinceAt),
-        remindBeforeDays: remindBeforeDays.trim() === "" ? null : Number(remindBeforeDays),
-        remindBeforeKm: remindBeforeKm.trim() === "" ? null : Number(remindBeforeKm),
-        remindBeforeHours: remindBeforeHours.trim() === "" ? null : Number(remindBeforeHours),
+          scheduleMode === "one_time" || remindBaselineOdometerKm.trim() === ""
+            ? null
+            : Number(remindBaselineOdometerKm),
+        remindIntervalHours:
+          scheduleMode === "one_time" || remindIntervalHours.trim() === ""
+            ? null
+            : Number(remindIntervalHours),
+        remindHoursSinceAt: scheduleMode === "one_time" ? null : fromLocalInput(remindHoursSinceAt),
+        remindBeforeDays:
+          scheduleMode === "one_time" || remindBeforeDays.trim() === ""
+            ? null
+            : Number(remindBeforeDays),
+        remindBeforeKm:
+          scheduleMode === "one_time" || remindBeforeKm.trim() === "" ? null : Number(remindBeforeKm),
+        remindBeforeHours:
+          scheduleMode === "one_time" || remindBeforeHours.trim() === ""
+            ? null
+            : Number(remindBeforeHours),
         upsertServicePoint: Boolean(servicePointName.trim()),
         lines: lines
           .filter((l) => l.description.trim() || l.unitPrice != null || l.unitCost != null)
@@ -396,6 +419,72 @@ export function MaintenanceEventDetail({
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onEndSeries() {
+    if (!event) return;
+    if (
+      !window.confirm(
+        "End this series? Open jobs in the chain will be skipped and intervals cleared. Past Done/Approved jobs stay for history.",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await endMaintenanceSeries(event.id, "Series stopped");
+      setNotice(
+        result.count
+          ? `Ended ${result.count} open job${result.count === 1 ? "" : "s"} in this series.`
+          : "No open jobs left in this series.",
+      );
+      for (const ended of result.ended) onSaved(ended);
+      const refreshed = await fetchServiceEvent(event.id);
+      setEvent(refreshed);
+      applyForm(refreshed);
+      onSaved(refreshed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "End series failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onEndVehicleOpen() {
+    if (!event?.armadaUserId) return;
+    const label = eventVehicleLabel(event);
+    if (
+      !window.confirm(
+        `Stop all open maintenance for ${label}? Every due / in-progress job on this vehicle will be skipped and intervals cleared.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await endOpenMaintenanceForVehicle(
+        event.armadaUserId,
+        "Vehicle maintenance stopped",
+      );
+      setNotice(
+        result.count
+          ? `Stopped ${result.count} open job${result.count === 1 ? "" : "s"} for this vehicle.`
+          : "No open jobs on this vehicle.",
+      );
+      for (const ended of result.ended) onSaved(ended);
+      const refreshed = await fetchServiceEvent(event.id);
+      setEvent(refreshed);
+      applyForm(refreshed);
+      onSaved(refreshed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Stop vehicle open failed");
     } finally {
       setBusy(false);
     }
@@ -594,9 +683,43 @@ export function MaintenanceEventDetail({
         <div className="maint-section span-2">
           <header className="maint-section-head">
             <h3>Schedule / remind</h3>
-            <p>Fill only the rules you need — calendar, distance, and engine hours are independent</p>
+            <p>One-time jobs never spawn Next; Scheduled jobs open the next cycle on Done</p>
           </header>
-          <div className="maint-section-body maint-schedule-rules">
+          <div className="maint-section-body">
+            <div className="maint-job-mode" role="radiogroup" aria-label="Job type">
+              <label className={`maint-job-mode-option${scheduleMode === "one_time" ? " is-active" : ""}`}>
+                <input
+                  type="radio"
+                  name="detail-schedule-mode"
+                  checked={scheduleMode === "one_time"}
+                  onChange={() => setScheduleMode("one_time")}
+                  disabled={locked}
+                />
+                <span>
+                  <strong>One-time / Demand</strong>
+                  <span className="muted">No next cycle after Done</span>
+                </span>
+              </label>
+              <label className={`maint-job-mode-option${scheduleMode === "scheduled" ? " is-active" : ""}`}>
+                <input
+                  type="radio"
+                  name="detail-schedule-mode"
+                  checked={scheduleMode === "scheduled"}
+                  onChange={() => setScheduleMode("scheduled")}
+                  disabled={locked}
+                />
+                <span>
+                  <strong>Scheduled / Repeat</strong>
+                  <span className="muted">Done opens the next due job</span>
+                </span>
+              </label>
+            </div>
+            {scheduleMode === "one_time" ? (
+              <p className="muted maintenance-hint">
+                Intervals are cleared on Save. Use End series if an open follow-up already exists.
+              </p>
+            ) : (
+          <div className="maint-schedule-rules">
             <div className="maint-schedule-rule">
               <header>
                 <h4>By calendar</h4>
@@ -777,6 +900,8 @@ export function MaintenanceEventDetail({
               ) : null}
             </div>
           </div>
+            )}
+          </div>
         </div>
 
         <div className="maint-section span-2">
@@ -929,6 +1054,20 @@ export function MaintenanceEventDetail({
               Reopen
             </button>
           )}
+          {(event.status === "due" ||
+            event.status === "in_progress" ||
+            event.status === "done" ||
+            Boolean(event.parentEventId) ||
+            eventIsScheduled(event)) && (
+            <button type="button" className="btn-secondary" disabled={busy} onClick={() => void onEndSeries()}>
+              End series
+            </button>
+          )}
+          {event.armadaUserId != null ? (
+            <button type="button" className="btn-secondary" disabled={busy} onClick={() => void onEndVehicleOpen()}>
+              Stop all open for vehicle
+            </button>
+          ) : null}
           {canDelete ? (
             <button type="button" className="maint-btn-danger" disabled={busy} onClick={() => void onDelete()}>
               Delete
