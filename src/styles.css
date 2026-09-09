@@ -3533,6 +3533,103 @@ html.onesheet-root body {
   font-weight: 700;
 }
 
+.route-plan-page .shell {
+  display: grid;
+  gap: 16px;
+}
+
+.route-plan-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.route-plan-map-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.route-plan-map {
+  height: min(62vh, 560px);
+  min-height: 320px;
+  width: 100%;
+  border: 1px solid #d5cbb9;
+  background: #e8e4db;
+}
+
+.route-plan-marker-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.route-plan-side {
+  display: grid;
+  gap: 14px;
+}
+
+.route-plan-stop-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.route-plan-stop-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid #d5cbb9;
+  background: #fffdf8;
+  font-size: 0.9rem;
+}
+
+.route-plan-paste {
+  display: grid;
+  gap: 8px;
+}
+
+.route-plan-paste textarea {
+  width: 100%;
+  font: inherit;
+  padding: 8px;
+  border: 1px solid #d5cbb9;
+  background: #fff;
+  resize: vertical;
+}
+
+.route-plan-roundtrip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  padding: 8px 0;
+}
+
+.route-plan-map-hint {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 900px) {
+  .route-plan-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+
 /* â€”â€” Maintenance board â€”â€” */
 .maintenance-toolbar {
   display: flex;

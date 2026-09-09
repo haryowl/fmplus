@@ -26,6 +26,7 @@ import { handleArmadaNotifyRequest } from "./server/armada-notify.mjs";
 import { handleExceptionsRequest } from "./server/exceptions-api.mjs";
 import { handleMaintenanceRequest } from "./server/maintenance-api.mjs";
 import { handlePlacesRequest } from "./server/places-api.mjs";
+import { handleRoutePlanRequest } from "./server/route-plan-api.mjs";
 import { initTenantVault, tenantFromRequest } from "./server/tenants.mjs";
 import { runMigrations } from "./server/db/migrate.mjs";
 
@@ -107,6 +108,7 @@ function onRequest(req, res) {
     if (await handleArmadaNotifyRequest(req, res)) return;
     if (await handleExceptionsRequest(req, res)) return;
     if (await handlePlacesRequest(req, res)) return;
+    if (await handleRoutePlanRequest(req, res)) return;
     if (await handleMaintenanceRequest(req, res)) return;
     if (await handleAdminRequest(req, res)) return;
     if (await handleManagerRequest(req, res)) return;

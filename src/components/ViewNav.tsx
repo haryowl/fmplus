@@ -8,6 +8,7 @@ import {
   maintenanceHref,
   navigateView,
   placesHref,
+  routePlanHref,
   statusHref,
   tripsHref,
   type AppView,
@@ -25,6 +26,7 @@ const LINKS: { view: AppView; label: string; href: (search: string) => string }[
   { view: "live", label: "Live", href: liveHref },
   { view: "exceptions", label: "Exceptions", href: exceptionsHref },
   { view: "places", label: "Places", href: placesHref },
+  { view: "routePlan", label: "Route", href: routePlanHref },
   { view: "maintenance", label: "Maintenance", href: maintenanceHref },
 ];
 

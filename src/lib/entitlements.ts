@@ -17,9 +17,9 @@ export const MODULE_LABELS: Record<string, string> = {
   live: "Live Ops",
   exceptions: "Exceptions",
   places: "Places",
+  routePlan: "Route plan",
   maintenance: "Maintenance",
   dispatch: "Dispatch (soon)",
-  routePlan: "Route plan (soon)",
 };
 
 export const FEATURE_LABELS: Record<string, string> = {
