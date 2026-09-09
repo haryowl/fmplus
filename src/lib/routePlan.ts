@@ -26,6 +26,8 @@ export type RouteOptimizeResult = {
 
 export type RoutePlanStatus = {
   osrmConfigured: boolean;
+  osrmReachable?: boolean;
+  osrmError?: string | null;
   maxStops: number;
   engines: string[];
 };

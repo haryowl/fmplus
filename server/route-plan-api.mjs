@@ -123,6 +123,31 @@ async function osrmRoute(base, ordered) {
   };
 }
 
+async function probeOsrm(base) {
+  const url = `${base}/route/v1/driving/106.8272,-6.1754;106.8456,-6.2088?overview=false`;
+  try {
+    const res = await armadaFetch(url, { timeoutMs: 8_000 });
+    const text = await res.text();
+    let parsed = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    return {
+      reachable: res.ok && parsed?.code === "Ok",
+      status: res.status,
+      error: res.ok && parsed?.code === "Ok" ? null : text.slice(0, 160) || `HTTP ${res.status}`,
+    };
+  } catch (err) {
+    return {
+      reachable: false,
+      status: 0,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 /**
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
@@ -134,11 +159,14 @@ export async function handleRoutePlanRequest(req, res) {
   try {
     if (url.pathname === "/api/route-plan/status" && req.method === "GET") {
       const base = osrmBase();
+      const probe = base ? await probeOsrm(base) : null;
       json(res, 200, {
         osrmConfigured: Boolean(base),
+        osrmReachable: probe ? probe.reachable : false,
+        osrmError: probe && !probe.reachable ? probe.error : null,
         osrmBase: base ? "(configured)" : "",
         maxStops: MAX_STOPS,
-        engines: base ? ["osrm", "haversine"] : ["haversine"],
+        engines: base && probe?.reachable ? ["osrm", "haversine"] : ["haversine"],
       });
       return true;
     }

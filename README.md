@@ -59,8 +59,11 @@ Open [http://localhost:5173/](http://localhost:5173/) (Admin). Embed dashboards 
 | Compact (one screen) | `/compact` |
 | Fleet comparison | `/fleet` |
 | Fleet ranking | `/fleet/compact` |
+| Route plan | `/route` |
 | Field Maintenance PWA | `/m` |
 | Manager Maintenance PWA | `/mm` |
+
+Route plan road geometry: self-host OSRM and set `OSRM_BASE_URL` — see [docs/osrm.md](docs/osrm.md).
 
 Embed query: `k`, `appId`, `groupId`, `userId`, `userIds`, `from`, `to`, `tz`, `period`, `embed=1`.
 

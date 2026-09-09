@@ -34,6 +34,8 @@ export default function RoutePlanPage() {
   const [userId, setUserId] = useState(query.userId);
   const [bootError, setBootError] = useState("");
   const [osrmConfigured, setOsrmConfigured] = useState(false);
+  const [osrmReachable, setOsrmReachable] = useState(false);
+  const [osrmError, setOsrmError] = useState("");
   const [start, setStart] = useState<RoutePoint | null>(null);
   const [stops, setStops] = useState<RoutePoint[]>([]);
   const [paste, setPaste] = useState("");
@@ -65,8 +67,15 @@ export default function RoutePlanPage() {
     if (!ready) return;
     const ac = new AbortController();
     fetchRoutePlanStatus(ac.signal)
-      .then((s) => setOsrmConfigured(s.osrmConfigured))
-      .catch(() => setOsrmConfigured(false));
+      .then((s) => {
+        setOsrmConfigured(s.osrmConfigured);
+        setOsrmReachable(Boolean(s.osrmReachable));
+        setOsrmError(s.osrmError || "");
+      })
+      .catch(() => {
+        setOsrmConfigured(false);
+        setOsrmReachable(false);
+      });
     return () => ac.abort();
   }, [ready]);
 
@@ -210,8 +219,9 @@ export default function RoutePlanPage() {
           <div>
             <h1>Route plan</h1>
             <p>
-              Optimize stop order · {osrmConfigured ? "OSRM roads" : "straight-line estimate"} · not live
-              navigation
+              Optimize stop order ·{" "}
+              {osrmReachable ? "OSRM roads" : osrmConfigured ? "OSRM set but unreachable" : "straight-line estimate"}{" "}
+              · not live navigation
             </p>
           </div>
         </div>
@@ -287,8 +297,14 @@ export default function RoutePlanPage() {
         {(bootError || error) && <div className="banner error">{bootError || error}</div>}
         {!osrmConfigured ? (
           <div className="banner warn">
-            OSRM not configured (`OSRM_BASE_URL`). Order still optimizes with straight-line distances — set OSRM
-            on the VPS for road geometry.
+            OSRM not configured (`OSRM_BASE_URL`). Order still optimizes with straight-line distances — see{" "}
+            <code>docs/osrm.md</code>.
+          </div>
+        ) : !osrmReachable ? (
+          <div className="banner warn">
+            `OSRM_BASE_URL` is set but OSRM is not reachable
+            {osrmError ? `: ${osrmError}` : ""}. Start the container (`scripts/setup-osrm.sh`) or FM Plus will use
+            haversine.
           </div>
         ) : null}
         {result?.warning ? <div className="banner warn">{result.warning}</div> : null}

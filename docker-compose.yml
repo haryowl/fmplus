@@ -41,6 +41,18 @@ services:
       exit 0;
       "
 
+  # Optional Route plan backend. Build graph first with scripts/setup-osrm.sh
+  # then: OSRM_GRAPH=java-latest docker compose --profile osrm up -d osrm
+  osrm:
+    profiles: ["osrm"]
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    restart: unless-stopped
+    command: osrm-routed --algorithm mld /data/${OSRM_GRAPH:-indonesia-latest}.osrm
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data/osrm:/data
+
 volumes:
   fmplus_pg:
   fmplus_minio:

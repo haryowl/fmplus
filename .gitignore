@@ -1,4 +1,6 @@
 data/day-tracks
+data/osrm
+
 node_modules
 dist
 dist-ssr

@@ -19,7 +19,8 @@
     "db:up": "docker compose up -d postgres minio minio-init",
     "db:down": "docker compose down",
     "db:migrate": "node server/db/migrate.mjs",
-    "probe:armada": "node scripts/probe-armada-apis.mjs"
+    "probe:armada": "node scripts/probe-armada-apis.mjs",
+    "osrm:up": "docker compose --profile osrm up -d osrm"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.901.0",
