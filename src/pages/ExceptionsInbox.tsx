@@ -4,9 +4,12 @@ import { TIMEZONES } from "../lib/config";
 import {
   ackException,
   derivedStaleExceptions,
+  downloadExceptionsExcel,
   exceptionTitle,
+  exceptionUserId,
   exceptionWhen,
   fetchExceptions,
+  filterExceptionsByGroup,
   unackException,
   type ExceptionItem,
   type ExceptionStatusFilter,
@@ -18,29 +21,27 @@ import type { Group, User } from "../lib/types";
 import { BrandMark } from "../components/BrandMark";
 import { ViewNav } from "../components/ViewNav";
 
-function vehicleSearch(userId: number | null | undefined, username?: string): string {
+function vehicleSearch(userId: number | null | undefined): string {
   const params = new URLSearchParams(window.location.search);
   if (userId) {
     params.set("userId", String(userId));
     params.delete("userIds");
-  } else if (username) {
-    // Best-effort: Full/Trips need numeric id; keep username out of userId.
   }
   const q = params.toString();
   return q ? `?${q}` : "";
 }
 
-function payloadUserId(item: ExceptionItem): number | null {
-  if (item.userId) return item.userId;
-  const p = item.payload || {};
-  const raw = p.USER_ID ?? p.userId ?? p.UserId;
-  const n = Number(raw);
-  return Number.isInteger(n) && n > 0 ? n : null;
-}
-
 export default function ExceptionsInbox() {
-  const { query, ready, error: tenantError, allowedUserIds, allowedGroupIds, allowsUser, allowsGroup } =
-    useEmbedTenant();
+  const {
+    query,
+    ready,
+    error: tenantError,
+    entitlements,
+    allowedUserIds,
+    allowedGroupIds,
+    allowsUser,
+    allowsGroup,
+  } = useEmbedTenant();
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [groupId, setGroupId] = useState(query.groupId);
@@ -55,8 +56,10 @@ export default function ExceptionsInbox() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [showDerived, setShowDerived] = useState(true);
+  const [queryText, setQueryText] = useState("");
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
+  const excelOk = entitlements.features.excel !== false;
 
   useEffect(() => {
     writeLocationSearch({ groupId: groupId || null, tz: timezone || null });
@@ -145,7 +148,7 @@ export default function ExceptionsInbox() {
       signal: ac.signal,
     })
       .then((rows) => {
-        const ids = groupId && users.length ? users.map((u) => u.id) : undefined;
+        const ids = groupId && users.length ? users.map((u) => u.id) : allowedUserIds.length ? allowedUserIds : undefined;
         const scoped = filterStatusRows(rows, ids);
         setNow(Date.now());
         setDerived(derivedStaleExceptions(scoped, Date.now()));
@@ -156,13 +159,39 @@ export default function ExceptionsInbox() {
         }
       });
     return () => ac.abort();
-  }, [ready, showDerived, statusFilter, groupId, users, reload]);
+  }, [ready, showDerived, statusFilter, groupId, users, allowedUserIds, reload]);
+
+  const scopeUserIds = useMemo(() => {
+    if (groupId && users.length) return users.map((u) => u.id);
+    if (allowedUserIds.length) return allowedUserIds;
+    return undefined;
+  }, [groupId, users, allowedUserIds]);
+
+  const scopeUsernames = useMemo(
+    () => (groupId && users.length ? users.map((u) => u.username || "").filter(Boolean) : undefined),
+    [groupId, users],
+  );
 
   const list = useMemo(() => {
     const notify = items;
     const extra = showDerived && statusFilter !== "acked" ? derived : [];
-    return [...notify, ...extra];
-  }, [items, derived, showDerived, statusFilter]);
+    let merged = [...notify, ...extra];
+    if (scopeUserIds?.length || scopeUsernames?.length) {
+      merged = filterExceptionsByGroup(merged, {
+        userIds: scopeUserIds,
+        usernames: scopeUsernames,
+      });
+    }
+    const q = queryText.trim().toLowerCase();
+    if (!q) return merged;
+    return merged.filter(
+      (item) =>
+        exceptionTitle(item).toLowerCase().includes(q) ||
+        (item.userDisplayName || "").toLowerCase().includes(q) ||
+        (item.armadaUsername || "").toLowerCase().includes(q) ||
+        String(exceptionUserId(item) ?? "").includes(q),
+    );
+  }, [items, derived, showDerived, statusFilter, scopeUserIds, scopeUsernames, queryText]);
 
   async function onAck(id: string) {
     setBusyId(id);
@@ -206,7 +235,10 @@ export default function ExceptionsInbox() {
         </div>
         <div className="topbar-actions">
           <ViewNav current="exceptions" />
-          <div className="vehicle-chip">{loading ? "Loading…" : `${list.length} items`}</div>
+          <div className="vehicle-chip">
+            {loading ? "Loading…" : `${list.length} items`}
+            {selectedGroup ? ` · ${selectedGroup.name}` : " · All devices"}
+          </div>
         </div>
       </header>
 
@@ -247,12 +279,35 @@ export default function ExceptionsInbox() {
               <option value="all">All</option>
             </select>
           </div>
+          <div className="field">
+            <label htmlFor="exc-q">Search</label>
+            <input
+              id="exc-q"
+              type="search"
+              value={queryText}
+              onChange={(e) => setQueryText(e.target.value)}
+              placeholder="Rule, vehicle, id"
+            />
+          </div>
           <div className="field field-actions">
             <label>&nbsp;</label>
             <button type="button" className="btn" disabled={loading} onClick={() => setReload((n) => n + 1)}>
               Refresh
             </button>
           </div>
+          {excelOk ? (
+            <div className="field field-actions">
+              <label>&nbsp;</label>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={!list.length}
+                onClick={() => downloadExceptionsExcel(list, now)}
+              >
+                Excel
+              </button>
+            </div>
+          ) : null}
         </section>
 
         <label className="exceptions-derived-toggle">
@@ -271,7 +326,7 @@ export default function ExceptionsInbox() {
             </li>
           )}
           {list.map((item) => {
-            const uid = payloadUserId(item);
+            const uid = exceptionUserId(item);
             const search = vehicleSearch(uid);
             return (
               <li key={item.id} className={item.ackedAt ? "acked" : "open"}>

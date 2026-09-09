@@ -1,6 +1,7 @@
 import { ageLabel, type LastStatusRow } from "./lastStatus";
 import { STALE_MS } from "./liveOps";
 import { tenantHeaders } from "./tenant";
+import { downloadXlsx, excelFilename, type ExcelCell } from "./xlsxDownload";
 
 export type ExceptionItem = {
   id: string;
@@ -89,4 +90,59 @@ export function exceptionWhen(item: ExceptionItem, now = Date.now()): string {
   const ms = item.eventTime ? Date.parse(item.eventTime) : Date.parse(item.createdAt);
   if (!Number.isFinite(ms)) return "—";
   return ageLabel(ms, now);
+}
+
+export function exceptionUserId(item: ExceptionItem): number | null {
+  if (item.userId) return item.userId;
+  const p = item.payload || {};
+  const raw = p.USER_ID ?? p.userId ?? p.UserId;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/** Scope notifier/derived rows to a group (or tenant allowlist). */
+export function filterExceptionsByGroup(
+  items: ExceptionItem[],
+  opts?: { userIds?: number[]; usernames?: string[] },
+): ExceptionItem[] {
+  const ids = opts?.userIds?.length ? new Set(opts.userIds) : null;
+  const names = opts?.usernames?.length
+    ? new Set(opts.usernames.map((u) => u.trim().toLowerCase()).filter(Boolean))
+    : null;
+  if (!ids && !names) return items;
+  return items.filter((item) => {
+    const uid = exceptionUserId(item);
+    if (uid != null && ids?.has(uid)) return true;
+    const un = (item.armadaUsername || "").trim().toLowerCase();
+    if (un && names?.has(un)) return true;
+    return false;
+  });
+}
+
+export function downloadExceptionsExcel(items: ExceptionItem[], now = Date.now()): void {
+  const headers: ExcelCell[] = [
+    "Source",
+    "Status",
+    "Rule",
+    "When",
+    "Vehicle",
+    "Username",
+    "User ID",
+    "Lat",
+    "Lon",
+    "Acked note",
+  ];
+  const body: ExcelCell[][] = items.map((item) => [
+    item.source === "derived" ? "Derived" : "Notifier",
+    item.ackedAt ? "Acked" : "Open",
+    exceptionTitle(item),
+    exceptionWhen(item, now),
+    item.userDisplayName || "",
+    item.armadaUsername || "",
+    exceptionUserId(item) ?? "",
+    item.lat == null ? "" : Math.round(item.lat * 1e6) / 1e6,
+    item.lon == null ? "" : Math.round(item.lon * 1e6) / 1e6,
+    item.ackedNote || "",
+  ]);
+  downloadXlsx(excelFilename("exceptions"), "Exceptions", [headers, ...body]);
 }

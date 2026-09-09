@@ -1,4 +1,5 @@
-import type { LastStatusRow } from "./lastStatus";
+import { ageLabel, formatStatusTime, type LastStatusRow } from "./lastStatus";
+import { downloadXlsx, excelFilename, type ExcelCell } from "./xlsxDownload";
 
 export const STALE_MS = 15 * 60 * 1000;
 export const MOVING_SPEED_KMH = 5;
@@ -68,4 +69,39 @@ export function countLiveByClass(
     counts[classifyLiveRow(row, now)] += 1;
   }
   return counts;
+}
+
+export function downloadLiveOpsExcel(
+  rows: LastStatusRow[],
+  timezone: string,
+  now = Date.now(),
+): void {
+  const headers: ExcelCell[] = [
+    "Name",
+    "User ID",
+    "Ops class",
+    "Age",
+    "Ignition",
+    "Speed km/h",
+    "Last UTC",
+    "Lat",
+    "Lon",
+    "Odometer km",
+  ];
+  const body: ExcelCell[][] = rows.map((row) => {
+    const cls = classifyLiveRow(row, now);
+    return [
+      row.name,
+      row.id,
+      LIVE_OPS_LABELS[cls],
+      ageLabel(row.lastMs, now),
+      row.ignition === null ? "" : row.ignition ? "On" : "Off",
+      row.speedKmh === null ? "" : Math.round(row.speedKmh * 10) / 10,
+      row.utc ? formatStatusTime(row.utc, timezone) : "",
+      row.lat === null ? "" : Math.round(row.lat * 1e6) / 1e6,
+      row.lon === null ? "" : Math.round(row.lon * 1e6) / 1e6,
+      row.odometerKm === null ? "" : Math.round(row.odometerKm * 10) / 10,
+    ];
+  });
+  downloadXlsx(excelFilename("live-ops"), "Live Ops", [headers, ...body]);
 }

@@ -7,6 +7,7 @@ import {
   classifyLiveRow,
   countLiveByClass,
   defaultLiveFilters,
+  downloadLiveOpsExcel,
   filterLiveRows,
   LIVE_OPS_CLASSES,
   LIVE_OPS_COLORS,
@@ -37,8 +38,16 @@ function maintenanceOpenHref(userId: number): string {
 }
 
 export default function LiveOps() {
-  const { query, ready, error: tenantError, allowedUserIds, allowedGroupIds, allowsUser, allowsGroup } =
-    useEmbedTenant();
+  const {
+    query,
+    ready,
+    error: tenantError,
+    entitlements,
+    allowedUserIds,
+    allowedGroupIds,
+    allowsUser,
+    allowsGroup,
+  } = useEmbedTenant();
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [groupId, setGroupId] = useState(query.groupId);
@@ -54,6 +63,7 @@ export default function LiveOps() {
   const [queryText, setQueryText] = useState("");
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
+  const excelOk = entitlements.features.excel !== false;
 
   useEffect(() => {
     writeLocationSearch({
@@ -154,9 +164,11 @@ export default function LiveOps() {
   }, [ready, loadStatus]);
 
   const scoped = useMemo(() => {
-    const ids = groupId && users.length ? users.map((u) => u.id) : undefined;
+    let ids: number[] | undefined =
+      groupId && users.length ? users.map((u) => u.id) : undefined;
+    if (!ids?.length && allowedUserIds.length) ids = allowedUserIds;
     return filterStatusRows(rows, ids);
-  }, [rows, groupId, users]);
+  }, [rows, groupId, users, allowedUserIds]);
 
   const counts = useMemo(() => countLiveByClass(scoped, now), [scoped, now]);
 
@@ -180,6 +192,16 @@ export default function LiveOps() {
   const fitKey = `${groupId}|${LIVE_OPS_CLASSES.map((c) => (filters[c] ? "1" : "0")).join("")}|${queryText}`;
 
   const onSelect = useCallback((id: number | null) => setSelectedId(id), []);
+
+  function setAllClassFilters(on: boolean) {
+    setFilters({
+      moving: on,
+      idle: on,
+      off: on,
+      stale: on,
+      noFix: on,
+    });
+  }
 
   return (
     <div className="app live-ops-page">
@@ -241,9 +263,30 @@ export default function LiveOps() {
               Refresh
             </button>
           </div>
+          {excelOk ? (
+            <div className="field field-actions">
+              <label>&nbsp;</label>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={!filtered.length}
+                onClick={() => downloadLiveOpsExcel(filtered, timezone, now)}
+              >
+                Excel
+              </button>
+            </div>
+          ) : null}
         </section>
 
         <div className="live-ops-filters" role="group" aria-label="Ops class filters">
+          <div className="live-ops-filter-tools">
+            <button type="button" className="btn-link" onClick={() => setAllClassFilters(true)}>
+              All classes
+            </button>
+            <button type="button" className="btn-link" onClick={() => setAllClassFilters(false)}>
+              Clear
+            </button>
+          </div>
           {LIVE_OPS_CLASSES.map((cls) => (
             <label key={cls} className="live-ops-filter">
               <input

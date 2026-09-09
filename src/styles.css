@@ -3235,6 +3235,12 @@ html.onesheet-root body {
   align-items: center;
 }
 
+.live-ops-filter-tools {
+  display: inline-flex;
+  gap: 10px;
+  margin-right: 4px;
+}
+
 .live-ops-filter {
   display: inline-flex;
   align-items: center;

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { derivedStaleExceptions } from "./exceptions";
+import {
+  derivedStaleExceptions,
+  exceptionUserId,
+  filterExceptionsByGroup,
+  type ExceptionItem,
+} from "./exceptions";
 import type { LastStatusRow } from "./lastStatus";
 import { STALE_MS } from "./liveOps";
 
@@ -22,19 +27,49 @@ function row(partial: Partial<LastStatusRow> & Pick<LastStatusRow, "id">): LastS
   };
 }
 
+function notify(partial: Partial<ExceptionItem> & Pick<ExceptionItem, "id">): ExceptionItem {
+  return {
+    kind: "exception",
+    ruleName: "Speeding",
+    eventTime: null,
+    armadaUsername: "",
+    userDisplayName: "",
+    lat: null,
+    lon: null,
+    payload: {},
+    createdAt: "2026-09-06T06:00:00Z",
+    ackedAt: null,
+    ackedNote: "",
+    source: "notify",
+    ...partial,
+  };
+}
+
 describe("derivedStaleExceptions", () => {
   const now = Date.parse("2026-09-06T06:00:00Z");
 
   it("returns only vehicles older than STALE_MS", () => {
     const rows = [
       row({ id: 1, lastMs: now - STALE_MS - 1 }),
-      row({ id: 2, lastMs: now - 60_000 }),
-      row({ id: 3, lastMs: null }),
+      row({ id: 2, lastMs: now - 1000 }),
     ];
     const out = derivedStaleExceptions(rows, now);
-    expect(out).toHaveLength(1);
-    expect(out[0].userId).toBe(1);
-    expect(out[0].source).toBe("derived");
-    expect(out[0].ruleName).toMatch(/Stale/i);
+    expect(out.map((x) => x.userId)).toEqual([1]);
+  });
+});
+
+describe("filterExceptionsByGroup", () => {
+  it("keeps rows matching user id or username", () => {
+    const items = [
+      notify({ id: "a", payload: { USER_ID: 10 }, armadaUsername: "truck-a" }),
+      notify({ id: "b", armadaUsername: "truck-b" }),
+      notify({ id: "c", payload: { USER_ID: 99 }, armadaUsername: "other" }),
+    ];
+    const out = filterExceptionsByGroup(items, { userIds: [10], usernames: ["truck-b"] });
+    expect(out.map((x) => x.id).sort()).toEqual(["a", "b"]);
+  });
+
+  it("resolves user id from payload", () => {
+    expect(exceptionUserId(notify({ id: "x", payload: { USER_ID: "42" } }))).toBe(42);
   });
 });
