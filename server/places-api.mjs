@@ -41,6 +41,28 @@ function asArray(payload) {
   return [];
 }
 
+/** Prefer a short human message over raw JSON body like `"Forbidden"`. */
+function armadaErrorMessage(status, text, parsed) {
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const msg = parsed.message ?? parsed.Message ?? parsed.error ?? parsed.Error;
+    if (msg != null && String(msg).trim()) return String(msg).trim().slice(0, 200);
+  }
+  if (typeof parsed === "string" && parsed.trim()) return parsed.trim().slice(0, 200);
+  let t = String(text || "").trim();
+  if (
+    (t.startsWith('"') && t.endsWith('"')) ||
+    (t.startsWith("'") && t.endsWith("'"))
+  ) {
+    t = t.slice(1, -1).trim();
+  }
+  if (status === 403) {
+    return t && t.toLowerCase() !== "forbidden"
+      ? t.slice(0, 200)
+      : "Forbidden — this Armada token lacks privilege for this resource";
+  }
+  return t.slice(0, 200) || `HTTP ${status}`;
+}
+
 async function armadaJson(vaultTenant, pathAndQuery) {
   if (!vaultTenant?.token || !vaultTenant?.appId) {
     return { ok: false, status: 0, error: "No Armada tenant token", rows: [] };
@@ -62,7 +84,7 @@ async function armadaJson(vaultTenant, pathAndQuery) {
     return {
       ok: res.ok,
       status: res.status,
-      error: res.ok ? null : text.slice(0, 200) || `HTTP ${res.status}`,
+      error: res.ok ? null : armadaErrorMessage(res.status, text, parsed),
       rows: res.ok ? asArray(parsed) : [],
       raw: parsed,
     };
@@ -184,15 +206,31 @@ export async function handlePlacesRequest(req, res) {
         }))
         .sort((a, b) => b.hits - a.hits || a.name.localeCompare(b.name));
 
+      const reports = reportsRes.rows.slice(0, 30).map((r) => ({
+        id: pickId(r),
+        name: pickName(r) || (pickId(r) != null ? `Report ${pickId(r)}` : "Report"),
+      }));
+
       json(res, 200, {
         days,
         geofenceGroups,
         geofences,
         fenceHits,
         recentFenceEvents: recent,
+        reports,
         armada: {
-          geofenceGroups: { ok: groupsRes.ok, status: groupsRes.status, error: groupsRes.error },
-          geofences: { ok: fencesRes.ok, status: fencesRes.status, error: fencesRes.error, count: geofences.length },
+          geofenceGroups: {
+            ok: groupsRes.ok,
+            status: groupsRes.status,
+            error: groupsRes.error,
+            count: geofenceGroups.length,
+          },
+          geofences: {
+            ok: fencesRes.ok,
+            status: fencesRes.status,
+            error: fencesRes.error,
+            count: geofences.length,
+          },
           pois: {
             ok: poiCatRes.ok,
             status: poiCatRes.status,
@@ -203,6 +241,7 @@ export async function handlePlacesRequest(req, res) {
           reports: {
             ok: reportsRes.ok,
             status: reportsRes.status,
+            error: reportsRes.error,
             count: reportsRes.rows.length,
             templates: templatesRes.ok ? templatesRes.rows.length : 0,
           },

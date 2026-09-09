@@ -10,6 +10,7 @@ import {
   fetchPlacesPois,
   fetchPlacesSummary,
   formatPlacesWhen,
+  placesAccessRows,
   type ArmadaPoi,
   type PlacesSummary,
 } from "../lib/places";
@@ -206,26 +207,30 @@ export default function PlacesAnalytics() {
               </div>
             </section>
 
-            {!summary.armada.geofences.ok ? (
-              <div className="banner error">
-                Could not list Armada geofences: {summary.armada.geofences.error || "error"}
-              </div>
-            ) : summary.geofences.length === 0 ? (
-              <div className="banner">
-                Armada returned <strong>0 geofences</strong> for this token. Fence hit analytics still
-                work from notifier payloads (`GEOFENCE_NAME`). Configure polygons in Armada if you need
-                the catalog here.
-              </div>
-            ) : null}
-
-            {!summary.armada.pois.available ? (
-              <div className="banner">
-                Armada POI categories:{" "}
-                {summary.armada.pois.status === 403
-                  ? "denied (403). Enable POI privilege on this Armada token to link service points."
-                  : summary.armada.pois.error || "unavailable"}
-              </div>
-            ) : null}
+            <section className="places-panel places-access">
+              <h2>Armada access (this token)</h2>
+              <p className="muted">
+                Catalog APIs need Geofence / POI privileges in Armada. Fence-hit tables below still fill
+                from Command notifier payloads (`GEOFENCE_NAME`) even when the catalog is denied.
+              </p>
+              <ul className="places-access-list">
+                {placesAccessRows(summary).map((row) => (
+                  <li key={row.label} className={row.ok ? "ok" : "denied"}>
+                    <span className="places-access-mark" aria-hidden>
+                      {row.ok ? "✓" : "✗"}
+                    </span>
+                    <strong>{row.label}</strong>
+                    <span className="muted">{row.detail}</span>
+                  </li>
+                ))}
+              </ul>
+              {summary.armada.geofences.ok && summary.geofences.length === 0 ? (
+                <p className="muted">
+                  Geofence API OK but catalog is empty — create polygons in Armada if you need them listed
+                  here.
+                </p>
+              ) : null}
+            </section>
 
             <section className="places-panel">
               <h2>Fence hits by name</h2>
@@ -233,7 +238,10 @@ export default function PlacesAnalytics() {
                 Aggregated from Command notifier rows (not polygon dwell). Edit fences in Armada.
               </p>
               {summary.fenceHits.length === 0 ? (
-                <p className="muted">No geofence-named notifier events in this window.</p>
+                <p className="muted">
+                  No geofence-named notifier events in this window. When an Exception includes a fence
+                  name, it will appear here.
+                </p>
               ) : (
                 <div className="table-wrap">
                   <table>
@@ -291,6 +299,18 @@ export default function PlacesAnalytics() {
                 </ul>
               </section>
             ) : null}
+
+            {(summary.reports?.length ?? 0) > 0 ? (
+              <section className="places-panel">
+                <h2>Armada reports (read-only)</h2>
+                <p className="muted">Listed from Armada — run/export stays in Armada for now.</p>
+                <ul className="places-chip-list">
+                  {summary.reports!.map((r) => (
+                    <li key={r.id ?? r.name}>{r.name}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
           </>
         ) : null}
 
@@ -301,7 +321,10 @@ export default function PlacesAnalytics() {
             only.
           </p>
           {!poiAvailable ? (
-            <p className="muted">{poiError || "POI picker dormant until Armada allows poicategories."}</p>
+            <div className="banner warn">
+              {poiError ||
+                "POI picker dormant until Armada allows poicategories on this token."}
+            </div>
           ) : (
             <div className="places-link-form">
               <label>

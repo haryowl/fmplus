@@ -3499,6 +3499,37 @@ html.onesheet-root body {
   margin-top: 4px;
 }
 
+.places-access-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.places-access-list li {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(8rem, 11rem) 1fr;
+  gap: 8px 10px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border: 1px solid #d5cbb9;
+  background: #fffdf8;
+  font-size: 0.9rem;
+}
+
+.places-access-list li.ok .places-access-mark {
+  color: #2f6b4f;
+}
+
+.places-access-list li.denied .places-access-mark {
+  color: #9a4a2e;
+}
+
+.places-access-mark {
+  font-weight: 700;
+}
+
 /* â€”â€” Maintenance board â€”â€” */
 .maintenance-toolbar {
   display: flex;
