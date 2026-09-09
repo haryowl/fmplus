@@ -86,6 +86,18 @@ export function exceptionTitle(item: ExceptionItem): string {
   return item.ruleName || "Exception";
 }
 
+/** Geofence name from notifier payload (Armada Command variables). */
+export function exceptionGeofenceName(item: ExceptionItem): string {
+  const p = item.payload || {};
+  const fromPayload = String(
+    p.GEOFENCE_NAME ?? p.GeofenceName ?? p.geofenceName ?? p.GEOFENCE ?? p.FenceName ?? "",
+  ).trim();
+  if (fromPayload) return fromPayload;
+  const rule = String(item.ruleName || "").trim();
+  if (/geofence|geo.?fence|fence/i.test(rule)) return rule;
+  return "";
+}
+
 export function exceptionWhen(item: ExceptionItem, now = Date.now()): string {
   const ms = item.eventTime ? Date.parse(item.eventTime) : Date.parse(item.createdAt);
   if (!Number.isFinite(ms)) return "—";
@@ -124,6 +136,7 @@ export function downloadExceptionsExcel(items: ExceptionItem[], now = Date.now()
     "Source",
     "Status",
     "Rule",
+    "Geofence",
     "When",
     "Vehicle",
     "Username",
@@ -136,6 +149,7 @@ export function downloadExceptionsExcel(items: ExceptionItem[], now = Date.now()
     item.source === "derived" ? "Derived" : "Notifier",
     item.ackedAt ? "Acked" : "Open",
     exceptionTitle(item),
+    exceptionGeofenceName(item),
     exceptionWhen(item, now),
     item.userDisplayName || "",
     item.armadaUsername || "",

@@ -80,6 +80,8 @@ export type ServicePoint = {
   lon: number | null;
   notes: string;
   pointType: string;
+  armadaPoiId?: number | null;
+  armadaPoiName?: string;
 };
 
 export type FieldUserOption = {
@@ -810,6 +812,29 @@ export async function fetchServicePoints(q = ""): Promise<ServicePoint[]> {
   const data = (await res.json().catch(() => ({}))) as { points?: ServicePoint[]; error?: string };
   if (!res.ok) throw new Error(data.error || `Points ${res.status}`);
   return data.points || [];
+}
+
+export async function patchServicePoint(
+  id: string,
+  patch: {
+    name?: string;
+    lat?: number | null;
+    lon?: number | null;
+    notes?: string;
+    pointType?: string;
+    armadaPoiId?: number | null;
+    armadaPoiName?: string;
+  },
+): Promise<ServicePoint> {
+  const res = await fetch(`/api/maintenance/service-points/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(patch),
+  });
+  const data = (await res.json().catch(() => ({}))) as { point?: ServicePoint; error?: string };
+  if (!res.ok) throw new Error(data.error || `Patch point ${res.status}`);
+  if (!data.point) throw new Error("Patch failed");
+  return data.point;
 }
 
 export async function fetchMaintFieldUsers(): Promise<FieldUserOption[]> {

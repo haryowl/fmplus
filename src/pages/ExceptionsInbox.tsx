@@ -5,6 +5,7 @@ import {
   ackException,
   derivedStaleExceptions,
   downloadExceptionsExcel,
+  exceptionGeofenceName,
   exceptionTitle,
   exceptionUserId,
   exceptionWhen,
@@ -332,6 +333,9 @@ export default function ExceptionsInbox() {
               <li key={item.id} className={item.ackedAt ? "acked" : "open"}>
                 <div className="exceptions-row-main">
                   <strong>{exceptionTitle(item)}</strong>
+                  {exceptionGeofenceName(item) ? (
+                    <span className="exceptions-fence">Fence: {exceptionGeofenceName(item)}</span>
+                  ) : null}
                   <span className="muted">
                     {item.source === "derived" ? "Derived" : "Notifier"} · {exceptionWhen(item, now)}
                     {item.userDisplayName || item.armadaUsername

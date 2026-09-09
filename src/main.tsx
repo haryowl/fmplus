@@ -8,6 +8,7 @@ import FleetDashboard from "./pages/FleetDashboard";
 import LastStatus from "./pages/LastStatus";
 import LiveOps from "./pages/LiveOps";
 import ExceptionsInbox from "./pages/ExceptionsInbox";
+import PlacesAnalytics from "./pages/PlacesAnalytics";
 import MaintenanceBoard from "./pages/MaintenanceBoard";
 import TripDetail from "./pages/TripDetail";
 import AdminConsole from "./pages/AdminConsole";
@@ -25,6 +26,7 @@ function pageFor(view: AppView) {
   if (view === "field") return FieldLogin;
   if (view === "live") return LiveOps;
   if (view === "exceptions") return ExceptionsInbox;
+  if (view === "places") return PlacesAnalytics;
   if (view === "maintenance") return MaintenanceBoard;
   if (view === "status") return LastStatus;
   if (view === "trips") return TripDetail;

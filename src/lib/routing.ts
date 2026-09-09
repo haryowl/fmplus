@@ -7,6 +7,7 @@ export type AppView =
   | "trips"
   | "live"
   | "exceptions"
+  | "places"
   | "maintenance"
   | "admin"
   | "field"
@@ -22,6 +23,7 @@ export function viewFromPath(pathname: string): AppView {
   if (leaf === "m" || leaf === "dispatch") return "field";
   if (leaf === "live" || leaf === "live.html") return "live";
   if (leaf === "exceptions" || leaf === "exceptions.html") return "exceptions";
+  if (leaf === "places" || leaf === "places.html") return "places";
   if (leaf === "maintenance" || leaf === "maintenance.html") return "maintenance";
   if (leaf === "fleet" && (next === "compact" || next === "compact.html")) return "fleetCompact";
   if (leaf === "fleet" || leaf === "fleet.html") return "fleet";
@@ -74,6 +76,10 @@ export function liveHref(search: string): string {
 
 export function exceptionsHref(search: string): string {
   return withSearch("/exceptions", search);
+}
+
+export function placesHref(search: string): string {
+  return withSearch("/places", search);
 }
 
 export function maintenanceHref(search: string): string {

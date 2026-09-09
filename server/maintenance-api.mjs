@@ -2004,6 +2004,91 @@ export async function handleMaintenanceRequest(req, res) {
           lon: r.lon == null ? null : Number(r.lon),
           notes: r.notes || "",
           pointType: r.point_type || "",
+          armadaPoiId: r.armada_poi_id,
+          armadaPoiName: r.armada_poi_name || "",
+        },
+      });
+      return true;
+    }
+
+    const pointPatch = /^\/api\/maintenance\/service-points\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (pointPatch && req.method === "PATCH") {
+      const pointId = pointPatch[1];
+      const body = await readJson(req);
+      const existing = await dbQuery(
+        `SELECT id FROM service_points WHERE id = $1 AND tenant_id = $2`,
+        [pointId, dbTenant.id],
+      );
+      if (!existing.rows[0]) {
+        json(res, 404, { error: "Service point not found" });
+        return true;
+      }
+      const sets = [];
+      const params = [];
+      if ("name" in body) {
+        const name = String(body.name || "").trim();
+        if (!name) {
+          json(res, 400, { error: "name cannot be empty" });
+          return true;
+        }
+        params.push(name.slice(0, 200));
+        sets.push(`name = $${params.length}`);
+      }
+      if ("lat" in body) {
+        const lat = body.lat == null || body.lat === "" ? null : Number(body.lat);
+        params.push(Number.isFinite(lat) ? lat : null);
+        sets.push(`lat = $${params.length}`);
+      }
+      if ("lon" in body) {
+        const lon = body.lon == null || body.lon === "" ? null : Number(body.lon);
+        params.push(Number.isFinite(lon) ? lon : null);
+        sets.push(`lon = $${params.length}`);
+      }
+      if ("notes" in body) {
+        params.push(String(body.notes || "").trim() || null);
+        sets.push(`notes = $${params.length}`);
+      }
+      if ("pointType" in body || "type" in body) {
+        params.push(String(body.pointType || body.type || "").trim() || null);
+        sets.push(`point_type = $${params.length}`);
+      }
+      if ("armadaPoiId" in body || "armadaPoiName" in body) {
+        const poiIdRaw = body.armadaPoiId;
+        const poiId =
+          poiIdRaw == null || poiIdRaw === ""
+            ? null
+            : Number.isInteger(Number(poiIdRaw)) && Number(poiIdRaw) > 0
+              ? Number(poiIdRaw)
+              : null;
+        const poiName =
+          poiId == null ? null : String(body.armadaPoiName || "").trim().slice(0, 200) || null;
+        params.push(poiId);
+        sets.push(`armada_poi_id = $${params.length}`);
+        params.push(poiName);
+        sets.push(`armada_poi_name = $${params.length}`);
+      }
+      if (!sets.length) {
+        json(res, 400, { error: "No fields to update" });
+        return true;
+      }
+      params.push(pointId, dbTenant.id);
+      const updated = await dbQuery(
+        `UPDATE service_points SET ${sets.join(", ")}
+         WHERE id = $${params.length - 1} AND tenant_id = $${params.length}
+         RETURNING id, name, lat, lon, notes, point_type, armada_poi_id, armada_poi_name`,
+        params,
+      );
+      const r = updated.rows[0];
+      json(res, 200, {
+        point: {
+          id: r.id,
+          name: r.name,
+          lat: r.lat == null ? null : Number(r.lat),
+          lon: r.lon == null ? null : Number(r.lon),
+          notes: r.notes || "",
+          pointType: r.point_type || "",
+          armadaPoiId: r.armada_poi_id,
+          armadaPoiName: r.armada_poi_name || "",
         },
       });
       return true;

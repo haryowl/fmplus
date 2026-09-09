@@ -3420,6 +3420,85 @@ html.onesheet-root body {
   align-items: center;
 }
 
+.exceptions-fence {
+  font-size: 0.9rem;
+  color: #3d5a4c;
+}
+
+.places-page .shell {
+  display: grid;
+  gap: 18px;
+}
+
+.places-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.places-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.places-kpis > div {
+  padding: 12px 14px;
+  border: 1px solid #d5cbb9;
+  background: #fffdf8;
+  display: grid;
+  gap: 4px;
+}
+
+.places-kpis strong {
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.places-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.places-panel h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.places-chip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.places-chip-list li {
+  padding: 6px 10px;
+  border: 1px solid #d5cbb9;
+  background: #fffdf8;
+  font-size: 0.88rem;
+}
+
+.places-link-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.places-link-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.places-recent {
+  margin-top: 4px;
+}
+
 /* â€”â€” Maintenance board â€”â€” */
 .maintenance-toolbar {
   display: flex;

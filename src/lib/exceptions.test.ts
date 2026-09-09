@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   derivedStaleExceptions,
+  exceptionGeofenceName,
   exceptionUserId,
   filterExceptionsByGroup,
   type ExceptionItem,
@@ -71,5 +72,20 @@ describe("filterExceptionsByGroup", () => {
 
   it("resolves user id from payload", () => {
     expect(exceptionUserId(notify({ id: "x", payload: { USER_ID: "42" } }))).toBe(42);
+  });
+});
+
+describe("exceptionGeofenceName", () => {
+  it("reads GEOFENCE_NAME from payload", () => {
+    expect(
+      exceptionGeofenceName(notify({ id: "g", payload: { GEOFENCE_NAME: "Depot A" } })),
+    ).toBe("Depot A");
+  });
+
+  it("falls back to fence-like rule names", () => {
+    expect(exceptionGeofenceName(notify({ id: "g", ruleName: "Geofence Exit West" }))).toBe(
+      "Geofence Exit West",
+    );
+    expect(exceptionGeofenceName(notify({ id: "g", ruleName: "Speeding" }))).toBe("");
   });
 });

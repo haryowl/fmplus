@@ -10,6 +10,7 @@ import {
   liveHref,
   exceptionsHref,
   maintenanceHref,
+  placesHref,
   viewFromPath,
   withSearch,
 } from "./routing";
@@ -29,6 +30,8 @@ describe("viewFromPath", () => {
     expect(viewFromPath("/live/")).toBe("live");
     expect(viewFromPath("/exceptions")).toBe("exceptions");
     expect(viewFromPath("/exceptions/")).toBe("exceptions");
+    expect(viewFromPath("/places")).toBe("places");
+    expect(viewFromPath("/places/")).toBe("places");
     expect(viewFromPath("/maintenance")).toBe("maintenance");
     expect(viewFromPath("/maintenance/")).toBe("maintenance");
     expect(viewFromPath("/admin")).toBe("admin");
@@ -73,6 +76,7 @@ describe("withSearch", () => {
     expect(tripsHref(q)).toBe("/trips?groupId=12&userId=99&embed=1");
     expect(liveHref(q)).toBe("/live?groupId=12&userId=99&embed=1");
     expect(exceptionsHref(q)).toBe("/exceptions?groupId=12&userId=99&embed=1");
+    expect(placesHref(q)).toBe("/places?groupId=12&userId=99&embed=1");
     expect(maintenanceHref(q)).toBe("/maintenance?groupId=12&userId=99&embed=1");
     expect(withSearch("/compact", "")).toBe("/compact");
   });
