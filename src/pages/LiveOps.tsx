@@ -13,6 +13,7 @@ import {
   LIVE_OPS_COLORS,
   LIVE_OPS_LABELS,
 } from "../lib/liveOps";
+import { fetchDriverMap } from "../lib/driverFields";
 import { fullHref, maintenanceHref, tripsHref, writeLocationSearch } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
@@ -61,6 +62,7 @@ export default function LiveOps() {
   const [filters, setFilters] = useState(defaultLiveFilters);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [queryText, setQueryText] = useState("");
+  const [driversByUser, setDriversByUser] = useState<Record<number, string>>({});
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
   const excelOk = entitlements.features.excel !== false;
@@ -170,19 +172,43 @@ export default function LiveOps() {
     return filterStatusRows(rows, ids);
   }, [rows, groupId, users, allowedUserIds]);
 
+  const scopedIdsKey = useMemo(() => scoped.map((r) => r.id).join(","), [scoped]);
+
+  useEffect(() => {
+    const ids = scopedIdsKey
+      ? scopedIdsKey.split(",").map((s) => Number(s)).filter((n) => Number.isInteger(n) && n > 0)
+      : [];
+    if (!ids.length) {
+      setDriversByUser({});
+      return;
+    }
+    const ac = new AbortController();
+    void fetchDriverMap(ids, ac.signal)
+      .then((by) => {
+        if (!ac.signal.aborted) setDriversByUser(by);
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError" && !ac.signal.aborted) setDriversByUser({});
+      });
+    return () => ac.abort();
+  }, [scopedIdsKey, reload]);
+
   const counts = useMemo(() => countLiveByClass(scoped, now), [scoped, now]);
 
   const filtered = useMemo(() => {
     const byClass = filterLiveRows(scoped, filters, now);
     const q = queryText.trim().toLowerCase();
     if (!q) return byClass;
-    return byClass.filter(
-      (row) =>
+    return byClass.filter((row) => {
+      const driver = (driversByUser[row.id] || "").toLowerCase();
+      return (
         row.name.toLowerCase().includes(q) ||
         row.username.toLowerCase().includes(q) ||
-        String(row.id).includes(q),
-    );
-  }, [scoped, filters, now, queryText]);
+        String(row.id).includes(q) ||
+        (driver && driver.includes(q))
+      );
+    });
+  }, [scoped, filters, now, queryText, driversByUser]);
 
   const mapped = useMemo(
     () => filtered.filter((r) => r.lat !== null && r.lon !== null),
@@ -270,7 +296,7 @@ export default function LiveOps() {
                 type="button"
                 className="btn-ghost"
                 disabled={!filtered.length}
-                onClick={() => downloadLiveOpsExcel(filtered, timezone, now)}
+                onClick={() => downloadLiveOpsExcel(filtered, timezone, now, driversByUser)}
               >
                 Excel
               </button>
@@ -335,6 +361,7 @@ export default function LiveOps() {
                         <span className="live-ops-list-main">
                           <strong>{row.name}</strong>
                           <span className="muted">
+                            {driversByUser[row.id] ? `${driversByUser[row.id]} · ` : ""}
                             {LIVE_OPS_LABELS[cls]} · {ageLabel(row.lastMs, now)} ·{" "}
                             {row.speedKmh === null ? "—" : `${formatSpeed(row.speedKmh)} km/h`}
                           </span>

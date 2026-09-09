@@ -218,6 +218,7 @@ export function statusExcelHeaders(): string[] {
   return [
     "Vehicle",
     "Id",
+    "Driver",
     "Last seen",
     "Age",
     "Ignition",
@@ -231,12 +232,18 @@ export function statusExcelHeaders(): string[] {
   ];
 }
 
-export function statusExcelRow(row: LastStatusRow, timezone: string, now = Date.now()): (string | number)[] {
+export function statusExcelRow(
+  row: LastStatusRow,
+  timezone: string,
+  now = Date.now(),
+  driver = "",
+): (string | number)[] {
   const map =
     row.lat !== null && row.lon !== null ? mapsUrl(row.lat, row.lon) : "";
   return [
     row.name,
     row.id,
+    driver,
     row.utc ? formatStatusTime(row.utc, timezone) : "",
     ageLabel(row.lastMs, now),
     row.ignition === null ? "" : row.ignition ? "On" : "Off",
@@ -250,17 +257,38 @@ export function statusExcelRow(row: LastStatusRow, timezone: string, now = Date.
   ];
 }
 
-function statusSheetRows(rows: LastStatusRow[], timezone: string, now: number): (string | number)[][] {
+function statusSheetRows(
+  rows: LastStatusRow[],
+  timezone: string,
+  now: number,
+  drivers?: Record<number, string>,
+): (string | number)[][] {
   const headers = statusExcelHeaders();
-  return [headers, ...rows.map((row) => statusExcelRow(row, timezone, now))];
+  return [
+    headers,
+    ...rows.map((row) => statusExcelRow(row, timezone, now, drivers?.[row.id] || "")),
+  ];
 }
 
-export function statusXlsx(rows: LastStatusRow[], timezone: string, now = Date.now()): Uint8Array {
-  return buildXlsx("Last status", statusSheetRows(rows, timezone, now));
+export function statusXlsx(
+  rows: LastStatusRow[],
+  timezone: string,
+  now = Date.now(),
+  drivers?: Record<number, string>,
+): Uint8Array {
+  return buildXlsx("Last status", statusSheetRows(rows, timezone, now, drivers));
 }
 
-export function downloadStatusExcel(rows: LastStatusRow[], timezone: string): void {
-  downloadXlsx(excelFilename("last-status"), "Last status", statusSheetRows(rows, timezone, Date.now()));
+export function downloadStatusExcel(
+  rows: LastStatusRow[],
+  timezone: string,
+  drivers?: Record<number, string>,
+): void {
+  downloadXlsx(
+    excelFilename("last-status"),
+    "Last status",
+    statusSheetRows(rows, timezone, Date.now(), drivers),
+  );
 }
 
 export const STATUS_PAGE_SIZE = PAGE_SIZE;

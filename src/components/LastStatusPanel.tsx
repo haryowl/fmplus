@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchUsersStatus } from "../lib/api";
+import { fetchDriverMap } from "../lib/driverFields";
 import { formatKm, formatSpeed } from "../lib/format";
 import {
   ageLabel,
@@ -66,6 +67,7 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
   const [reload, setReload] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [maintByUser, setMaintByUser] = useState<Record<string, MaintStatusCell>>({});
+  const [driversByUser, setDriversByUser] = useState<Record<number, string>>({});
 
   useEffect(() => {
     const tick = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -98,15 +100,39 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     const filtered = q
-      ? scoped.filter(
-          (row) =>
+      ? scoped.filter((row) => {
+          const driver = (driversByUser[row.id] || "").toLowerCase();
+          return (
             row.name.toLowerCase().includes(q) ||
             row.username.toLowerCase().includes(q) ||
-            String(row.id).includes(q),
-        )
+            String(row.id).includes(q) ||
+            (driver && driver.includes(q))
+          );
+        })
       : scoped;
     return sortStatusRows(filtered, sortId, dir);
-  }, [scoped, query, sortId, dir]);
+  }, [scoped, query, sortId, dir, driversByUser]);
+
+  const scopedIdsKey = useMemo(() => scoped.map((r) => r.id).join(","), [scoped]);
+
+  useEffect(() => {
+    const ids = scopedIdsKey
+      ? scopedIdsKey.split(",").map((s) => Number(s)).filter((n) => Number.isInteger(n) && n > 0)
+      : [];
+    if (!ids.length) {
+      setDriversByUser({});
+      return;
+    }
+    const ac = new AbortController();
+    void fetchDriverMap(ids, ac.signal)
+      .then((by) => {
+        if (!ac.signal.aborted) setDriversByUser(by);
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError" && !ac.signal.aborted) setDriversByUser({});
+      });
+    return () => ac.abort();
+  }, [scopedIdsKey, reload]);
 
   const visibleIdsKey = useMemo(() => visible.map((r) => r.id).join(","), [visible]);
 
@@ -172,7 +198,7 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
             className="btn btn-secondary"
             type="button"
             disabled={visible.length === 0}
-            onClick={() => downloadStatusExcel(visible, timezone)}
+            onClick={() => downloadStatusExcel(visible, timezone, driversByUser)}
           >
             Export Excel
           </button>
@@ -197,6 +223,7 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
                     Vehicle{sortMark("name")}
                   </button>
                 </th>
+                <th>Driver</th>
                 <th>
                   <button type="button" className="sort-btn" onClick={() => toggle("lastMs")}>
                     Last seen{sortMark("lastMs")}
@@ -233,6 +260,7 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
                 const hasPos = row.lat !== null && row.lon !== null;
                 const maint = maintByUser[String(row.id)];
                 const maintClass = maintToneClass(maint);
+                const driver = driversByUser[row.id] || "";
                 return (
                   <tr key={row.id}>
                     <td>
@@ -241,6 +269,7 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
                       </a>
                       <div className="status-id">{row.id}</div>
                     </td>
+                    <td className="status-driver">{driver || "—"}</td>
                     <td className="num">{row.utc ? formatStatusTime(row.utc, timezone) : "—"}</td>
                     <td>
                       <span className={tone ? `status-age ${tone}` : "status-age"}>{ageLabel(row.lastMs, now)}</span>

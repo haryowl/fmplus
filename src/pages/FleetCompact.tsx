@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { groupOptionLabel } from "../lib/api";
+import { fetchDriverMap } from "../lib/driverFields";
 import {
   formatHours,
   formatIdr,
@@ -31,6 +32,7 @@ export default function FleetCompact() {
   const d = useFleetDashboard();
   const live = d.vehicles.filter((v) => v.hasData);
   const kmPerL = d.fleetFuel > 0 ? d.fleetGps / d.fleetFuel : 0;
+  const [drivers, setDrivers] = useState<Record<number, string>>({});
 
   useEffect(() => {
     const root = document.documentElement;
@@ -42,6 +44,26 @@ export default function FleetCompact() {
       document.title = previousTitle;
     };
   }, []);
+
+  const driverIdsKey = d.userIds.join(",");
+  useEffect(() => {
+    const ids = driverIdsKey
+      ? driverIdsKey.split(",").map((s) => Number(s)).filter((n) => Number.isInteger(n) && n > 0)
+      : [];
+    if (!ids.length) {
+      setDrivers({});
+      return;
+    }
+    const ac = new AbortController();
+    void fetchDriverMap(ids, ac.signal)
+      .then((by) => {
+        if (!ac.signal.aborted) setDrivers(by);
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError" && !ac.signal.aborted) setDrivers({});
+      });
+    return () => ac.abort();
+  }, [driverIdsKey]);
 
   const banner = d.loading && d.progress
     ? {
@@ -248,10 +270,10 @@ export default function FleetCompact() {
                   disabled={live.length === 0}
                   prefix="fleet-ranking"
                   sheetName="Ranking"
-                  getRows={() => fleetRankSheet(live)}
+                  getRows={() => fleetRankSheet(live, drivers)}
                 />
               </div>
-              <FleetRankTable vehicles={d.vehicles} dense />
+              <FleetRankTable vehicles={d.vehicles} dense drivers={drivers} />
             </section>
             <section className="panel onesheet-cell">
               <div className="panel-head">

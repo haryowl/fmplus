@@ -1,6 +1,7 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { groupOptionLabel } from "../lib/api";
 import { TIMEZONES } from "../lib/config";
+import { fetchDriverMap } from "../lib/driverFields";
 import { seriesForPeriod, type FleetVehicleRow } from "../lib/fleet";
 import {
   formatHours,
@@ -41,8 +42,29 @@ export default function FleetDashboard() {
   const live = d.vehicles.filter((v) => v.hasData);
   const [baselineId, setBaselineId] = useState(0);
   const [compareId, setCompareId] = useState(0);
+  const [drivers, setDrivers] = useState<Record<number, string>>({});
 
   const kmPerL = d.fleetFuel > 0 ? d.fleetGps / d.fleetFuel : 0;
+
+  const driverIdsKey = d.userIds.join(",");
+  useEffect(() => {
+    const ids = driverIdsKey
+      ? driverIdsKey.split(",").map((s) => Number(s)).filter((n) => Number.isInteger(n) && n > 0)
+      : [];
+    if (!ids.length) {
+      setDrivers({});
+      return;
+    }
+    const ac = new AbortController();
+    void fetchDriverMap(ids, ac.signal)
+      .then((by) => {
+        if (!ac.signal.aborted) setDrivers(by);
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError" && !ac.signal.aborted) setDrivers({});
+      });
+    return () => ac.abort();
+  }, [driverIdsKey]);
 
   return (
     <div className="app">
@@ -246,6 +268,7 @@ export default function FleetDashboard() {
             compareId={compareId}
             onBaseline={setBaselineId}
             onCompare={setCompareId}
+            drivers={drivers}
           />
         )}
 
@@ -270,6 +293,7 @@ const FleetCharts = memo(function FleetCharts({
   compareId,
   onBaseline,
   onCompare,
+  drivers,
 }: {
   vehicles: FleetVehicleRow[];
   periods: { key: string; label: string }[];
@@ -278,6 +302,7 @@ const FleetCharts = memo(function FleetCharts({
   compareId: number;
   onBaseline: (id: number) => void;
   onCompare: (id: number) => void;
+  drivers: Record<number, string>;
 }) {
   const live = vehicles.filter((v) => v.hasData);
   return (
@@ -473,10 +498,10 @@ const FleetCharts = memo(function FleetCharts({
             disabled={live.length === 0}
             prefix="fleet-ranking"
             sheetName="Ranking"
-            getRows={() => fleetRankSheet(live)}
+            getRows={() => fleetRankSheet(live, drivers)}
           />
         </div>
-        <FleetRankTable vehicles={vehicles} />
+        <FleetRankTable vehicles={vehicles} drivers={drivers} />
       </section>
 
       <FleetHeadToHead

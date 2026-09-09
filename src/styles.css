@@ -3420,10 +3420,13 @@ html.onesheet-root body {
   align-items: center;
 }
 
-.exceptions-fence {
-  font-size: 0.9rem;
-  color: #3d5a4c;
+.status-driver {
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
 
 .places-page .shell {
   display: grid;

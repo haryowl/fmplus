@@ -75,10 +75,12 @@ export function downloadLiveOpsExcel(
   rows: LastStatusRow[],
   timezone: string,
   now = Date.now(),
+  drivers?: Record<number, string>,
 ): void {
   const headers: ExcelCell[] = [
     "Name",
     "User ID",
+    "Driver",
     "Ops class",
     "Age",
     "Ignition",
@@ -93,6 +95,7 @@ export function downloadLiveOpsExcel(
     return [
       row.name,
       row.id,
+      drivers?.[row.id] || "",
       LIVE_OPS_LABELS[cls],
       ageLabel(row.lastMs, now),
       row.ignition === null ? "" : row.ignition ? "On" : "Off",

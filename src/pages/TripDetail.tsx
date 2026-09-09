@@ -18,6 +18,7 @@ import { DEFAULT_MIN_SPEED_KMH, DEFAULT_TRIP_BREAK_MIN, TIMEZONES } from "../lib
 import { formatHours, formatKm, formatLiters, formatRpm, formatSpeed } from "../lib/format";
 import { describeLoadProgress } from "../lib/dayTracks";
 import { writeLastVehicle } from "../lib/lastUsed";
+import { pickDriverFromCustomFields } from "../lib/driverFields";
 import { writeLocationSearch } from "../lib/routing";
 import {
   addressAt,
@@ -138,6 +139,7 @@ export default function TripDetail() {
   const rangeTooLong = dayCount > TRIP_DETAIL_MAX_DAYS;
 
   const selectedCustomFields = customFields.filter((cf) => columns.customFieldNames.includes(cf.name));
+  const driverName = useMemo(() => pickDriverFromCustomFields(customFields), [customFields]);
 
   useEffect(() => {
     writeLocationSearch({
@@ -349,6 +351,7 @@ export default function TripDetail() {
           <ViewNav current="trips" />
           <div className="vehicle-chip">
             {selectedUser ? userLabel(selectedUser) : "No vehicle selected"}
+            {driverName ? ` · Driver ${driverName}` : ""}
             {selectedGroup ? ` · ${selectedGroup.name}` : ""}
           </div>
         </div>

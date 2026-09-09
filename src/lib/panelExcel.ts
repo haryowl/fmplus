@@ -215,10 +215,18 @@ export function insightsSheet(insights: InsightBlock[]): ExcelCell[][] {
   return [["Title", "Body"], ...insights.map((block) => [block.title, block.body])];
 }
 
-export function fleetRankSheet(vehicles: FleetVehicleRow[]): ExcelCell[][] {
+export function fleetRankSheet(
+  vehicles: FleetVehicleRow[],
+  drivers?: Record<number, string>,
+): ExcelCell[][] {
+  const showDriver = Boolean(drivers && Object.values(drivers).some(Boolean));
   return [
-    ["Vehicle", ...RANK_COLUMNS.map((c) => c.label)],
-    ...vehicles.map((row) => [row.label, ...RANK_COLUMNS.map((c) => n(c.value(row), 3))]),
+    ["Vehicle", ...(showDriver ? ["Driver"] : []), ...RANK_COLUMNS.map((c) => c.label)],
+    ...vehicles.map((row) => [
+      row.label,
+      ...(showDriver ? [drivers?.[row.userId] || ""] : []),
+      ...RANK_COLUMNS.map((c) => n(c.value(row), 3)),
+    ]),
   ];
 }
 

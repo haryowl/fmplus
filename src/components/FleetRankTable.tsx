@@ -26,6 +26,8 @@ function openVehicleHref(userId: number): string {
 type Props = {
   vehicles: FleetVehicleRow[];
   dense?: boolean;
+  /** Armada custom-field driver name by user id (optional). */
+  drivers?: Record<number, string>;
 };
 
 function formatCell(id: RankColumnId, n: number): string {
@@ -38,11 +40,12 @@ function formatCell(id: RankColumnId, n: number): string {
   return formatKm(n);
 }
 
-export function FleetRankTable({ vehicles, dense }: Props) {
+export function FleetRankTable({ vehicles, dense, drivers }: Props) {
   const [sortId, setSortId] = useState<RankColumnId>("gps");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
 
   const sorted = useMemo(() => sortFleetRows(vehicles, sortId, dir), [vehicles, sortId, dir]);
+  const showDriver = Boolean(drivers && Object.values(drivers).some(Boolean));
 
   const tones = useMemo(() => {
     const map = new Map<RankColumnId, Array<"best" | "worst" | "">>();
@@ -77,6 +80,7 @@ export function FleetRankTable({ vehicles, dense }: Props) {
         <thead>
           <tr>
             <th>Vehicle</th>
+            {showDriver ? <th>Driver</th> : null}
             {RANK_COLUMNS.map((col) => (
               <th key={col.id} className="num">
                 <button type="button" className="sort-btn" onClick={() => toggle(col.id)}>
@@ -101,6 +105,7 @@ export function FleetRankTable({ vehicles, dense }: Props) {
                   </a>
                 )}
               </td>
+              {showDriver ? <td>{drivers?.[row.userId] || "—"}</td> : null}
               {RANK_COLUMNS.map((col) => {
                 const tone = tones.get(col.id)?.[index] ?? "";
                 return (
