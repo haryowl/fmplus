@@ -4413,6 +4413,21 @@ html.onesheet-root body {
   font-size: 0.98rem;
 }
 
+.maint-service-results {
+  display: grid;
+  gap: 14px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(217, 210, 198, 0.75);
+}
+
+.maint-results-filters {
+  align-items: end;
+}
+
+.maint-results-filters input {
+  min-width: 10rem;
+}
+
 .maint-analyze-kpis .maint-dash-tile {
   text-align: left;
 }

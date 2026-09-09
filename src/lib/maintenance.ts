@@ -331,6 +331,197 @@ export async function fetchCostDashboard(
   return data;
 }
 
+export type ServiceResultsStatus = "all" | "approved" | "outstanding" | "open" | "done";
+
+export type ServiceResultsRow = {
+  id: string;
+  title: string;
+  status: ServiceEventStatus;
+  vehicle: string;
+  armadaUserId: number | null;
+  date: string | null;
+  serviceDurationMinutes: number | null;
+  priceTotal: number | null;
+  costTotal: number | null;
+  margin: number | null;
+  moneyLocked: boolean;
+  items: { name: string; kind: string; qty: number; price: number | null; cost: number | null }[];
+  fleetGroups?: string[];
+};
+
+export type ServiceResults = {
+  days: number;
+  status: string;
+  totals: {
+    jobs: number;
+    scanned: number;
+    shown: number;
+    price: number;
+    cost: number;
+    margin: number;
+    approvedJobs: number;
+    outstandingJobs: number;
+    openJobs: number;
+    doneJobs: number;
+  };
+  byDay: { day: string; price: number; cost: number; count: number }[];
+  byVehicle: {
+    label: string;
+    userId: number | null;
+    price: number;
+    cost: number;
+    count: number;
+    outstanding: number;
+    approved: number;
+    fleetGroups?: string[];
+  }[];
+  byItem: {
+    name: string;
+    kind: string;
+    price: number;
+    cost: number;
+    qty: number;
+    jobs: number;
+    margin: number;
+  }[];
+  byCatalogGroup: Record<string, { price: number; cost: number; qty: number }>;
+  rows: ServiceResultsRow[];
+};
+
+export type FleetGroupRef = { id: number; name: string; usersIds: number[] };
+
+/** Map Armada user id → fleet group names (only groups that contain the user). */
+export function buildUserFleetGroupMap(groups: FleetGroupRef[]): Map<number, string[]> {
+  const map = new Map<number, string[]>();
+  for (const g of groups) {
+    for (const uid of g.usersIds || []) {
+      const list = map.get(uid) || [];
+      if (!list.includes(g.name)) list.push(g.name);
+      map.set(uid, list);
+    }
+  }
+  return map;
+}
+
+export function enrichServiceResultsWithFleetGroups(
+  data: ServiceResults,
+  groups: FleetGroupRef[],
+): ServiceResults & {
+  byFleetGroup: { id: number | null; name: string; price: number; cost: number; count: number; margin: number }[];
+  fleetGroupOptions: { id: number; name: string; jobVehicles: number }[];
+} {
+  const userGroups = buildUserFleetGroupMap(groups);
+  const rows = data.rows.map((r) => ({
+    ...r,
+    fleetGroups: r.armadaUserId != null ? userGroups.get(r.armadaUserId) || [] : [],
+  }));
+  const byVehicle = data.byVehicle.map((v) => ({
+    ...v,
+    fleetGroups: v.userId != null ? userGroups.get(v.userId) || [] : [],
+  }));
+
+  const fleetAgg = new Map<
+    string,
+    { id: number | null; name: string; price: number; cost: number; count: number; vehicles: Set<number> }
+  >();
+  for (const v of byVehicle) {
+    const names =
+      v.fleetGroups && v.fleetGroups.length
+        ? v.fleetGroups
+        : v.userId != null
+          ? []
+          : ["Unassigned group"];
+    if (!names.length && v.userId != null) {
+      // Vehicle has jobs but is not in any loaded Armada group
+      const key = "__ungrouped__";
+      const cur = fleetAgg.get(key) || {
+        id: null,
+        name: "Ungrouped",
+        price: 0,
+        cost: 0,
+        count: 0,
+        vehicles: new Set<number>(),
+      };
+      cur.price += v.price;
+      cur.cost += v.cost;
+      cur.count += v.count;
+      if (v.userId != null) cur.vehicles.add(v.userId);
+      fleetAgg.set(key, cur);
+      continue;
+    }
+    for (const name of names) {
+      const g = groups.find((x) => x.name === name);
+      const key = g ? `id:${g.id}` : `n:${name}`;
+      const cur = fleetAgg.get(key) || {
+        id: g?.id ?? null,
+        name,
+        price: 0,
+        cost: 0,
+        count: 0,
+        vehicles: new Set<number>(),
+      };
+      cur.price += v.price;
+      cur.cost += v.cost;
+      cur.count += v.count;
+      if (v.userId != null) cur.vehicles.add(v.userId);
+      fleetAgg.set(key, cur);
+    }
+  }
+
+  const byFleetGroup = [...fleetAgg.values()]
+    .map((g) => ({
+      id: g.id,
+      name: g.name,
+      price: g.price,
+      cost: g.cost,
+      count: g.count,
+      margin: g.price - g.cost,
+    }))
+    .sort((a, b) => b.cost - a.cost || b.price - a.price);
+
+  // Only fleet groups that already have jobs (vehicles with jobs)
+  const fleetGroupOptions = groups
+    .map((g) => {
+      const jobVehicles = (g.usersIds || []).filter((uid) =>
+        byVehicle.some((v) => v.userId === uid),
+      ).length;
+      return { id: g.id, name: g.name, jobVehicles };
+    })
+    .filter((g) => g.jobVehicles > 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return { ...data, rows, byVehicle, byFleetGroup, fleetGroupOptions };
+}
+
+export async function fetchServiceResults(
+  opts?: {
+    days?: number;
+    status?: ServiceResultsStatus;
+    userId?: number;
+    userIds?: number[];
+    catalogGroup?: string;
+    q?: string;
+    limit?: number;
+  },
+  signal?: AbortSignal,
+): Promise<ServiceResults> {
+  const params = new URLSearchParams();
+  if (opts?.days) params.set("days", String(opts.days));
+  if (opts?.status) params.set("status", opts.status);
+  if (opts?.userId) params.set("userId", String(opts.userId));
+  if (opts?.userIds?.length) params.set("userIds", opts.userIds.join(","));
+  if (opts?.catalogGroup) params.set("catalogGroup", opts.catalogGroup);
+  if (opts?.q) params.set("q", opts.q);
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  const res = await fetch(`/api/maintenance/service-results?${params}`, {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as ServiceResults & { error?: string };
+  if (!res.ok) throw new Error(data.error || `Service results ${res.status}`);
+  return data;
+}
+
 export type AnalyzeSummary = {
   days: number;
   workflow: {
@@ -888,4 +1079,60 @@ export function downloadAnalyzeReportExcel(
     rows.push([a.name, a.open, a.done, a.approved, a.avgMinutes ?? ""]);
   }
   downloadXlsx(excelFilename("maintenance-analyze"), "Analyze", rows);
+}
+
+export function downloadServiceResultsExcel(
+  data: ServiceResults & {
+    byFleetGroup?: { name: string; price: number; cost: number; count: number; margin: number }[];
+  },
+): void {
+  const rows: ExcelCell[][] = [
+    ["Maintenance service results", `Last ${data.days} days · status ${data.status}`],
+    [],
+    ["Metric", "Value"],
+    ["Jobs", data.totals.jobs],
+    ["Shown rows", data.totals.shown],
+    ["Approved jobs", data.totals.approvedJobs],
+    ["Outstanding jobs", data.totals.outstandingJobs],
+    ["Price Σ", data.totals.price],
+    ["Cost Σ", data.totals.cost],
+    ["Margin Σ", data.totals.margin],
+    [],
+    ["Fleet group", "Jobs", "Price", "Cost", "Margin"],
+  ];
+  for (const g of data.byFleetGroup || []) {
+    rows.push([g.name, g.count, g.price, g.cost, g.margin]);
+  }
+  rows.push([], ["Vehicle", "Fleet groups", "Jobs", "Outstanding", "Approved", "Price", "Cost"]);
+  for (const v of data.byVehicle) {
+    rows.push([
+      v.label,
+      (v.fleetGroups || []).join("; "),
+      v.count,
+      v.outstanding,
+      v.approved,
+      v.price,
+      v.cost,
+    ]);
+  }
+  rows.push([], ["Item", "Kind", "Jobs", "Qty", "Price", "Cost", "Margin"]);
+  for (const it of data.byItem) {
+    rows.push([it.name, it.kind, it.jobs, it.qty, it.price, it.cost, it.margin]);
+  }
+  rows.push([], ["Date", "Status", "Vehicle", "Fleet groups", "Title", "Price", "Cost", "Margin", "Minutes", "Items"]);
+  for (const r of data.rows) {
+    rows.push([
+      r.date ? String(r.date).slice(0, 10) : "",
+      r.status,
+      r.vehicle,
+      (r.fleetGroups || []).join("; "),
+      r.title,
+      r.priceTotal ?? "",
+      r.costTotal ?? "",
+      r.margin ?? "",
+      r.serviceDurationMinutes ?? "",
+      r.items.map((i) => `${i.name}×${i.qty}`).join("; "),
+    ]);
+  }
+  downloadXlsx(excelFilename("maintenance-service-results"), "Service results", rows);
 }

@@ -1702,6 +1702,247 @@ export async function handleMaintenanceRequest(req, res) {
       return true;
     }
 
+    if (url.pathname === "/api/maintenance/service-results" && req.method === "GET") {
+      const days = Math.min(365, Math.max(7, Number(url.searchParams.get("days")) || 90));
+      const statusParam = String(url.searchParams.get("status") || "all").trim().toLowerCase();
+      const catalogGroup = String(url.searchParams.get("catalogGroup") || "").trim();
+      const q = String(url.searchParams.get("q") || "").trim().toLowerCase();
+      const vehicleIdRaw = Number(url.searchParams.get("userId"));
+      const vehicleId = Number.isInteger(vehicleIdRaw) && vehicleIdRaw > 0 ? vehicleIdRaw : null;
+      const userIdsRaw = String(url.searchParams.get("userIds") || "")
+        .split(",")
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isInteger(n) && n > 0);
+      const rowLimit = Math.min(1000, Math.max(50, Number(url.searchParams.get("limit")) || 500));
+
+      /** @type {string[]} */
+      let statuses;
+      if (statusParam === "approved") statuses = ["approved"];
+      else if (statusParam === "outstanding") statuses = ["due", "in_progress", "done"];
+      else if (statusParam === "open") statuses = ["due", "in_progress"];
+      else if (statusParam === "done") statuses = ["done"];
+      else statuses = ["due", "in_progress", "done", "approved"];
+
+      const params = [dbTenant.id, days, statuses];
+      let vehicleClause = "";
+      if (vehicleId) {
+        params.push(vehicleId);
+        vehicleClause = ` AND e.armada_user_id = $${params.length}`;
+      } else if (userIdsRaw.length) {
+        params.push(userIdsRaw);
+        vehicleClause = ` AND e.armada_user_id = ANY($${params.length}::int[])`;
+      }
+
+      const events = await dbQuery(
+        `SELECT e.id, e.status, e.title, e.armada_user_id, e.armada_username, e.user_display_name,
+                e.started_at, e.ended_at, e.approved_at, e.created_at, e.updated_at
+         FROM service_events e
+         WHERE e.tenant_id = $1
+           AND e.status = ANY($3::text[])
+           AND COALESCE(e.approved_at, e.ended_at, e.updated_at, e.created_at)
+             >= (CURRENT_DATE - ($2::int - 1))::timestamptz
+           ${vehicleClause}
+         ORDER BY COALESCE(e.approved_at, e.ended_at, e.updated_at, e.created_at) DESC
+         LIMIT 2000`,
+        params,
+      );
+
+      const eventIds = events.rows.map((r) => r.id);
+      let lines = { rows: [] };
+      if (eventIds.length) {
+        lines = await dbQuery(
+          `SELECT l.event_id, l.kind, l.description, l.qty, l.unit_price, l.unit_cost, l.catalog_item_id,
+                  c.name AS catalog_name, g.key AS group_key
+           FROM service_event_lines l
+           LEFT JOIN maintenance_catalog_items c ON c.id = l.catalog_item_id
+           LEFT JOIN maintenance_catalog_groups g ON g.id = c.group_id
+           WHERE l.event_id = ANY($1::uuid[])`,
+          [eventIds],
+        );
+      }
+      const linesByEvent = new Map();
+      for (const ln of lines.rows) {
+        const list = linesByEvent.get(ln.event_id) || [];
+        list.push(ln);
+        linesByEvent.set(ln.event_id, list);
+      }
+
+      const byDayMap = new Map();
+      const byVehicleMap = new Map();
+      const byItemMap = new Map();
+      const byCatalogGroup = {
+        part: { price: 0, cost: 0, qty: 0 },
+        service: { price: 0, cost: 0, qty: 0 },
+        other: { price: 0, cost: 0, qty: 0 },
+      };
+      const table = [];
+      let priceGrand = 0;
+      let costGrand = 0;
+      let includedJobs = 0;
+      let approvedJobs = 0;
+      let outstandingJobs = 0;
+      let openJobs = 0;
+      let doneJobs = 0;
+
+      for (const ev of events.rows) {
+        const status = ev.status;
+        const evLines = linesByEvent.get(ev.id) || [];
+        let priceTotal = 0;
+        let costTotal = 0;
+        let hasPrice = false;
+        let hasCost = false;
+        /** @type {{ name: string, kind: string, qty: number, price: number|null, cost: number|null }[]} */
+        const itemRows = [];
+        let matchedCatalog = !catalogGroup && !q;
+
+        for (const ln of evLines) {
+          const kind = normalizeLineKind(ln.group_key || ln.kind);
+          const itemName = String(ln.catalog_name || ln.description || "—").trim() || "—";
+          if (catalogGroup && kind !== catalogGroup) continue;
+          if (q && !itemName.toLowerCase().includes(q)) continue;
+          matchedCatalog = true;
+          const qty = Number(ln.qty) || 0;
+          const up = ln.unit_price == null ? null : Number(ln.unit_price);
+          const uc = ln.unit_cost == null ? null : Number(ln.unit_cost);
+          let linePrice = null;
+          let lineCost = null;
+          if (up != null) {
+            linePrice = up * qty;
+            priceTotal += linePrice;
+            hasPrice = true;
+            byCatalogGroup[kind].price += linePrice;
+          }
+          if (uc != null) {
+            lineCost = uc * qty;
+            costTotal += lineCost;
+            hasCost = true;
+            byCatalogGroup[kind].cost += lineCost;
+          }
+          byCatalogGroup[kind].qty += qty;
+          const tip = byItemMap.get(`${kind}|${itemName}`) || {
+            name: itemName,
+            kind,
+            price: 0,
+            cost: 0,
+            qty: 0,
+            jobs: 0,
+          };
+          tip.qty += qty;
+          if (linePrice != null) tip.price += linePrice;
+          if (lineCost != null) tip.cost += lineCost;
+          tip.jobs += 1;
+          byItemMap.set(`${kind}|${itemName}`, tip);
+          itemRows.push({
+            name: itemName,
+            kind,
+            qty,
+            price: linePrice,
+            cost: lineCost,
+          });
+        }
+
+        if ((catalogGroup || q) && !matchedCatalog) continue;
+        if ((catalogGroup || q) && !itemRows.length && evLines.length) continue;
+
+        includedJobs += 1;
+        if (status === "approved") approvedJobs += 1;
+        if (status === "due" || status === "in_progress" || status === "done") outstandingJobs += 1;
+        if (status === "due" || status === "in_progress") openJobs += 1;
+        if (status === "done") doneJobs += 1;
+
+        if (hasPrice) priceGrand += priceTotal;
+        if (hasCost) costGrand += costTotal;
+
+        const when =
+          status === "approved"
+            ? ev.approved_at || ev.ended_at || ev.updated_at
+            : status === "done"
+              ? ev.ended_at || ev.updated_at
+              : ev.updated_at || ev.created_at;
+        const day = String(when || "").slice(0, 10);
+        if (day) {
+          const d = byDayMap.get(day) || { price: 0, cost: 0, count: 0 };
+          d.count += 1;
+          if (hasPrice) d.price += priceTotal;
+          if (hasCost) d.cost += costTotal;
+          byDayMap.set(day, d);
+        }
+
+        const vKey =
+          ev.armada_user_id != null
+            ? String(ev.armada_user_id)
+            : `n:${ev.user_display_name || ev.armada_username || "—"}`;
+        const vLabel =
+          ev.user_display_name ||
+          ev.armada_username ||
+          (ev.armada_user_id != null ? `User ${ev.armada_user_id}` : "—");
+        const v = byVehicleMap.get(vKey) || {
+          label: vLabel,
+          userId: ev.armada_user_id == null ? null : Number(ev.armada_user_id),
+          price: 0,
+          cost: 0,
+          count: 0,
+          outstanding: 0,
+          approved: 0,
+        };
+        v.count += 1;
+        if (status === "approved") v.approved += 1;
+        if (status === "due" || status === "in_progress" || status === "done") v.outstanding += 1;
+        if (hasPrice) v.price += priceTotal;
+        if (hasCost) v.cost += costTotal;
+        byVehicleMap.set(vKey, v);
+
+        if (table.length < rowLimit) {
+          table.push({
+            id: ev.id,
+            title: ev.title || "",
+            status,
+            vehicle: vLabel,
+            armadaUserId: ev.armada_user_id == null ? null : Number(ev.armada_user_id),
+            date: when || null,
+            serviceDurationMinutes: serviceDurationMinutes(ev.started_at, ev.ended_at),
+            priceTotal: hasPrice ? priceTotal : null,
+            costTotal: hasCost ? costTotal : null,
+            margin: hasPrice || hasCost ? (hasPrice ? priceTotal : 0) - (hasCost ? costTotal : 0) : null,
+            moneyLocked: status === "approved",
+            items: itemRows,
+          });
+        }
+      }
+
+      const byDay = [...byDayMap.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([day, v]) => ({ day, ...v }));
+      const byVehicle = [...byVehicleMap.values()].sort((a, b) => b.cost - a.cost || b.price - a.price);
+      const byItem = [...byItemMap.values()]
+        .map((it) => ({ ...it, margin: it.price - it.cost }))
+        .sort((a, b) => b.cost - a.cost || b.price - a.price)
+        .slice(0, 50);
+
+      json(res, 200, {
+        days,
+        status: statusParam,
+        totals: {
+          jobs: includedJobs,
+          scanned: events.rows.length,
+          shown: table.length,
+          price: priceGrand,
+          cost: costGrand,
+          margin: priceGrand - costGrand,
+          approvedJobs,
+          outstandingJobs,
+          openJobs,
+          doneJobs,
+        },
+        byDay,
+        byVehicle,
+        byItem,
+        byCatalogGroup,
+        rows: table,
+      });
+      return true;
+    }
+
     if (url.pathname === "/api/maintenance/service-points" && req.method === "GET") {
       const q = String(url.searchParams.get("q") || "").trim();
       const params = [dbTenant.id];

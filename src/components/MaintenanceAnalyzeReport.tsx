@@ -14,6 +14,7 @@ import { Bar, Line } from "react-chartjs-2";
 import { axisTicks, baseTooltip, chartFonts } from "./chartTheme";
 import {
   downloadAnalyzeReportExcel,
+  buildUserFleetGroupMap,
   fetchAnalyzeSummary,
   fetchCostDashboard,
   fetchMaintStatusSummary,
@@ -21,12 +22,15 @@ import {
   type AnalyzeSummary,
   type CostDashboard,
 } from "../lib/maintenance";
+import { MaintenanceServiceResultsPanel } from "./MaintenanceServiceResultsPanel";
 import { MaintenanceScheduleCharts } from "./MaintenanceScheduleCharts";
+import type { FleetGroupRef } from "../lib/maintenance";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip);
 
 type Props = {
   fleetUserIds?: number[];
+  groups?: FleetGroupRef[];
   excelOk?: boolean;
   onOpenEvent?: (id: string) => void;
   onJumpToJobs?: (opts: {
@@ -42,6 +46,7 @@ function pct(rate: number | null | undefined): string {
 
 export function MaintenanceAnalyzeReport({
   fleetUserIds = [],
+  groups = [],
   excelOk = true,
   onOpenEvent,
   onJumpToJobs,
@@ -147,6 +152,7 @@ export function MaintenanceAnalyzeReport({
   };
 
   const vehicleRows = (cost?.byVehicle || []).slice(0, 12);
+  const userFleetGroups = useMemo(() => buildUserFleetGroupMap(groups), [groups]);
   const vehicleData: ChartData<"bar"> = {
     labels: vehicleRows.map((v) => v.label),
     datasets: [
@@ -230,7 +236,7 @@ export function MaintenanceAnalyzeReport({
             </select>
           </label>
           <label>
-            Cost group
+            Group (catalog)
             <select value={group} onChange={(e) => setGroup(e.target.value)}>
               <option value="">All</option>
               <option value="part">Part</option>
@@ -464,6 +470,39 @@ export function MaintenanceAnalyzeReport({
                   </div>
                 </div>
               </div>
+              {vehicleRows.length ? (
+                <div className="table-wrap">
+                  <h3>Approved by vehicle</h3>
+                  <table className="metrics">
+                    <thead>
+                      <tr>
+                        <th>Vehicle</th>
+                        <th>Fleet group</th>
+                        <th className="num">Jobs</th>
+                        <th className="num">Price</th>
+                        <th className="num">Cost</th>
+                        <th className="num">Margin</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(cost.byVehicle || []).slice(0, 25).map((v) => {
+                        const fg =
+                          v.userId != null ? userFleetGroups.get(v.userId) || [] : [];
+                        return (
+                          <tr key={`${v.userId ?? v.label}`}>
+                            <td>{v.label}</td>
+                            <td>{fg.length ? fg.join(", ") : "—"}</td>
+                            <td className="num">{v.count}</td>
+                            <td className="num">{v.price.toFixed(0)}</td>
+                            <td className="num">{v.cost.toFixed(0)}</td>
+                            <td className="num">{(v.price - v.cost).toFixed(0)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
               {cost.topItems.length ? (
                 <div className="maint-cost-top">
                   <h3>Top catalog items</h3>
@@ -484,6 +523,7 @@ export function MaintenanceAnalyzeReport({
                   <thead>
                     <tr>
                       <th>Vehicle</th>
+                      <th>Fleet group</th>
                       <th>Title</th>
                       <th>Approved</th>
                       <th className="num">Price</th>
@@ -494,14 +534,20 @@ export function MaintenanceAnalyzeReport({
                   <tbody>
                     {cost.table.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="muted">
+                        <td colSpan={7} className="muted">
                           No approved jobs in this range.
                         </td>
                       </tr>
                     ) : (
-                      cost.table.slice(0, 40).map((row) => (
+                      cost.table.slice(0, 40).map((row) => {
+                        const fg =
+                          row.armadaUserId != null
+                            ? userFleetGroups.get(row.armadaUserId) || []
+                            : [];
+                        return (
                         <tr key={row.id}>
                           <td>{row.vehicle}</td>
+                          <td>{fg.length ? fg.join(", ") : "—"}</td>
                           <td>
                             {onOpenEvent ? (
                               <button type="button" className="btn-link" onClick={() => onOpenEvent(row.id)}>
@@ -516,13 +562,21 @@ export function MaintenanceAnalyzeReport({
                           <td className="num">{row.costTotal == null ? "—" : row.costTotal.toFixed(0)}</td>
                           <td className="num">{row.margin == null ? "—" : row.margin.toFixed(0)}</td>
                         </tr>
-                      ))
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
               </div>
             </div>
           ) : null}
+
+          <MaintenanceServiceResultsPanel
+            days={days}
+            groups={groups}
+            excelOk={excelOk}
+            onOpenEvent={onOpenEvent}
+          />
 
           {assigneeBar.rows.length ? (
             <div className="table-wrap">

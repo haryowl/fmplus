@@ -726,6 +726,7 @@ export default function MaintenanceBoard() {
         {!eventId && boardPanel === "reports" && (
           <MaintenanceAnalyzeReport
             fleetUserIds={fleetUserIds}
+            groups={groups}
             excelOk={excelOk}
             onOpenEvent={(id) => {
               setEventId(id);
