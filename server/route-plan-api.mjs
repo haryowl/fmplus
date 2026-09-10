@@ -98,9 +98,19 @@ async function osrmTable(base, points) {
   if (!Array.isArray(distances) || distances.length !== points.length) {
     throw new Error("OSRM table returned unexpected distances");
   }
-  // Convert meters → km for optimizeOpenTour
-  const matrixKm = distances.map((row) => row.map((m) => (typeof m === "number" && m >= 0 ? m / 1000 : 1e9)));
-  return { matrixKm, durations };
+  // Convert meters → km for optimizeOpenTour. null = unreachable / outside extract.
+  const matrixKm = distances.map((row) =>
+    row.map((m) => (typeof m === "number" && Number.isFinite(m) && m >= 0 ? m / 1000 : null)),
+  );
+  const unreachablePairs = matrixKm.reduce((n, row, i) => {
+    for (let j = 0; j < row.length; j++) {
+      if (i !== j && row[j] == null) n += 1;
+    }
+    return n;
+  }, 0);
+  // TSP needs finite costs; treat unreachable as huge so we can still order, then warn.
+  const matrixForOpt = matrixKm.map((row) => row.map((m) => (m == null ? 1e9 : m)));
+  return { matrixKm: matrixForOpt, durations, unreachablePairs };
 }
 
 async function osrmRoute(base, ordered) {
@@ -212,45 +222,70 @@ export async function handleRoutePlanRequest(req, res) {
 
       if (base) {
         try {
-          const { matrixKm, durations } = await osrmTable(base, points);
+          const { matrixKm, durations, unreachablePairs } = await osrmTable(base, points);
           const opt = optimizeOpenTour(points, matrixKm);
           orderIdx = opt.order;
           let ordered = orderIdx.map((i) => points[i]);
           if (roundtrip) ordered = [...ordered, { ...start, label: `${start.label || "Start"} (return)`, id: "return" }];
-          try {
-            const routed = await osrmRoute(base, ordered);
-            geometry = routed.geometry;
-            distanceKm = routed.distanceKm;
-            durationSec = routed.durationSec;
-          } catch {
-            geometry = straightGeometry(ordered);
-            distanceKm = opt.distance;
+
+          if (unreachablePairs > 0) {
+            // Points outside the built OSM extract (e.g. Sulawesi on a Java-only graph).
+            const haver = optimizeOpenTour(points);
+            orderIdx = haver.order;
+            ordered = orderIdx.map((i) => points[i]);
             if (roundtrip) {
-              const last = ordered[ordered.length - 2];
-              distanceKm += haversineKm(last.lat, last.lon, start.lat, start.lon);
+              ordered = [...ordered, { ...start, label: `${start.label || "Start"} (return)`, id: "return" }];
+              distanceKm =
+                haver.distance +
+                haversineKm(ordered[ordered.length - 2].lat, ordered[ordered.length - 2].lon, start.lat, start.lon);
+            } else {
+              distanceKm = haver.distance;
             }
-            let dur = 0;
-            let okDur = true;
-            for (let i = 0; i < orderIdx.length - 1; i++) {
-              const a = orderIdx[i];
-              const b = orderIdx[i + 1];
-              const d = durations?.[a]?.[b];
-              if (typeof d !== "number" || d < 0) {
-                okDur = false;
-                break;
+            geometry = straightGeometry(ordered);
+            durationSec = null;
+            engine = "haversine";
+            warning =
+              "OSRM has no road path for these coordinates (outside the map extract). Showing straight-line only. Build a Sulawesi/Indonesia extract for road tracks here.";
+          } else {
+            try {
+              const routed = await osrmRoute(base, ordered);
+              geometry = routed.geometry;
+              distanceKm = routed.distanceKm;
+              durationSec = routed.durationSec;
+              engine = "osrm";
+              if (!geometry.length) {
+                warning = "OSRM returned an empty geometry; check extract coverage for these points";
               }
-              dur += d;
+            } catch (routeErr) {
+              geometry = straightGeometry(ordered);
+              distanceKm = opt.distance;
+              if (roundtrip) {
+                const last = ordered[ordered.length - 2];
+                distanceKm += haversineKm(last.lat, last.lon, start.lat, start.lon);
+              }
+              let dur = 0;
+              let okDur = true;
+              for (let i = 0; i < orderIdx.length - 1; i++) {
+                const a = orderIdx[i];
+                const b = orderIdx[i + 1];
+                const d = durations?.[a]?.[b];
+                if (typeof d !== "number" || d < 0) {
+                  okDur = false;
+                  break;
+                }
+                dur += d;
+              }
+              if (okDur && roundtrip) {
+                const lastIdx = orderIdx[orderIdx.length - 1];
+                const d = durations?.[lastIdx]?.[0];
+                if (typeof d === "number" && d >= 0) dur += d;
+                else okDur = false;
+              }
+              durationSec = okDur ? dur : null;
+              engine = "osrm";
+              warning = `OSRM table OK but route geometry failed (${routeErr instanceof Error ? routeErr.message : String(routeErr)}); showing straight segments`;
             }
-            if (okDur && roundtrip) {
-              const lastIdx = orderIdx[orderIdx.length - 1];
-              const d = durations?.[lastIdx]?.[0];
-              if (typeof d === "number" && d >= 0) dur += d;
-              else okDur = false;
-            }
-            durationSec = okDur ? dur : null;
-            warning = "OSRM table OK; route geometry fallback to straight segments";
           }
-          engine = "osrm";
         } catch (err) {
           warning = `OSRM unavailable (${err instanceof Error ? err.message : String(err)}); using haversine`;
           const opt = optimizeOpenTour(points);
