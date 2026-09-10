@@ -12,6 +12,11 @@ import {
   verifyPassword,
 } from "./field-auth.mjs";
 import { readCookies } from "./admin-auth.mjs";
+import {
+  loadDispatchPhotoBytes,
+  publicDispatchPhoto,
+  saveDispatchStopPhoto,
+} from "./dispatch-api.mjs";
 import { applyEventPatch, loadEventDetail, loadPhotoBytes, parseDataUrl, publicEvent, savePhoto } from "./maintenance-api.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 import { mergeEntitlements } from "./entitlements.mjs";
@@ -117,19 +122,48 @@ async function mobileFlagsForTenant(tenantId) {
 function publicDispatchStop(row) {
   return {
     id: row.id,
+    orderId: row.order_id || null,
     sortOrder: Number(row.sort_order) || 0,
     name: row.name || "",
     address: row.address || "",
     lat: row.lat == null ? null : Number(row.lat),
     lon: row.lon == null ? null : Number(row.lon),
     notes: row.notes || "",
+    zone: row.zone || "",
+    volumeM3: row.volume_m3 == null ? null : Number(row.volume_m3),
+    weightKg: row.weight_kg == null ? null : Number(row.weight_kg),
+    windowStart: row.window_start || "",
+    windowEnd: row.window_end || "",
     status: row.status || "pending",
     arrivedAt: row.arrived_at || null,
     completedAt: row.completed_at || null,
   };
 }
 
+function fieldCapacityFrom(row, stops) {
+  const volumeCapacityM3 =
+    row.volume_capacity_m3 == null ? 12 : Number(row.volume_capacity_m3) || 12;
+  const weightCapacityKg =
+    row.weight_capacity_kg == null ? 1500 : Number(row.weight_capacity_kg) || 1500;
+  let volumeUsed = 0;
+  let weightUsed = 0;
+  for (const s of stops) {
+    if (s.volume_m3 != null) volumeUsed += Number(s.volume_m3) || 0;
+    if (s.weight_kg != null) weightUsed += Number(s.weight_kg) || 0;
+  }
+  const utilV = volumeCapacityM3 > 0 ? (volumeUsed / volumeCapacityM3) * 100 : 0;
+  const utilW = weightCapacityKg > 0 ? (weightUsed / weightCapacityKg) * 100 : 0;
+  return {
+    volumeCapacityM3,
+    weightCapacityKg,
+    volumeUsed: Math.round(volumeUsed * 1000) / 1000,
+    weightUsed: Math.round(weightUsed * 10) / 10,
+    utilizationPct: Math.round(Math.max(utilV, utilW) * 10) / 10,
+  };
+}
+
 function publicDispatchJob(row, stops = []) {
+  const cap = fieldCapacityFrom(row, stops);
   return {
     id: row.id,
     status: row.status,
@@ -146,6 +180,7 @@ function publicDispatchJob(row, stops = []) {
     fieldNote: row.field_note || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ...cap,
     stops: stops.map(publicDispatchStop),
   };
 }
@@ -161,7 +196,9 @@ async function loadAssignedDispatchJob(tenantId, jobId, fieldUserId) {
 
 async function loadDispatchStops(jobId) {
   const rows = await dbQuery(
-    `SELECT id, sort_order, name, address, lat, lon, notes, status, arrived_at, completed_at
+    `SELECT id, order_id, sort_order, name, address, lat, lon, notes, zone,
+            volume_m3, weight_kg, window_start, window_end,
+            status, arrived_at, completed_at
      FROM dispatch_stops WHERE job_id = $1 ORDER BY sort_order ASC, created_at ASC`,
     [jobId],
   );
@@ -566,6 +603,107 @@ export async function handleFieldRequest(req, res) {
           stop: publicDispatchStop(updated.rows[0]),
           job: publicDispatchJob(row, await loadDispatchStops(row.id)),
         });
+        return true;
+      }
+
+      const stopPhotosList =
+        /^\/api\/field\/dispatch\/jobs\/([0-9a-f-]{36})\/stops\/([0-9a-f-]{36})\/photos$/i.exec(
+          url.pathname,
+        );
+      if (stopPhotosList && req.method === "GET") {
+        const job = await loadAssignedDispatchJob(user.tenantId, stopPhotosList[1], user.id);
+        if (!job) {
+          json(res, 404, { error: "Job not found or not assigned to you" });
+          return true;
+        }
+        const stopOk = await dbQuery(
+          `SELECT id FROM dispatch_stops WHERE id = $1 AND job_id = $2`,
+          [stopPhotosList[2], job.id],
+        );
+        if (!stopOk.rows[0]) {
+          json(res, 404, { error: "Stop not found" });
+          return true;
+        }
+        const rows = await dbQuery(
+          `SELECT id, stop_id, content_type, bytes, caption, created_at
+           FROM dispatch_stop_photos WHERE stop_id = $1 ORDER BY created_at DESC LIMIT 50`,
+          [stopPhotosList[2]],
+        );
+        json(res, 200, {
+          photos: rows.rows.map((r) => publicDispatchPhoto(r, "/api/field/dispatch/photos")),
+        });
+        return true;
+      }
+
+      if (stopPhotosList && req.method === "POST") {
+        const job = await loadAssignedDispatchJob(user.tenantId, stopPhotosList[1], user.id);
+        if (!job) {
+          json(res, 404, { error: "Job not found or not assigned to you" });
+          return true;
+        }
+        if (job.status === "done" || job.status === "cancelled") {
+          json(res, 403, { error: "Completed jobs cannot be edited" });
+          return true;
+        }
+        const stopOk = await dbQuery(
+          `SELECT id FROM dispatch_stops WHERE id = $1 AND job_id = $2`,
+          [stopPhotosList[2], job.id],
+        );
+        if (!stopOk.rows[0]) {
+          json(res, 404, { error: "Stop not found" });
+          return true;
+        }
+        const body = await readJson(req);
+        const parsed = parseDataUrl(body.dataUrl || body.data || "");
+        if (!parsed || !parsed.buffer?.length) {
+          json(res, 400, { error: "dataUrl image required" });
+          return true;
+        }
+        if (parsed.buffer.length > 8_000_000) {
+          json(res, 413, { error: "Image too large" });
+          return true;
+        }
+        const row = await saveDispatchStopPhoto(stopPhotosList[2], user.tenantId, {
+          buffer: parsed.buffer,
+          contentType: parsed.contentType,
+          caption: String(body.caption || "").trim().slice(0, 200) || null,
+          fieldUserId: user.id,
+        });
+        json(res, 201, {
+          photo: publicDispatchPhoto(row, "/api/field/dispatch/photos"),
+        });
+        return true;
+      }
+
+      const fieldPhotoGet = /^\/api\/field\/dispatch\/photos\/([0-9a-f-]{36})$/i.exec(url.pathname);
+      if (fieldPhotoGet && req.method === "GET") {
+        const loaded = await loadDispatchPhotoBytes(fieldPhotoGet[1], user.tenantId);
+        if (!loaded) {
+          json(res, 404, { error: "Photo not found" });
+          return true;
+        }
+        // Ensure photo belongs to a stop on a job assigned to this user
+        const owned = await dbQuery(
+          `SELECT p.id
+           FROM dispatch_stop_photos p
+           JOIN dispatch_stops s ON s.id = p.stop_id
+           JOIN dispatch_jobs j ON j.id = s.job_id
+           WHERE p.id = $1 AND j.tenant_id = $2 AND j.assigned_field_user_id = $3`,
+          [fieldPhotoGet[1], user.tenantId, user.id],
+        );
+        if (!owned.rows[0]) {
+          json(res, 404, { error: "Photo not found" });
+          return true;
+        }
+        send(
+          res,
+          200,
+          {
+            "Content-Type": loaded.contentType,
+            "Cache-Control": "private, max-age=3600",
+          },
+          loaded.body,
+        );
         return true;
       }
 

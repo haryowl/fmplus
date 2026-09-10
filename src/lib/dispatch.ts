@@ -1,4 +1,4 @@
-import { tenantHeaders } from "./tenant";
+import { currentTenantKey, tenantHeaders } from "./tenant";
 
 export type DispatchStatus =
   | "draft"
@@ -10,14 +10,22 @@ export type DispatchStatus =
 
 export type DispatchStopStatus = "pending" | "arrived" | "done" | "skipped";
 
+export type DispatchOrderStatus = "pending" | "assigned" | "cancelled";
+
 export type DispatchStop = {
   id: string;
+  orderId?: string | null;
   sortOrder: number;
   name: string;
   address: string;
   lat: number | null;
   lon: number | null;
   notes: string;
+  zone?: string;
+  volumeM3?: number | null;
+  weightKg?: number | null;
+  windowStart?: string;
+  windowEnd?: string;
   status: DispatchStopStatus;
   arrivedAt: string | null;
   completedAt: string | null;
@@ -41,7 +49,32 @@ export type DispatchJob = {
   fieldNote: string;
   createdAt: string;
   updatedAt: string;
+  volumeCapacityM3?: number;
+  weightCapacityKg?: number;
+  volumeUsed?: number;
+  weightUsed?: number;
+  utilizationPct?: number;
   stops: DispatchStop[];
+};
+
+export type DispatchOrder = {
+  id: string;
+  externalRef: string;
+  customerName: string;
+  address: string;
+  lat: number | null;
+  lon: number | null;
+  zone: string;
+  volumeM3: number | null;
+  weightKg: number | null;
+  windowStart: string;
+  windowEnd: string;
+  status: DispatchOrderStatus;
+  jobId: string | null;
+  stopId: string | null;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type DispatchFieldUser = {
@@ -50,6 +83,16 @@ export type DispatchFieldUser = {
   role: string;
   displayName: string;
   enabled: boolean;
+};
+
+export type DispatchPhoto = {
+  id: string;
+  stopId?: string | null;
+  contentType: string;
+  bytes: number | null;
+  caption: string;
+  createdAt: string;
+  url: string;
 };
 
 export const DISPATCH_STATUS_LABELS: Record<DispatchStatus, string> = {
@@ -67,6 +110,20 @@ export function dispatchVehicleLabel(job: DispatchJob): string {
 
 export function dispatchAssigneeLabel(job: DispatchJob): string {
   return job.assigneeDisplayName || job.assigneeUsername || "Unassigned";
+}
+
+export function formatDispatchWindow(stop: { windowStart?: string; windowEnd?: string }): string {
+  const a = (stop.windowStart || "").trim();
+  const b = (stop.windowEnd || "").trim();
+  if (a && b) return `${a}–${b}`;
+  return a || b || "";
+}
+
+export function utilizationTone(pct: number | undefined): "ok" | "warn" | "over" {
+  const n = pct ?? 0;
+  if (n > 100) return "over";
+  if (n >= 92) return "warn";
+  return "ok";
 }
 
 export async function fetchDispatchJobs(
@@ -99,7 +156,20 @@ export async function createDispatchJob(body: {
   armadaUsername?: string;
   userDisplayName?: string;
   assignedFieldUserId?: string | null;
-  stops?: Array<{ name?: string; address?: string; lat?: number | null; lon?: number | null; notes?: string }>;
+  volumeCapacityM3?: number | null;
+  weightCapacityKg?: number | null;
+  stops?: Array<{
+    name?: string;
+    address?: string;
+    lat?: number | null;
+    lon?: number | null;
+    notes?: string;
+    zone?: string;
+    volumeM3?: number | null;
+    weightKg?: number | null;
+    windowStart?: string;
+    windowEnd?: string;
+  }>;
 }): Promise<DispatchJob> {
   const res = await fetch("/api/dispatch/jobs", {
     method: "POST",
@@ -127,6 +197,30 @@ export async function patchDispatchJob(
   return data.job;
 }
 
+export async function assignOrdersToJob(jobId: string, orderIds: string[]): Promise<DispatchJob> {
+  const res = await fetch(`/api/dispatch/jobs/${encodeURIComponent(jobId)}/assign-orders`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify({ orderIds }),
+  });
+  const data = (await res.json().catch(() => ({}))) as { job?: DispatchJob; error?: string };
+  if (!res.ok) throw new Error(data.error || `Assign ${res.status}`);
+  if (!data.job) throw new Error("Assign failed");
+  return data.job;
+}
+
+export async function optimizeJobStops(jobId: string): Promise<DispatchJob> {
+  const res = await fetch(`/api/dispatch/jobs/${encodeURIComponent(jobId)}/optimize-stops`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: "{}",
+  });
+  const data = (await res.json().catch(() => ({}))) as { job?: DispatchJob; error?: string };
+  if (!res.ok) throw new Error(data.error || `Optimize ${res.status}`);
+  if (!data.job) throw new Error("Optimize failed");
+  return data.job;
+}
+
 export async function fetchDispatchFieldUsers(): Promise<DispatchFieldUser[]> {
   const res = await fetch("/api/dispatch/field-users", {
     headers: { accept: "application/json", ...tenantHeaders() },
@@ -134,6 +228,87 @@ export async function fetchDispatchFieldUsers(): Promise<DispatchFieldUser[]> {
   const data = (await res.json().catch(() => ({}))) as { users?: DispatchFieldUser[]; error?: string };
   if (!res.ok) throw new Error(data.error || `Field users ${res.status}`);
   return data.users || [];
+}
+
+export async function fetchDispatchOrders(
+  status: "pending" | "all" | DispatchOrderStatus = "pending",
+  signal?: AbortSignal,
+): Promise<DispatchOrder[]> {
+  const res = await fetch(`/api/dispatch/orders?status=${encodeURIComponent(status)}&limit=100`, {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as { orders?: DispatchOrder[]; error?: string };
+  if (!res.ok) throw new Error(data.error || `Orders ${res.status}`);
+  return data.orders || [];
+}
+
+export async function createDispatchOrder(body: {
+  customerName: string;
+  externalRef?: string;
+  address?: string;
+  lat?: number | null;
+  lon?: number | null;
+  zone?: string;
+  volumeM3?: number | null;
+  weightKg?: number | null;
+  windowStart?: string;
+  windowEnd?: string;
+  notes?: string;
+}): Promise<DispatchOrder> {
+  const res = await fetch("/api/dispatch/orders", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as { order?: DispatchOrder; error?: string };
+  if (!res.ok) throw new Error(data.error || `Create order ${res.status}`);
+  if (!data.order) throw new Error("Create order failed");
+  return data.order;
+}
+
+export async function fetchStopPhotos(stopId: string, field = false): Promise<DispatchPhoto[]> {
+  const path = field
+    ? null
+    : `/api/dispatch/stops/${encodeURIComponent(stopId)}/photos`;
+  if (!path) throw new Error("Use fieldStopPhotos for field");
+  const res = await fetch(path, {
+    headers: { accept: "application/json", ...tenantHeaders() },
+  });
+  const data = (await res.json().catch(() => ({}))) as { photos?: DispatchPhoto[]; error?: string };
+  if (!res.ok) throw new Error(data.error || `Photos ${res.status}`);
+  return data.photos || [];
+}
+
+export async function fieldStopPhotos(jobId: string, stopId: string): Promise<DispatchPhoto[]> {
+  const res = await fetch(
+    `/api/field/dispatch/jobs/${encodeURIComponent(jobId)}/stops/${encodeURIComponent(stopId)}/photos`,
+    { credentials: "include", headers: { accept: "application/json" } },
+  );
+  const data = (await res.json().catch(() => ({}))) as { photos?: DispatchPhoto[]; error?: string };
+  if (!res.ok) throw new Error(data.error || `Photos ${res.status}`);
+  return data.photos || [];
+}
+
+export async function uploadDispatchStopPhoto(
+  jobId: string,
+  stopId: string,
+  dataUrl: string,
+  caption = "",
+): Promise<DispatchPhoto> {
+  const res = await fetch(
+    `/api/field/dispatch/jobs/${encodeURIComponent(jobId)}/stops/${encodeURIComponent(stopId)}/photos`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ dataUrl, caption }),
+    },
+  );
+  const data = (await res.json().catch(() => ({}))) as { photo?: DispatchPhoto; error?: string };
+  if (!res.ok) throw new Error(data.error || `Upload ${res.status}`);
+  if (!data.photo) throw new Error("Upload failed");
+  return data.photo;
 }
 
 /** Parse lines like: -6.2, 106.8 Depot A */
@@ -164,4 +339,16 @@ export function parseStopPaste(text: string): Array<{
     }
   }
   return out;
+}
+
+export function mapsNavigateUrl(lat: number, lon: number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}&travelmode=driving`;
+}
+
+/** Append tenant key so <img src> works without X-Fms-Tenant header. */
+export function withTenantQuery(url: string): string {
+  const k = currentTenantKey();
+  if (!k || !url) return url;
+  const join = url.includes("?") ? "&" : "?";
+  return `${url}${join}k=${encodeURIComponent(k)}`;
 }

@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { prepareImageDataUrl } from "../lib/imageUpload";
 import {
   DISPATCH_STATUS_LABELS,
   dispatchVehicleLabel,
+  fieldStopPhotos,
+  formatDispatchWindow,
+  mapsNavigateUrl,
+  uploadDispatchStopPhoto,
   type DispatchJob,
+  type DispatchPhoto,
   type DispatchStatus,
   type DispatchStop,
 } from "../lib/dispatch";
@@ -27,12 +33,16 @@ type Props = {
   onNotice: (msg: string) => void;
 };
 
+type Tab = "route" | "proof";
+
 export function FieldDispatchPanel({ onError, onNotice }: Props) {
   const [jobs, setJobs] = useState<DispatchJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fieldNote, setFieldNote] = useState("");
+  const [tab, setTab] = useState<Tab>("route");
+  const [photosByStop, setPhotosByStop] = useState<Record<string, DispatchPhoto[]>>({});
   const onErrorRef = useRef(onError);
   const onNoticeRef = useRef(onNotice);
   onErrorRef.current = onError;
@@ -51,6 +61,11 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
     () => jobs.filter((j) => j.status === "done" || j.status === "cancelled"),
     [jobs],
   );
+
+  const stopsLeft = useMemo(() => {
+    if (!selected) return 0;
+    return selected.stops.filter((s) => s.status !== "done" && s.status !== "skipped").length;
+  }, [selected]);
 
   const loadJobs = useCallback(async () => {
     setLoading(true);
@@ -77,6 +92,25 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
     }
     setFieldNote(selected.fieldNote || "");
   }, [selected?.id, selected?.fieldNote]);
+
+  useEffect(() => {
+    if (!selected || tab !== "proof") return;
+    let cancelled = false;
+    void (async () => {
+      const next: Record<string, DispatchPhoto[]> = {};
+      for (const stop of selected.stops) {
+        try {
+          next[stop.id] = await fieldStopPhotos(selected.id, stop.id);
+        } catch {
+          next[stop.id] = [];
+        }
+      }
+      if (!cancelled) setPhotosByStop(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id, selected?.stops, tab]);
 
   async function patchJob(id: string, body: Record<string, unknown>) {
     setBusy(true);
@@ -108,7 +142,7 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
       );
       setJobs((prev) => prev.map((j) => (j.id === data.job.id ? data.job : j)));
       onErrorRef.current("");
-      onNoticeRef.current(`Stop marked ${status}`);
+      onNoticeRef.current(status === "done" ? "Stop completed" : `Stop marked ${status}`);
     } catch (err) {
       onErrorRef.current(err instanceof Error ? err.message : "Stop update failed");
     } finally {
@@ -116,21 +150,54 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
     }
   }
 
+  async function onPhoto(stopId: string, e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !selected) return;
+    setBusy(true);
+    try {
+      const dataUrl = await prepareImageDataUrl(file);
+      const photo = await uploadDispatchStopPhoto(selected.id, stopId, dataUrl);
+      setPhotosByStop((prev) => ({
+        ...prev,
+        [stopId]: [photo, ...(prev[stopId] || [])],
+      }));
+      onNoticeRef.current("POD photo saved");
+      onErrorRef.current("");
+    } catch (err) {
+      onErrorRef.current(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (selected) {
     const locked = selected.status === "done" || selected.status === "cancelled";
+    const nextStop = selected.stops.find((s) => s.status !== "done" && s.status !== "skipped");
     return (
       <div className="field-job-detail">
         <button
           type="button"
           className="btn-ghost field-back"
-            onClick={() => {
+          onClick={() => {
             setSelectedId(null);
+            setTab("route");
             onNoticeRef.current("");
             onErrorRef.current("");
           }}
         >
           ← Jobs
         </button>
+
+        <section className="field-panel field-dispatch-capacity">
+          <p className="field-kicker">CAPACITY TODAY</p>
+          <p className="field-dispatch-cap-main">
+            {selected.volumeUsed ?? 0} / {selected.volumeCapacityM3 ?? 12} m³ · {selected.utilizationPct ?? 0}%
+          </p>
+          <p className="muted">
+            {stopsLeft} stop{stopsLeft === 1 ? "" : "s"} left · {dispatchVehicleLabel(selected)}
+          </p>
+        </section>
 
         <section className="field-panel field-job-hero">
           <div className="field-job-hero-top">
@@ -139,163 +206,192 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
             </span>
           </div>
           <h2>{selected.title}</h2>
-          <p className="field-vehicle">{dispatchVehicleLabel(selected)}</p>
           {selected.notes ? <p className="muted">{selected.notes}</p> : null}
-          <ol className="field-flow-steps">
-            <li className={selected.status !== "assigned" ? "is-done" : "is-current"}>1. Start</li>
-            <li
-              className={
-                selected.status === "en_route" || selected.status === "arrived"
-                  ? "is-current"
-                  : selected.status === "done"
-                    ? "is-done"
-                    : ""
-              }
-            >
-              2. Stops
-            </li>
-            <li className={selected.status === "done" ? "is-done" : selected.status === "arrived" ? "is-current" : ""}>
-              3. Done
-            </li>
-          </ol>
         </section>
 
-        <section className="field-panel">
-          <header className="field-panel-head">
-            <h3>Status</h3>
-          </header>
-          <div className="field-action-row">
-            {selected.status === "assigned" ? (
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={busy || locked}
-                onClick={() => void patchJob(selected.id, { status: "en_route" }).then((j) => j && onNoticeRef.current("En route"))}
-              >
-                Start / En route
-              </button>
-            ) : null}
-            {selected.status === "en_route" ? (
-              <button
-                type="button"
-                className="btn"
-                disabled={busy || locked}
-                onClick={() => void patchJob(selected.id, { status: "arrived" }).then((j) => j && onNoticeRef.current("Arrived"))}
-              >
-                Mark arrived
-              </button>
-            ) : null}
-            {!locked && selected.status !== "assigned" ? (
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={busy}
-                onClick={() =>
-                  void patchJob(selected.id, { status: "done", fieldNote }).then((j) => {
-                    if (!j) return;
-                    onNoticeRef.current("Job completed");
-                    setSelectedId(null);
-                    void loadJobs();
-                  })
-                }
-              >
-                Complete job
-              </button>
-            ) : null}
-          </div>
-        </section>
+        <div className="field-mode-tabs" role="tablist" aria-label="Dispatch views">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "route"}
+            className={`field-filter-chip${tab === "route" ? " is-active" : ""}`}
+            onClick={() => setTab("route")}
+          >
+            Today&apos;s Route
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "proof"}
+            className={`field-filter-chip${tab === "proof" ? " is-active" : ""}`}
+            onClick={() => setTab("proof")}
+          >
+            Proof
+          </button>
+        </div>
 
-        <section className="field-panel">
-          <header className="field-panel-head">
-            <h3>Field note</h3>
-          </header>
-          <label className="field-label">
-            Note
-            <textarea
-              value={fieldNote}
-              onChange={(e) => setFieldNote(e.target.value)}
-              rows={3}
-              disabled={locked || busy}
-              readOnly={locked}
-            />
-          </label>
-          {!locked ? (
-            <button
-              type="button"
-              className="btn-ghost"
-              disabled={busy}
-              onClick={() =>
-                void patchJob(selected.id, { fieldNote }).then((j) => j && onNoticeRef.current("Note saved"))
-              }
-            >
-              Save note
-            </button>
-          ) : null}
-        </section>
+        {tab === "route" ? (
+          <>
+            <section className="field-panel">
+              <header className="field-panel-head">
+                <h3>Status</h3>
+              </header>
+              <div className="field-action-row">
+                {selected.status === "assigned" ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={busy || locked}
+                    onClick={() =>
+                      void patchJob(selected.id, { status: "en_route" }).then(
+                        (j) => j && onNoticeRef.current("En route"),
+                      )
+                    }
+                  >
+                    Start route
+                  </button>
+                ) : null}
+                {!locked && selected.status !== "assigned" ? (
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={busy}
+                    onClick={() =>
+                      void patchJob(selected.id, { status: "done", fieldNote }).then((j) => {
+                        if (!j) return;
+                        onNoticeRef.current("Job completed");
+                        setSelectedId(null);
+                        void loadJobs();
+                      })
+                    }
+                  >
+                    Complete job
+                  </button>
+                ) : null}
+              </div>
+              <label className="field-label">
+                Field note
+                <textarea
+                  value={fieldNote}
+                  onChange={(e) => setFieldNote(e.target.value)}
+                  rows={2}
+                  disabled={locked || busy}
+                  readOnly={locked}
+                />
+              </label>
+              {!locked ? (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={busy}
+                  onClick={() =>
+                    void patchJob(selected.id, { fieldNote }).then(
+                      (j) => j && onNoticeRef.current("Note saved"),
+                    )
+                  }
+                >
+                  Save note
+                </button>
+              ) : null}
+            </section>
 
-        <section className="field-panel">
-          <header className="field-panel-head">
-            <h3>Stops</h3>
-          </header>
-          {selected.stops.length === 0 ? (
-            <p className="muted">No stops on this job.</p>
-          ) : (
+            <section className="field-panel">
+              <header className="field-panel-head">
+                <h3>Stops · {selected.stops.length}</h3>
+              </header>
+              {selected.stops.length === 0 ? (
+                <p className="muted">No stops on this job.</p>
+              ) : (
+                <ul className="field-dispatch-stops">
+                  {selected.stops.map((stop, i) => {
+                    const isNext = nextStop?.id === stop.id;
+                    const done = stop.status === "done" || stop.status === "skipped";
+                    return (
+                      <li key={stop.id} className={`field-dispatch-stop${isNext ? " is-next" : ""}`}>
+                        <div>
+                          <div className="field-dispatch-stop-top">
+                            <span className="field-dispatch-stop-num">#{i + 1}</span>
+                            {isNext ? <span className="field-pill">NEXT</span> : null}
+                            <strong>{stop.name}</strong>
+                          </div>
+                          {formatDispatchWindow(stop) ? (
+                            <p className="muted">⏱ {formatDispatchWindow(stop)}</p>
+                          ) : null}
+                          {stop.address ? <p className="muted">{stop.address}</p> : null}
+                          <p className="muted">
+                            {stop.zone ? `${stop.zone} · ` : ""}
+                            {stop.volumeM3 != null ? `${stop.volumeM3} m³` : "—"}
+                            {stop.status !== "pending" ? ` · ${stop.status}` : ""}
+                          </p>
+                        </div>
+                        {!locked && !done ? (
+                          <div className="field-dispatch-stop-actions">
+                            {stop.lat != null && stop.lon != null ? (
+                              <a
+                                className="btn-ghost"
+                                href={mapsNavigateUrl(stop.lat, stop.lon)}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                Navigate
+                              </a>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={busy}
+                              onClick={() => void patchStop(selected.id, stop.id, "done")}
+                            >
+                              Complete
+                            </button>
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          </>
+        ) : (
+          <section className="field-panel">
+            <header className="field-panel-head">
+              <h3>Proof of delivery</h3>
+              <p className="muted">Photo POD per stop</p>
+            </header>
             <ul className="field-dispatch-stops">
               {selected.stops.map((stop, i) => (
                 <li key={stop.id} className="field-dispatch-stop">
                   <div>
                     <strong>
-                      {i + 1}. {stop.name}
+                      #{i + 1} {stop.name}
                     </strong>
-                    <span className="muted"> · {stop.status}</span>
-                    {stop.lat != null && stop.lon != null ? (
-                      <div>
-                        <a
-                          className="field-map-link"
-                          href={`https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lon}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Open map
+                    <div className="dispatch-proof-thumbs">
+                      {(photosByStop[stop.id] || []).map((p) => (
+                        <a key={p.id} href={p.url} target="_blank" rel="noreferrer">
+                          <img src={p.url} alt={p.caption || "POD"} />
                         </a>
-                      </div>
-                    ) : null}
-                  </div>
-                  {!locked && stop.status !== "done" && stop.status !== "skipped" ? (
-                    <div className="field-dispatch-stop-actions">
-                      {stop.status === "pending" ? (
-                        <button
-                          type="button"
-                          className="btn-ghost"
-                          disabled={busy}
-                          onClick={() => void patchStop(selected.id, stop.id, "arrived")}
-                        >
-                          Arrived
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={busy}
-                        onClick={() => void patchStop(selected.id, stop.id, "done")}
-                      >
-                        Done
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        disabled={busy}
-                        onClick={() => void patchStop(selected.id, stop.id, "skipped")}
-                      >
-                        Skip
-                      </button>
+                      ))}
                     </div>
+                  </div>
+                  {!locked ? (
+                    <label className="field-photo-btn">
+                      Take / upload photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        hidden
+                        disabled={busy}
+                        onChange={(e) => void onPhoto(stop.id, e)}
+                      />
+                    </label>
                   ) : null}
                 </li>
               ))}
             </ul>
-          )}
-        </section>
+          </section>
+        )}
       </div>
     );
   }
@@ -334,7 +430,7 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                       <span className="field-job-date">{DISPATCH_STATUS_LABELS[job.status]}</span>
                     </span>
                     <span className="field-job-row-meta muted">
-                      {dispatchVehicleLabel(job)} · {job.stops.length} stop{job.stops.length === 1 ? "" : "s"}
+                      {dispatchVehicleLabel(job)} · {job.stops.length} stops · {job.utilizationPct ?? 0}%
                     </span>
                   </span>
                 </button>
