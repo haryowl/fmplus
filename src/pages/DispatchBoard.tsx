@@ -395,39 +395,44 @@ export default function DispatchBoard() {
         </div>
       </header>
 
-      <main className="shell">
-        <section className="dispatch-kpi-strip" aria-label="Dispatch KPIs">
-          <div className="dispatch-kpi">
-            <span className="muted">Unassigned</span>
-            <strong>{kpis.openOrders}</strong>
-          </div>
-          <div className="dispatch-kpi">
-            <span className="muted">Open jobs</span>
-            <strong>{kpis.openJobs}</strong>
-          </div>
-          <div className="dispatch-kpi">
-            <span className="muted">Avg fill</span>
-            <strong className={`dispatch-util-${utilizationTone(kpis.avgUtil)}`}>{kpis.avgUtil}%</strong>
+      <main className="shell dispatch-shell">
+        <section className="dispatch-toolbar" aria-label="Dispatch overview">
+          <div className="dispatch-kpi-strip">
+            <div className="dispatch-kpi">
+              <span>Unassigned</span>
+              <strong>{kpis.openOrders}</strong>
+            </div>
+            <div className="dispatch-kpi">
+              <span>Open jobs</span>
+              <strong>{kpis.openJobs}</strong>
+            </div>
+            <div className="dispatch-kpi">
+              <span>Avg fill</span>
+              <strong className={`dispatch-util-${utilizationTone(kpis.avgUtil)}`}>{kpis.avgUtil}%</strong>
+            </div>
           </div>
           <div className="dispatch-kpi-actions">
-            <button type="button" className="btn-ghost" disabled={loading} onClick={() => setReload((n) => n + 1)}>
+            <button type="button" className="btn-secondary" disabled={loading} onClick={() => setReload((n) => n + 1)}>
               Refresh
             </button>
-            <button type="button" className="btn-ghost" onClick={() => setShowNewJob((v) => !v)}>
-              {showNewJob ? "Hide job" : "New job"}
+            <button type="button" className="btn btn-primary" onClick={() => setShowNewJob((v) => !v)}>
+              {showNewJob ? "Close" : "New job"}
             </button>
           </div>
         </section>
 
         {(bootError || error) && (
-          <p className="muted" role="alert" style={{ color: "var(--danger, #b42318)" }}>
+          <p className="dispatch-alert" role="alert">
             {error || bootError}
           </p>
         )}
 
         {showNewJob && (
-          <section className="panel dispatch-create">
-            <h2>New job / vehicle run</h2>
+          <section className="dispatch-rail dispatch-create">
+            <header className="dispatch-pane-head">
+              <p className="dispatch-eyebrow">Fleet run</p>
+              <h2>New job</h2>
+            </header>
             <div className="dispatch-create-grid">
               <label className="field">
                 Title
@@ -482,22 +487,26 @@ export default function DispatchBoard() {
         )}
 
         <div className="dispatch-board-3col">
-          <section className="panel dispatch-pool">
+          <section className="dispatch-rail dispatch-pool">
             <header className="dispatch-pane-head">
+              <p className="dispatch-eyebrow">Inbox</p>
               <h2>Orders</h2>
             </header>
 
             <div className="dispatch-search-wrap">
-              <label className="field">
-                Find place
+              <div className="dispatch-search-box">
+                <span className="dispatch-search-icon" aria-hidden>
+                  ⌕
+                </span>
                 <input
                   value={searchQ}
                   onChange={(e) => setSearchQ(e.target.value)}
-                  placeholder="Street, area, landmark…"
+                  placeholder="Search street, area, landmark…"
                   autoComplete="off"
+                  aria-label="Find place"
                 />
-              </label>
-              {searchBusy ? <p className="muted dispatch-search-hint">Searching…</p> : null}
+              </div>
+              {searchBusy ? <p className="dispatch-search-hint">Searching places…</p> : null}
               {searchResults.length > 0 ? (
                 <ul className="dispatch-search-results">
                   {searchResults.map((r) => (
@@ -508,23 +517,27 @@ export default function DispatchBoard() {
                     </li>
                   ))}
                 </ul>
-              ) : null}
-              <p className="muted dispatch-search-hint">Or click the map to drop a pin.</p>
+              ) : (
+                <p className="dispatch-search-hint">Click the map to drop a pin, or search above.</p>
+              )}
             </div>
 
             {placing || draftPin ? (
               <div className="dispatch-order-draft">
+                <p className="dispatch-eyebrow">New stop</p>
                 {draftPin && pinLabel ? (
                   <div className="dispatch-pin-chip" title={orderForm.address}>
                     <span className="dispatch-pin-dot" aria-hidden />
-                    Pinned · {pinLabel}
-                    {pinBusy ? " · resolving…" : ""}
+                    <span>
+                      {pinBusy ? "Resolving address…" : "Pinned"}
+                      <strong>{pinLabel}</strong>
+                    </span>
                   </div>
                 ) : (
-                  <p className="muted">Click the map to set the delivery point.</p>
+                  <p className="dispatch-search-hint">Click the map to set the delivery point.</p>
                 )}
                 <label className="field">
-                  Customer / stop name
+                  Customer
                   <input
                     value={orderForm.customerName}
                     onChange={(e) => setOrderForm((f) => ({ ...f, customerName: e.target.value }))}
@@ -532,7 +545,7 @@ export default function DispatchBoard() {
                   />
                 </label>
                 <label className="field">
-                  Ref (optional)
+                  Reference
                   <input
                     value={orderForm.externalRef}
                     onChange={(e) => setOrderForm((f) => ({ ...f, externalRef: e.target.value }))}
@@ -565,9 +578,9 @@ export default function DispatchBoard() {
                     />
                   </label>
                 </div>
-                <div className="dispatch-order-form-row">
+                <div className="dispatch-order-form-row dispatch-order-form-row-2">
                   <label className="field">
-                    Window start
+                    Window
                     <input
                       value={orderForm.windowStart}
                       onChange={(e) => setOrderForm((f) => ({ ...f, windowStart: e.target.value }))}
@@ -575,7 +588,7 @@ export default function DispatchBoard() {
                     />
                   </label>
                   <label className="field">
-                    Window end
+                    &nbsp;
                     <input
                       value={orderForm.windowEnd}
                       onChange={(e) => setOrderForm((f) => ({ ...f, windowEnd: e.target.value }))}
@@ -592,42 +605,49 @@ export default function DispatchBoard() {
                   >
                     Add to pool
                   </button>
-                  <button type="button" className="btn-ghost" onClick={clearDraft}>
+                  <button type="button" className="btn-secondary" onClick={clearDraft}>
                     Cancel
                   </button>
                 </div>
               </div>
             ) : null}
 
-            {orders.length === 0 && !placing ? (
-              <p className="muted">No pending orders. Search an address or click the map.</p>
-            ) : (
-              <ul className="dispatch-order-list">
-                {orders.map((o) => (
-                  <li key={o.id}>
-                    <label className={`dispatch-order-card${selectedOrderIds.includes(o.id) ? " is-selected" : ""}`}>
-                      <input
-                        type="checkbox"
-                        checked={selectedOrderIds.includes(o.id)}
-                        onChange={() => toggleOrder(o.id)}
-                      />
-                      <span className="dispatch-order-card-body">
-                        <span className="dispatch-order-card-top">
-                          <strong>{o.customerName || o.externalRef || "Order"}</strong>
-                          {o.zone ? <span className="dispatch-zone-tag">{o.zone}</span> : null}
+            <div className="dispatch-pool-list-wrap">
+              {orders.length === 0 && !placing ? (
+                <div className="dispatch-empty">
+                  <p>No pending orders</p>
+                  <span>Search a place or pin the map to start a run.</span>
+                </div>
+              ) : (
+                <ul className="dispatch-order-list">
+                  {orders.map((o) => (
+                    <li key={o.id}>
+                      <label className={`dispatch-order-card${selectedOrderIds.includes(o.id) ? " is-selected" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={selectedOrderIds.includes(o.id)}
+                          onChange={() => toggleOrder(o.id)}
+                        />
+                        <span className="dispatch-order-card-body">
+                          <span className="dispatch-order-card-top">
+                            <strong>{o.customerName || o.externalRef || "Order"}</strong>
+                            {o.zone ? <span className="dispatch-zone-tag">{o.zone}</span> : null}
+                          </span>
+                          {o.address ? <span className="dispatch-order-addr">{o.address}</span> : null}
+                          <span className="dispatch-order-meta">
+                            {o.volumeM3 != null ? `${o.volumeM3} m³` : "—"}
+                            <span aria-hidden>·</span>
+                            {o.weightKg != null ? `${o.weightKg} kg` : "—"}
+                            <span aria-hidden>·</span>
+                            {formatDispatchWindow(o) || "Open window"}
+                          </span>
                         </span>
-                        {o.address ? <span className="muted dispatch-order-addr">{o.address}</span> : null}
-                        <span className="muted dispatch-order-meta">
-                          {o.volumeM3 != null ? `${o.volumeM3} m³` : "—"} ·{" "}
-                          {o.weightKg != null ? `${o.weightKg} kg` : "—"} ·{" "}
-                          {formatDispatchWindow(o) || "no window"}
-                        </span>
-                      </span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            )}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
             <button
               type="button"
@@ -635,22 +655,28 @@ export default function DispatchBoard() {
               disabled={busy || !selected || !selectedOrderIds.length}
               onClick={() => void handleAssignSelected()}
             >
-              Assign {selectedOrderIds.length || ""} to selected job
+              {selectedOrderIds.length
+                ? `Assign ${selectedOrderIds.length} to ${selected?.title || "job"}`
+                : "Select orders to assign"}
             </button>
           </section>
 
-          <section className="panel dispatch-map-pane">
+          <section className="dispatch-rail dispatch-map-pane">
             <header className="dispatch-pane-head">
-              <h2>Map</h2>
-              <span className="muted">{selected ? selected.title : "Click to pin orders"}</span>
+              <div>
+                <p className="dispatch-eyebrow">Live board</p>
+                <h2>{selected ? selected.title : "Route map"}</h2>
+              </div>
+              <span className="dispatch-map-badge">{selected?.stops.length || 0} stops</span>
             </header>
-            <DispatchJobMap
-              stops={selected?.stops || []}
-              fitKey={fitKey}
-              draftPin={draftPin}
-              onMapClick={(lat, lon) => void onMapClick(lat, lon)}
-            />
-            <p className="muted route-plan-map-hint">Click the map to pin a new order.</p>
+            <div className="dispatch-map-frame">
+              <DispatchJobMap
+                stops={selected?.stops || []}
+                fitKey={fitKey}
+                draftPin={draftPin}
+                onMapClick={(lat, lon) => void onMapClick(lat, lon)}
+              />
+            </div>
             <ul className="dispatch-job-tabs">
               {jobs.map((j) => (
                 <li key={j.id}>
@@ -663,7 +689,7 @@ export default function DispatchBoard() {
                       {DISPATCH_STATUS_LABELS[j.status]}
                     </span>
                     <strong>{j.title}</strong>
-                    <span className="muted">
+                    <span>
                       {j.stops.length} stops · {j.utilizationPct ?? 0}%
                     </span>
                   </button>
@@ -672,58 +698,82 @@ export default function DispatchBoard() {
             </ul>
           </section>
 
-          <section className="panel dispatch-vehicle-pane">
+          <section className="dispatch-rail dispatch-vehicle-pane">
             {!selected ? (
-              <>
-                <h2>Vehicle / job</h2>
-                <p className="muted">Create a job, then assign pinned orders from the pool.</p>
-              </>
+              <div className="dispatch-empty">
+                <p className="dispatch-eyebrow">Vehicle</p>
+                <h2>No job selected</h2>
+                <span>Create a job, then assign pinned orders from the pool.</span>
+              </div>
             ) : (
               <>
-                <header className="dispatch-detail-head">
-                  <h2>{selected.title}</h2>
+                <header className="dispatch-pane-head">
+                  <div>
+                    <p className="dispatch-eyebrow">Vehicle load</p>
+                    <h2>{selected.title}</h2>
+                  </div>
                   <span className={`dispatch-status dispatch-status-${selected.status}`}>
                     {DISPATCH_STATUS_LABELS[selected.status]}
                   </span>
                 </header>
-                <p className="muted">
-                  {dispatchAssigneeLabel(selected)} · {dispatchVehicleLabel(selected)}
+                <p className="dispatch-vehicle-meta">
+                  <span>{dispatchAssigneeLabel(selected)}</span>
+                  <span aria-hidden>·</span>
+                  <span>{dispatchVehicleLabel(selected)}</span>
                 </p>
 
-                <div className="dispatch-capacity">
-                  <div className="dispatch-capacity-head">
-                    <strong>{selected.utilizationPct ?? 0}%</strong>
-                    <span className={`dispatch-util-${utilizationTone(selected.utilizationPct)}`}>utilized</span>
+                <div
+                  className="dispatch-capacity"
+                  style={{ ["--fill" as string]: Math.min(100, selected.utilizationPct ?? 0) }}
+                >
+                  <div className="dispatch-capacity-ring" aria-hidden>
+                    <strong>{Math.round(selected.utilizationPct ?? 0)}</strong>
+                    <span>%</span>
                   </div>
-                  <div className="dispatch-cap-bar" aria-label="Volume capacity">
-                    <div
-                      className={`dispatch-cap-fill dispatch-util-${utilizationTone(
-                        ((selected.volumeUsed || 0) / (selected.volumeCapacityM3 || 12)) * 100,
-                      )}`}
-                      style={{
-                        width: `${Math.min(100, ((selected.volumeUsed || 0) / (selected.volumeCapacityM3 || 12)) * 100)}%`,
-                      }}
-                    />
+                  <div className="dispatch-capacity-metrics">
+                    <div>
+                      <div className="dispatch-cap-label">
+                        <span>Volume</span>
+                        <span>
+                          {selected.volumeUsed ?? 0} / {selected.volumeCapacityM3 ?? 12} m³
+                        </span>
+                      </div>
+                      <div className="dispatch-cap-bar">
+                        <div
+                          className={`dispatch-cap-fill dispatch-util-${utilizationTone(
+                            ((selected.volumeUsed || 0) / (selected.volumeCapacityM3 || 12)) * 100,
+                          )}`}
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              ((selected.volumeUsed || 0) / (selected.volumeCapacityM3 || 12)) * 100,
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="dispatch-cap-label">
+                        <span>Weight</span>
+                        <span>
+                          {selected.weightUsed ?? 0} / {selected.weightCapacityKg ?? 1500} kg
+                        </span>
+                      </div>
+                      <div className="dispatch-cap-bar">
+                        <div
+                          className={`dispatch-cap-fill dispatch-util-${utilizationTone(
+                            ((selected.weightUsed || 0) / (selected.weightCapacityKg || 1500)) * 100,
+                          )}`}
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              ((selected.weightUsed || 0) / (selected.weightCapacityKg || 1500)) * 100,
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <p className="muted">
-                    Volume {selected.volumeUsed ?? 0} / {selected.volumeCapacityM3 ?? 12} m³
-                  </p>
-                  <div className="dispatch-cap-bar" aria-label="Weight capacity">
-                    <div
-                      className={`dispatch-cap-fill dispatch-util-${utilizationTone(
-                        ((selected.weightUsed || 0) / (selected.weightCapacityKg || 1500)) * 100,
-                      )}`}
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          ((selected.weightUsed || 0) / (selected.weightCapacityKg || 1500)) * 100,
-                        )}%`,
-                      }}
-                    />
-                  </div>
-                  <p className="muted">
-                    Weight {selected.weightUsed ?? 0} / {selected.weightCapacityKg ?? 1500} kg
-                  </p>
                 </div>
 
                 <div className="dispatch-detail-actions">
@@ -760,45 +810,49 @@ export default function DispatchBoard() {
                   </label>
                 </div>
 
-                <div className="dispatch-create-actions">
-                  <button type="button" className="btn" disabled={busy} onClick={() => void handleOptimize()}>
-                    Optimize stops
-                  </button>
-                </div>
+                <button type="button" className="btn-secondary dispatch-opt-btn" disabled={busy} onClick={() => void handleOptimize()}>
+                  Optimize stop order
+                </button>
 
-                <h3>Sequence</h3>
-                {selected.stops.length === 0 ? (
-                  <p className="muted">Assign orders from the pool.</p>
-                ) : (
-                  <ol className="dispatch-stop-list">
-                    {selected.stops.map((stop, i) => (
-                      <li key={stop.id}>
-                        <strong>
-                          {i + 1}. {stop.name}
-                        </strong>
-                        <span className="muted">
-                          {stop.status}
-                          {stop.zone ? ` · ${stop.zone}` : ""}
-                          {stop.volumeM3 != null ? ` · ${stop.volumeM3} m³` : ""}
-                          {formatDispatchWindow(stop) ? ` · ${formatDispatchWindow(stop)}` : ""}
-                        </span>
-                        <button
-                          type="button"
-                          className="btn-ghost"
-                          onClick={() => setProofStopId(proofStopId === stop.id ? null : stop.id)}
-                        >
-                          Proof
-                        </button>
-                      </li>
-                    ))}
-                  </ol>
-                )}
+                <div className="dispatch-sequence">
+                  <div className="dispatch-sequence-head">
+                    <p className="dispatch-eyebrow">Sequence</p>
+                    <span>{selected.stops.length} stops</span>
+                  </div>
+                  {selected.stops.length === 0 ? (
+                    <p className="dispatch-search-hint">Assign orders from the pool.</p>
+                  ) : (
+                    <ol className="dispatch-stop-list">
+                      {selected.stops.map((stop, i) => (
+                        <li key={stop.id}>
+                          <span className="dispatch-stop-idx">{i + 1}</span>
+                          <div className="dispatch-stop-body">
+                            <strong>{stop.name}</strong>
+                            <span>
+                              {stop.status}
+                              {stop.zone ? ` · ${stop.zone}` : ""}
+                              {stop.volumeM3 != null ? ` · ${stop.volumeM3} m³` : ""}
+                              {formatDispatchWindow(stop) ? ` · ${formatDispatchWindow(stop)}` : ""}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn-secondary dispatch-proof-btn"
+                            onClick={() => setProofStopId(proofStopId === stop.id ? null : stop.id)}
+                          >
+                            POD
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
 
                 {proofStopId ? (
                   <div className="dispatch-proof-box">
-                    <h4>POD photos</h4>
+                    <p className="dispatch-eyebrow">Proof of delivery</p>
                     {proofPhotos.length === 0 ? (
-                      <p className="muted">No photos yet for this stop.</p>
+                      <p className="dispatch-search-hint">No photos yet for this stop.</p>
                     ) : (
                       <div className="dispatch-proof-thumbs">
                         {proofPhotos.map((p) => (
