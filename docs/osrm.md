@@ -81,3 +81,7 @@ OSRM_GRAPH=java-latest docker compose --profile osrm up -d osrm
 | Routes outside the extract | Stops must be inside the built map (e.g. Java extract won’t route Sulawesi) |
 
 Do **not** use the public `router.project-osrm.org` for production — it is not a free private API and rate-limits heavily.
+
+## Coverage note
+
+OSRM only routes inside the built extract. A **Java** graph cannot road-route stops in **Sulawesi** (e.g. Morowali). For those fleets, build `sulawesi-latest` (or a clipped bbox) the same way and point `OSRM_GRAPH` / the routed basename at that file.

@@ -6,10 +6,16 @@
  * Uses OSRM when OSRM_BASE_URL is set; otherwise haversine + 2-opt TSP.
  */
 import { securityHeaders } from "./proxy-lt.mjs";
-import { armadaFetch } from "./armada-fetch.mjs";
 import { haversineKm, optimizeOpenTour } from "./route-optimize.mjs";
 
 const MAX_STOPS = 25;
+
+/** Local OSRM is usually http://127.0.0.1 — do not use armadaFetch (HTTPS-only). */
+async function osrmFetch(url, timeoutMs = 45_000) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  const text = await res.text();
+  return { ok: res.ok, status: res.status, text };
+}
 
 function send(res, status, headers, body) {
   res.writeHead(status, securityHeaders(headers));
@@ -75,17 +81,16 @@ function straightGeometry(ordered) {
 async function osrmTable(base, points) {
   const coords = points.map((p) => `${p.lon},${p.lat}`).join(";");
   const url = `${base}/table/v1/driving/${coords}?annotations=distance,duration`;
-  const res = await armadaFetch(url, { timeoutMs: 45_000 });
-  const text = await res.text();
+  const res = await osrmFetch(url, 45_000);
   let parsed = null;
   try {
-    parsed = text ? JSON.parse(text) : null;
+    parsed = res.text ? JSON.parse(res.text) : null;
   } catch {
     parsed = null;
   }
   if (!res.ok || !parsed || parsed.code !== "Ok") {
     throw new Error(
-      (parsed && (parsed.message || parsed.code)) || text.slice(0, 160) || `OSRM table HTTP ${res.status}`,
+      (parsed && (parsed.message || parsed.code)) || res.text.slice(0, 160) || `OSRM table HTTP ${res.status}`,
     );
   }
   const distances = parsed.distances;
@@ -101,17 +106,16 @@ async function osrmTable(base, points) {
 async function osrmRoute(base, ordered) {
   const coords = ordered.map((p) => `${p.lon},${p.lat}`).join(";");
   const url = `${base}/route/v1/driving/${coords}?overview=full&geometries=geojson`;
-  const res = await armadaFetch(url, { timeoutMs: 45_000 });
-  const text = await res.text();
+  const res = await osrmFetch(url, 45_000);
   let parsed = null;
   try {
-    parsed = text ? JSON.parse(text) : null;
+    parsed = res.text ? JSON.parse(res.text) : null;
   } catch {
     parsed = null;
   }
   if (!res.ok || !parsed || parsed.code !== "Ok" || !parsed.routes?.[0]) {
     throw new Error(
-      (parsed && (parsed.message || parsed.code)) || text.slice(0, 160) || `OSRM route HTTP ${res.status}`,
+      (parsed && (parsed.message || parsed.code)) || res.text.slice(0, 160) || `OSRM route HTTP ${res.status}`,
     );
   }
   const route = parsed.routes[0];
@@ -126,18 +130,17 @@ async function osrmRoute(base, ordered) {
 async function probeOsrm(base) {
   const url = `${base}/route/v1/driving/106.8272,-6.1754;106.8456,-6.2088?overview=false`;
   try {
-    const res = await armadaFetch(url, { timeoutMs: 8_000 });
-    const text = await res.text();
+    const res = await osrmFetch(url, 8_000);
     let parsed = null;
     try {
-      parsed = text ? JSON.parse(text) : null;
+      parsed = res.text ? JSON.parse(res.text) : null;
     } catch {
       parsed = null;
     }
     return {
       reachable: res.ok && parsed?.code === "Ok",
       status: res.status,
-      error: res.ok && parsed?.code === "Ok" ? null : text.slice(0, 160) || `HTTP ${res.status}`,
+      error: res.ok && parsed?.code === "Ok" ? null : res.text.slice(0, 160) || `HTTP ${res.status}`,
     };
   } catch (err) {
     return {
