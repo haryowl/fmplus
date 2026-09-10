@@ -69,12 +69,13 @@ download_pbf() {
   local name
   name="$(basename "$url")"
   if [[ ! -f "$name" ]]; then
-    echo "==> Downloading $url"
+    echo "==> Downloading $url" >&2
     curl -L --fail -o "$name" "$url"
   else
-    echo "==> Using existing $DATA_DIR/$name"
+    echo "==> Using existing $DATA_DIR/$name" >&2
   fi
-  echo "$name"
+  # stdout must be ONLY the filename (captured by caller)
+  printf '%s\n' "$name"
 }
 
 build_graph() {
