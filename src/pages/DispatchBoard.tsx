@@ -25,8 +25,22 @@ import {
   type DispatchPhoto,
   type DispatchStatus,
 } from "../lib/dispatch";
+import { reverseAddress, searchAddresses, type GeocodeResult } from "../lib/geocode";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
+
+const emptyOrderForm = {
+  customerName: "",
+  externalRef: "",
+  address: "",
+  zone: "",
+  volumeM3: "",
+  weightKg: "",
+  windowStart: "",
+  windowEnd: "",
+  lat: null as number | null,
+  lon: null as number | null,
+};
 
 export default function DispatchBoard() {
   const { ready, error: tenantError, query, allowedUserIds, allowedGroupIds, allowsUser, allowsGroup } =
@@ -45,30 +59,30 @@ export default function DispatchBoard() {
   const [error, setError] = useState("");
   const [bootError, setBootError] = useState("");
   const [reload, setReload] = useState(0);
-  const [showNewOrder, setShowNewOrder] = useState(false);
   const [showNewJob, setShowNewJob] = useState(false);
   const [proofStopId, setProofStopId] = useState<string | null>(null);
   const [proofPhotos, setProofPhotos] = useState<DispatchPhoto[]>([]);
 
-  const [orderForm, setOrderForm] = useState({
-    customerName: "",
-    externalRef: "",
-    address: "",
-    zone: "",
-    volumeM3: "",
-    weightKg: "",
-    windowStart: "",
-    windowEnd: "",
-    lat: "",
-    lon: "",
-  });
+  const [orderForm, setOrderForm] = useState(emptyOrderForm);
+  const [placing, setPlacing] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [searchResults, setSearchResults] = useState<GeocodeResult[]>([]);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [pinBusy, setPinBusy] = useState(false);
+
   const [jobTitle, setJobTitle] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
   const selectedUser = users.find((u) => String(u.id) === userId);
   const selected = useMemo(() => jobs.find((j) => j.id === selectedId) || null, [jobs, selectedId]);
-  const fitKey = selected ? `${selected.id}-${selected.stops.map((s) => s.id).join(",")}` : "empty";
+  const draftPin =
+    orderForm.lat != null && orderForm.lon != null
+      ? { lat: orderForm.lat, lon: orderForm.lon }
+      : null;
+  const fitKey = selected
+    ? `${selected.id}-${selected.stops.map((s) => s.id).join(",")}-${draftPin ? "pin" : ""}`
+    : `empty-${draftPin ? `${draftPin.lat},${draftPin.lon}` : ""}`;
 
   const kpis = useMemo(() => {
     const openOrders = orders.length;
@@ -149,10 +163,7 @@ export default function DispatchBoard() {
     const ac = new AbortController();
     setLoading(true);
     setError("");
-    Promise.all([
-      fetchDispatchJobs("open", ac.signal),
-      fetchDispatchOrders("pending", ac.signal),
-    ])
+    Promise.all([fetchDispatchJobs("open", ac.signal), fetchDispatchOrders("pending", ac.signal)])
       .then(([jobList, orderList]) => {
         setJobs(jobList);
         setOrders(orderList);
@@ -188,13 +199,85 @@ export default function DispatchBoard() {
     };
   }, [proofStopId, query.tenantKey, reload]);
 
+  useEffect(() => {
+    const q = searchQ.trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    const ac = new AbortController();
+    const t = window.setTimeout(() => {
+      setSearchBusy(true);
+      searchAddresses(q, ac.signal)
+        .then((results) => setSearchResults(results))
+        .catch((err: Error) => {
+          if (err.name !== "AbortError") setSearchResults([]);
+        })
+        .finally(() => setSearchBusy(false));
+    }, 320);
+    return () => {
+      window.clearTimeout(t);
+      ac.abort();
+    };
+  }, [searchQ]);
+
   function toggleOrder(id: string) {
     setSelectedOrderIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function applyPin(result: GeocodeResult) {
+    setOrderForm((f) => ({
+      ...f,
+      address: result.label,
+      lat: result.lat,
+      lon: result.lon,
+      customerName: f.customerName || shortCustomerFromLabel(result.label),
+    }));
+    setPlacing(true);
+    setSearchQ("");
+    setSearchResults([]);
+    setError("");
+  }
+
+  async function onMapClick(lat: number, lon: number) {
+    setPinBusy(true);
+    setError("");
+    setPlacing(true);
+    setOrderForm((f) => ({ ...f, lat, lon }));
+    try {
+      const result = await reverseAddress(lat, lon);
+      setOrderForm((f) => ({
+        ...f,
+        lat: result.lat,
+        lon: result.lon,
+        address: result.label,
+        customerName: f.customerName || shortCustomerFromLabel(result.label),
+      }));
+    } catch (err) {
+      setOrderForm((f) => ({
+        ...f,
+        address: f.address || `Pin ${lat.toFixed(4)}, ${lon.toFixed(4)}`,
+      }));
+      setError(err instanceof Error ? err.message : "Could not resolve address");
+    } finally {
+      setPinBusy(false);
+    }
+  }
+
+  function clearDraft() {
+    setOrderForm(emptyOrderForm);
+    setPlacing(false);
+    setSearchQ("");
+    setSearchResults([]);
   }
 
   async function handleCreateOrder() {
     if (!orderForm.customerName.trim()) {
       setError("Customer name required");
+      return;
+    }
+    if (orderForm.lat == null || orderForm.lon == null) {
+      setError("Pin a location on the map or pick an address search result");
       return;
     }
     setBusy(true);
@@ -209,22 +292,10 @@ export default function DispatchBoard() {
         weightKg: orderForm.weightKg === "" ? null : Number(orderForm.weightKg),
         windowStart: orderForm.windowStart.trim() || undefined,
         windowEnd: orderForm.windowEnd.trim() || undefined,
-        lat: orderForm.lat === "" ? null : Number(orderForm.lat),
-        lon: orderForm.lon === "" ? null : Number(orderForm.lon),
+        lat: orderForm.lat,
+        lon: orderForm.lon,
       });
-      setOrderForm({
-        customerName: "",
-        externalRef: "",
-        address: "",
-        zone: "",
-        volumeM3: "",
-        weightKg: "",
-        windowStart: "",
-        windowEnd: "",
-        lat: "",
-        lon: "",
-      });
-      setShowNewOrder(false);
+      clearDraft();
       setReload((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create order failed");
@@ -302,6 +373,12 @@ export default function DispatchBoard() {
     }
   }
 
+  const pinLabel = orderForm.address
+    ? orderForm.address.length > 72
+      ? `${orderForm.address.slice(0, 72)}…`
+      : orderForm.address
+    : "";
+
   return (
     <div className="app dispatch-page">
       <header className="topbar">
@@ -309,7 +386,7 @@ export default function DispatchBoard() {
           <BrandMark />
           <div>
             <h1>Dispatch</h1>
-            <p>Orders → capacity → assign → field execution</p>
+            <p>Search or click the map · assign · field execution</p>
           </div>
         </div>
         <div className="topbar-actions">
@@ -321,7 +398,7 @@ export default function DispatchBoard() {
       <main className="shell">
         <section className="dispatch-kpi-strip" aria-label="Dispatch KPIs">
           <div className="dispatch-kpi">
-            <span className="muted">Unassigned orders</span>
+            <span className="muted">Unassigned</span>
             <strong>{kpis.openOrders}</strong>
           </div>
           <div className="dispatch-kpi">
@@ -329,15 +406,15 @@ export default function DispatchBoard() {
             <strong>{kpis.openJobs}</strong>
           </div>
           <div className="dispatch-kpi">
-            <span className="muted">Avg utilization</span>
+            <span className="muted">Avg fill</span>
             <strong className={`dispatch-util-${utilizationTone(kpis.avgUtil)}`}>{kpis.avgUtil}%</strong>
           </div>
           <div className="dispatch-kpi-actions">
             <button type="button" className="btn-ghost" disabled={loading} onClick={() => setReload((n) => n + 1)}>
               Refresh
             </button>
-            <button type="button" className="btn" onClick={() => setShowNewJob((v) => !v)}>
-              New job
+            <button type="button" className="btn-ghost" onClick={() => setShowNewJob((v) => !v)}>
+              {showNewJob ? "Hide job" : "New job"}
             </button>
           </div>
         </section>
@@ -407,34 +484,59 @@ export default function DispatchBoard() {
         <div className="dispatch-board-3col">
           <section className="panel dispatch-pool">
             <header className="dispatch-pane-head">
-              <h2>Unassigned orders</h2>
-              <button type="button" className="btn-ghost" onClick={() => setShowNewOrder((v) => !v)}>
-                {showNewOrder ? "Hide" : "+ Order"}
-              </button>
+              <h2>Orders</h2>
             </header>
 
-            {showNewOrder && (
-              <div className="dispatch-order-form">
+            <div className="dispatch-search-wrap">
+              <label className="field">
+                Find place
+                <input
+                  value={searchQ}
+                  onChange={(e) => setSearchQ(e.target.value)}
+                  placeholder="Street, area, landmark…"
+                  autoComplete="off"
+                />
+              </label>
+              {searchBusy ? <p className="muted dispatch-search-hint">Searching…</p> : null}
+              {searchResults.length > 0 ? (
+                <ul className="dispatch-search-results">
+                  {searchResults.map((r) => (
+                    <li key={`${r.lat},${r.lon},${r.label}`}>
+                      <button type="button" onClick={() => applyPin(r)}>
+                        {r.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <p className="muted dispatch-search-hint">Or click the map to drop a pin.</p>
+            </div>
+
+            {placing || draftPin ? (
+              <div className="dispatch-order-draft">
+                {draftPin && pinLabel ? (
+                  <div className="dispatch-pin-chip" title={orderForm.address}>
+                    <span className="dispatch-pin-dot" aria-hidden />
+                    Pinned · {pinLabel}
+                    {pinBusy ? " · resolving…" : ""}
+                  </div>
+                ) : (
+                  <p className="muted">Click the map to set the delivery point.</p>
+                )}
                 <label className="field">
-                  Customer
+                  Customer / stop name
                   <input
                     value={orderForm.customerName}
                     onChange={(e) => setOrderForm((f) => ({ ...f, customerName: e.target.value }))}
+                    placeholder="Toko Sari Maju"
                   />
                 </label>
                 <label className="field">
-                  Ref
+                  Ref (optional)
                   <input
                     value={orderForm.externalRef}
                     onChange={(e) => setOrderForm((f) => ({ ...f, externalRef: e.target.value }))}
                     placeholder="#ORD-1842"
-                  />
-                </label>
-                <label className="field">
-                  Address
-                  <input
-                    value={orderForm.address}
-                    onChange={(e) => setOrderForm((f) => ({ ...f, address: e.target.value }))}
                   />
                 </label>
                 <div className="dispatch-order-form-row">
@@ -443,6 +545,7 @@ export default function DispatchBoard() {
                     <input
                       value={orderForm.zone}
                       onChange={(e) => setOrderForm((f) => ({ ...f, zone: e.target.value }))}
+                      placeholder="Dago"
                     />
                   </label>
                   <label className="field">
@@ -480,30 +583,24 @@ export default function DispatchBoard() {
                     />
                   </label>
                 </div>
-                <div className="dispatch-order-form-row">
-                  <label className="field">
-                    Lat
-                    <input
-                      value={orderForm.lat}
-                      onChange={(e) => setOrderForm((f) => ({ ...f, lat: e.target.value }))}
-                    />
-                  </label>
-                  <label className="field">
-                    Lon
-                    <input
-                      value={orderForm.lon}
-                      onChange={(e) => setOrderForm((f) => ({ ...f, lon: e.target.value }))}
-                    />
-                  </label>
+                <div className="dispatch-create-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={busy || orderForm.lat == null}
+                    onClick={() => void handleCreateOrder()}
+                  >
+                    Add to pool
+                  </button>
+                  <button type="button" className="btn-ghost" onClick={clearDraft}>
+                    Cancel
+                  </button>
                 </div>
-                <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void handleCreateOrder()}>
-                  Add to pool
-                </button>
               </div>
-            )}
+            ) : null}
 
-            {orders.length === 0 ? (
-              <p className="muted">No pending orders. Add one to start capacity planning.</p>
+            {orders.length === 0 && !placing ? (
+              <p className="muted">No pending orders. Search an address or click the map.</p>
             ) : (
               <ul className="dispatch-order-list">
                 {orders.map((o) => (
@@ -516,10 +613,10 @@ export default function DispatchBoard() {
                       />
                       <span className="dispatch-order-card-body">
                         <span className="dispatch-order-card-top">
-                          <strong>{o.externalRef || o.customerName}</strong>
+                          <strong>{o.customerName || o.externalRef || "Order"}</strong>
                           {o.zone ? <span className="dispatch-zone-tag">{o.zone}</span> : null}
                         </span>
-                        <span className="muted">{o.customerName}</span>
+                        {o.address ? <span className="muted dispatch-order-addr">{o.address}</span> : null}
                         <span className="muted dispatch-order-meta">
                           {o.volumeM3 != null ? `${o.volumeM3} m³` : "—"} ·{" "}
                           {o.weightKg != null ? `${o.weightKg} kg` : "—"} ·{" "}
@@ -544,18 +641,16 @@ export default function DispatchBoard() {
 
           <section className="panel dispatch-map-pane">
             <header className="dispatch-pane-head">
-              <h2>Route map</h2>
-              <span className="muted">{selected ? selected.title : "Select a job"}</span>
+              <h2>Map</h2>
+              <span className="muted">{selected ? selected.title : "Click to pin orders"}</span>
             </header>
-            {selected && selected.stops.some((s) => s.lat != null && s.lon != null) ? (
-              <DispatchJobMap stops={selected.stops} fitKey={fitKey} />
-            ) : (
-              <div className="dispatch-map-empty muted">
-                {selected
-                  ? "Add orders with coordinates to see the route."
-                  : "Select or create a job, then assign orders."}
-              </div>
-            )}
+            <DispatchJobMap
+              stops={selected?.stops || []}
+              fitKey={fitKey}
+              draftPin={draftPin}
+              onMapClick={(lat, lon) => void onMapClick(lat, lon)}
+            />
+            <p className="muted route-plan-map-hint">Click the map to pin a new order.</p>
             <ul className="dispatch-job-tabs">
               {jobs.map((j) => (
                 <li key={j.id}>
@@ -581,7 +676,7 @@ export default function DispatchBoard() {
             {!selected ? (
               <>
                 <h2>Vehicle / job</h2>
-                <p className="muted">Select a job to review capacity and sequence.</p>
+                <p className="muted">Create a job, then assign pinned orders from the pool.</p>
               </>
             ) : (
               <>
@@ -619,7 +714,10 @@ export default function DispatchBoard() {
                         ((selected.weightUsed || 0) / (selected.weightCapacityKg || 1500)) * 100,
                       )}`}
                       style={{
-                        width: `${Math.min(100, ((selected.weightUsed || 0) / (selected.weightCapacityKg || 1500)) * 100)}%`,
+                        width: `${Math.min(
+                          100,
+                          ((selected.weightUsed || 0) / (selected.weightCapacityKg || 1500)) * 100,
+                        )}%`,
                       }}
                     />
                   </div>
@@ -719,4 +817,9 @@ export default function DispatchBoard() {
       </main>
     </div>
   );
+}
+
+function shortCustomerFromLabel(label: string): string {
+  const first = label.split(",")[0]?.trim() || "";
+  return first.slice(0, 80);
 }

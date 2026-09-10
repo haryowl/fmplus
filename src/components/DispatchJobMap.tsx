@@ -3,25 +3,42 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { DispatchStop } from "../lib/dispatch";
 
+type DraftPin = { lat: number; lon: number };
+
 type Props = {
   stops: DispatchStop[];
   fitKey: string;
+  draftPin?: DraftPin | null;
+  onMapClick?: (lat: number, lon: number) => void;
+  /** When true, always show a usable map even with no stop coords. */
+  interactiveEmpty?: boolean;
 };
 
-export function DispatchJobMap({ stops, fitKey }: Props) {
+export function DispatchJobMap({
+  stops,
+  fitKey,
+  draftPin = null,
+  onMapClick,
+  interactiveEmpty = true,
+}: Props) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
+  const clickRef = useRef(onMapClick);
+  clickRef.current = onMapClick;
 
   useEffect(() => {
     const el = elRef.current;
     if (!el || mapRef.current) return;
-    const map = L.map(el, { scrollWheelZoom: true }).setView([-6.9, 107.6], 11);
+    const map = L.map(el, { scrollWheelZoom: true }).setView([-6.9175, 107.6191], 12);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 18,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
+    map.on("click", (e) => {
+      clickRef.current?.(e.latlng.lat, e.latlng.lng);
+    });
     mapRef.current = map;
     return () => {
       map.remove();
@@ -57,15 +74,32 @@ export function DispatchJobMap({ stops, fitKey }: Props) {
       });
       const m = L.marker([stop.lat as number, stop.lon as number], { icon }).addTo(layer);
       m.bindPopup(
-        `${stop.name}${stop.zone ? ` · ${stop.zone}` : ""}<br>${(stop.lat as number).toFixed(5)}, ${(stop.lon as number).toFixed(5)}`,
+        `${stop.name}${stop.zone ? ` · ${stop.zone}` : ""}`,
       );
       bounds.push([stop.lat as number, stop.lon as number]);
     });
+
+    if (draftPin && Number.isFinite(draftPin.lat) && Number.isFinite(draftPin.lon)) {
+      const icon = L.divIcon({
+        className: "route-plan-marker",
+        html: `<span class="route-plan-marker-dot dispatch-draft-pin-dot">+</span>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+      });
+      L.marker([draftPin.lat, draftPin.lon], { icon }).addTo(layer).bindPopup("New order pin");
+      bounds.push([draftPin.lat, draftPin.lon]);
+      if (!withCoords.length) {
+        map.setView([draftPin.lat, draftPin.lon], Math.max(map.getZoom(), 15));
+      }
+    }
+
     if (bounds.length && fitKey) {
-      map.fitBounds(L.latLngBounds(bounds), { padding: [36, 36], maxZoom: 14 });
+      map.fitBounds(L.latLngBounds(bounds), { padding: [36, 36], maxZoom: 15 });
+    } else if (interactiveEmpty && !bounds.length) {
+      /* keep Bandung default */
     }
     setTimeout(() => map.invalidateSize(), 50);
-  }, [stops, fitKey]);
+  }, [stops, fitKey, draftPin, interactiveEmpty]);
 
   return <div ref={elRef} className="dispatch-job-map" role="img" aria-label="Job stops map" />;
 }
