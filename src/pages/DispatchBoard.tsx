@@ -36,11 +36,24 @@ const emptyOrderForm = {
   zone: "",
   volumeM3: "",
   weightKg: "",
-  windowStart: "",
-  windowEnd: "",
+  windowStart: "08:00",
+  windowEnd: "12:00",
   lat: null as number | null,
   lon: null as number | null,
 };
+
+const WINDOW_PRESETS: { id: string; label: string; start: string; end: string }[] = [
+  { id: "morning", label: "Morning", start: "08:00", end: "12:00" },
+  { id: "midday", label: "Midday", start: "11:00", end: "14:00" },
+  { id: "afternoon", label: "Afternoon", start: "13:00", end: "17:00" },
+  { id: "business", label: "Business day", start: "08:00", end: "17:00" },
+  { id: "open", label: "Any time", start: "", end: "" },
+];
+
+function activeWindowPreset(start: string, end: string): string | null {
+  const hit = WINDOW_PRESETS.find((p) => p.start === start && p.end === end);
+  return hit?.id || null;
+}
 
 export default function DispatchBoard() {
   const { ready, error: tenantError, query, allowedUserIds, allowedGroupIds, allowsUser, allowsGroup } =
@@ -578,23 +591,64 @@ export default function DispatchBoard() {
                     />
                   </label>
                 </div>
-                <div className="dispatch-order-form-row dispatch-order-form-row-2">
-                  <label className="field">
-                    Window
-                    <input
-                      value={orderForm.windowStart}
-                      onChange={(e) => setOrderForm((f) => ({ ...f, windowStart: e.target.value }))}
-                      placeholder="09:00"
-                    />
-                  </label>
-                  <label className="field">
-                    &nbsp;
-                    <input
-                      value={orderForm.windowEnd}
-                      onChange={(e) => setOrderForm((f) => ({ ...f, windowEnd: e.target.value }))}
-                      placeholder="11:00"
-                    />
-                  </label>
+                <div className="dispatch-window-block">
+                  <div className="dispatch-window-head">
+                    <span className="dispatch-eyebrow">Delivery window</span>
+                    {(orderForm.windowStart || orderForm.windowEnd) && (
+                      <span className="dispatch-window-summary">
+                        {formatDispatchWindow({
+                          windowStart: orderForm.windowStart,
+                          windowEnd: orderForm.windowEnd,
+                        }) || "Any time"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="dispatch-window-presets" role="group" aria-label="Window presets">
+                    {WINDOW_PRESETS.map((p) => {
+                      const active = activeWindowPreset(orderForm.windowStart, orderForm.windowEnd) === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className={`dispatch-window-chip${active ? " is-active" : ""}`}
+                          onClick={() =>
+                            setOrderForm((f) => ({
+                              ...f,
+                              windowStart: p.start,
+                              windowEnd: p.end,
+                            }))
+                          }
+                        >
+                          {p.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="dispatch-order-form-row dispatch-order-form-row-2">
+                    <label className="field">
+                      Arrive from
+                      <input
+                        type="time"
+                        step={300}
+                        value={orderForm.windowStart}
+                        onChange={(e) => setOrderForm((f) => ({ ...f, windowStart: e.target.value }))}
+                      />
+                    </label>
+                    <label className="field">
+                      Arrive by
+                      <input
+                        type="time"
+                        step={300}
+                        value={orderForm.windowEnd}
+                        onChange={(e) => setOrderForm((f) => ({ ...f, windowEnd: e.target.value }))}
+                      />
+                    </label>
+                  </div>
+                  {orderForm.windowStart &&
+                  orderForm.windowEnd &&
+                  orderForm.windowStart >= orderForm.windowEnd ? (
+                    <p className="dispatch-window-warn">End time should be after start time.</p>
+                  ) : null}
                 </div>
                 <div className="dispatch-create-actions">
                   <button

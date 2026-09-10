@@ -3877,6 +3877,70 @@ html.onesheet-root body {
   grid-template-columns: 1fr 1fr;
 }
 
+.dispatch-window-block {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+
+.dispatch-window-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.dispatch-window-summary {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.dispatch-window-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dispatch-window-chip {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dispatch-window-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dispatch-window-chip.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: #08443e;
+}
+
+.dispatch-window-block input[type="time"] {
+  font-family: var(--mono);
+  letter-spacing: 0.02em;
+}
+
+.dispatch-window-warn {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--danger);
+}
+
 .dispatch-pool input,
 .dispatch-pool select,
 .dispatch-create input,
