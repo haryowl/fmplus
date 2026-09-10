@@ -4389,6 +4389,22 @@ html.onesheet-root body {
   color: var(--ink-soft);
 }
 
+.dispatch-stop-leg {
+  font-family: var(--mono);
+  font-size: 0.72rem !important;
+  color: var(--ink) !important;
+  margin-top: 2px;
+}
+
+.dispatch-route-banner {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  background: rgba(251, 249, 244, 0.95);
+  border-top: 1px solid var(--line);
+}
+
 .dispatch-stop-actions {
   display: flex;
   flex-wrap: wrap;

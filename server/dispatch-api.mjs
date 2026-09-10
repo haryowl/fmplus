@@ -16,6 +16,7 @@ import { databaseUrlConfigured, dbQuery } from "./db.mjs";
 import { mergeEntitlements, moduleEnabled } from "./entitlements.mjs";
 import { resolveDbTenant } from "./maintenance-api.mjs";
 import { optimizeOpenTour } from "./route-optimize.mjs";
+import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getObject, objectStorageConfigured, putObject } from "./storage.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 
@@ -847,10 +848,13 @@ export async function handleDispatchRequest(req, res) {
         await dbQuery(`UPDATE dispatch_stops SET sort_order = $1 WHERE id = $2`, [tail++, s.id]);
       }
       await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [job.id]);
+      const orderedPoints = order.map((idx) => points[idx]);
+      const route = await buildRouteForPoints(orderedPoints);
       const row = await loadJob(dbTenant.id, job.id);
       json(res, 200, {
         job: publicJob(row, await loadStops(job.id)),
-        engine: "haversine",
+        engine: route.engine,
+        route,
       });
       return true;
     }

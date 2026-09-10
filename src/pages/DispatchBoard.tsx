@@ -33,6 +33,12 @@ import {
   type DispatchStatus,
 } from "../lib/dispatch";
 import { reverseAddress, searchAddresses, type GeocodeResult } from "../lib/geocode";
+import {
+  buildStopRouteMeta,
+  fetchRouteGeometry,
+  formatRouteDuration,
+  type RouteGeometryResult,
+} from "../lib/routePlan";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
 
@@ -94,6 +100,8 @@ export default function DispatchBoard() {
 
   const [jobTitle, setJobTitle] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
+  const [jobRoute, setJobRoute] = useState<RouteGeometryResult | null>(null);
+  const [routeBusy, setRouteBusy] = useState(false);
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
   const selectedUser = users.find((u) => String(u.id) === userId);
@@ -103,8 +111,21 @@ export default function DispatchBoard() {
       ? { lat: orderForm.lat, lon: orderForm.lon }
       : null;
   const fitKey = selected
-    ? `${selected.id}-${selected.stops.map((s) => s.id).join(",")}-${draftPin ? "pin" : ""}`
+    ? `${selected.id}-${selected.stops.map((s) => s.id).join(",")}-${draftPin ? "pin" : ""}-${jobRoute?.geometry?.length || 0}`
     : `empty-${draftPin ? `${draftPin.lat},${draftPin.lon}` : ""}`;
+
+  const stopRouteMeta = useMemo(() => {
+    if (!selected?.stops?.length) return [];
+    return buildStopRouteMeta(selected.stops, jobRoute?.legs || []);
+  }, [selected, jobRoute]);
+
+  const routePathKey = useMemo(() => {
+    if (!selected) return "";
+    return selected.stops
+      .filter((s) => s.lat != null && s.lon != null)
+      .map((s) => `${s.id}:${s.lat},${s.lon}`)
+      .join("|");
+  }, [selected]);
 
   const kpis = useMemo(() => {
     const openOrders = orders.length;
@@ -223,6 +244,32 @@ export default function DispatchBoard() {
       cancelled = true;
     };
   }, [proofStopId, query.tenantKey, reload]);
+
+  useEffect(() => {
+    if (!selected || !routePathKey) {
+      setJobRoute(null);
+      return;
+    }
+    const points = selected.stops
+      .filter((s) => s.lat != null && s.lon != null && Number.isFinite(s.lat) && Number.isFinite(s.lon))
+      .map((s) => ({ lat: s.lat as number, lon: s.lon as number }));
+    if (points.length < 2) {
+      setJobRoute(null);
+      return;
+    }
+    const ac = new AbortController();
+    setRouteBusy(true);
+    fetchRouteGeometry(points, ac.signal)
+      .then((route) => {
+        setJobRoute(route);
+      })
+      .catch((err: Error) => {
+        if (err.name === "AbortError") return;
+        setJobRoute(null);
+      })
+      .finally(() => setRouteBusy(false));
+    return () => ac.abort();
+  }, [selected, routePathKey]);
 
   useEffect(() => {
     const q = searchQ.trim();
@@ -437,8 +484,9 @@ export default function DispatchBoard() {
     setBusy(true);
     setError("");
     try {
-      const job = await optimizeJobStops(selected.id);
+      const { job, route } = await optimizeJobStops(selected.id);
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
+      if (route) setJobRoute(route);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Optimize failed");
     } finally {
@@ -912,9 +960,21 @@ export default function DispatchBoard() {
                 stops={selected?.stops || []}
                 fitKey={fitKey}
                 draftPin={draftPin}
+                routeGeometry={jobRoute?.geometry || []}
                 onMapClick={(lat, lon) => void onMapClick(lat, lon)}
               />
             </div>
+            {selected && selected.stops.filter((s) => s.lat != null && s.lon != null).length >= 2 ? (
+              <p className="dispatch-route-banner" role="status">
+                {routeBusy && !jobRoute
+                  ? "Loading road path…"
+                  : jobRoute?.engine === "osrm"
+                    ? `Road route · ${jobRoute.distanceKm ?? "—"} km · ${formatRouteDuration(jobRoute.durationSec)}`
+                    : `Straight-line estimate${jobRoute?.distanceKm != null ? ` · ${jobRoute.distanceKm} km` : ""}${
+                        jobRoute?.durationSec != null ? ` · ${formatRouteDuration(jobRoute.durationSec)}` : ""
+                      }${jobRoute?.warning ? ` · ${jobRoute.warning}` : " · set OSRM_BASE_URL for roads"}`}
+              </p>
+            ) : null}
             <ul className="dispatch-job-tabs">
               {jobs.map((j) => (
                 <li key={j.id}>
@@ -1055,46 +1115,65 @@ export default function DispatchBoard() {
                 <div className="dispatch-sequence">
                   <div className="dispatch-sequence-head">
                     <p className="dispatch-eyebrow">Sequence</p>
-                    <span>{selected.stops.length} stops</span>
+                    <span>
+                      {selected.stops.length} stops
+                      {jobRoute?.distanceKm != null ? ` · ${jobRoute.distanceKm} km` : ""}
+                    </span>
                   </div>
                   {selected.stops.length === 0 ? (
                     <p className="dispatch-search-hint">Assign orders from the pool.</p>
                   ) : (
                     <ol className="dispatch-stop-list">
-                      {selected.stops.map((stop, i) => (
-                        <li key={stop.id}>
-                          <span className="dispatch-stop-idx">{i + 1}</span>
-                          <div className="dispatch-stop-body">
-                            <strong>{stop.name}</strong>
-                            <span>
-                              {stop.status}
-                              {stop.zone ? ` · ${stop.zone}` : ""}
-                              {stop.volumeM3 != null ? ` · ${stop.volumeM3} m³` : ""}
-                              {formatDispatchWindow(stop) ? ` · ${formatDispatchWindow(stop)}` : ""}
-                            </span>
-                          </div>
-                          <div className="dispatch-stop-actions">
-                            <button
-                              type="button"
-                              className="btn-secondary dispatch-proof-btn"
-                              onClick={() => setProofStopId(proofStopId === stop.id ? null : stop.id)}
-                            >
-                              POD
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-secondary dispatch-return-btn"
-                              disabled={
-                                busy || selected.status === "done" || selected.status === "cancelled"
-                              }
-                              title="Remove from this job and return order to inbox"
-                              onClick={() => void handleReturnStop(stop.id, stop.name)}
-                            >
-                              To inbox
-                            </button>
-                          </div>
-                        </li>
-                      ))}
+                      {selected.stops.map((stop, i) => {
+                        const meta = stopRouteMeta[i];
+                        return (
+                          <li key={stop.id}>
+                            <span className="dispatch-stop-idx">{i + 1}</span>
+                            <div className="dispatch-stop-body">
+                              <strong>{stop.name}</strong>
+                              <span>
+                                {stop.status}
+                                {stop.zone ? ` · ${stop.zone}` : ""}
+                                {stop.volumeM3 != null ? ` · ${stop.volumeM3} m³` : ""}
+                                {formatDispatchWindow(stop) ? ` · ${formatDispatchWindow(stop)}` : ""}
+                              </span>
+                              <span className="dispatch-stop-leg">
+                                {i === 0 ? (
+                                  <>ETA {meta?.eta || "—"} · start</>
+                                ) : (
+                                  <>
+                                    {meta?.legDistanceKm != null ? `${meta.legDistanceKm} km` : "—"}
+                                    <span aria-hidden> · </span>
+                                    {formatRouteDuration(meta?.legDurationSec)}
+                                    <span aria-hidden> · </span>
+                                    ETA {meta?.eta || "—"}
+                                  </>
+                                )}
+                              </span>
+                            </div>
+                            <div className="dispatch-stop-actions">
+                              <button
+                                type="button"
+                                className="btn-secondary dispatch-proof-btn"
+                                onClick={() => setProofStopId(proofStopId === stop.id ? null : stop.id)}
+                              >
+                                POD
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-secondary dispatch-return-btn"
+                                disabled={
+                                  busy || selected.status === "done" || selected.status === "cancelled"
+                                }
+                                title="Remove from this job and return order to inbox"
+                                onClick={() => void handleReturnStop(stop.id, stop.name)}
+                              >
+                                To inbox
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ol>
                   )}
                 </div>

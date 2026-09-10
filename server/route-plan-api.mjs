@@ -131,10 +131,88 @@ async function osrmRoute(base, ordered) {
   }
   const route = parsed.routes[0];
   const coordsLatLon = (route.geometry?.coordinates || []).map(([lon, lat]) => [lat, lon]);
+  const legs = Array.isArray(route.legs)
+    ? route.legs.map((leg) => ({
+        distanceKm: Math.round((Number(leg.distance) / 1000) * 10) / 10,
+        durationSec: Math.round(Number(leg.duration) || 0),
+      }))
+    : [];
   return {
     geometry: coordsLatLon,
-    distanceKm: Number(route.distance) / 1000,
-    durationSec: Number(route.duration),
+    distanceKm: Math.round((Number(route.distance) / 1000) * 10) / 10,
+    durationSec: Math.round(Number(route.duration) || 0),
+    legs,
+  };
+}
+
+/** ~urban/intercity mix when OSRM is unavailable. */
+const HAV_SPEED_KMH = 35;
+
+function haversineRoute(points) {
+  const legs = [];
+  let totalKm = 0;
+  let totalSec = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const km = haversineKm(points[i].lat, points[i].lon, points[i + 1].lat, points[i + 1].lon);
+    const durationSec = Math.max(60, Math.round((km / HAV_SPEED_KMH) * 3600));
+    legs.push({
+      distanceKm: Math.round(km * 10) / 10,
+      durationSec,
+    });
+    totalKm += km;
+    totalSec += durationSec;
+  }
+  return {
+    geometry: straightGeometry(points),
+    distanceKm: Math.round(totalKm * 10) / 10,
+    durationSec: totalSec,
+    legs,
+  };
+}
+
+/** Ordered waypoints → road geometry + per-leg stats (OSRM when available). */
+export async function buildRouteForPoints(points) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return {
+      engine: "haversine",
+      geometry: [],
+      legs: [],
+      distanceKm: 0,
+      durationSec: 0,
+      warning: "Need at least 2 points",
+    };
+  }
+  const base = osrmBase();
+  if (base) {
+    try {
+      const routed = await osrmRoute(base, points);
+      const geometry = routed.geometry.length >= 2 ? routed.geometry : straightGeometry(points);
+      const legs =
+        routed.legs.length === points.length - 1 ? routed.legs : haversineRoute(points).legs;
+      return {
+        engine: "osrm",
+        geometry,
+        legs,
+        distanceKm: routed.distanceKm,
+        durationSec: routed.durationSec,
+        warning:
+          routed.geometry.length < 2
+            ? "OSRM returned no path geometry; check map extract coverage"
+            : null,
+      };
+    } catch (err) {
+      const fallback = haversineRoute(points);
+      return {
+        engine: "haversine",
+        ...fallback,
+        warning: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+  return {
+    engine: "haversine",
+    ...haversineRoute(points),
+    warning: "OSRM not configured (set OSRM_BASE_URL)",
   };
 }
 
@@ -206,37 +284,8 @@ export async function handleRoutePlanRequest(req, res) {
         points.push(p);
       }
 
-      const base = osrmBase();
-      if (base) {
-        try {
-          const routed = await osrmRoute(base, points);
-          json(res, 200, {
-            engine: "osrm",
-            geometry: routed.geometry,
-            distanceKm: routed.distanceKm,
-            durationSec: routed.durationSec,
-            warning: null,
-          });
-          return true;
-        } catch (err) {
-          json(res, 200, {
-            engine: "haversine",
-            geometry: straightGeometry(points),
-            distanceKm: null,
-            durationSec: null,
-            warning: err instanceof Error ? err.message : String(err),
-          });
-          return true;
-        }
-      }
-
-      json(res, 200, {
-        engine: "haversine",
-        geometry: straightGeometry(points),
-        distanceKm: null,
-        durationSec: null,
-        warning: "OSRM not configured",
-      });
+      const routed = await buildRouteForPoints(points);
+      json(res, 200, routed);
       return true;
     }
 

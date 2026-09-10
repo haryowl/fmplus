@@ -266,16 +266,23 @@ export async function returnStopToInbox(jobId: string, stopId: string): Promise<
   return data.job;
 }
 
-export async function optimizeJobStops(jobId: string): Promise<DispatchJob> {
+export async function optimizeJobStops(jobId: string): Promise<{
+  job: DispatchJob;
+  route: import("./routePlan").RouteGeometryResult | null;
+}> {
   const res = await fetch(`/api/dispatch/jobs/${encodeURIComponent(jobId)}/optimize-stops`, {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
     body: "{}",
   });
-  const data = (await res.json().catch(() => ({}))) as { job?: DispatchJob; error?: string };
+  const data = (await res.json().catch(() => ({}))) as {
+    job?: DispatchJob;
+    route?: import("./routePlan").RouteGeometryResult;
+    error?: string;
+  };
   if (!res.ok) throw new Error(data.error || `Optimize ${res.status}`);
   if (!data.job) throw new Error("Optimize failed");
-  return data.job;
+  return { job: data.job, route: data.route || null };
 }
 
 export async function fetchDispatchFieldUsers(): Promise<DispatchFieldUser[]> {

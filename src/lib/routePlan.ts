@@ -42,9 +42,15 @@ export async function fetchRoutePlanStatus(signal?: AbortSignal): Promise<RouteP
   return data;
 }
 
+export type RouteLeg = {
+  distanceKm: number;
+  durationSec: number;
+};
+
 export type RouteGeometryResult = {
   engine: "osrm" | "haversine";
   geometry: [number, number][];
+  legs: RouteLeg[];
   distanceKm: number | null;
   durationSec: number | null;
   warning: string | null;
@@ -70,10 +76,68 @@ export async function fetchRouteGeometry(
   return {
     engine: data.engine === "osrm" ? "osrm" : "haversine",
     geometry: Array.isArray(data.geometry) ? data.geometry : [],
+    legs: Array.isArray(data.legs) ? data.legs : [],
     distanceKm: data.distanceKm ?? null,
     durationSec: data.durationSec ?? null,
     warning: data.warning ?? null,
   };
+}
+
+export function formatRouteDuration(sec: number | null | undefined): string {
+  if (sec == null || !Number.isFinite(sec) || sec < 0) return "—";
+  const m = Math.round(sec / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem ? `${h}h ${rem}m` : `${h}h`;
+}
+
+/** Clock time HH:MM from minutes since midnight. */
+export function formatClockMinutes(totalMinutes: number): string {
+  const day = ((Math.round(totalMinutes) % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hh = String(Math.floor(day / 60)).padStart(2, "0");
+  const mm = String(day % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+/** Parse "HH:MM" → minutes since midnight; null if invalid. */
+export function parseClockToMinutes(value: string | undefined | null): number | null {
+  const m = String(value || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min) || h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/**
+ * Per-stop ETA + leg-from-previous, given ordered stops and route legs.
+ * Departure = earliest windowStart, else 08:00.
+ */
+export function buildStopRouteMeta(
+  stops: Array<{ windowStart?: string }>,
+  legs: RouteLeg[],
+): Array<{
+  legDistanceKm: number | null;
+  legDurationSec: number | null;
+  eta: string | null;
+}> {
+  let start =
+    stops.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ?? 8 * 60;
+  let elapsed = 0;
+  return stops.map((_, i) => {
+    if (i === 0) {
+      return { legDistanceKm: null, legDurationSec: null, eta: formatClockMinutes(start) };
+    }
+    const leg = legs[i - 1];
+    const durationSec = leg?.durationSec ?? 0;
+    elapsed += durationSec;
+    return {
+      legDistanceKm: leg?.distanceKm ?? null,
+      legDurationSec: leg?.durationSec ?? null,
+      eta: formatClockMinutes(start + elapsed / 60),
+    };
+  });
 }
 
 export async function optimizeRoutePlan(input: {
@@ -93,15 +157,6 @@ export async function optimizeRoutePlan(input: {
   const data = (await res.json().catch(() => ({}))) as RouteOptimizeResult & { error?: string };
   if (!res.ok) throw new Error(data.error || `Optimize ${res.status}`);
   return data;
-}
-
-export function formatRouteDuration(sec: number | null | undefined): string {
-  if (sec == null || !Number.isFinite(sec) || sec < 0) return "—";
-  const m = Math.round(sec / 60);
-  if (m < 60) return `${m} min`;
-  const h = Math.floor(m / 60);
-  const rem = m % 60;
-  return rem ? `${h}h ${rem}m` : `${h}h`;
 }
 
 export function downloadRoutePlanExcel(result: RouteOptimizeResult): void {
