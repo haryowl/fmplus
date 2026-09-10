@@ -43,7 +43,15 @@ cd /root/fmplus/fmplus   # or your deploy path
 git pull
 chmod +x scripts/setup-osrm.sh
 
-# Downloads Java + Sumatra + Kalimantan + Sulawesi, merges with osmium, builds OSRM, starts container
+# Downloads Java + Sumatra + Kalimantan + Sulawesi, merges with osmium
+# (Docker Hub `iboates/osmium`, or `apt install osmium-tool` if needed), builds OSRM, starts container
+./scripts/setup-osrm.sh --regions=java,sumatra,kalimantan,sulawesi
+```
+
+If merge fails with `ghcr.io/... denied`, pull has already been fixed to use Docker Hub. Immediate workaround on the VPS:
+
+```bash
+apt-get update && apt-get install -y osmium-tool
 ./scripts/setup-osrm.sh --regions=java,sumatra,kalimantan,sulawesi
 ```
 

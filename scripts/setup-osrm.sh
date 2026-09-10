@@ -6,8 +6,9 @@
 #   chmod +x scripts/setup-osrm.sh
 #
 #   # Recommended for FM Plus fleets on the four major islands:
-#   ./scripts/setup-osrm.sh --regions java,sumatra,kalimantan,sulawesi
+#   ./scripts/setup-osrm.sh --regions=java,sumatra,kalimantan,sulawesi
 #
+#   # If GHCR osmium is denied, the script uses Docker Hub iboates/osmium or apt osmium-tool.
 #   # Single Geofabrik extract (legacy):
 #   PBF_URL=https://download.geofabrik.de/asia/indonesia/sulawesi-latest.osm.pbf ./scripts/setup-osrm.sh
 #   PBF_URL=https://download.geofabrik.de/asia/indonesia-latest.osm.pbf ./scripts/setup-osrm.sh
@@ -23,7 +24,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DATA_DIR="${OSRM_DATA_DIR:-$ROOT/data/osrm}"
 IMAGE="${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:latest}"
-OSMIUM_IMAGE="${OSMIUM_IMAGE:-ghcr.io/osmcode/osmium-tool:latest}"
+# GHCR osmcode image often returns "denied" without auth — prefer Docker Hub.
+OSMIUM_IMAGE="${OSMIUM_IMAGE:-iboates/osmium:latest}"
 # Full Indonesia is ~1GB+ PBF and needs several GB RAM to extract.
 PBF_URL="${PBF_URL:-https://download.geofabrik.de/asia/indonesia-latest.osm.pbf}"
 REGIONS="${REGIONS:-}"
@@ -92,6 +94,48 @@ build_graph() {
     osrm-customize "/data/${base_name}.osrm"
 }
 
+# Merge several .osm.pbf files. Tries host osmium, then Docker Hub image, then apt.
+merge_pbfs() {
+  local out_name="$1"
+  shift
+  local inputs=("$@")
+  local data_args=()
+  local host_args=()
+  local f
+
+  for f in "${inputs[@]}"; do
+    data_args+=("/data/$f")
+    host_args+=("$DATA_DIR/$f")
+  done
+
+  rm -f "$DATA_DIR/$out_name"
+
+  if command -v osmium >/dev/null 2>&1; then
+    echo "==> Merging with host osmium → $out_name"
+    osmium merge "${host_args[@]}" -o "$DATA_DIR/$out_name" --overwrite
+    return 0
+  fi
+
+  echo "==> Merging with Docker osmium ($OSMIUM_IMAGE) → $out_name"
+  # iboates/osmium ENTRYPOINT is already `osmium`, so pass `merge` only.
+  if docker run --rm -t -v "$DATA_DIR:/data" "$OSMIUM_IMAGE" \
+      merge "${data_args[@]}" -o "/data/$out_name" --overwrite; then
+    return 0
+  fi
+
+  echo "==> Docker osmium failed — trying apt install osmium-tool"
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq osmium-tool
+    osmium merge "${host_args[@]}" -o "$DATA_DIR/$out_name" --overwrite
+    return 0
+  fi
+
+  echo "Could not merge PBFs (no osmium). Install: apt-get install -y osmium-tool"
+  echo "Or set OSMIUM_IMAGE to a pullable image and retry."
+  exit 1
+}
+
 BASE_NAME=""
 PBF_NAME=""
 
@@ -124,12 +168,8 @@ if [[ "$START_ONLY" -eq 0 ]]; then
       BASE_NAME="${PBF_NAME%.osm.pbf}"
       BASE_NAME="${BASE_NAME%.pbf}"
     else
-      echo "==> Merging ${#pbf_files[@]} extracts → $PBF_NAME (osmium)"
-      # Rebuild merge every time regions change; remove stale merged pbf if present.
-      rm -f "$PBF_NAME"
-      # osmium merge writes the output; inputs stay intact.
-      docker run --rm -t -v "$DATA_DIR:/data" "$OSMIUM_IMAGE" \
-        osmium merge $(printf '/data/%s ' "${pbf_files[@]}") -o "/data/$PBF_NAME" --overwrite
+      echo "==> Merging ${#pbf_files[@]} extracts → $PBF_NAME"
+      merge_pbfs "$PBF_NAME" "${pbf_files[@]}"
     fi
 
     build_graph "$PBF_NAME" "$BASE_NAME"
