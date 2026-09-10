@@ -4,6 +4,7 @@
  * GET/PATCH /api/dispatch/jobs/:id
  * POST /api/dispatch/jobs/:id/assign-orders
  * POST /api/dispatch/jobs/:id/optimize-stops
+ * POST /api/dispatch/jobs/:id/stops/:stopId/return
  * GET/POST /api/dispatch/orders
  * PATCH/DELETE /api/dispatch/orders/:id
  * GET /api/dispatch/stops/:stopId/photos
@@ -1016,6 +1017,46 @@ export async function handleDispatchRequest(req, res) {
       json(res, 200, {
         stop: publicStop(updated.rows[0]),
         job: publicJob(await loadJob(dbTenant.id, job.id), await loadStops(job.id)),
+      });
+      return true;
+    }
+
+    const stopReturn =
+      /^\/api\/dispatch\/jobs\/([0-9a-f-]{36})\/stops\/([0-9a-f-]{36})\/return$/i.exec(url.pathname);
+    if (stopReturn && req.method === "POST") {
+      const job = await loadJob(dbTenant.id, stopReturn[1]);
+      if (!job) {
+        json(res, 404, { error: "Job not found" });
+        return true;
+      }
+      if (job.status === "done" || job.status === "cancelled") {
+        json(res, 400, { error: "Cannot change stops on a closed job" });
+        return true;
+      }
+      const stopRow = await dbQuery(
+        `SELECT s.* FROM dispatch_stops s
+         WHERE s.id = $1 AND s.job_id = $2`,
+        [stopReturn[2], job.id],
+      );
+      const stop = stopRow.rows[0];
+      if (!stop) {
+        json(res, 404, { error: "Stop not found" });
+        return true;
+      }
+      if (stop.order_id) {
+        await dbQuery(
+          `UPDATE dispatch_orders
+           SET status = 'pending', job_id = NULL, stop_id = NULL, updated_at = now()
+           WHERE id = $1 AND tenant_id = $2`,
+          [stop.order_id, dbTenant.id],
+        );
+      }
+      await dbQuery(`DELETE FROM dispatch_stops WHERE id = $1 AND job_id = $2`, [stop.id, job.id]);
+      await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [job.id]);
+      const row = await loadJob(dbTenant.id, job.id);
+      json(res, 200, {
+        job: publicJob(row, await loadStops(job.id)),
+        returnedOrderId: stop.order_id || null,
       });
       return true;
     }

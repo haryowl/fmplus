@@ -250,6 +250,22 @@ export async function assignOrdersToJob(jobId: string, orderIds: string[]): Prom
   return data.job;
 }
 
+/** Remove a stop from a job; linked order returns to the pending inbox. */
+export async function returnStopToInbox(jobId: string, stopId: string): Promise<DispatchJob> {
+  const res = await fetch(
+    `/api/dispatch/jobs/${encodeURIComponent(jobId)}/stops/${encodeURIComponent(stopId)}/return`,
+    {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+      body: "{}",
+    },
+  );
+  const data = (await res.json().catch(() => ({}))) as { job?: DispatchJob; error?: string };
+  if (!res.ok) throw new Error(data.error || `Return stop ${res.status}`);
+  if (!data.job) throw new Error("Return stop failed");
+  return data.job;
+}
+
 export async function optimizeJobStops(jobId: string): Promise<DispatchJob> {
   const res = await fetch(`/api/dispatch/jobs/${encodeURIComponent(jobId)}/optimize-stops`, {
     method: "POST",

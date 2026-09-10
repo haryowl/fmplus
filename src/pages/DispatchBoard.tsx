@@ -21,6 +21,7 @@ import {
   optimizeJobStops,
   patchDispatchJob,
   patchDispatchOrder,
+  returnStopToInbox,
   shiftServiceDate,
   todayServiceDate,
   utilizationTone,
@@ -440,6 +441,29 @@ export default function DispatchBoard() {
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Optimize failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleReturnStop(stopId: string, stopName: string) {
+    if (!selected) return;
+    if (
+      !window.confirm(
+        `Return “${stopName || "stop"}” to the inbox? It will leave this job and become unassigned again.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const job = await returnStopToInbox(selected.id, stopId);
+      setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
+      if (proofStopId === stopId) setProofStopId(null);
+      setReload((n) => n + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not return stop to inbox");
     } finally {
       setBusy(false);
     }
@@ -1049,13 +1073,26 @@ export default function DispatchBoard() {
                               {formatDispatchWindow(stop) ? ` · ${formatDispatchWindow(stop)}` : ""}
                             </span>
                           </div>
-                          <button
-                            type="button"
-                            className="btn-secondary dispatch-proof-btn"
-                            onClick={() => setProofStopId(proofStopId === stop.id ? null : stop.id)}
-                          >
-                            POD
-                          </button>
+                          <div className="dispatch-stop-actions">
+                            <button
+                              type="button"
+                              className="btn-secondary dispatch-proof-btn"
+                              onClick={() => setProofStopId(proofStopId === stop.id ? null : stop.id)}
+                            >
+                              POD
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-secondary dispatch-return-btn"
+                              disabled={
+                                busy || selected.status === "done" || selected.status === "cancelled"
+                              }
+                              title="Remove from this job and return order to inbox"
+                              onClick={() => void handleReturnStop(stop.id, stop.name)}
+                            >
+                              To inbox
+                            </button>
+                          </div>
                         </li>
                       ))}
                     </ol>

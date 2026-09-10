@@ -4389,12 +4389,24 @@ html.onesheet-root body {
   color: var(--ink-soft);
 }
 
-.dispatch-proof-btn {
+.dispatch-stop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.dispatch-proof-btn,
+.dispatch-return-btn {
   height: 32px;
   padding: 0 10px;
   border-radius: 8px;
   font-size: 0.75rem;
   font-weight: 700;
+}
+
+.dispatch-return-btn {
+  color: var(--danger);
 }
 
 .dispatch-proof-box {
