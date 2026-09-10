@@ -178,6 +178,10 @@ function publicDispatchJob(row, stops = []) {
     arrivedAt: row.arrived_at || null,
     completedAt: row.completed_at || null,
     fieldNote: row.field_note || "",
+    serviceDate:
+      row.service_date instanceof Date
+        ? row.service_date.toISOString().slice(0, 10)
+        : String(row.service_date || "").slice(0, 10),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...cap,
@@ -470,10 +474,18 @@ export async function handleFieldRequest(req, res) {
       }
 
       if (url.pathname === "/api/field/dispatch/jobs" && req.method === "GET") {
+        const dateParam = String(url.searchParams.get("date") || "").trim().slice(0, 10);
+        const serviceDate = /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
+          ? dateParam
+          : (() => {
+              const d = new Date();
+              return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+            })();
         const rows = await dbQuery(
           `SELECT * FROM dispatch_jobs
            WHERE tenant_id = $1
              AND assigned_field_user_id = $2
+             AND service_date = $3::date
              AND (
                status IN ('assigned', 'en_route', 'arrived')
                OR (
@@ -490,13 +502,13 @@ export async function handleFieldRequest(req, res) {
              END,
              updated_at DESC
            LIMIT 100`,
-          [user.tenantId, user.id],
+          [user.tenantId, user.id, serviceDate],
         );
         const jobs = [];
         for (const row of rows.rows) {
           jobs.push(publicDispatchJob(row, await loadDispatchStops(row.id)));
         }
-        json(res, 200, { jobs });
+        json(res, 200, { jobs, serviceDate });
         return true;
       }
 

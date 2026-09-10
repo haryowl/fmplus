@@ -69,6 +69,29 @@ function numOrNull(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+/** YYYY-MM-DD or null. */
+function parseServiceDate(v) {
+  const s = String(v || "").trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const t = Date.parse(`${s}T12:00:00Z`);
+  if (!Number.isFinite(t)) return null;
+  return s;
+}
+
+function todayYmd() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function formatServiceDate(rowVal) {
+  if (!rowVal) return "";
+  if (rowVal instanceof Date) return rowVal.toISOString().slice(0, 10);
+  return String(rowVal).slice(0, 10);
+}
+
 function publicStop(row) {
   return {
     id: row.id,
@@ -133,6 +156,7 @@ function publicJob(row, stops = []) {
     arrivedAt: row.arrived_at || null,
     completedAt: row.completed_at || null,
     fieldNote: row.field_note || "",
+    serviceDate: formatServiceDate(row.service_date) || todayYmd(),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...cap,
@@ -153,6 +177,7 @@ function publicOrder(row) {
     weightKg: row.weight_kg == null ? null : Number(row.weight_kg),
     windowStart: row.window_start || "",
     windowEnd: row.window_end || "",
+    serviceDate: formatServiceDate(row.service_date) || todayYmd(),
     status: row.status || "pending",
     jobId: row.job_id || null,
     stopId: row.stop_id || null,
@@ -359,9 +384,10 @@ export async function handleDispatchRequest(req, res) {
     // —— Orders ——
     if (url.pathname === "/api/dispatch/orders" && req.method === "GET") {
       const status = String(url.searchParams.get("status") || "pending").toLowerCase();
+      const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
       const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 100));
-      const clauses = ["tenant_id = $1"];
-      const params = [dbTenant.id];
+      const clauses = ["tenant_id = $1", "service_date = $2"];
+      const params = [dbTenant.id, date];
       if (status === "open" || status === "pending") {
         clauses.push(`status = 'pending'`);
       } else if (ORDER_STATUSES.includes(status)) {
@@ -379,7 +405,7 @@ export async function handleDispatchRequest(req, res) {
          LIMIT $${params.length}`,
         params,
       );
-      json(res, 200, { orders: rows.rows.map(publicOrder) });
+      json(res, 200, { orders: rows.rows.map(publicOrder), serviceDate: date });
       return true;
     }
 
@@ -392,11 +418,12 @@ export async function handleDispatchRequest(req, res) {
       }
       const lat = numOrNull(body.lat);
       const lon = numOrNull(body.lon ?? body.lng);
+      const serviceDate = parseServiceDate(body.serviceDate) || todayYmd();
       const inserted = await dbQuery(
         `INSERT INTO dispatch_orders (
            tenant_id, external_ref, customer_name, address, lat, lon, zone,
-           volume_m3, weight_kg, window_start, window_end, notes
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           volume_m3, weight_kg, window_start, window_end, notes, service_date
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          RETURNING *`,
         [
           dbTenant.id,
@@ -411,6 +438,7 @@ export async function handleDispatchRequest(req, res) {
           String(body.windowStart || "").trim().slice(0, 16) || null,
           String(body.windowEnd || "").trim().slice(0, 16) || null,
           String(body.notes || "").trim().slice(0, 2000) || null,
+          serviceDate,
         ],
       );
       json(res, 201, { order: publicOrder(inserted.rows[0]) });
@@ -449,6 +477,15 @@ export async function handleDispatchRequest(req, res) {
           params.push(val);
           sets.push(`${col} = $${params.length}`);
         }
+      }
+      if ("serviceDate" in body) {
+        const sd = parseServiceDate(body.serviceDate);
+        if (!sd) {
+          json(res, 400, { error: "Invalid serviceDate (use YYYY-MM-DD)" });
+          return true;
+        }
+        params.push(sd);
+        sets.push(`service_date = $${params.length}`);
       }
       if ("lat" in body) {
         params.push(numOrNull(body.lat));
@@ -535,9 +572,10 @@ export async function handleDispatchRequest(req, res) {
     // —— Jobs ——
     if (url.pathname === "/api/dispatch/jobs" && req.method === "GET") {
       const status = String(url.searchParams.get("status") || "open").toLowerCase();
+      const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
       const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 100));
-      const clauses = ["j.tenant_id = $1"];
-      const params = [dbTenant.id];
+      const clauses = ["j.tenant_id = $1", "j.service_date = $2"];
+      const params = [dbTenant.id, date];
       if (status === "open") {
         clauses.push(`j.status IN ('draft','assigned','en_route','arrived')`);
       } else if (STATUSES.includes(status)) {
@@ -564,7 +602,7 @@ export async function handleDispatchRequest(req, res) {
         const stops = await loadStops(row.id);
         jobs.push(publicJob(row, stops));
       }
-      json(res, 200, { jobs });
+      json(res, 200, { jobs, serviceDate: date });
       return true;
     }
 
@@ -600,17 +638,18 @@ export async function handleDispatchRequest(req, res) {
       if (assigneeId && status === "draft") status = "assigned";
       const volCap = numOrNull(body.volumeCapacityM3);
       const wtCap = numOrNull(body.weightCapacityKg);
+      const serviceDate = parseServiceDate(body.serviceDate) || todayYmd();
 
       const inserted = await dbQuery(
         `INSERT INTO dispatch_jobs (
            tenant_id, status, title, notes,
            armada_user_id, armada_username, user_display_name,
            assigned_field_user_id, assigned_at,
-           volume_capacity_m3, weight_capacity_kg
+           volume_capacity_m3, weight_capacity_kg, service_date
          ) VALUES (
            $1,$2,$3,$4,$5,$6,$7,$8,
            CASE WHEN $8::uuid IS NULL THEN NULL ELSE now() END,
-           COALESCE($9, 12), COALESCE($10, 1500)
+           COALESCE($9, 12), COALESCE($10, 1500), $11
          )
          RETURNING id`,
         [
@@ -624,6 +663,7 @@ export async function handleDispatchRequest(req, res) {
           assigneeId,
           volCap,
           wtCap,
+          serviceDate,
         ],
       );
       const jobId = inserted.rows[0].id;
@@ -659,6 +699,9 @@ export async function handleDispatchRequest(req, res) {
         );
         const o = ord.rows[0];
         if (!o) continue;
+        const jobDate = formatServiceDate(job.service_date);
+        const orderDate = formatServiceDate(o.service_date);
+        if (jobDate && orderDate && jobDate !== orderDate) continue;
         const inserted = await dbQuery(
           `INSERT INTO dispatch_stops (
              job_id, sort_order, name, address, lat, lon, notes,
@@ -841,6 +884,15 @@ export async function handleDispatchRequest(req, res) {
       if ("weightCapacityKg" in body) {
         params.push(numOrNull(body.weightCapacityKg) ?? 1500);
         sets.push(`weight_capacity_kg = $${params.length}`);
+      }
+      if ("serviceDate" in body) {
+        const sd = parseServiceDate(body.serviceDate);
+        if (!sd) {
+          json(res, 400, { error: "Invalid serviceDate (use YYYY-MM-DD)" });
+          return true;
+        }
+        params.push(sd);
+        sets.push(`service_date = $${params.length}`);
       }
       if ("stops" in body) {
         await replaceStops(existing.id, normalizeStops(body.stops));

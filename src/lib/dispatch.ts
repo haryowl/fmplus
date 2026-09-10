@@ -47,6 +47,8 @@ export type DispatchJob = {
   arrivedAt: string | null;
   completedAt: string | null;
   fieldNote: string;
+  /** Plan / service day YYYY-MM-DD */
+  serviceDate: string;
   createdAt: string;
   updatedAt: string;
   volumeCapacityM3?: number;
@@ -69,6 +71,8 @@ export type DispatchOrder = {
   weightKg: number | null;
   windowStart: string;
   windowEnd: string;
+  /** Promised / plan day YYYY-MM-DD */
+  serviceDate: string;
   status: DispatchOrderStatus;
   jobId: string | null;
   stopId: string | null;
@@ -126,14 +130,50 @@ export function utilizationTone(pct: number | undefined): "ok" | "warn" | "over"
   return "ok";
 }
 
+/** Local calendar day as YYYY-MM-DD. */
+export function todayServiceDate(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function shiftServiceDate(ymd: string, deltaDays: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + deltaDays);
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+export function formatServiceDateLabel(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return ymd;
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 export async function fetchDispatchJobs(
   status: "open" | "all" | DispatchStatus = "open",
   signal?: AbortSignal,
+  serviceDate?: string,
 ): Promise<DispatchJob[]> {
-  const res = await fetch(`/api/dispatch/jobs?status=${encodeURIComponent(status)}&limit=100`, {
-    headers: { accept: "application/json", ...tenantHeaders() },
-    signal,
-  });
+  const date = serviceDate || todayServiceDate();
+  const res = await fetch(
+    `/api/dispatch/jobs?status=${encodeURIComponent(status)}&date=${encodeURIComponent(date)}&limit=100`,
+    {
+      headers: { accept: "application/json", ...tenantHeaders() },
+      signal,
+    },
+  );
   const data = (await res.json().catch(() => ({}))) as { jobs?: DispatchJob[]; error?: string };
   if (!res.ok) throw new Error(data.error || `Dispatch ${res.status}`);
   return data.jobs || [];
@@ -152,6 +192,7 @@ export async function fetchDispatchJob(id: string): Promise<DispatchJob> {
 export async function createDispatchJob(body: {
   title: string;
   notes?: string;
+  serviceDate?: string;
   armadaUserId?: number | null;
   armadaUsername?: string;
   userDisplayName?: string;
@@ -233,11 +274,16 @@ export async function fetchDispatchFieldUsers(): Promise<DispatchFieldUser[]> {
 export async function fetchDispatchOrders(
   status: "pending" | "all" | DispatchOrderStatus = "pending",
   signal?: AbortSignal,
+  serviceDate?: string,
 ): Promise<DispatchOrder[]> {
-  const res = await fetch(`/api/dispatch/orders?status=${encodeURIComponent(status)}&limit=100`, {
-    headers: { accept: "application/json", ...tenantHeaders() },
-    signal,
-  });
+  const date = serviceDate || todayServiceDate();
+  const res = await fetch(
+    `/api/dispatch/orders?status=${encodeURIComponent(status)}&date=${encodeURIComponent(date)}&limit=100`,
+    {
+      headers: { accept: "application/json", ...tenantHeaders() },
+      signal,
+    },
+  );
   const data = (await res.json().catch(() => ({}))) as { orders?: DispatchOrder[]; error?: string };
   if (!res.ok) throw new Error(data.error || `Orders ${res.status}`);
   return data.orders || [];
@@ -254,6 +300,7 @@ export async function createDispatchOrder(body: {
   weightKg?: number | null;
   windowStart?: string;
   windowEnd?: string;
+  serviceDate?: string;
   notes?: string;
 }): Promise<DispatchOrder> {
   const res = await fetch("/api/dispatch/orders", {

@@ -15,8 +15,11 @@ import {
   fetchDispatchOrders,
   fetchStopPhotos,
   formatDispatchWindow,
+  formatServiceDateLabel,
   optimizeJobStops,
   patchDispatchJob,
+  shiftServiceDate,
+  todayServiceDate,
   utilizationTone,
   withTenantQuery,
   type DispatchFieldUser,
@@ -72,6 +75,7 @@ export default function DispatchBoard() {
   const [error, setError] = useState("");
   const [bootError, setBootError] = useState("");
   const [reload, setReload] = useState(0);
+  const [planDate, setPlanDate] = useState(todayServiceDate);
   const [showNewJob, setShowNewJob] = useState(false);
   const [proofStopId, setProofStopId] = useState<string | null>(null);
   const [proofPhotos, setProofPhotos] = useState<DispatchPhoto[]>([]);
@@ -176,7 +180,10 @@ export default function DispatchBoard() {
     const ac = new AbortController();
     setLoading(true);
     setError("");
-    Promise.all([fetchDispatchJobs("open", ac.signal), fetchDispatchOrders("pending", ac.signal)])
+    Promise.all([
+      fetchDispatchJobs("open", ac.signal, planDate),
+      fetchDispatchOrders("pending", ac.signal, planDate),
+    ])
       .then(([jobList, orderList]) => {
         setJobs(jobList);
         setOrders(orderList);
@@ -192,7 +199,7 @@ export default function DispatchBoard() {
       })
       .finally(() => setLoading(false));
     return () => ac.abort();
-  }, [ready, query.tenantKey, reload]);
+  }, [ready, query.tenantKey, reload, planDate]);
 
   useEffect(() => {
     if (!proofStopId || !query.tenantKey) {
@@ -305,6 +312,7 @@ export default function DispatchBoard() {
         weightKg: orderForm.weightKg === "" ? null : Number(orderForm.weightKg),
         windowStart: orderForm.windowStart.trim() || undefined,
         windowEnd: orderForm.windowEnd.trim() || undefined,
+        serviceDate: planDate,
         lat: orderForm.lat,
         lon: orderForm.lon,
       });
@@ -327,6 +335,7 @@ export default function DispatchBoard() {
     try {
       const job = await createDispatchJob({
         title: jobTitle.trim(),
+        serviceDate: planDate,
         assignedFieldUserId: assigneeId || null,
         armadaUserId: selectedUser ? Number(selectedUser.id) : null,
         armadaUsername: selectedUser?.username || "",
@@ -399,7 +408,7 @@ export default function DispatchBoard() {
           <BrandMark />
           <div>
             <h1>Dispatch</h1>
-            <p>Search or click the map · assign · field execution</p>
+            <p>Plan by day · search or map · assign · field execution</p>
           </div>
         </div>
         <div className="topbar-actions">
@@ -410,6 +419,60 @@ export default function DispatchBoard() {
 
       <main className="shell dispatch-shell">
         <section className="dispatch-toolbar" aria-label="Dispatch overview">
+          <div className="dispatch-date-nav" role="group" aria-label="Plan date">
+            <button
+              type="button"
+              className="btn-secondary"
+              aria-label="Previous day"
+              onClick={() => {
+                setSelectedId(null);
+                setSelectedOrderIds([]);
+                setPlanDate((d) => shiftServiceDate(d, -1));
+              }}
+            >
+              ‹
+            </button>
+            <label className="dispatch-date-field">
+              <span className="visually-hidden">Service date</span>
+              <input
+                type="date"
+                value={planDate}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
+                  setSelectedId(null);
+                  setSelectedOrderIds([]);
+                  setPlanDate(v);
+                }}
+              />
+              <strong>{formatServiceDateLabel(planDate)}</strong>
+            </label>
+            <button
+              type="button"
+              className="btn-secondary"
+              aria-label="Next day"
+              onClick={() => {
+                setSelectedId(null);
+                setSelectedOrderIds([]);
+                setPlanDate((d) => shiftServiceDate(d, 1));
+              }}
+            >
+              ›
+            </button>
+            {planDate !== todayServiceDate() ? (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setSelectedId(null);
+                  setSelectedOrderIds([]);
+                  setPlanDate(todayServiceDate());
+                }}
+              >
+                Today
+              </button>
+            ) : null}
+          </div>
           <div className="dispatch-kpi-strip">
             <div className="dispatch-kpi">
               <span>Unassigned</span>
@@ -502,7 +565,7 @@ export default function DispatchBoard() {
         <div className="dispatch-board-3col">
           <section className="dispatch-rail dispatch-pool">
             <header className="dispatch-pane-head">
-              <p className="dispatch-eyebrow">Inbox</p>
+              <p className="dispatch-eyebrow">Inbox · {formatServiceDateLabel(planDate)}</p>
               <h2>Orders</h2>
             </header>
 
@@ -718,7 +781,7 @@ export default function DispatchBoard() {
           <section className="dispatch-rail dispatch-map-pane">
             <header className="dispatch-pane-head">
               <div>
-                <p className="dispatch-eyebrow">Live board</p>
+                <p className="dispatch-eyebrow">Live board · {formatServiceDateLabel(planDate)}</p>
                 <h2>{selected ? selected.title : "Route map"}</h2>
               </div>
               <span className="dispatch-map-badge">{selected?.stops.length || 0} stops</span>

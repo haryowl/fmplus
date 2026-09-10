@@ -2906,6 +2906,17 @@ html.onesheet-root body {
   align-items: center;
   gap: 8px;
 }
+.field-date-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.field-date-nav strong {
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .field-job-filters {
   display: flex;
   flex-wrap: wrap;
@@ -3651,6 +3662,42 @@ html.onesheet-root body {
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: var(--shadow);
+}
+
+.dispatch-date-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.dispatch-date-field {
+  display: grid;
+  gap: 2px;
+  min-width: 9.5rem;
+  position: relative;
+}
+
+.dispatch-date-field input[type="date"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.dispatch-date-field strong {
+  display: block;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .dispatch-kpi-strip {

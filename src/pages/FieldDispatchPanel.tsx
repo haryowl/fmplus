@@ -5,7 +5,10 @@ import {
   dispatchVehicleLabel,
   fieldStopPhotos,
   formatDispatchWindow,
+  formatServiceDateLabel,
   mapsNavigateUrl,
+  shiftServiceDate,
+  todayServiceDate,
   uploadDispatchStopPhoto,
   type DispatchJob,
   type DispatchPhoto,
@@ -40,6 +43,7 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [planDate, setPlanDate] = useState(todayServiceDate);
   const [fieldNote, setFieldNote] = useState("");
   const [tab, setTab] = useState<Tab>("route");
   const [photosByStop, setPhotosByStop] = useState<Record<string, DispatchPhoto[]>>({});
@@ -70,7 +74,9 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
   const loadJobs = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api<{ jobs: DispatchJob[] }>("/api/field/dispatch/jobs");
+      const data = await api<{ jobs: DispatchJob[]; serviceDate?: string }>(
+        `/api/field/dispatch/jobs?date=${encodeURIComponent(planDate)}`,
+      );
       setJobs(data.jobs || []);
       onErrorRef.current("");
     } catch (err) {
@@ -79,11 +85,15 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [planDate]);
 
   useEffect(() => {
     void loadJobs();
   }, [loadJobs]);
+
+  useEffect(() => {
+    setSelectedId(null);
+  }, [planDate]);
 
   useEffect(() => {
     if (!selected) {
@@ -206,6 +216,9 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
             </span>
           </div>
           <h2>{selected.title}</h2>
+          {selected.serviceDate ? (
+            <p className="muted">{formatServiceDateLabel(selected.serviceDate)}</p>
+          ) : null}
           {selected.notes ? <p className="muted">{selected.notes}</p> : null}
         </section>
 
@@ -217,7 +230,7 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
             className={`field-filter-chip${tab === "route" ? " is-active" : ""}`}
             onClick={() => setTab("route")}
           >
-            Today&apos;s Route
+            Route
           </button>
           <button
             type="button"
@@ -399,13 +412,28 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
   return (
     <div className="field-jobs">
       <div className="field-jobs-toolbar">
-        <p className="muted" style={{ margin: 0 }}>
-          {openJobs.length} open · {closedJobs.length} recent closed
-        </p>
+        <div className="field-date-nav" role="group" aria-label="Plan date">
+          <button type="button" className="btn-ghost" aria-label="Previous day" onClick={() => setPlanDate((d) => shiftServiceDate(d, -1))}>
+            ‹
+          </button>
+          <strong>{formatServiceDateLabel(planDate)}</strong>
+          <button type="button" className="btn-ghost" aria-label="Next day" onClick={() => setPlanDate((d) => shiftServiceDate(d, 1))}>
+            ›
+          </button>
+          {planDate !== todayServiceDate() ? (
+            <button type="button" className="btn-ghost" onClick={() => setPlanDate(todayServiceDate())}>
+              Today
+            </button>
+          ) : null}
+        </div>
         <button type="button" className="btn-ghost field-refresh-btn" disabled={loading} onClick={() => void loadJobs()}>
           {loading ? "…" : "Refresh"}
         </button>
       </div>
+
+      <p className="muted" style={{ margin: "0 0 8px" }}>
+        {openJobs.length} open · {closedJobs.length} recent closed
+      </p>
 
       {loading && jobs.length === 0 ? <p className="muted field-loading">Loading dispatch…</p> : null}
 
