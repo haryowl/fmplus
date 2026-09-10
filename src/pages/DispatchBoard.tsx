@@ -35,6 +35,7 @@ import {
 import { reverseAddress, searchAddresses, type GeocodeResult } from "../lib/geocode";
 import {
   buildStopRouteMeta,
+  estimateStraightRoute,
   fetchRouteGeometry,
   formatRouteDuration,
   type RouteGeometryResult,
@@ -251,8 +252,8 @@ export default function DispatchBoard() {
       return;
     }
     const points = selected.stops
-      .filter((s) => s.lat != null && s.lon != null && Number.isFinite(s.lat) && Number.isFinite(s.lon))
-      .map((s) => ({ lat: s.lat as number, lon: s.lon as number }));
+      .map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) }))
+      .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180);
     if (points.length < 2) {
       setJobRoute(null);
       return;
@@ -261,11 +262,15 @@ export default function DispatchBoard() {
     setRouteBusy(true);
     fetchRouteGeometry(points, ac.signal)
       .then((route) => {
+        if (!route.distanceKm || route.distanceKm <= 0 || !route.legs?.length) {
+          setJobRoute(estimateStraightRoute(points));
+          return;
+        }
         setJobRoute(route);
       })
       .catch((err: Error) => {
         if (err.name === "AbortError") return;
-        setJobRoute(null);
+        setJobRoute(estimateStraightRoute(points));
       })
       .finally(() => setRouteBusy(false));
     return () => ac.abort();
@@ -486,7 +491,14 @@ export default function DispatchBoard() {
     try {
       const { job, route } = await optimizeJobStops(selected.id);
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
-      if (route) setJobRoute(route);
+      if (route && route.distanceKm && route.distanceKm > 0) {
+        setJobRoute(route);
+      } else {
+        const pts = job.stops
+          .map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) }))
+          .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+        if (pts.length >= 2) setJobRoute(estimateStraightRoute(pts));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Optimize failed");
     } finally {

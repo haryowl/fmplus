@@ -16,6 +16,14 @@ type Props = {
   routeGeometry?: [number, number][];
 };
 
+function asCoord(lat: unknown, lon: unknown): [number, number] | null {
+  const a = Number(lat);
+  const b = Number(lon);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  if (Math.abs(a) > 90 || Math.abs(b) > 180) return null;
+  return [a, b];
+}
+
 export function DispatchJobMap({
   stops,
   fitKey,
@@ -30,13 +38,32 @@ export function DispatchJobMap({
   const clickRef = useRef(onMapClick);
   clickRef.current = onMapClick;
 
-  const withCoords = useMemo(
-    () =>
-      stops.filter(
-        (s) => s.lat != null && s.lon != null && Number.isFinite(s.lat) && Number.isFinite(s.lon),
-      ),
-    [stops],
+  const withCoords = useMemo(() => {
+    const out: Array<DispatchStop & { lat: number; lon: number }> = [];
+    for (const s of stops) {
+      const c = asCoord(s.lat, s.lon);
+      if (!c) continue;
+      out.push({ ...s, lat: c[0], lon: c[1] });
+    }
+    return out;
+  }, [stops]);
+
+  const stopLine = useMemo(
+    () => withCoords.map((s) => [s.lat, s.lon] as [number, number]),
+    [withCoords],
   );
+
+  const roadLine = useMemo(() => {
+    const cleaned: [number, number][] = [];
+    for (const p of routeGeometry) {
+      if (!Array.isArray(p) || p.length < 2) continue;
+      const c = asCoord(p[0], p[1]);
+      if (c) cleaned.push(c);
+    }
+    // Prefer road geometry only when it has real shape (more than stop-to-stop)
+    if (cleaned.length >= 2) return cleaned;
+    return [];
+  }, [routeGeometry]);
 
   useEffect(() => {
     const el = elRef.current;
@@ -65,17 +92,23 @@ export function DispatchJobMap({
     layer.clearLayers();
     const bounds: L.LatLngExpression[] = [];
 
-    const lineCoords: [number, number][] =
-      routeGeometry.length >= 2
-        ? routeGeometry
-        : withCoords.length >= 2
-          ? withCoords.map((s) => [s.lat as number, s.lon as number])
-          : [];
+    // Always draw stop connectors so the sequence is visible even if OSRM fails.
+    if (stopLine.length >= 2) {
+      L.polyline(stopLine, {
+        color: "#94a3b8",
+        weight: 3,
+        opacity: 0.55,
+        dashArray: "6 8",
+        lineJoin: "round",
+      }).addTo(layer);
+    }
+
+    const lineCoords = roadLine.length >= 2 ? roadLine : stopLine;
     if (lineCoords.length >= 2) {
       L.polyline(lineCoords, {
         color: "#0b6b62",
         weight: 5,
-        opacity: 0.9,
+        opacity: 0.92,
         lineJoin: "round",
         lineCap: "round",
       }).addTo(layer);
@@ -91,9 +124,9 @@ export function DispatchJobMap({
         iconSize: [24, 24],
         iconAnchor: [12, 12],
       });
-      const m = L.marker([stop.lat as number, stop.lon as number], { icon }).addTo(layer);
+      const m = L.marker([stop.lat, stop.lon], { icon }).addTo(layer);
       m.bindPopup(`${stop.name}${stop.zone ? ` · ${stop.zone}` : ""}`);
-      bounds.push([stop.lat as number, stop.lon as number]);
+      bounds.push([stop.lat, stop.lon]);
     });
 
     if (draftPin && Number.isFinite(draftPin.lat) && Number.isFinite(draftPin.lon)) {
@@ -116,7 +149,7 @@ export function DispatchJobMap({
       /* keep Bandung default */
     }
     setTimeout(() => map.invalidateSize(), 50);
-  }, [stops, fitKey, draftPin, interactiveEmpty, withCoords, routeGeometry]);
+  }, [stops, fitKey, draftPin, interactiveEmpty, withCoords, stopLine, roadLine]);
 
   return <div ref={elRef} className="dispatch-job-map" role="img" aria-label="Job stops map" />;
 }

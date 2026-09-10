@@ -122,7 +122,7 @@ export function buildStopRouteMeta(
   legDurationSec: number | null;
   eta: string | null;
 }> {
-  let start =
+  const start =
     stops.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ?? 8 * 60;
   let elapsed = 0;
   return stops.map((_, i) => {
@@ -138,6 +138,48 @@ export function buildStopRouteMeta(
       eta: formatClockMinutes(start + elapsed / 60),
     };
   });
+}
+
+function haversineKmClient(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Client-side straight-line fallback when the API returns an empty/zero route. */
+export function estimateStraightRoute(
+  points: Array<{ lat: number; lon: number }>,
+): RouteGeometryResult {
+  const AVG_KMH = 35;
+  const legs: RouteLeg[] = [];
+  let totalKm = 0;
+  let totalSec = 0;
+  const geometry: [number, number][] = [];
+  for (let i = 0; i < points.length; i++) {
+    const lat = Number(points[i].lat);
+    const lon = Number(points[i].lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    geometry.push([lat, lon]);
+    if (i === 0) continue;
+    const prev = geometry[geometry.length - 2];
+    const km = haversineKmClient(prev[0], prev[1], lat, lon);
+    const durationSec = Math.max(60, Math.round((km / AVG_KMH) * 3600));
+    legs.push({ distanceKm: Math.round(km * 100) / 100, durationSec });
+    totalKm += km;
+    totalSec += durationSec;
+  }
+  return {
+    engine: "haversine",
+    geometry,
+    legs,
+    distanceKm: Math.round(totalKm * 100) / 100,
+    durationSec: totalSec,
+    warning: "Straight-line estimate",
+  };
 }
 
 export async function optimizeRoutePlan(input: {
