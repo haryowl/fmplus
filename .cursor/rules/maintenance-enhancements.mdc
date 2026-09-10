@@ -1,0 +1,155 @@
+---
+description: Maintenance catalog, Approve workflow, cost dashboard, Status column — resume enhancements
+globs: src/components/LastStatusPanel.tsx,src/pages/LastStatus.tsx,src/pages/MaintenanceBoard.tsx,src/components/MaintenanceEventDetail.tsx,src/pages/FieldLogin.tsx,src/lib/maintenance.ts,server/maintenance-api.mjs,server/maintenance-lifecycle.mjs,server/db/migrations/**
+alwaysApply: false
+---
+
+# Maintenance enhancements (prep — implement in slices)
+
+Do **not** start unrelated phases. Ship in order below so Status/dashboard have real Approved + catalog data.
+
+## Shared understanding (current baseline)
+- Workflow today: `due` → `in_progress` → `done` | `skipped` (Start before Done; Cancel start; field locked after Done).
+- Line kinds today: `part` | `labor` | `other` (free description + qty/price/cost) — **no catalog yet**.
+- No `approved` status yet; Completed = `done`.
+- Status panel: link to `/maintenance` only; no Maint column.
+- Next-cycle spawn: due rolled from **completion + interval**; unassigned until manager assigns. **One-time / Demand** jobs have no intervals → no spawn. **End series** / **Stop all open for vehicle** skip open jobs and clear intervals (history kept).
+
+---
+
+## Slice A — Parts & Service catalog
+
+### Product
+| Group | Purpose | Field UX |
+|-------|---------|----------|
+| **Part** | Oil, Brake Pad, Tire, … | Pick item from list |
+| **Service** | Routine service, Broke service, … | Pick item from list |
+| **Others** | Always present | **Free-text** description when not in list |
+
+- Each catalog item: `name`, optional default **unit price** + **unit cost**, `enabled`, sort order.
+- Defaults are **editable** on the job line (and admin can edit catalog defaults).
+- Tenant-scoped catalog (Admin or Maintenance settings).
+
+### Data (suggested)
+```sql
+-- catalog_groups: part | service | other (fixed seeds per tenant)
+-- catalog_items: group_id, name, unit_price, unit_cost, enabled, sort_order
+-- service_event_lines: add catalog_item_id NULL; kind maps to group;
+--   description still required (copy from item name, or free text for Others)
+```
+
+### API / UI
+- CRUD: `/api/maintenance/catalog/groups`, `/api/maintenance/catalog/items` (manager).
+- Seed defaults on first use (Oil, Brake Pad, Tire; Routine / Broke service; Others group with no items).
+- Field `/m` + Maintenance detail: group select → item select **or** free text if Others / “not listed”.
+- Keep `labor` as alias under Service **or** migrate `labor` → `service` (prefer rename to `part` | `service` | `other`).
+
+### Checklist
+- [x] Migration + seeds
+- [x] Admin/Maintenance catalog UI
+- [x] Field + manager line pickers
+- [x] Lines still roll up price/cost totals
+
+---
+
+## Slice B — Approve + lock + Completed cost dashboard
+
+### Product workflow
+1. Field/manager finishes job → status **`done`** (reviewable, still editable by manager).
+2. Manager reviews Completed → **Approve** → status **`approved`**.
+3. **`approved` is terminal for edits** (no patch lines/notes/photos/status except maybe audit reopen later — v1: **no reopen**; or manager-only “Unapprove” behind confirm — **default v1: no unapprove**).
+4. Skip stays `skipped` (not in Approved cost dashboard).
+
+### Lifecycle update
+```
+due → in_progress → done → approved
+                 ↘ skipped
+```
+- Field: still cannot edit `done` / `approved` / `skipped`.
+- Manager: can edit `done`; **Approve** only from `done`; cannot edit `approved`.
+- `canTransition`: add `done → approved`; block field from `approved`.
+
+### Data
+```sql
+ALTER TABLE service_events
+  ADD COLUMN approved_at TIMESTAMPTZ,
+  ADD COLUMN approved_by_admin_id UUID; -- or field/admin actor id
+-- widen status CHECK / app STATUSES to include 'approved'
+```
+
+### Completed dashboard (Approved resume)
+- New view or Maintenance tab: **Approved / Cost dashboard**.
+- Source: `status = approved` only.
+- Charts: cost/price totals over time; by vehicle; by catalog group (Part vs Service); top items.
+- Table: vehicle, title, approved_at, service duration, price Σ, cost Σ, margin, line breakdown link.
+- Filters: date range, vehicle, catalog group.
+
+### Checklist
+- [x] `approved` status + Approve API/button on Completed detail/list
+- [x] Lock patch/photo on approved
+- [x] Dashboard API aggregate + charts/table UI
+- [x] Update field/manager copy (Done ≠ final; Approve = final)
+
+---
+
+## Slice C — Status panel column **Maintenance**
+
+### Product
+Additional column on Last Status named **Maintenance**.
+
+Cell values (priority / worst open or latest closed — pick one rule and stick to it):
+
+| Display | Meaning |
+|---------|---------|
+| **In progress** | Open job `in_progress` for vehicle |
+| **Due** / **Overdue** / **Upcoming** | Open `due` job schedule health |
+| **Done** | Latest closed is `done` (awaiting Approve), no open jobs |
+| **Approved** | Latest closed is `approved`, no open jobs |
+| **—** | No maintenance events |
+
+If both open and closed exist, **open wins** (In progress / Due / Overdue / Upcoming).
+
+### API
+`GET /api/maintenance/status-summary?userIds=1,2,3`
+
+```json
+{
+  "byUserId": {
+    "123": {
+      "label": "Overdue",
+      "status": "due",
+      "health": "overdue",
+      "eventId": "uuid",
+      "title": "…"
+    }
+  }
+}
+```
+
+### UI
+- Column **Maintenance** in `LastStatusPanel` (not only a text link).
+- Pill + link to job or vehicle-filtered `/maintenance`.
+- Fail soft if API errors.
+
+### Checklist
+- [x] status-summary API (open + latest done/approved)
+- [x] Column UI + colors
+- [x] Depends on Slice B for **Approved** label (until then map only to Done / open health)
+
+---
+
+## Suggested implement order
+1. **A** Catalog (feeds accurate costs)
+2. **B** Approve + lock + Approved cost dashboard
+3. **C** Status Maintenance column (uses A/B labels)
+
+## Explicitly later
+- Unapprove / audit trail UI
+- Field creating catalog items
+- WhatsApp/email on Approve
+- Editing Approved (forbidden in v1)
+
+## Resume phrases
+- “implement maintenance catalog”
+- “implement approve and cost dashboard”
+- “implement Status Maintenance column”
