@@ -262,11 +262,23 @@ export default function DispatchBoard() {
     setRouteBusy(true);
     fetchRouteGeometry(points, ac.signal)
       .then((route) => {
-        if (!route.distanceKm || route.distanceKm <= 0 || !route.legs?.length) {
-          setJobRoute(estimateStraightRoute(points));
+        const geomLen = route.geometry?.length || 0;
+        const hasPath = geomLen >= 2;
+        const hasDist = (route.distanceKm || 0) > 0;
+        // Keep OSRM (or any) result that has a real path; only invent straight-line if empty.
+        if (hasPath && (hasDist || geomLen > points.length)) {
+          setJobRoute(route);
           return;
         }
-        setJobRoute(route);
+        if (hasPath && hasDist) {
+          setJobRoute(route);
+          return;
+        }
+        const estimated = estimateStraightRoute(points);
+        setJobRoute({
+          ...estimated,
+          warning: route.warning || estimated.warning,
+        });
       })
       .catch((err: Error) => {
         if (err.name === "AbortError") return;

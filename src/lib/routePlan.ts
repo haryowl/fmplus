@@ -56,29 +56,60 @@ export type RouteGeometryResult = {
   warning: string | null;
 };
 
-/** Road path for an already-ordered stop list (does not re-order). */
+/** Road path for an already-ordered stop list (does not re-order).
+ * Uses the same /api/route-plan/optimize path as the Route plan page.
+ */
 export async function fetchRouteGeometry(
   points: Array<{ lat: number; lon: number }>,
   signal?: AbortSignal,
 ): Promise<RouteGeometryResult> {
-  const res = await fetch("/api/route-plan/geometry", {
+  if (points.length < 2) {
+    return {
+      engine: "haversine",
+      geometry: [],
+      legs: [],
+      distanceKm: 0,
+      durationSec: 0,
+      warning: "Need at least 2 points",
+    };
+  }
+  const start = points[0];
+  const stops = points.slice(1);
+  const res = await fetch("/api/route-plan/optimize", {
     method: "POST",
     headers: {
       accept: "application/json",
       "content-type": "application/json",
       ...tenantHeaders(),
     },
-    body: JSON.stringify({ points }),
+    body: JSON.stringify({ start, stops, roundtrip: false, preserveOrder: true }),
     signal,
   });
-  const data = (await res.json().catch(() => ({}))) as RouteGeometryResult & { error?: string };
+  const data = (await res.json().catch(() => ({}))) as {
+    engine?: string;
+    geometry?: [number, number][];
+    legs?: Array<{ distanceKm?: number; durationSec?: number | null }>;
+    routeLegs?: RouteLeg[];
+    totalDistanceKm?: number;
+    totalDurationSec?: number | null;
+    warning?: string | null;
+    error?: string;
+  };
   if (!res.ok) throw new Error(data.error || `Route geometry ${res.status}`);
+  const routeLegs: RouteLeg[] = Array.isArray(data.routeLegs)
+    ? data.routeLegs
+    : Array.isArray(data.legs)
+      ? data.legs.map((l) => ({
+          distanceKm: Number(l.distanceKm) || 0,
+          durationSec: Number(l.durationSec) || 0,
+        }))
+      : [];
   return {
     engine: data.engine === "osrm" ? "osrm" : "haversine",
     geometry: Array.isArray(data.geometry) ? data.geometry : [],
-    legs: Array.isArray(data.legs) ? data.legs : [],
-    distanceKm: data.distanceKm ?? null,
-    durationSec: data.durationSec ?? null,
+    legs: routeLegs,
+    distanceKm: data.totalDistanceKm ?? null,
+    durationSec: data.totalDurationSec ?? null,
     warning: data.warning ?? null,
   };
 }

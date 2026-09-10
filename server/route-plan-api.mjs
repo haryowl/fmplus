@@ -75,6 +75,14 @@ function asPoint(raw, fallbackLabel) {
   return { lat, lon, label: label || fallbackLabel || "", id };
 }
 
+function pathDistanceHaversine(ordered) {
+  let sum = 0;
+  for (let i = 0; i < ordered.length - 1; i++) {
+    sum += haversineKm(ordered[i].lat, ordered[i].lon, ordered[i + 1].lat, ordered[i + 1].lon);
+  }
+  return Math.round(sum * 100) / 100;
+}
+
 function straightGeometry(ordered) {
   return ordered.map((p) => [p.lat, p.lon]);
 }
@@ -114,33 +122,129 @@ async function osrmTable(base, points) {
   return { matrixKm: matrixForOpt, durations, unreachablePairs };
 }
 
+function decodeOsrmPolyline(encoded, precision = 5) {
+  if (!encoded || typeof encoded !== "string") return [];
+  const coordinates = [];
+  let index = 0;
+  let lat = 0;
+  let lon = 0;
+  const factor = 10 ** precision;
+  while (index < encoded.length) {
+    let result = 0;
+    let shift = 0;
+    let b = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlat = result & 1 ? ~(result >> 1) : result >> 1;
+    lat += dlat;
+    result = 0;
+    shift = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlon = result & 1 ? ~(result >> 1) : result >> 1;
+    lon += dlon;
+    coordinates.push([lat / factor, lon / factor]);
+  }
+  return coordinates;
+}
+
+function geometryFromOsrmRoute(route) {
+  const g = route?.geometry;
+  if (!g) return [];
+  if (typeof g === "string") return decodeOsrmPolyline(g);
+  if (Array.isArray(g.coordinates)) {
+    return g.coordinates
+      .map((c) => {
+        if (!Array.isArray(c) || c.length < 2) return null;
+        const lon = Number(c[0]);
+        const lat = Number(c[1]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+        return [lat, lon];
+      })
+      .filter(Boolean);
+  }
+  return [];
+}
+
+async function osrmRouteOnce(base, ordered) {
+  const coords = ordered.map((p) => `${Number(p.lon)},${Number(p.lat)}`).join(";");
+  const radiuses = ordered.map(() => "1000").join(";");
+  const attempts = ["geojson", "polyline"];
+  let lastErr = "OSRM route failed";
+  for (const geom of attempts) {
+    const url =
+      `${base}/route/v1/driving/${coords}` +
+      `?overview=full&geometries=${geom}&radiuses=${radiuses}`;
+    const res = await osrmFetch(url, 45_000);
+    let parsed = null;
+    try {
+      parsed = res.text ? JSON.parse(res.text) : null;
+    } catch {
+      parsed = null;
+    }
+    if (!res.ok || !parsed || parsed.code !== "Ok" || !parsed.routes?.[0]) {
+      lastErr =
+        (parsed && (parsed.message || parsed.code)) ||
+        res.text.slice(0, 160) ||
+        `OSRM route HTTP ${res.status}`;
+      continue;
+    }
+    const route = parsed.routes[0];
+    const coordsLatLon = geometryFromOsrmRoute(route);
+    const legs = Array.isArray(route.legs)
+      ? route.legs.map((leg) => ({
+          distanceKm: Math.round((Number(leg.distance) / 1000) * 100) / 100,
+          durationSec: Math.round(Number(leg.duration) || 0),
+        }))
+      : [];
+    return {
+      geometry: coordsLatLon,
+      distanceKm: Math.round((Number(route.distance) / 1000) * 100) / 100,
+      durationSec: Math.round(Number(route.duration) || 0),
+      legs,
+    };
+  }
+  throw new Error(lastErr);
+}
+
+/** Full tour, or pairwise stitch — same OSRM engine Route plan uses. */
 async function osrmRoute(base, ordered) {
-  const coords = ordered.map((p) => `${p.lon},${p.lat}`).join(";");
-  const url = `${base}/route/v1/driving/${coords}?overview=full&geometries=geojson`;
-  const res = await osrmFetch(url, 45_000);
-  let parsed = null;
   try {
-    parsed = res.text ? JSON.parse(res.text) : null;
+    const full = await osrmRouteOnce(base, ordered);
+    if (full.geometry.length >= 2 && full.distanceKm > 0) return full;
   } catch {
-    parsed = null;
+    /* pairwise fallback below */
   }
-  if (!res.ok || !parsed || parsed.code !== "Ok" || !parsed.routes?.[0]) {
-    throw new Error(
-      (parsed && (parsed.message || parsed.code)) || res.text.slice(0, 160) || `OSRM route HTTP ${res.status}`,
-    );
+
+  const geometry = [];
+  const legs = [];
+  let distanceKm = 0;
+  let durationSec = 0;
+  for (let i = 0; i < ordered.length - 1; i++) {
+    const legRoute = await osrmRouteOnce(base, [ordered[i], ordered[i + 1]]);
+    if (legRoute.geometry.length < 2 || !(legRoute.distanceKm > 0)) {
+      throw new Error(`OSRM leg ${i + 1}→${i + 2} returned empty path`);
+    }
+    const slice = i === 0 ? legRoute.geometry : legRoute.geometry.slice(1);
+    geometry.push(...slice);
+    const leg = legRoute.legs[0] || {
+      distanceKm: legRoute.distanceKm,
+      durationSec: legRoute.durationSec,
+    };
+    legs.push(leg);
+    distanceKm += Number(leg.distanceKm) || 0;
+    durationSec += Number(leg.durationSec) || 0;
   }
-  const route = parsed.routes[0];
-  const coordsLatLon = (route.geometry?.coordinates || []).map(([lon, lat]) => [lat, lon]);
-  const legs = Array.isArray(route.legs)
-    ? route.legs.map((leg) => ({
-        distanceKm: Math.round((Number(leg.distance) / 1000) * 100) / 100,
-        durationSec: Math.round(Number(leg.duration) || 0),
-      }))
-    : [];
   return {
-    geometry: coordsLatLon,
-    distanceKm: Math.round((Number(route.distance) / 1000) * 100) / 100,
-    durationSec: Math.round(Number(route.duration) || 0),
+    geometry,
+    distanceKm: Math.round(distanceKm * 100) / 100,
+    durationSec,
     legs,
   };
 }
@@ -344,6 +448,7 @@ export async function handleRoutePlanRequest(req, res) {
         stops.push(p);
       }
       const roundtrip = Boolean(body.roundtrip);
+      const preserveOrder = Boolean(body.preserveOrder);
       const points = [start, ...stops];
 
       const base = osrmBase();
@@ -353,31 +458,40 @@ export async function handleRoutePlanRequest(req, res) {
       let durationSec = null;
       let geometry = [];
       let warning = "";
+      let routeLegs = [];
 
       if (base) {
         try {
           const { matrixKm, durations, unreachablePairs } = await osrmTable(base, points);
-          const opt = optimizeOpenTour(points, matrixKm);
-          orderIdx = opt.order;
-          let ordered = orderIdx.map((i) => points[i]);
+          let ordered;
+          if (preserveOrder) {
+            orderIdx = points.map((_, i) => i);
+            ordered = points.slice();
+          } else {
+            const opt = optimizeOpenTour(points, matrixKm);
+            orderIdx = opt.order;
+            ordered = orderIdx.map((i) => points[i]);
+          }
           if (roundtrip) ordered = [...ordered, { ...start, label: `${start.label || "Start"} (return)`, id: "return" }];
 
           if (unreachablePairs > 0) {
             // Points outside the built OSM extract (e.g. Sulawesi on a Java-only graph).
-            const haver = optimizeOpenTour(points);
-            orderIdx = haver.order;
-            ordered = orderIdx.map((i) => points[i]);
+            if (!preserveOrder) {
+              const haver = optimizeOpenTour(points);
+              orderIdx = haver.order;
+              ordered = orderIdx.map((i) => points[i]);
+            } else {
+              orderIdx = points.map((_, i) => i);
+              ordered = points.slice();
+            }
             if (roundtrip) {
               ordered = [...ordered, { ...start, label: `${start.label || "Start"} (return)`, id: "return" }];
-              distanceKm =
-                haver.distance +
-                haversineKm(ordered[ordered.length - 2].lat, ordered[ordered.length - 2].lon, start.lat, start.lon);
-            } else {
-              distanceKm = haver.distance;
             }
+            distanceKm = pathDistanceHaversine(ordered);
             geometry = straightGeometry(ordered);
             durationSec = null;
             engine = "haversine";
+            routeLegs = haversineRoute(ordered).legs;
             warning =
               "OSRM has no road path for these coordinates (outside the map extract). Showing straight-line only. Build a Sulawesi/Indonesia extract for road tracks here.";
           } else {
@@ -386,17 +500,14 @@ export async function handleRoutePlanRequest(req, res) {
               geometry = routed.geometry;
               distanceKm = routed.distanceKm;
               durationSec = routed.durationSec;
+              routeLegs = routed.legs || [];
               engine = "osrm";
               if (!geometry.length) {
                 warning = "OSRM returned an empty geometry; check extract coverage for these points";
               }
             } catch (routeErr) {
               geometry = straightGeometry(ordered);
-              distanceKm = opt.distance;
-              if (roundtrip) {
-                const last = ordered[ordered.length - 2];
-                distanceKm += haversineKm(last.lat, last.lon, start.lat, start.lon);
-              }
+              distanceKm = pathDistanceHaversine(ordered);
               let dur = 0;
               let okDur = true;
               for (let i = 0; i < orderIdx.length - 1; i++) {
@@ -416,7 +527,8 @@ export async function handleRoutePlanRequest(req, res) {
                 else okDur = false;
               }
               durationSec = okDur ? dur : null;
-              engine = "osrm";
+              routeLegs = haversineRoute(ordered).legs;
+              engine = "haversine";
               warning = `OSRM table OK but route geometry failed (${routeErr instanceof Error ? routeErr.message : String(routeErr)}); showing straight segments`;
             }
           }
@@ -469,15 +581,20 @@ export async function handleRoutePlanRequest(req, res) {
         ];
       }
 
-      // Leg distances for Excel
+      // Leg distances for Excel (haversine labels)
       const legs = [];
       for (let i = 0; i < orderedStops.length - 1; i++) {
         const a = orderedStops[i];
         const b = orderedStops[i + 1];
+        const routed = routeLegs[i];
         legs.push({
           from: a.label || `Point ${i}`,
           to: b.label || `Point ${i + 1}`,
-          distanceKm: Math.round(haversineKm(a.lat, a.lon, b.lat, b.lon) * 1000) / 1000,
+          distanceKm:
+            routed?.distanceKm != null
+              ? routed.distanceKm
+              : Math.round(haversineKm(a.lat, a.lon, b.lat, b.lon) * 1000) / 1000,
+          durationSec: routed?.durationSec ?? null,
         });
       }
 
@@ -489,6 +606,7 @@ export async function handleRoutePlanRequest(req, res) {
         totalDurationSec: durationSec == null ? null : Math.round(durationSec),
         orderedStops,
         legs,
+        routeLegs,
         geometry,
       });
       return true;
