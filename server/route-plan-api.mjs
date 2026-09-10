@@ -2,6 +2,7 @@
  * Phase E — Route plan API
  * GET  /api/route-plan/status
  * POST /api/route-plan/optimize  { start, stops[], roundtrip? }
+ * POST /api/route-plan/geometry { points: [{lat,lon},...] } — road path for an ordered tour
  *
  * Uses OSRM when OSRM_BASE_URL is set; otherwise haversine + 2-opt TSP.
  */
@@ -180,6 +181,61 @@ export async function handleRoutePlanRequest(req, res) {
         osrmBase: base ? "(configured)" : "",
         maxStops: MAX_STOPS,
         engines: base && probe?.reachable ? ["osrm", "haversine"] : ["haversine"],
+      });
+      return true;
+    }
+
+    if (url.pathname === "/api/route-plan/geometry" && req.method === "POST") {
+      const body = await readJson(req);
+      const rawPoints = Array.isArray(body.points) ? body.points : [];
+      if (rawPoints.length < 2) {
+        json(res, 400, { error: "At least 2 points required" });
+        return true;
+      }
+      if (rawPoints.length > MAX_STOPS + 1) {
+        json(res, 400, { error: `At most ${MAX_STOPS + 1} points` });
+        return true;
+      }
+      const points = [];
+      for (let i = 0; i < rawPoints.length; i++) {
+        const p = asPoint(rawPoints[i], `P${i + 1}`);
+        if (!p) {
+          json(res, 400, { error: `Invalid point at index ${i}` });
+          return true;
+        }
+        points.push(p);
+      }
+
+      const base = osrmBase();
+      if (base) {
+        try {
+          const routed = await osrmRoute(base, points);
+          json(res, 200, {
+            engine: "osrm",
+            geometry: routed.geometry,
+            distanceKm: routed.distanceKm,
+            durationSec: routed.durationSec,
+            warning: null,
+          });
+          return true;
+        } catch (err) {
+          json(res, 200, {
+            engine: "haversine",
+            geometry: straightGeometry(points),
+            distanceKm: null,
+            durationSec: null,
+            warning: err instanceof Error ? err.message : String(err),
+          });
+          return true;
+        }
+      }
+
+      json(res, 200, {
+        engine: "haversine",
+        geometry: straightGeometry(points),
+        distanceKm: null,
+        durationSec: null,
+        warning: "OSRM not configured",
       });
       return true;
     }

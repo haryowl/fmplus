@@ -5,8 +5,10 @@ import { DispatchJobMap } from "../components/DispatchJobMap";
 import { ViewNav } from "../components/ViewNav";
 import {
   assignOrdersToJob,
+  cancelDispatchOrder,
   createDispatchJob,
   createDispatchOrder,
+  deleteDispatchOrder,
   DISPATCH_STATUS_LABELS,
   dispatchAssigneeLabel,
   dispatchVehicleLabel,
@@ -18,6 +20,7 @@ import {
   formatServiceDateLabel,
   optimizeJobStops,
   patchDispatchJob,
+  patchDispatchOrder,
   shiftServiceDate,
   todayServiceDate,
   utilizationTone,
@@ -81,6 +84,7 @@ export default function DispatchBoard() {
   const [proofPhotos, setProofPhotos] = useState<DispatchPhoto[]>([]);
 
   const [orderForm, setOrderForm] = useState(emptyOrderForm);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [placing, setPlacing] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<GeocodeResult[]>([]);
@@ -286,12 +290,34 @@ export default function DispatchBoard() {
 
   function clearDraft() {
     setOrderForm(emptyOrderForm);
+    setEditingOrderId(null);
     setPlacing(false);
     setSearchQ("");
     setSearchResults([]);
   }
 
-  async function handleCreateOrder() {
+  function startEditOrder(o: DispatchOrder) {
+    setEditingOrderId(o.id);
+    setPlacing(true);
+    setOrderForm({
+      customerName: o.customerName || "",
+      externalRef: o.externalRef || "",
+      address: o.address || "",
+      zone: o.zone || "",
+      volumeM3: o.volumeM3 != null ? String(o.volumeM3) : "",
+      weightKg: o.weightKg != null ? String(o.weightKg) : "",
+      windowStart: o.windowStart || "",
+      windowEnd: o.windowEnd || "",
+      lat: o.lat,
+      lon: o.lon,
+    });
+    setSearchQ("");
+    setSearchResults([]);
+    setError("");
+    setSelectedOrderIds((prev) => prev.filter((id) => id !== o.id));
+  }
+
+  async function handleSaveOrder() {
     if (!orderForm.customerName.trim()) {
       setError("Customer name required");
       return;
@@ -302,24 +328,61 @@ export default function DispatchBoard() {
     }
     setBusy(true);
     setError("");
+    const payload = {
+      customerName: orderForm.customerName.trim(),
+      externalRef: orderForm.externalRef.trim() || undefined,
+      address: orderForm.address.trim() || undefined,
+      zone: orderForm.zone.trim() || undefined,
+      volumeM3: orderForm.volumeM3 === "" ? null : Number(orderForm.volumeM3),
+      weightKg: orderForm.weightKg === "" ? null : Number(orderForm.weightKg),
+      windowStart: orderForm.windowStart.trim() || undefined,
+      windowEnd: orderForm.windowEnd.trim() || undefined,
+      serviceDate: planDate,
+      lat: orderForm.lat,
+      lon: orderForm.lon,
+    };
     try {
-      await createDispatchOrder({
-        customerName: orderForm.customerName.trim(),
-        externalRef: orderForm.externalRef.trim() || undefined,
-        address: orderForm.address.trim() || undefined,
-        zone: orderForm.zone.trim() || undefined,
-        volumeM3: orderForm.volumeM3 === "" ? null : Number(orderForm.volumeM3),
-        weightKg: orderForm.weightKg === "" ? null : Number(orderForm.weightKg),
-        windowStart: orderForm.windowStart.trim() || undefined,
-        windowEnd: orderForm.windowEnd.trim() || undefined,
-        serviceDate: planDate,
-        lat: orderForm.lat,
-        lon: orderForm.lon,
-      });
+      if (editingOrderId) {
+        await patchDispatchOrder(editingOrderId, payload);
+      } else {
+        await createDispatchOrder(payload);
+      }
       clearDraft();
       setReload((n) => n + 1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Create order failed");
+      setError(err instanceof Error ? err.message : editingOrderId ? "Update order failed" : "Create order failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCancelOrder(o: DispatchOrder) {
+    if (!window.confirm(`Cancel order “${o.customerName || o.externalRef || "order"}”?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await cancelDispatchOrder(o.id);
+      if (editingOrderId === o.id) clearDraft();
+      setSelectedOrderIds((prev) => prev.filter((id) => id !== o.id));
+      setReload((n) => n + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cancel order failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeleteOrder(o: DispatchOrder) {
+    if (!window.confirm(`Delete order “${o.customerName || o.externalRef || "order"}” permanently?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await deleteDispatchOrder(o.id);
+      if (editingOrderId === o.id) clearDraft();
+      setSelectedOrderIds((prev) => prev.filter((id) => id !== o.id));
+      setReload((n) => n + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete order failed");
     } finally {
       setBusy(false);
     }
@@ -600,7 +663,7 @@ export default function DispatchBoard() {
 
             {placing || draftPin ? (
               <div className="dispatch-order-draft">
-                <p className="dispatch-eyebrow">New stop</p>
+                <p className="dispatch-eyebrow">{editingOrderId ? "Edit order" : "New stop"}</p>
                 {draftPin && pinLabel ? (
                   <div className="dispatch-pin-chip" title={orderForm.address}>
                     <span className="dispatch-pin-dot" aria-hidden />
@@ -718,9 +781,9 @@ export default function DispatchBoard() {
                     type="button"
                     className="btn btn-primary"
                     disabled={busy || orderForm.lat == null}
-                    onClick={() => void handleCreateOrder()}
+                    onClick={() => void handleSaveOrder()}
                   >
-                    Add to pool
+                    {editingOrderId ? "Save changes" : "Add to pool"}
                   </button>
                   <button type="button" className="btn-secondary" onClick={clearDraft}>
                     Cancel
@@ -739,12 +802,20 @@ export default function DispatchBoard() {
                 <ul className="dispatch-order-list">
                   {orders.map((o) => (
                     <li key={o.id}>
-                      <label className={`dispatch-order-card${selectedOrderIds.includes(o.id) ? " is-selected" : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={selectedOrderIds.includes(o.id)}
-                          onChange={() => toggleOrder(o.id)}
-                        />
+                      <div
+                        className={`dispatch-order-card${selectedOrderIds.includes(o.id) ? " is-selected" : ""}${
+                          editingOrderId === o.id ? " is-editing" : ""
+                        }`}
+                      >
+                        <label className="dispatch-order-card-select">
+                          <input
+                            type="checkbox"
+                            checked={selectedOrderIds.includes(o.id)}
+                            onChange={() => toggleOrder(o.id)}
+                            disabled={editingOrderId === o.id}
+                          />
+                          <span className="visually-hidden">Select {o.customerName || "order"}</span>
+                        </label>
                         <span className="dispatch-order-card-body">
                           <span className="dispatch-order-card-top">
                             <strong>{o.customerName || o.externalRef || "Order"}</strong>
@@ -758,8 +829,34 @@ export default function DispatchBoard() {
                             <span aria-hidden>·</span>
                             {formatDispatchWindow(o) || "Open window"}
                           </span>
+                          <span className="dispatch-order-actions">
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              disabled={busy}
+                              onClick={() => startEditOrder(o)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              disabled={busy}
+                              onClick={() => void handleCancelOrder(o)}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-secondary dispatch-order-delete"
+                              disabled={busy}
+                              onClick={() => void handleDeleteOrder(o)}
+                            >
+                              Delete
+                            </button>
+                          </span>
                         </span>
-                      </label>
+                      </div>
                     </li>
                   ))}
                 </ul>

@@ -314,6 +314,34 @@ export async function createDispatchOrder(body: {
   return data.order;
 }
 
+export async function patchDispatchOrder(
+  id: string,
+  patch: Record<string, unknown>,
+): Promise<DispatchOrder> {
+  const res = await fetch(`/api/dispatch/orders/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(patch),
+  });
+  const data = (await res.json().catch(() => ({}))) as { order?: DispatchOrder; error?: string };
+  if (!res.ok) throw new Error(data.error || `Patch order ${res.status}`);
+  if (!data.order) throw new Error("Patch order failed");
+  return data.order;
+}
+
+export async function cancelDispatchOrder(id: string): Promise<DispatchOrder> {
+  return patchDispatchOrder(id, { status: "cancelled" });
+}
+
+export async function deleteDispatchOrder(id: string): Promise<void> {
+  const res = await fetch(`/api/dispatch/orders/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { accept: "application/json", ...tenantHeaders() },
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(data.error || `Delete order ${res.status}`);
+}
+
 export async function fetchStopPhotos(stopId: string, field = false): Promise<DispatchPhoto[]> {
   const path = field
     ? null

@@ -5,7 +5,7 @@
  * POST /api/dispatch/jobs/:id/assign-orders
  * POST /api/dispatch/jobs/:id/optimize-stops
  * GET/POST /api/dispatch/orders
- * PATCH /api/dispatch/orders/:id
+ * PATCH/DELETE /api/dispatch/orders/:id
  * GET /api/dispatch/stops/:stopId/photos
  * GET /api/dispatch/photos/:id
  * GET /api/dispatch/field-users
@@ -253,6 +253,21 @@ function normalizeStops(raw) {
     });
   }
   return out;
+}
+
+/** Unlink order from its job stop (removes the stop). */
+async function detachOrderFromJob(order) {
+  if (!order) return;
+  const stopId = order.stop_id || null;
+  await dbQuery(
+    `UPDATE dispatch_orders
+     SET stop_id = NULL, job_id = NULL, updated_at = now()
+     WHERE id = $1`,
+    [order.id],
+  );
+  if (stopId) {
+    await dbQuery(`DELETE FROM dispatch_stops WHERE id = $1`, [stopId]);
+  }
 }
 
 async function replaceStops(jobId, stops) {
@@ -511,6 +526,13 @@ export async function handleDispatchRequest(req, res) {
         }
         params.push(st);
         sets.push(`status = $${params.length}`);
+        if (st === "cancelled" || st === "pending") {
+          if (existing.rows[0].stop_id || existing.rows[0].job_id) {
+            await detachOrderFromJob(existing.rows[0]);
+          }
+          sets.push(`job_id = NULL`);
+          sets.push(`stop_id = NULL`);
+        }
       }
       if (!sets.length) {
         json(res, 400, { error: "No fields to update" });
@@ -524,7 +546,56 @@ export async function handleDispatchRequest(req, res) {
          RETURNING *`,
         params,
       );
-      json(res, 200, { order: publicOrder(updated.rows[0]) });
+      const row = updated.rows[0];
+      // Keep linked stop in sync when dispatcher edits an assigned order
+      if (row.stop_id && row.status === "assigned") {
+        await dbQuery(
+          `UPDATE dispatch_stops SET
+             name = COALESCE($1, name),
+             address = $2,
+             lat = $3,
+             lon = $4,
+             zone = $5,
+             volume_m3 = $6,
+             weight_kg = $7,
+             window_start = $8,
+             window_end = $9,
+             notes = $10
+           WHERE id = $11`,
+          [
+            row.customer_name || row.external_ref || null,
+            row.address,
+            row.lat,
+            row.lon,
+            row.zone,
+            row.volume_m3,
+            row.weight_kg,
+            row.window_start,
+            row.window_end,
+            row.notes,
+            row.stop_id,
+          ],
+        );
+      }
+      json(res, 200, { order: publicOrder(row) });
+      return true;
+    }
+
+    if (orderOne && req.method === "DELETE") {
+      const existing = await dbQuery(
+        `SELECT * FROM dispatch_orders WHERE id = $1 AND tenant_id = $2`,
+        [orderOne[1], dbTenant.id],
+      );
+      if (!existing.rows[0]) {
+        json(res, 404, { error: "Order not found" });
+        return true;
+      }
+      await detachOrderFromJob(existing.rows[0]);
+      await dbQuery(`DELETE FROM dispatch_orders WHERE id = $1 AND tenant_id = $2`, [
+        orderOne[1],
+        dbTenant.id,
+      ]);
+      json(res, 200, { ok: true, id: orderOne[1] });
       return true;
     }
 

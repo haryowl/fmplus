@@ -42,6 +42,40 @@ export async function fetchRoutePlanStatus(signal?: AbortSignal): Promise<RouteP
   return data;
 }
 
+export type RouteGeometryResult = {
+  engine: "osrm" | "haversine";
+  geometry: [number, number][];
+  distanceKm: number | null;
+  durationSec: number | null;
+  warning: string | null;
+};
+
+/** Road path for an already-ordered stop list (does not re-order). */
+export async function fetchRouteGeometry(
+  points: Array<{ lat: number; lon: number }>,
+  signal?: AbortSignal,
+): Promise<RouteGeometryResult> {
+  const res = await fetch("/api/route-plan/geometry", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      ...tenantHeaders(),
+    },
+    body: JSON.stringify({ points }),
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as RouteGeometryResult & { error?: string };
+  if (!res.ok) throw new Error(data.error || `Route geometry ${res.status}`);
+  return {
+    engine: data.engine === "osrm" ? "osrm" : "haversine",
+    geometry: Array.isArray(data.geometry) ? data.geometry : [],
+    distanceKm: data.distanceKm ?? null,
+    durationSec: data.durationSec ?? null,
+    warning: data.warning ?? null,
+  };
+}
+
 export async function optimizeRoutePlan(input: {
   start: RoutePoint;
   stops: RoutePoint[];
