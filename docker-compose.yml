@@ -41,13 +41,16 @@ services:
       exit 0;
       "
 
-  # Optional Route plan backend. Build graph first with scripts/setup-osrm.sh
-  # then: OSRM_GRAPH=java-latest docker compose --profile osrm up -d osrm
+  # Optional Route plan / Dispatch backend. Build graph first with scripts/setup-osrm.sh
+  # Recommended four-island graph:
+  #   ./scripts/setup-osrm.sh --regions=java,sumatra,kalimantan,sulawesi
+  # then:
+  #   OSRM_GRAPH=id-java-sumatra-kalimantan-sulawesi docker compose --profile osrm up -d osrm
   osrm:
     profiles: ["osrm"]
     image: ghcr.io/project-osrm/osrm-backend:latest
     restart: unless-stopped
-    command: osrm-routed --algorithm mld /data/${OSRM_GRAPH:-indonesia-latest}.osrm
+    command: osrm-routed --algorithm mld /data/${OSRM_GRAPH:-id-java-sumatra-kalimantan-sulawesi}.osrm
     ports:
       - "5000:5000"
     volumes:

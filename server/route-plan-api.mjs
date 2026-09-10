@@ -455,7 +455,7 @@ export async function handleRoutePlanRequest(req, res) {
             engine = "haversine";
             routeLegs = haversineRoute(ordered).legs;
             warning =
-              "OSRM has no road path for these coordinates (outside the map extract). Showing straight-line only. Build a Sulawesi/Indonesia extract for road tracks here.";
+              "OSRM has no road path for these coordinates (outside the map extract). Showing straight-line only. Rebuild with ./scripts/setup-osrm.sh --regions=java,sumatra,kalimantan,sulawesi (or indonesia-latest).";
           } else {
             try {
               const routed = await osrmRoute(base, ordered);

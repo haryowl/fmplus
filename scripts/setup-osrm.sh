@@ -4,9 +4,16 @@
 #
 # Usage:
 #   chmod +x scripts/setup-osrm.sh
-#   ./scripts/setup-osrm.sh                  # Indonesia extract (large)
-#   PBF_URL=https://download.geofabrik.de/asia/indonesia/java-latest.osm.pbf ./scripts/setup-osrm.sh
-#   ./scripts/setup-osrm.sh --start-only     # start routed from existing data
+#
+#   # Recommended for FM Plus fleets on the four major islands:
+#   ./scripts/setup-osrm.sh --regions java,sumatra,kalimantan,sulawesi
+#
+#   # Single Geofabrik extract (legacy):
+#   PBF_URL=https://download.geofabrik.de/asia/indonesia/sulawesi-latest.osm.pbf ./scripts/setup-osrm.sh
+#   PBF_URL=https://download.geofabrik.de/asia/indonesia-latest.osm.pbf ./scripts/setup-osrm.sh
+#
+#   ./scripts/setup-osrm.sh --start-only
+#   OSRM_GRAPH=id-java-sumatra-kalimantan-sulawesi ./scripts/setup-osrm.sh --start-only
 #
 # Then in FM Plus .env.local:
 #   OSRM_BASE_URL=http://127.0.0.1:5000
@@ -16,15 +23,37 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DATA_DIR="${OSRM_DATA_DIR:-$ROOT/data/osrm}"
 IMAGE="${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:latest}"
-# Full Indonesia is ~1GB+ PBF and needs several GB RAM to extract. Prefer a smaller region when possible.
+OSMIUM_IMAGE="${OSMIUM_IMAGE:-ghcr.io/osmcode/osmium-tool:latest}"
+# Full Indonesia is ~1GB+ PBF and needs several GB RAM to extract.
 PBF_URL="${PBF_URL:-https://download.geofabrik.de/asia/indonesia-latest.osm.pbf}"
+REGIONS="${REGIONS:-}"
 START_ONLY=0
+GEOFABRIK_BASE="https://download.geofabrik.de/asia/indonesia"
+
+# Geofabrik uses English island names in paths (sumatra, not sumatera).
+declare -A REGION_URL=(
+  [java]="$GEOFABRIK_BASE/java-latest.osm.pbf"
+  [sumatra]="$GEOFABRIK_BASE/sumatra-latest.osm.pbf"
+  [sumatera]="$GEOFABRIK_BASE/sumatra-latest.osm.pbf"
+  [kalimantan]="$GEOFABRIK_BASE/kalimantan-latest.osm.pbf"
+  [sulawesi]="$GEOFABRIK_BASE/sulawesi-latest.osm.pbf"
+  [papua]="$GEOFABRIK_BASE/papua-latest.osm.pbf"
+  [maluku]="$GEOFABRIK_BASE/maluku-latest.osm.pbf"
+  [nusa-tenggara]="$GEOFABRIK_BASE/nusa-tenggara-latest.osm.pbf"
+)
 
 for arg in "$@"; do
   case "$arg" in
     --start-only) START_ONLY=1 ;;
+    --regions=*)
+      REGIONS="${arg#--regions=}"
+      ;;
+    --regions)
+      echo "Use --regions=java,sumatra,kalimantan,sulawesi"
+      exit 1
+      ;;
     -h|--help)
-      sed -n '1,20p' "$0"
+      sed -n '1,28p' "$0"
       exit 0
       ;;
   esac
@@ -33,40 +62,103 @@ done
 mkdir -p "$DATA_DIR"
 cd "$DATA_DIR"
 
-PBF_NAME="$(basename "$PBF_URL")"
-BASE_NAME="${PBF_NAME%.osm.pbf}"
-BASE_NAME="${BASE_NAME%.pbf}"
-
-if [[ "$START_ONLY" -eq 0 ]]; then
-  if [[ ! -f "$PBF_NAME" ]]; then
-    echo "==> Downloading $PBF_URL"
-    curl -L --fail -o "$PBF_NAME" "$PBF_URL"
+download_pbf() {
+  local url="$1"
+  local name
+  name="$(basename "$url")"
+  if [[ ! -f "$name" ]]; then
+    echo "==> Downloading $url"
+    curl -L --fail -o "$name" "$url"
   else
-    echo "==> Using existing $DATA_DIR/$PBF_NAME"
+    echo "==> Using existing $DATA_DIR/$name"
   fi
+  echo "$name"
+}
 
-  echo "==> osrm-extract (slow; needs RAM — Indonesia often wants 8GB+)"
+build_graph() {
+  local pbf_name="$1"
+  local base_name="$2"
+
+  echo "==> osrm-extract on $pbf_name (slow; multi-island often wants 8GB+ RAM)"
   docker run --rm -t -v "$DATA_DIR:/data" "$IMAGE" \
-    osrm-extract -p /opt/car.lua "/data/$PBF_NAME"
+    osrm-extract -p /opt/car.lua "/data/$pbf_name"
 
   echo "==> osrm-partition"
   docker run --rm -t -v "$DATA_DIR:/data" "$IMAGE" \
-    osrm-partition "/data/${BASE_NAME}.osrm"
+    osrm-partition "/data/${base_name}.osrm"
 
   echo "==> osrm-customize"
   docker run --rm -t -v "$DATA_DIR:/data" "$IMAGE" \
-    osrm-customize "/data/${BASE_NAME}.osrm"
-fi
+    osrm-customize "/data/${base_name}.osrm"
+}
 
-if [[ ! -f "${BASE_NAME}.osrm" && ! -f "${BASE_NAME}.osrm.cell_metrics" && ! -f "${BASE_NAME}.osrm.mldgr" ]]; then
-  # .osrm is a basename for a file set; check for a common companion
-  if ! ls "${BASE_NAME}.osrm"* >/dev/null 2>&1; then
-    echo "No OSRM graph files for $BASE_NAME in $DATA_DIR — run without --start-only first."
-    exit 1
+BASE_NAME=""
+PBF_NAME=""
+
+if [[ "$START_ONLY" -eq 0 ]]; then
+  if [[ -n "$REGIONS" ]]; then
+    IFS=',' read -r -a region_list <<< "$REGIONS"
+    pbf_files=()
+    label_parts=()
+    for raw in "${region_list[@]}"; do
+      key="$(echo "$raw" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+      url="${REGION_URL[$key]:-}"
+      if [[ -z "$url" ]]; then
+        echo "Unknown region '$key'. Known: java sumatra/sumatera kalimantan sulawesi papua maluku nusa-tenggara"
+        exit 1
+      fi
+      # Canonical label in output name (sumatera → sumatra)
+      case "$key" in
+        sumatera) label_parts+=("sumatra") ;;
+        *) label_parts+=("$key") ;;
+      esac
+      pbf_files+=("$(download_pbf "$url")")
+    done
+
+    BASE_NAME="id-$(IFS=-; echo "${label_parts[*]}")"
+    PBF_NAME="${BASE_NAME}.osm.pbf"
+
+    if [[ ${#pbf_files[@]} -eq 1 ]]; then
+      # Single region — use the downloaded file basename for OSRM.
+      PBF_NAME="${pbf_files[0]}"
+      BASE_NAME="${PBF_NAME%.osm.pbf}"
+      BASE_NAME="${BASE_NAME%.pbf}"
+    else
+      echo "==> Merging ${#pbf_files[@]} extracts → $PBF_NAME (osmium)"
+      # Rebuild merge every time regions change; remove stale merged pbf if present.
+      rm -f "$PBF_NAME"
+      # osmium merge writes the output; inputs stay intact.
+      docker run --rm -t -v "$DATA_DIR:/data" "$OSMIUM_IMAGE" \
+        osmium merge $(printf '/data/%s ' "${pbf_files[@]}") -o "/data/$PBF_NAME" --overwrite
+    fi
+
+    build_graph "$PBF_NAME" "$BASE_NAME"
+  else
+    PBF_NAME="$(basename "$PBF_URL")"
+    BASE_NAME="${PBF_NAME%.osm.pbf}"
+    BASE_NAME="${BASE_NAME%.pbf}"
+    download_pbf "$PBF_URL" >/dev/null
+    build_graph "$PBF_NAME" "$BASE_NAME"
+  fi
+else
+  # Prefer explicit graph name, else try the multi-island default, else derive from PBF_URL.
+  if [[ -n "${OSRM_GRAPH:-}" ]]; then
+    BASE_NAME="$OSRM_GRAPH"
+  elif ls id-java-sumatra-kalimantan-sulawesi.osrm* >/dev/null 2>&1; then
+    BASE_NAME="id-java-sumatra-kalimantan-sulawesi"
+  else
+    PBF_NAME="$(basename "$PBF_URL")"
+    BASE_NAME="${PBF_NAME%.osm.pbf}"
+    BASE_NAME="${BASE_NAME%.pbf}"
   fi
 fi
 
-echo "==> Starting osrm-routed on host port 5000"
+if ! ls "${BASE_NAME}.osrm"* >/dev/null 2>&1; then
+  echo "No OSRM graph files for $BASE_NAME in $DATA_DIR — run without --start-only first."
+  exit 1
+fi
+
+echo "==> Starting osrm-routed on host port 5000 (graph: $BASE_NAME)"
 docker rm -f fmplus-osrm 2>/dev/null || true
 docker run -d --name fmplus-osrm --restart unless-stopped \
   -p 5000:5000 \
@@ -74,12 +166,19 @@ docker run -d --name fmplus-osrm --restart unless-stopped \
   "$IMAGE" \
   osrm-routed --algorithm mld "/data/${BASE_NAME}.osrm"
 
-echo "==> Smoke test"
+echo "==> Smoke tests"
 sleep 2
-curl -fsS "http://127.0.0.1:5000/route/v1/driving/106.8272,-6.1754;106.8456,-6.2088?overview=false" | head -c 200
+echo -n "Java (Jakarta): "
+curl -fsS "http://127.0.0.1:5000/route/v1/driving/106.8272,-6.1754;106.8456,-6.2088?overview=false" | head -c 120 || true
+echo
+echo -n "Sulawesi (Kendari area sample): "
+curl -fsS "http://127.0.0.1:5000/route/v1/driving/122.5149,-3.9778;122.5900,-3.9500?overview=false" | head -c 120 || true
 echo
 echo
-echo "OK. Add to FM Plus .env.local:"
+echo "OK. Graph basename: $BASE_NAME"
+echo "Add to FM Plus .env.local:"
 echo "  OSRM_BASE_URL=http://127.0.0.1:5000"
 echo "Then: systemctl restart fmplus"
-echo "Route plan page should show engine OSRM after refresh."
+echo
+echo "Compose alternative:"
+echo "  OSRM_GRAPH=$BASE_NAME docker compose --profile osrm up -d osrm"
