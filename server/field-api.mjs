@@ -98,13 +98,74 @@ async function tenantMobileMaintenanceEnabled(tenantId) {
   return ent.mobile?.maintenance === true;
 }
 
+async function tenantMobileDispatchEnabled(tenantId) {
+  const row = await dbQuery(`SELECT entitlements FROM tenants WHERE id = $1`, [tenantId]);
+  const ent = mergeEntitlements(row.rows[0]?.entitlements);
+  return ent.mobile?.dispatch === true;
+}
+
 async function mobileFlagsForTenant(tenantId) {
   const row = await dbQuery(`SELECT entitlements FROM tenants WHERE id = $1`, [tenantId]);
   const ent = mergeEntitlements(row.rows[0]?.entitlements);
   return {
     mobileMaintenance: ent.mobile?.maintenance === true,
     managerMaintenance: ent.mobile?.managerMaintenance === true,
+    mobileDispatch: ent.mobile?.dispatch === true,
   };
+}
+
+function publicDispatchStop(row) {
+  return {
+    id: row.id,
+    sortOrder: Number(row.sort_order) || 0,
+    name: row.name || "",
+    address: row.address || "",
+    lat: row.lat == null ? null : Number(row.lat),
+    lon: row.lon == null ? null : Number(row.lon),
+    notes: row.notes || "",
+    status: row.status || "pending",
+    arrivedAt: row.arrived_at || null,
+    completedAt: row.completed_at || null,
+  };
+}
+
+function publicDispatchJob(row, stops = []) {
+  return {
+    id: row.id,
+    status: row.status,
+    title: row.title || "",
+    notes: row.notes || "",
+    armadaUserId: row.armada_user_id == null ? null : Number(row.armada_user_id),
+    armadaUsername: row.armada_username || "",
+    userDisplayName: row.user_display_name || "",
+    assignedFieldUserId: row.assigned_field_user_id || null,
+    assignedAt: row.assigned_at || null,
+    startedAt: row.started_at || null,
+    arrivedAt: row.arrived_at || null,
+    completedAt: row.completed_at || null,
+    fieldNote: row.field_note || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    stops: stops.map(publicDispatchStop),
+  };
+}
+
+async function loadAssignedDispatchJob(tenantId, jobId, fieldUserId) {
+  const found = await dbQuery(
+    `SELECT * FROM dispatch_jobs
+     WHERE id = $1 AND tenant_id = $2 AND assigned_field_user_id = $3`,
+    [jobId, tenantId, fieldUserId],
+  );
+  return found.rows[0] || null;
+}
+
+async function loadDispatchStops(jobId) {
+  const rows = await dbQuery(
+    `SELECT id, sort_order, name, address, lat, lon, notes, status, arrived_at, completed_at
+     FROM dispatch_stops WHERE job_id = $1 ORDER BY sort_order ASC, created_at ASC`,
+    [jobId],
+  );
+  return rows.rows;
 }
 
 export async function handleFieldRequest(req, res) {
@@ -163,6 +224,7 @@ export async function handleFieldRequest(req, res) {
           }),
           mobileMaintenance: flags.mobileMaintenance,
           managerMaintenance: flags.managerMaintenance,
+          mobileDispatch: flags.mobileDispatch,
         },
         { "Set-Cookie": fieldSessionCookieHeader(session.token, maxAge) },
       );
@@ -187,6 +249,7 @@ export async function handleFieldRequest(req, res) {
         user: publicFieldUser(user),
         mobileMaintenance: flags.mobileMaintenance,
         managerMaintenance: flags.managerMaintenance,
+        mobileDispatch: flags.mobileDispatch,
       });
       return true;
     }
@@ -351,6 +414,158 @@ export async function handleFieldRequest(req, res) {
         });
         photo.url = `/api/field/maintenance/photos/${photo.id}`;
         json(res, 201, { photo });
+        return true;
+      }
+
+      json(res, 404, { error: "Not found" });
+      return true;
+    }
+
+    if (url.pathname.startsWith("/api/field/dispatch")) {
+      const user = await fieldFromRequest(req);
+      if (!user) {
+        json(res, 401, { error: "Not logged in" });
+        return true;
+      }
+      if (!(await tenantMobileDispatchEnabled(user.tenantId))) {
+        json(res, 403, { error: "Dispatch PWA is disabled for this tenant" });
+        return true;
+      }
+
+      if (url.pathname === "/api/field/dispatch/jobs" && req.method === "GET") {
+        const rows = await dbQuery(
+          `SELECT * FROM dispatch_jobs
+           WHERE tenant_id = $1
+             AND assigned_field_user_id = $2
+             AND (
+               status IN ('assigned', 'en_route', 'arrived')
+               OR (
+                 status IN ('done', 'cancelled')
+                 AND COALESCE(completed_at, updated_at) > now() - interval '90 days'
+               )
+             )
+           ORDER BY
+             CASE status
+               WHEN 'en_route' THEN 0
+               WHEN 'arrived' THEN 1
+               WHEN 'assigned' THEN 2
+               ELSE 3
+             END,
+             updated_at DESC
+           LIMIT 100`,
+          [user.tenantId, user.id],
+        );
+        const jobs = [];
+        for (const row of rows.rows) {
+          jobs.push(publicDispatchJob(row, await loadDispatchStops(row.id)));
+        }
+        json(res, 200, { jobs });
+        return true;
+      }
+
+      const jobMatch = /^\/api\/field\/dispatch\/jobs\/([0-9a-f-]{36})$/i.exec(url.pathname);
+      if (jobMatch && req.method === "GET") {
+        const row = await loadAssignedDispatchJob(user.tenantId, jobMatch[1], user.id);
+        if (!row) {
+          json(res, 404, { error: "Job not found or not assigned to you" });
+          return true;
+        }
+        json(res, 200, { job: publicDispatchJob(row, await loadDispatchStops(row.id)) });
+        return true;
+      }
+
+      if (jobMatch && req.method === "PATCH") {
+        const existing = await loadAssignedDispatchJob(user.tenantId, jobMatch[1], user.id);
+        if (!existing) {
+          json(res, 404, { error: "Job not found or not assigned to you" });
+          return true;
+        }
+        if (existing.status === "done" || existing.status === "cancelled") {
+          json(res, 403, { error: "Completed jobs cannot be edited" });
+          return true;
+        }
+        const body = await readJson(req);
+        const allowed = ["en_route", "arrived", "done"];
+        const sets = [];
+        const params = [];
+        if ("status" in body) {
+          const status = String(body.status || "").toLowerCase();
+          if (!allowed.includes(status)) {
+            json(res, 400, { error: "Field may set status to en_route, arrived, or done" });
+            return true;
+          }
+          params.push(status);
+          sets.push(`status = $${params.length}`);
+          if (status === "en_route") sets.push(`started_at = COALESCE(started_at, now())`);
+          if (status === "arrived") sets.push(`arrived_at = COALESCE(arrived_at, now())`);
+          if (status === "done") sets.push(`completed_at = COALESCE(completed_at, now())`);
+        }
+        if ("fieldNote" in body) {
+          params.push(String(body.fieldNote || "").trim().slice(0, 2000) || null);
+          sets.push(`field_note = $${params.length}`);
+        }
+        if (!sets.length) {
+          json(res, 400, { error: "No fields to update" });
+          return true;
+        }
+        sets.push(`updated_at = now()`);
+        params.push(existing.id, user.tenantId, user.id);
+        await dbQuery(
+          `UPDATE dispatch_jobs SET ${sets.join(", ")}
+           WHERE id = $${params.length - 2} AND tenant_id = $${params.length - 1}
+             AND assigned_field_user_id = $${params.length}`,
+          params,
+        );
+        const row = await loadAssignedDispatchJob(user.tenantId, existing.id, user.id);
+        json(res, 200, { job: publicDispatchJob(row, await loadDispatchStops(row.id)) });
+        return true;
+      }
+
+      const stopMatch =
+        /^\/api\/field\/dispatch\/jobs\/([0-9a-f-]{36})\/stops\/([0-9a-f-]{36})$/i.exec(url.pathname);
+      if (stopMatch && req.method === "PATCH") {
+        const job = await loadAssignedDispatchJob(user.tenantId, stopMatch[1], user.id);
+        if (!job) {
+          json(res, 404, { error: "Job not found or not assigned to you" });
+          return true;
+        }
+        if (job.status === "done" || job.status === "cancelled") {
+          json(res, 403, { error: "Completed jobs cannot be edited" });
+          return true;
+        }
+        const body = await readJson(req);
+        const status = String(body.status || "").toLowerCase();
+        if (!["arrived", "done", "skipped"].includes(status)) {
+          json(res, 400, { error: "Stop status must be arrived, done, or skipped" });
+          return true;
+        }
+        const updated = await dbQuery(
+          `UPDATE dispatch_stops
+           SET status = $1,
+               arrived_at = CASE WHEN $1 = 'arrived' THEN COALESCE(arrived_at, now()) ELSE arrived_at END,
+               completed_at = CASE WHEN $1 IN ('done','skipped') THEN COALESCE(completed_at, now()) ELSE completed_at END
+           WHERE id = $2 AND job_id = $3
+           RETURNING *`,
+          [status, stopMatch[2], job.id],
+        );
+        if (!updated.rows[0]) {
+          json(res, 404, { error: "Stop not found" });
+          return true;
+        }
+        // Auto-bump job to en_route/arrived when first stop progresses
+        if (job.status === "assigned" && (status === "arrived" || status === "done")) {
+          await dbQuery(
+            `UPDATE dispatch_jobs
+             SET status = 'en_route', started_at = COALESCE(started_at, now()), updated_at = now()
+             WHERE id = $1 AND status = 'assigned'`,
+            [job.id],
+          );
+        }
+        const row = await loadAssignedDispatchJob(user.tenantId, job.id, user.id);
+        json(res, 200, {
+          stop: publicDispatchStop(updated.rows[0]),
+          job: publicDispatchJob(row, await loadDispatchStops(row.id)),
+        });
         return true;
       }
 

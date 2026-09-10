@@ -19,7 +19,7 @@ export const MODULE_LABELS: Record<string, string> = {
   places: "Places",
   routePlan: "Route plan",
   maintenance: "Maintenance",
-  dispatch: "Dispatch (soon)",
+  dispatch: "Dispatch",
 };
 
 export const FEATURE_LABELS: Record<string, string> = {
@@ -86,5 +86,6 @@ export function mergeEntitlements(raw: unknown): Entitlements {
 /** Map AppView → entitlements.modules key */
 export function moduleKeyForView(view: string): string {
   if (view === "fleetCompact") return "fleetCompact";
+  if (view === "dispatchDesk") return "dispatch";
   return view;
 }

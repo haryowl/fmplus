@@ -13,6 +13,7 @@ import {
   type ServiceLine,
   type ServicePhoto,
 } from "../lib/maintenance";
+import { FieldDispatchPanel } from "./FieldDispatchPanel";
 
 type FieldUser = {
   id: string;
@@ -104,6 +105,8 @@ function linesFromEvent(ev: ServiceEvent | null): ServiceLine[] {
 export default function FieldLogin() {
   const [user, setUser] = useState<FieldUser | null>(null);
   const [mobileMaintenance, setMobileMaintenance] = useState(false);
+  const [mobileDispatch, setMobileDispatch] = useState(false);
+  const [fieldMode, setFieldMode] = useState<"maintenance" | "dispatch">("maintenance");
   const [tenantKey, setTenantKey] = useState(() => {
     const q = new URLSearchParams(window.location.search);
     return q.get("k") || "";
@@ -126,22 +129,34 @@ export default function FieldLogin() {
 
   const refreshMe = useCallback(async () => {
     try {
-      const me = await api<{ user: FieldUser; mobileMaintenance?: boolean }>("/api/field/me");
+      const me = await api<{
+        user: FieldUser;
+        mobileMaintenance?: boolean;
+        mobileDispatch?: boolean;
+      }>("/api/field/me");
       if (me.user.role === "manager") {
         setUser(null);
         setMobileMaintenance(false);
+        setMobileDispatch(false);
         setError("Manager accounts sign in at /mm, not /m.");
         return false;
       }
       setUser(me.user);
       setMobileMaintenance(Boolean(me.mobileMaintenance));
+      setMobileDispatch(Boolean(me.mobileDispatch));
       return true;
     } catch {
       setUser(null);
       setMobileMaintenance(false);
+      setMobileDispatch(false);
       return false;
     }
   }, []);
+
+  useEffect(() => {
+    if (mobileMaintenance && !mobileDispatch) setFieldMode("maintenance");
+    else if (!mobileMaintenance && mobileDispatch) setFieldMode("dispatch");
+  }, [mobileMaintenance, mobileDispatch]);
 
   const loadJobs = useCallback(async () => {
     if (!mobileMaintenance) {
@@ -167,11 +182,11 @@ export default function FieldLogin() {
   }, [refreshMe]);
 
   useEffect(() => {
-    if (user && mobileMaintenance) void loadJobs();
-  }, [user, mobileMaintenance, loadJobs]);
+    if (user && mobileMaintenance && fieldMode === "maintenance") void loadJobs();
+  }, [user, mobileMaintenance, fieldMode, loadJobs]);
 
   useEffect(() => {
-    if (!user || !mobileMaintenance) {
+    if (!user || !mobileMaintenance || fieldMode !== "maintenance") {
       setCatalog([]);
       return;
     }
@@ -186,10 +201,10 @@ export default function FieldLogin() {
     return () => {
       cancelled = true;
     };
-  }, [user, mobileMaintenance]);
+  }, [user, mobileMaintenance, fieldMode]);
 
   useEffect(() => {
-    if (!selectedId || !mobileMaintenance) {
+    if (!selectedId || !mobileMaintenance || fieldMode !== "maintenance") {
       setDetail(null);
       return;
     }
@@ -240,7 +255,7 @@ export default function FieldLogin() {
     return () => {
       cancelled = true;
     };
-  }, [selectedId, mobileMaintenance]);
+  }, [selectedId, mobileMaintenance, fieldMode]);
 
   useEffect(() => {
     if (!selectedId || !detail) return;
@@ -323,7 +338,11 @@ export default function FieldLogin() {
     setError("");
     setBusy(true);
     try {
-      const data = await api<{ user: FieldUser; mobileMaintenance?: boolean }>("/api/field/login", {
+      const data = await api<{
+        user: FieldUser;
+        mobileMaintenance?: boolean;
+        mobileDispatch?: boolean;
+      }>("/api/field/login", {
         method: "POST",
         body: JSON.stringify({ tenantKey: tenantKey.trim(), username, password }),
       });
@@ -336,6 +355,7 @@ export default function FieldLogin() {
       }
       setUser(data.user);
       setMobileMaintenance(Boolean(data.mobileMaintenance));
+      setMobileDispatch(Boolean(data.mobileDispatch));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -352,6 +372,7 @@ export default function FieldLogin() {
       setSelectedId(null);
       setDetail(null);
       setMobileMaintenance(false);
+      setMobileDispatch(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Logout failed");
     } finally {
@@ -498,6 +519,9 @@ export default function FieldLogin() {
 
   if (user) {
     const jobLocked = detail ? isCompletedStatus(detail.status) : false;
+    const showModeTabs = mobileMaintenance && mobileDispatch;
+    const inDispatch = fieldMode === "dispatch" && mobileDispatch;
+    const inMaintenance = fieldMode === "maintenance" && mobileMaintenance;
     return (
       <div className="field-app">
         <header className="field-topbar">
@@ -505,7 +529,7 @@ export default function FieldLogin() {
             <BrandMark size={20} />
             <div>
               <p className="field-kicker">FM Plus Field</p>
-              <h1>My jobs</h1>
+              <h1>{inDispatch ? "Dispatch" : "My jobs"}</h1>
             </div>
           </div>
           <div className="field-topbar-meta">
@@ -523,11 +547,57 @@ export default function FieldLogin() {
           </div>
         )}
 
-        {!mobileMaintenance ? (
+        {showModeTabs ? (
+          <div className="field-mode-tabs" role="tablist" aria-label="Field modules">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={fieldMode === "maintenance"}
+              className={`field-filter-chip${fieldMode === "maintenance" ? " is-active" : ""}`}
+              onClick={() => {
+                setFieldMode("maintenance");
+                setSelectedId(null);
+                setError("");
+                setNotice("");
+              }}
+            >
+              Maintenance
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={fieldMode === "dispatch"}
+              className={`field-filter-chip${fieldMode === "dispatch" ? " is-active" : ""}`}
+              onClick={() => {
+                setFieldMode("dispatch");
+                setSelectedId(null);
+                setError("");
+                setNotice("");
+              }}
+            >
+              Dispatch
+            </button>
+          </div>
+        ) : null}
+
+        {!mobileMaintenance && !mobileDispatch ? (
           <div className="field-panel">
             <h2>PWA not enabled</h2>
             <p className="muted">
-              Ask an admin to enable <strong>Mobile apps → Maintenance PWA</strong> for tenant{" "}
+              Ask an admin to enable <strong>Mobile apps → Maintenance PWA</strong> or{" "}
+              <strong>Dispatch PWA</strong> for tenant <code>{user.tenantKey}</code>.
+            </p>
+          </div>
+        ) : inDispatch ? (
+          <FieldDispatchPanel
+            onError={(msg) => setError(msg)}
+            onNotice={(msg) => setNotice(msg)}
+          />
+        ) : !inMaintenance ? (
+          <div className="field-panel">
+            <h2>Maintenance PWA not enabled</h2>
+            <p className="muted">
+              Switch to Dispatch, or ask an admin to enable Maintenance PWA for tenant{" "}
               <code>{user.tenantKey}</code>.
             </p>
           </div>
