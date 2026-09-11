@@ -43,6 +43,8 @@ export default function RoutePlanPage() {
   const [avoidTolls, setAvoidTolls] = useState(false);
   const [avoidMotorways, setAvoidMotorways] = useState(false);
   const [avoidFerries, setAvoidFerries] = useState(false);
+  const [respectGanjilGenap, setRespectGanjilGenap] = useState(true);
+  const [plateParity, setPlateParity] = useState<"odd" | "even" | "unknown" | "exempt">("unknown");
   const [result, setResult] = useState<RouteOptimizeResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -205,7 +207,13 @@ export default function RoutePlanPage() {
         start,
         stops,
         roundtrip,
-        routing: { avoidTolls, avoidMotorways, avoidFerries },
+        routing: {
+          avoidTolls,
+          avoidMotorways,
+          avoidFerries,
+          respectGanjilGenap,
+          plateParity,
+        },
       });
       setResult(next);
       setFitKey(`opt-${Date.now()}`);
@@ -322,8 +330,37 @@ export default function RoutePlanPage() {
                 />
                 Avoid ferries
               </label>
+              <label className="route-plan-roundtrip">
+                <input
+                  type="checkbox"
+                  checked={respectGanjilGenap}
+                  onChange={(e) => {
+                    setRespectGanjilGenap(e.target.checked);
+                    setResult(null);
+                  }}
+                />
+                Jakarta ganjil–genap
+              </label>
             </div>
           </div>
+          {respectGanjilGenap ? (
+            <div className="field">
+              <label htmlFor="rp-plate">Plate parity</label>
+              <select
+                id="rp-plate"
+                value={plateParity}
+                onChange={(e) => {
+                  setPlateParity(e.target.value as typeof plateParity);
+                  setResult(null);
+                }}
+              >
+                <option value="unknown">Unknown (avoid if in force)</option>
+                <option value="odd">Odd (ganjil)</option>
+                <option value="even">Even (genap)</option>
+                <option value="exempt">Exempt</option>
+              </select>
+            </div>
+          ) : null}
           <div className="field">
             <label>&nbsp;</label>
             <button type="button" className="btn" disabled={busy} onClick={() => void onOptimize()}>

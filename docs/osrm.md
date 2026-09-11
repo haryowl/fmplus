@@ -97,6 +97,28 @@ systemctl restart fmplus
 
 Then open `/route?k=…` — header should say **OSRM roads**. Dispatch Jobs should draw road paths on Java and Sulawesi.
 
+### Jakarta ganjil–genap (odd/even plate)
+
+FM Plus can avoid ganjil–genap corridors when the rule is **in force** and the vehicle plate **does not match** the calendar date (or plate is unknown).
+
+1. **App logic** (no rebuild): schedule in `server/data/jakarta-ganjil-genap.json`, plate parity on vehicle capacity, UI checkboxes on Route plan / Dispatch.
+2. **Hard avoid in OSRM** (rebuild once): tag corridors with excludable class `ganjil_genap`:
+
+```bash
+node scripts/build-osrm-fmplus-profile.mjs
+# Re-extract (example four-island graph name):
+docker run --rm -t \
+  -v "$PWD/data/osrm:/data" \
+  -v "$PWD/osrm-profiles:/profiles" \
+  ghcr.io/project-osrm/osrm-backend:latest \
+  osrm-extract -p /profiles/car-fmplus.lua /data/id-java-sumatra-kalimantan-sulawesi.osm.pbf
+# then osrm-partition + osrm-customize as in setup-osrm.sh, restart fmplus-osrm
+```
+
+Until that rebuild, Optimize still runs but warns that corridor exclude is unavailable.
+
+Optional alternate graph (corridors always blocked): set `OSRM_BASE_URL_RESTRICTED` — used when avoid is required.
+
 Optional Compose (after the graph exists):
 
 ```bash

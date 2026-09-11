@@ -13,13 +13,23 @@ export type RoutingOptions = {
   avoidTolls?: boolean;
   avoidMotorways?: boolean;
   avoidFerries?: boolean;
+  respectGanjilGenap?: boolean;
+  plateParity?: "odd" | "even" | "unknown" | "exempt";
+  serviceDate?: string;
+  dayStart?: string;
 };
+
+export type PlateParity = "odd" | "even" | "unknown" | "exempt";
 
 export function routingPayload(opts: RoutingOptions | null | undefined): RoutingOptions {
   return {
     avoidTolls: Boolean(opts?.avoidTolls),
     avoidMotorways: Boolean(opts?.avoidMotorways),
     avoidFerries: Boolean(opts?.avoidFerries),
+    respectGanjilGenap: Boolean(opts?.respectGanjilGenap),
+    plateParity: opts?.plateParity || "unknown",
+    ...(opts?.serviceDate ? { serviceDate: opts.serviceDate } : {}),
+    ...(opts?.dayStart ? { dayStart: opts.dayStart } : {}),
   };
 }
 
@@ -28,6 +38,10 @@ export function routingSummary(opts: RoutingOptions | null | undefined): string 
   if (opts?.avoidTolls) parts.push("no tolls");
   if (opts?.avoidMotorways) parts.push("no motorways");
   if (opts?.avoidFerries) parts.push("no ferries");
+  if (opts?.respectGanjilGenap) {
+    const p = opts.plateParity || "unknown";
+    parts.push(`ganjil–genap (${p})`);
+  }
   return parts.join(" · ");
 }
 

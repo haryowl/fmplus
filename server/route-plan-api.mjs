@@ -65,8 +65,8 @@ async function readJson(req) {
   return JSON.parse(raw);
 }
 
-function osrmBase() {
-  return osrmBaseUrl();
+function osrmBase(routing = null) {
+  return osrmBaseUrl(routing);
 }
 
 function asPoint(raw, fallbackLabel) {
@@ -161,8 +161,9 @@ function geometryFromOsrmRoute(route) {
  */
 async function osrmRoute(base, ordered, routing = null) {
   const opts = parseRoutingOptions(routing || {});
+  const resolved = osrmBaseUrl(opts) || base;
   const coords = ordered.map((p) => `${p.lon},${p.lat}`).join(";");
-  const url = `${base}/route/v1/driving/${coords}?overview=full&geometries=geojson${osrmExcludeQuery(opts)}`;
+  const url = `${resolved}/route/v1/driving/${coords}?overview=full&geometries=geojson${osrmExcludeQuery(opts)}`;
   const res = await osrmFetch(url, 45_000);
   let parsed = null;
   try {
@@ -251,7 +252,7 @@ export async function buildRouteForPoints(points, routing = null) {
   }
 
   const fallback = haversineRoute(normalized);
-  const base = osrmBase();
+  const base = osrmBase(opts);
   if (!base) {
     return {
       engine: "haversine",
@@ -405,7 +406,7 @@ export async function handleRoutePlanRequest(req, res) {
       const preserveOrder = Boolean(body.preserveOrder);
       const points = [start, ...stops];
 
-      const base = osrmBase();
+      const base = osrmBase(routing);
       let engine = "haversine";
       let orderIdx = [];
       let distanceKm = 0;

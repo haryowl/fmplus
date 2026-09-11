@@ -154,6 +154,9 @@ export default function DispatchBoard() {
   const [avoidTolls, setAvoidTolls] = useState(false);
   const [avoidMotorways, setAvoidMotorways] = useState(false);
   const [avoidFerries, setAvoidFerries] = useState(false);
+  const [respectGanjilGenap, setRespectGanjilGenap] = useState(true);
+  const [plateParity, setPlateParity] = useState<"odd" | "even" | "unknown" | "exempt">("unknown");
+  const [editPlateParity, setEditPlateParity] = useState<"odd" | "even" | "unknown" | "exempt">("unknown");
   const [planPreview, setPlanPreview] = useState<DispatchPlanDayResult | null>(null);
   const [pinningDepot, setPinningDepot] = useState(false);
   const [jobRoute, setJobRoute] = useState<RouteGeometryResult | null>(null);
@@ -290,6 +293,7 @@ export default function DispatchBoard() {
     setEditWtCap(String(selected.weightCapacityKg ?? 1500));
     const cap = vehicleCaps.find((c) => c.armadaUserId === selected.armadaUserId);
     setEditDepotId(cap?.depotId || "");
+    setEditPlateParity((cap?.plateParity as typeof editPlateParity) || "unknown");
   }, [selected?.id, selected?.volumeCapacityM3, selected?.weightCapacityKg, selected?.armadaUserId, vehicleCaps]);
 
   useEffect(() => {
@@ -356,7 +360,13 @@ export default function DispatchBoard() {
     }
     const ac = new AbortController();
     setRouteBusy(true);
-    fetchRouteGeometry(points, ac.signal, { avoidTolls, avoidMotorways, avoidFerries })
+    fetchRouteGeometry(points, ac.signal, {
+      avoidTolls,
+      avoidMotorways,
+      avoidFerries,
+      respectGanjilGenap,
+      plateParity,
+    })
       .then((route) => {
         const geomLen = route.geometry?.length || 0;
         const hasPath = geomLen >= 2;
@@ -382,7 +392,7 @@ export default function DispatchBoard() {
       })
       .finally(() => setRouteBusy(false));
     return () => ac.abort();
-  }, [selected, routePathKey, avoidTolls, avoidMotorways, avoidFerries]);
+  }, [selected, routePathKey, avoidTolls, avoidMotorways, avoidFerries, respectGanjilGenap, plateParity]);
 
   useEffect(() => {
     if (!ready || !query.tenantKey) return;
@@ -786,6 +796,7 @@ export default function DispatchBoard() {
         weightCapacityKg: wt,
         label: dispatchVehicleLabel(selected),
         depotId: editDepotId || null,
+        plateParity: editPlateParity,
       });
       setVehicleCaps((prev) => {
         const rest = prev.filter((c) => c.armadaUserId !== saved.armadaUserId);
@@ -836,7 +847,13 @@ export default function DispatchBoard() {
         dayStart: planDayStart || "08:00",
         maxStopsPerVehicle: planMaxStops.trim() ? Number(planMaxStops) : 0,
         onlyEmptyJobs: planOnlyEmpty,
-        routing: { avoidTolls, avoidMotorways, avoidFerries },
+        routing: {
+          avoidTolls,
+          avoidMotorways,
+          avoidFerries,
+          respectGanjilGenap,
+          plateParity,
+        },
       });
       setPlanPreview(plan);
       if (apply) {
@@ -860,6 +877,16 @@ export default function DispatchBoard() {
         avoidTolls,
         avoidMotorways,
         avoidFerries,
+        respectGanjilGenap,
+        plateParity:
+          plateParity !== "unknown"
+            ? plateParity
+            : (vehicleCaps.find((c) => c.armadaUserId === selected.armadaUserId)?.plateParity as
+                | "odd"
+                | "even"
+                | "unknown"
+                | "exempt"
+                | undefined) || "unknown",
       });
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
       if (route && route.distanceKm && route.distanceKm > 0) {
@@ -1143,7 +1170,30 @@ export default function DispatchBoard() {
                   />
                   Avoid ferries
                 </label>
+                <label className="dispatch-plan-check">
+                  <input
+                    type="checkbox"
+                    checked={respectGanjilGenap}
+                    onChange={(e) => setRespectGanjilGenap(e.target.checked)}
+                  />
+                  Jakarta ganjil–genap
+                </label>
               </div>
+              {respectGanjilGenap ? (
+                <div className="field">
+                  <label htmlFor="dispatch-plate-parity">Plate parity (plan)</label>
+                  <select
+                    id="dispatch-plate-parity"
+                    value={plateParity}
+                    onChange={(e) => setPlateParity(e.target.value as typeof plateParity)}
+                  >
+                    <option value="unknown">From vehicles / unknown</option>
+                    <option value="odd">Odd (ganjil)</option>
+                    <option value="even">Even (genap)</option>
+                    <option value="exempt">Exempt</option>
+                  </select>
+                </div>
+              ) : null}
               {depotMode === "depot" ? (
                 <>
                   <div className="field">
@@ -2009,6 +2059,20 @@ export default function DispatchBoard() {
                         ))}
                       </select>
                     </div>
+                    <div className="field" style={{ gridColumn: "1 / -1" }}>
+                      <label htmlFor="dispatch-cap-plate">Plate parity</label>
+                      <select
+                        id="dispatch-cap-plate"
+                        value={editPlateParity}
+                        disabled={busy || selected.status === "done" || selected.status === "cancelled"}
+                        onChange={(e) => setEditPlateParity(e.target.value as typeof editPlateParity)}
+                      >
+                        <option value="unknown">Unknown</option>
+                        <option value="odd">Odd (ganjil)</option>
+                        <option value="even">Even (genap)</option>
+                        <option value="exempt">Exempt</option>
+                      </select>
+                    </div>
                   </div>
                   <div className="dispatch-cap-edit-actions">
                     <button
@@ -2099,7 +2163,30 @@ export default function DispatchBoard() {
                     />
                     Avoid ferries
                   </label>
+                  <label className="dispatch-plan-check">
+                    <input
+                      type="checkbox"
+                      checked={respectGanjilGenap}
+                      onChange={(e) => setRespectGanjilGenap(e.target.checked)}
+                    />
+                    Jakarta ganjil–genap
+                  </label>
                 </div>
+                {respectGanjilGenap ? (
+                  <div className="field">
+                    <label htmlFor="dispatch-job-plate">Plate parity</label>
+                    <select
+                      id="dispatch-job-plate"
+                      value={plateParity}
+                      onChange={(e) => setPlateParity(e.target.value as typeof plateParity)}
+                    >
+                      <option value="unknown">Use vehicle default</option>
+                      <option value="odd">Odd (ganjil)</option>
+                      <option value="even">Even (genap)</option>
+                      <option value="exempt">Exempt</option>
+                    </select>
+                  </div>
+                ) : null}
                 <button type="button" className="btn-secondary dispatch-opt-btn" disabled={busy} onClick={() => void handleOptimize()}>
                   Optimize stop order
                 </button>

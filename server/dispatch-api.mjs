@@ -29,6 +29,7 @@ import { optimizeOpenTour } from "./route-optimize.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
 import { parseRoutingOptions } from "./routing-options.mjs";
+import { normalizePlateParity } from "./ganjil-genap.mjs";
 import { getObject, objectStorageConfigured, putObject } from "./storage.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 
@@ -518,7 +519,7 @@ export async function handleDispatchRequest(req, res) {
     // —— Vehicle capacity presets (keyed by Armada user id) ——
     if (url.pathname === "/api/dispatch/vehicle-capacities" && req.method === "GET") {
       const rows = await dbQuery(
-        `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, updated_at
+        `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, plate_parity, updated_at
          FROM vehicle_capacities
          WHERE tenant_id = $1
          ORDER BY armada_user_id ASC
@@ -532,6 +533,7 @@ export async function handleDispatchRequest(req, res) {
           weightCapacityKg: Number(r.weight_capacity_kg) || 1500,
           label: r.label || "",
           depotId: r.depot_id || null,
+          plateParity: normalizePlateParity(r.plate_parity || "unknown"),
           updatedAt: r.updated_at,
         })),
       });
@@ -569,18 +571,33 @@ export async function handleDispatchRequest(req, res) {
           depotId = ok.rows[0].id;
         }
       }
+      const hasPlateField = Object.prototype.hasOwnProperty.call(body, "plateParity");
+      const plateParity = hasPlateField
+        ? normalizePlateParity(body.plateParity)
+        : null;
       const upserted = await dbQuery(
         `INSERT INTO vehicle_capacities (
-           tenant_id, armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, now())
+           tenant_id, armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, plate_parity, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, now())
          ON CONFLICT (tenant_id, armada_user_id) DO UPDATE SET
            volume_capacity_m3 = EXCLUDED.volume_capacity_m3,
            weight_capacity_kg = EXCLUDED.weight_capacity_kg,
            label = COALESCE(EXCLUDED.label, vehicle_capacities.label),
-           depot_id = CASE WHEN $7 THEN EXCLUDED.depot_id ELSE vehicle_capacities.depot_id END,
+           depot_id = CASE WHEN $8 THEN EXCLUDED.depot_id ELSE vehicle_capacities.depot_id END,
+           plate_parity = CASE WHEN $9 THEN EXCLUDED.plate_parity ELSE vehicle_capacities.plate_parity END,
            updated_at = now()
-         RETURNING armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, updated_at`,
-        [dbTenant.id, armadaUserId, vol, wt, label, depotId, hasDepotField],
+         RETURNING armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, plate_parity, updated_at`,
+        [
+          dbTenant.id,
+          armadaUserId,
+          vol,
+          wt,
+          label,
+          depotId,
+          plateParity === "unknown" ? null : plateParity,
+          hasDepotField,
+          hasPlateField,
+        ],
       );
       const r = upserted.rows[0];
       json(res, 200, {
@@ -590,6 +607,7 @@ export async function handleDispatchRequest(req, res) {
           weightCapacityKg: Number(r.weight_capacity_kg) || 1500,
           label: r.label || "",
           depotId: r.depot_id || null,
+          plateParity: normalizePlateParity(r.plate_parity || "unknown"),
           updatedAt: r.updated_at,
         },
       });
@@ -1278,7 +1296,41 @@ export async function handleDispatchRequest(req, res) {
         return true;
       }
       const body = await readJson(req);
-      const routing = parseRoutingOptions(body);
+      let routing = parseRoutingOptions({
+        ...body,
+        routing: {
+          ...(body.routing && typeof body.routing === "object" ? body.routing : {}),
+          ...(body.plateParity != null ? { plateParity: body.plateParity } : {}),
+          ...(body.respectGanjilGenap != null
+            ? { respectGanjilGenap: body.respectGanjilGenap }
+            : {}),
+        },
+      });
+      if (
+        (!body.routing?.plateParity && body.plateParity == null) ||
+        routing.plateParity === "unknown"
+      ) {
+        const uid = job.armada_user_id == null ? null : Number(job.armada_user_id);
+        if (uid) {
+          const cap = await dbQuery(
+            `SELECT plate_parity FROM vehicle_capacities
+             WHERE tenant_id = $1 AND armada_user_id = $2`,
+            [dbTenant.id, uid],
+          );
+          if (cap.rows[0]?.plate_parity) {
+            routing = parseRoutingOptions({
+              routing: {
+                ...routing,
+                plateParity: cap.rows[0].plate_parity,
+                respectGanjilGenap:
+                  routing.respectGanjilGenap ||
+                  body.respectGanjilGenap === true ||
+                  Boolean(cap.rows[0].plate_parity),
+              },
+            });
+          }
+        }
+      }
       const stops = await loadStops(job.id);
       const withCoords = stops.filter(
         (s) => s.lat != null && s.lon != null && Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lon)),
@@ -1537,7 +1589,17 @@ export async function handleDispatchRequest(req, res) {
       const apply = body.apply === true;
       const roundtrip = body.roundtrip === true;
       const onlyEmptyJobs = body.onlyEmptyJobs === true;
-      const routing = parseRoutingOptions(body);
+      let routing = parseRoutingOptions({
+        routing: {
+          ...(body.routing && typeof body.routing === "object" ? body.routing : {}),
+          serviceDate,
+          dayStart: body.dayStart || null,
+          ...(body.plateParity != null ? { plateParity: body.plateParity } : {}),
+          ...(body.respectGanjilGenap != null
+            ? { respectGanjilGenap: body.respectGanjilGenap }
+            : {}),
+        },
+      });
       const twMode = String(body.twMode || "soft").toLowerCase();
       if (!["off", "soft", "hard"].includes(twMode)) {
         json(res, 400, { error: "twMode must be off | soft | hard" });
@@ -1668,6 +1730,16 @@ export async function handleDispatchRequest(req, res) {
            LIMIT 50`,
           [dbTenant.id, serviceDate],
         );
+        const plateByArmada = new Map();
+        {
+          const caps = await dbQuery(
+            `SELECT armada_user_id, plate_parity FROM vehicle_capacities WHERE tenant_id = $1`,
+            [dbTenant.id],
+          );
+          for (const r of caps.rows) {
+            plateByArmada.set(Number(r.armada_user_id), normalizePlateParity(r.plate_parity || "unknown"));
+          }
+        }
         for (const j of jobs.rows) {
           const stops = await loadStops(j.id);
           // Prefer empty / light jobs for day planning; still allow jobs with stops (residual capacity)
@@ -1677,6 +1749,7 @@ export async function handleDispatchRequest(req, res) {
           if (residualVol <= 0 || residualWt <= 0) continue;
           if (onlyEmptyJobs && stops.length > 0) continue;
           if (j.armada_user_id != null) usedArmada.add(Number(j.armada_user_id));
+          const uid = j.armada_user_id == null ? null : Number(j.armada_user_id);
           vehicles.push({
             key: `job:${j.id}`,
             label: j.title || j.user_display_name || j.armada_username || j.id,
@@ -1685,12 +1758,13 @@ export async function handleDispatchRequest(req, res) {
             meta: {
               kind: "job",
               jobId: j.id,
-              armadaUserId: j.armada_user_id == null ? null : Number(j.armada_user_id),
+              armadaUserId: uid,
               armadaUsername: j.armada_username || "",
               userDisplayName: j.user_display_name || "",
               fullVolumeCapacityM3: cap.volumeCapacityM3,
               fullWeightCapacityKg: cap.weightCapacityKg,
               existingStops: stops.length,
+              plateParity: uid != null ? plateByArmada.get(uid) || "unknown" : "unknown",
             },
           });
         }
@@ -1698,7 +1772,7 @@ export async function handleDispatchRequest(req, res) {
 
       if (fleetMode === "presets" || fleetMode === "both") {
         const presets = await dbQuery(
-          `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id
+          `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, plate_parity
            FROM vehicle_capacities WHERE tenant_id = $1
            ORDER BY armada_user_id ASC LIMIT 100`,
           [dbTenant.id],
@@ -1720,6 +1794,7 @@ export async function handleDispatchRequest(req, res) {
               fullWeightCapacityKg: Number(p.weight_capacity_kg) || 1500,
               existingStops: 0,
               depotId: p.depot_id || null,
+              plateParity: normalizePlateParity(p.plate_parity || "unknown"),
             },
           });
         }
@@ -1758,6 +1833,40 @@ export async function handleDispatchRequest(req, res) {
               : "No vehicles available — create open jobs and/or save vehicle capacity presets",
         });
         return true;
+      }
+
+      // Fleet plate parity for ganjil–genap (mixed → treat as unknown → avoid when in force)
+      {
+        const wantRespect =
+          routing.respectGanjilGenap ||
+          body.respectGanjilGenap === true ||
+          vehicles.some((v) => {
+            const p = normalizePlateParity(v.meta?.plateParity);
+            return p === "odd" || p === "even";
+          });
+        if (wantRespect) {
+          let fleetParity = routing.plateParity;
+          if (fleetParity === "unknown") {
+            const set = new Set(
+              vehicles
+                .map((v) => normalizePlateParity(v.meta?.plateParity))
+                .filter((p) => p === "odd" || p === "even"),
+            );
+            if (set.size === 1) fleetParity = [...set][0];
+          }
+          routing = parseRoutingOptions({
+            routing: {
+              avoidTolls: routing.avoidTolls,
+              avoidMotorways: routing.avoidMotorways,
+              avoidFerries: routing.avoidFerries,
+              exclude: routing.exclude.filter((c) => c !== "ganjil_genap"),
+              plateParity: fleetParity,
+              respectGanjilGenap: true,
+              serviceDate,
+              dayStart: body.dayStart || null,
+            },
+          });
+        }
       }
 
       const planOpts = {

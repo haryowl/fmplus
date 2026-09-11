@@ -96,6 +96,7 @@ export type VehicleCapacity = {
   weightCapacityKg: number;
   label?: string;
   depotId?: string | null;
+  plateParity?: "odd" | "even" | "unknown" | "exempt";
   updatedAt?: string;
 };
 
@@ -307,6 +308,8 @@ export async function optimizeJobStops(
         avoidTolls: Boolean(routing?.avoidTolls),
         avoidMotorways: Boolean(routing?.avoidMotorways),
         avoidFerries: Boolean(routing?.avoidFerries),
+        respectGanjilGenap: Boolean(routing?.respectGanjilGenap),
+        plateParity: routing?.plateParity || "unknown",
       },
     }),
   });
@@ -498,6 +501,8 @@ export async function planDispatchDay(body: {
     avoidTolls?: boolean;
     avoidMotorways?: boolean;
     avoidFerries?: boolean;
+    respectGanjilGenap?: boolean;
+    plateParity?: "odd" | "even" | "unknown" | "exempt";
   };
 }): Promise<DispatchPlanDayResult> {
   const res = await fetch("/api/dispatch/plan-day", {
@@ -542,6 +547,7 @@ export async function upsertVehicleCapacity(body: {
   weightCapacityKg: number;
   label?: string;
   depotId?: string | null;
+  plateParity?: "odd" | "even" | "unknown" | "exempt" | null;
 }): Promise<VehicleCapacity> {
   const res = await fetch(`/api/dispatch/vehicle-capacities/${encodeURIComponent(String(body.armadaUserId))}`, {
     method: "PUT",
@@ -551,6 +557,7 @@ export async function upsertVehicleCapacity(body: {
       weightCapacityKg: body.weightCapacityKg,
       label: body.label,
       ...(Object.prototype.hasOwnProperty.call(body, "depotId") ? { depotId: body.depotId } : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, "plateParity") ? { plateParity: body.plateParity } : {}),
     }),
   });
   const data = (await res.json().catch(() => ({}))) as {

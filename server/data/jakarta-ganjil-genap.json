@@ -1,0 +1,42 @@
+{
+  "id": "jakarta-ganjil-genap",
+  "label": "Jakarta ganjil–genap (odd/even plate)",
+  "timezone": "Asia/Jakarta",
+  "notes": "Pergub DKI — typical windows Mon–Fri; not on weekends/public holidays. Corridor list drives OSRM class tagging in car-fmplus.lua after rebuild.",
+  "windows": [
+    { "start": "06:00", "end": "10:00" },
+    { "start": "16:00", "end": "21:00" }
+  ],
+  "weekdays": [1, 2, 3, 4, 5],
+  "holidays": [
+    "2026-01-01",
+    "2026-01-16",
+    "2026-03-20",
+    "2026-03-21",
+    "2026-04-03",
+    "2026-05-01",
+    "2026-05-14",
+    "2026-05-27",
+    "2026-06-01",
+    "2026-08-17",
+    "2026-12-25"
+  ],
+  "corridors": [
+    { "name": "Jalan Jenderal Sudirman", "match": ["sudirman"] },
+    { "name": "Jalan MH Thamrin", "match": ["thamrin"] },
+    { "name": "Jalan Gatot Subroto", "match": ["gatot subroto", "gatotsubo"] },
+    { "name": "Jalan HR Rasuna Said", "match": ["rasuna said", "rasuna"] },
+    { "name": "Jalan Jenderal Gatot Subroto", "match": ["jenderal gatot"] },
+    { "name": "Jalan S Parman", "match": ["s parman", "s. parman", "parman"] },
+    { "name": "Jalan KS Tubun", "match": ["ks tubun", "tubun"] },
+    { "name": "Jalan DI Panjaitan", "match": ["panjaitan"] },
+    { "name": "Jalan Ahmad Yani", "match": ["ahmad yani", "a. yani"] },
+    { "name": "Jalan MT Haryono", "match": ["mt haryono", "m.t. haryono", "haryono"] },
+    { "name": "Jalan Fatmawati", "match": ["fatmawati"] },
+    { "name": "Jalan Panglima Polim", "match": ["panglima polim", "polim"] },
+    { "name": "Jalan Rasuna Said", "match": ["hr rasuna"] },
+    { "name": "Jalan Prof Dr Satrio", "match": ["satrio"] },
+    { "name": "Jalan Casablanca", "match": ["casablanca"] },
+    { "name": "Jalan Tol Dalam Kota", "match": ["dalam kota"] }
+  ]
+}
