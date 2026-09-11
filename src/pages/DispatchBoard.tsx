@@ -35,6 +35,7 @@ import {
   type DispatchFieldUser,
   type DispatchFleetMode,
   type DispatchDepotMode,
+  type DispatchTwMode,
   type DispatchJob,
   type DispatchOrder,
   type DispatchPhoto,
@@ -136,6 +137,11 @@ export default function DispatchBoard() {
   const [depotLat, setDepotLat] = useState("");
   const [depotLon, setDepotLon] = useState("");
   const [planRoundtrip, setPlanRoundtrip] = useState(false);
+  const [planTwMode, setPlanTwMode] = useState<DispatchTwMode>("soft");
+  const [planServiceMin, setPlanServiceMin] = useState("8");
+  const [planDayStart, setPlanDayStart] = useState("08:00");
+  const [planMaxStops, setPlanMaxStops] = useState("");
+  const [planOnlyEmpty, setPlanOnlyEmpty] = useState(false);
   const [planPreview, setPlanPreview] = useState<DispatchPlanDayResult | null>(null);
   const [pinningDepot, setPinningDepot] = useState(false);
   const [jobRoute, setJobRoute] = useState<RouteGeometryResult | null>(null);
@@ -742,6 +748,11 @@ export default function DispatchBoard() {
         depotLat: depotMode === "depot" ? dLat : null,
         depotLon: depotMode === "depot" ? dLon : null,
         persistDepot: depotMode === "depot" && dLat != null && dLon != null,
+        twMode: planTwMode,
+        serviceMinutes: Number(planServiceMin) || 8,
+        dayStart: planDayStart || "08:00",
+        maxStopsPerVehicle: planMaxStops.trim() ? Number(planMaxStops) : 0,
+        onlyEmptyJobs: planOnlyEmpty,
       });
       setPlanPreview(plan);
       if (apply) {
@@ -964,6 +975,57 @@ export default function DispatchBoard() {
                   <option value="depot">From depot</option>
                 </select>
               </div>
+              <div className="field">
+                <label htmlFor="dispatch-tw-mode">Time windows</label>
+                <select
+                  id="dispatch-tw-mode"
+                  value={planTwMode}
+                  onChange={(e) => setPlanTwMode(e.target.value as DispatchTwMode)}
+                >
+                  <option value="soft">Soft (prefer on-time)</option>
+                  <option value="hard">Hard (reject late)</option>
+                  <option value="off">Ignore windows</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="dispatch-day-start">Day start</label>
+                <input
+                  id="dispatch-day-start"
+                  type="time"
+                  value={planDayStart}
+                  onChange={(e) => setPlanDayStart(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="dispatch-service-min">Service min / stop</label>
+                <input
+                  id="dispatch-service-min"
+                  type="number"
+                  min="0"
+                  max="120"
+                  value={planServiceMin}
+                  onChange={(e) => setPlanServiceMin(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="dispatch-max-stops">Max stops / vehicle</label>
+                <input
+                  id="dispatch-max-stops"
+                  type="number"
+                  min="0"
+                  placeholder="0 = no limit"
+                  value={planMaxStops}
+                  onChange={(e) => setPlanMaxStops(e.target.value)}
+                />
+              </div>
+              <label className="dispatch-plan-check">
+                <input
+                  type="checkbox"
+                  checked={planOnlyEmpty}
+                  onChange={(e) => setPlanOnlyEmpty(e.target.checked)}
+                />
+                Only use empty open jobs
+              </label>
               {depotMode === "depot" ? (
                 <>
                   <div className="field">
@@ -1069,7 +1131,19 @@ export default function DispatchBoard() {
                       <span>
                         {r.orderIds.length} stops · {r.utilizationPct}% · {r.distanceKm} km · {r.volumeUsed}/
                         {r.volumeCapacityM3} m³ · {r.weightUsed}/{r.weightCapacityKg} kg
+                        {r.lateStops ? ` · ${r.lateStops} late` : ""}
                       </span>
+                      {r.stops && r.stops.length > 0 ? (
+                        <ol className="dispatch-plan-stop-etas">
+                          {r.stops.map((s, idx) => (
+                            <li key={`${r.key}-${s.orderId || idx}`} className={s.late ? "is-late" : undefined}>
+                              {s.arriveAt} · {s.label || s.orderId || `Stop ${idx + 1}`}
+                              {s.windowEnd ? ` (≤${s.windowEnd})` : ""}
+                              {s.late ? " · late" : ""}
+                            </li>
+                          ))}
+                        </ol>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

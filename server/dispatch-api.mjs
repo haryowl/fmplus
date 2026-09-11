@@ -1289,6 +1289,25 @@ export async function handleDispatchRequest(req, res) {
       }
       const apply = body.apply === true;
       const roundtrip = body.roundtrip === true;
+      const onlyEmptyJobs = body.onlyEmptyJobs === true;
+      const twMode = String(body.twMode || "soft").toLowerCase();
+      if (!["off", "soft", "hard"].includes(twMode)) {
+        json(res, 400, { error: "twMode must be off | soft | hard" });
+        return true;
+      }
+      const serviceMinutes = Math.max(
+        0,
+        Math.min(120, Number(body.serviceMinutes) || 8),
+      );
+      const maxStopsPerVehicle = Math.max(0, Math.floor(Number(body.maxStopsPerVehicle) || 0));
+      let dayStartMin = 8 * 60;
+      if (body.dayStart) {
+        const parsed = String(body.dayStart).trim();
+        const m = /^(\d{1,2}):(\d{2})$/.exec(parsed);
+        if (m) dayStartMin = Number(m[1]) * 60 + Number(m[2]);
+      } else if (body.dayStartMin != null && Number.isFinite(Number(body.dayStartMin))) {
+        dayStartMin = Number(body.dayStartMin);
+      }
       let depotLat = numOrNull(body.depotLat ?? body.depot?.lat);
       let depotLon = numOrNull(body.depotLon ?? body.depot?.lon);
       if (depotMode === "depot" && (depotLat == null || depotLon == null)) {
@@ -1377,6 +1396,7 @@ export async function handleDispatchRequest(req, res) {
           const residualVol = Math.max(0, cap.volumeCapacityM3 - cap.volumeUsed);
           const residualWt = Math.max(0, cap.weightCapacityKg - cap.weightUsed);
           if (residualVol <= 0 || residualWt <= 0) continue;
+          if (onlyEmptyJobs && stops.length > 0) continue;
           if (j.armada_user_id != null) usedArmada.add(Number(j.armada_user_id));
           vehicles.push({
             key: `job:${j.id}`,
@@ -1463,6 +1483,10 @@ export async function handleDispatchRequest(req, res) {
         points,
         depotIndex,
         roundtrip: useDepot && roundtrip,
+        twMode,
+        serviceMinutes,
+        dayStartMin,
+        maxStopsPerVehicle,
       });
 
       const preview = {
@@ -1475,6 +1499,11 @@ export async function handleDispatchRequest(req, res) {
         depot: useDepot ? { lat: depotLat, lon: depotLon } : null,
         roundtrip: plan.roundtrip,
         balanceMoves: plan.balanceMoves || 0,
+        twMode: plan.twMode,
+        serviceMinutes: plan.serviceMinutes,
+        dayStartMin: plan.dayStartMin,
+        maxStopsPerVehicle: plan.maxStopsPerVehicle,
+        onlyEmptyJobs,
         routes: plan.routes,
         unassigned: [...plan.unassigned, ...skipped],
         vehicleCount: vehicles.length,

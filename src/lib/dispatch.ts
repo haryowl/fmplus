@@ -303,6 +303,17 @@ export async function optimizeJobStops(jobId: string): Promise<{
 
 export type DispatchFleetMode = "jobs" | "presets" | "both";
 export type DispatchDepotMode = "open" | "depot";
+export type DispatchTwMode = "off" | "soft" | "hard";
+
+export type DispatchPlanDayStop = {
+  orderId: string | null;
+  label: string;
+  arriveAt: string;
+  windowStart: string;
+  windowEnd: string;
+  late: boolean;
+  early: boolean;
+};
 
 export type DispatchPlanDayRoute = {
   key: string;
@@ -315,6 +326,8 @@ export type DispatchPlanDayRoute = {
   weightCapacityKg: number;
   utilizationPct: number;
   distanceKm: number;
+  lateStops?: number;
+  stops?: DispatchPlanDayStop[];
   meta?: Record<string, unknown>;
 };
 
@@ -328,6 +341,11 @@ export type DispatchPlanDayResult = {
   depot: { lat: number; lon: number } | null;
   roundtrip: boolean;
   balanceMoves?: number;
+  twMode?: DispatchTwMode;
+  serviceMinutes?: number;
+  dayStartMin?: number;
+  maxStopsPerVehicle?: number;
+  onlyEmptyJobs?: boolean;
   routes: DispatchPlanDayRoute[];
   unassigned: { orderId: string; label?: string; reason: string }[];
   vehicleCount: number;
@@ -371,6 +389,11 @@ export async function planDispatchDay(body: {
   depotLat?: number | null;
   depotLon?: number | null;
   persistDepot?: boolean;
+  twMode?: DispatchTwMode;
+  serviceMinutes?: number;
+  dayStart?: string;
+  maxStopsPerVehicle?: number;
+  onlyEmptyJobs?: boolean;
 }): Promise<DispatchPlanDayResult> {
   const res = await fetch("/api/dispatch/plan-day", {
     method: "POST",

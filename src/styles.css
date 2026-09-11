@@ -4634,6 +4634,20 @@ html.onesheet-root body {
   font-size: 0.78rem;
 }
 
+.dispatch-plan-stop-etas {
+  margin: 6px 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 2px;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.dispatch-plan-stop-etas .is-late {
+  color: var(--danger);
+  font-weight: 600;
+}
+
 .dispatch-status {
   display: inline-flex;
   align-items: center;
