@@ -280,24 +280,21 @@ export default function RoutePlanPage() {
               ))}
             </select>
           </div>
-          <div className="field">
-            <label>&nbsp;</label>
-            <label className="route-plan-roundtrip">
-              <input
-                type="checkbox"
-                checked={roundtrip}
-                onChange={(e) => {
-                  setRoundtrip(e.target.checked);
-                  setResult(null);
-                }}
-              />
-              Roundtrip
-            </label>
-          </div>
           <div className="field route-plan-avoid-field">
             <label>Road options</label>
             <div className="route-plan-avoid">
-              <label className="route-plan-roundtrip">
+              <label className="route-plan-check">
+                <input
+                  type="checkbox"
+                  checked={roundtrip}
+                  onChange={(e) => {
+                    setRoundtrip(e.target.checked);
+                    setResult(null);
+                  }}
+                />
+                Roundtrip
+              </label>
+              <label className="route-plan-check">
                 <input
                   type="checkbox"
                   checked={avoidTolls}
@@ -308,7 +305,7 @@ export default function RoutePlanPage() {
                 />
                 Avoid tolls
               </label>
-              <label className="route-plan-roundtrip">
+              <label className="route-plan-check">
                 <input
                   type="checkbox"
                   checked={avoidMotorways}
@@ -319,7 +316,7 @@ export default function RoutePlanPage() {
                 />
                 Avoid motorways
               </label>
-              <label className="route-plan-roundtrip">
+              <label className="route-plan-check">
                 <input
                   type="checkbox"
                   checked={avoidFerries}
@@ -330,7 +327,7 @@ export default function RoutePlanPage() {
                 />
                 Avoid ferries
               </label>
-              <label className="route-plan-roundtrip">
+              <label className="route-plan-check">
                 <input
                   type="checkbox"
                   checked={respectGanjilGenap}

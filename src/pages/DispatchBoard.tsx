@@ -144,6 +144,8 @@ export default function DispatchBoard() {
   const [depots, setDepots] = useState<DispatchDepot[]>([]);
   const [selectedDepotId, setSelectedDepotId] = useState("");
   const [newDepotName, setNewDepotName] = useState("");
+  const [depotPoiFilter, setDepotPoiFilter] = useState("");
+  const [depotPoiPickKey, setDepotPoiPickKey] = useState("");
   const [editDepotId, setEditDepotId] = useState("");
   const [planRoundtrip, setPlanRoundtrip] = useState(false);
   const [planTwMode, setPlanTwMode] = useState<DispatchTwMode>("soft");
@@ -200,6 +202,10 @@ export default function DispatchBoard() {
   const poiOptions = useMemo(
     () => listPoiDropdownOptions(poiCatalog, poiFilter),
     [poiCatalog, poiFilter],
+  );
+  const depotPoiOptions = useMemo(
+    () => listPoiDropdownOptions(poiCatalog, depotPoiFilter),
+    [poiCatalog, depotPoiFilter],
   );
 
   const routePathKey = useMemo(() => {
@@ -463,6 +469,58 @@ export default function DispatchBoard() {
     if (!poi) return;
     const result = placeResultFromPoi(poi);
     if (result) applyPin(result);
+  }
+
+  async function applyDepotPoiKey(key: string) {
+    setDepotPoiPickKey(key);
+    if (!key) return;
+    const poi = poiCatalog.find((p) => placeResultFromPoi(p)?.key === key);
+    if (!poi) return;
+    const result = placeResultFromPoi(poi);
+    if (!result) return;
+    const lat = result.lat;
+    const lon = result.lon;
+    const poiName = (poi.name || "").trim() || result.label;
+    setPinningDepot(false);
+    setError("");
+
+    if (depotMode === "depot") {
+      persistDepot(lat, lon);
+      return;
+    }
+
+    if (depotMode !== "multi") return;
+    setBusy(true);
+    try {
+      if (selectedDepotId) {
+        const updated = await patchDispatchDepot(selectedDepotId, { lat, lon });
+        setDepots((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+        if (updated.isDefault) {
+          setDepotLat(String(lat));
+          setDepotLon(String(lon));
+        }
+      } else {
+        const created = await createDispatchDepot({
+          name: newDepotName.trim() || poiName || `Depot ${depots.length + 1}`,
+          lat,
+          lon,
+          isDefault: depots.length === 0,
+        });
+        setDepots((prev) => [...prev, created]);
+        setSelectedDepotId(created.id);
+        setNewDepotName("");
+        if (created.isDefault) {
+          setDepotLat(String(lat));
+          setDepotLon(String(lon));
+        }
+      }
+      setDepotPoiPickKey("");
+      setDepotPoiFilter("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save depot from POI failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -932,12 +990,28 @@ export default function DispatchBoard() {
     setError("");
     try {
       const job = await patchDispatchJob(id, patch);
-      setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
+      if (job.status === "cancelled" || job.status === "done") {
+        setJobs((prev) => prev.filter((j) => j.id !== job.id));
+        if (selectedId === id) setSelectedId(null);
+        setReload((n) => n + 1);
+      } else {
+        setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleCancelJob(job: DispatchJob) {
+    const stopCount = job.stops?.length || 0;
+    const msg =
+      stopCount > 0
+        ? `Cancel job “${job.title}”? Its ${stopCount} stop(s) will return to the inbox.`
+        : `Cancel draft job “${job.title}”?`;
+    if (!window.confirm(msg)) return;
+    await updateJob(job.id, { status: "cancelled" });
   }
 
   const pinLabel = orderForm.address
@@ -1214,6 +1288,46 @@ export default function DispatchBoard() {
                       placeholder="106.8272"
                     />
                   </div>
+                  <div className="field">
+                    <label htmlFor="dispatch-depot-poi-filter">Filter POIs</label>
+                    <input
+                      id="dispatch-depot-poi-filter"
+                      value={depotPoiFilter}
+                      onChange={(e) => setDepotPoiFilter(e.target.value)}
+                      placeholder="Type to narrow…"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="dispatch-depot-poi">Armada POI (depot)</label>
+                    <select
+                      id="dispatch-depot-poi"
+                      value={depotPoiPickKey}
+                      disabled={!poiCatalogReady || depotPoiOptions.length === 0 || busy}
+                      onChange={(e) => void applyDepotPoiKey(e.target.value)}
+                    >
+                      <option value="">
+                        {!poiCatalogReady
+                          ? "Loading POIs…"
+                          : poiCatalog.length === 0
+                            ? "No POIs with coordinates"
+                            : depotPoiOptions.length === 0
+                              ? "No matches — clear filter"
+                              : `Use POI as depot (${depotPoiOptions.length})`}
+                      </option>
+                      {depotPoiOptions.map((p) => {
+                        const result = placeResultFromPoi(p);
+                        if (!result) return null;
+                        const cat = (p.categoryName || "").trim();
+                        return (
+                          <option key={result.key} value={result.key}>
+                            {p.name}
+                            {cat ? ` · ${cat}` : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
                   <div className="dispatch-create-actions" style={{ gridColumn: "1 / -1" }}>
                     <button
                       type="button"
@@ -1240,11 +1354,9 @@ export default function DispatchBoard() {
                     />
                     Return to depot (roundtrip)
                   </label>
-                  {pinningDepot ? (
-                    <p className="dispatch-search-hint" style={{ gridColumn: "1 / -1" }}>
-                      Click the live board map to drop the depot pin. It is remembered for this tenant.
-                    </p>
-                  ) : null}
+                  <p className="dispatch-search-hint" style={{ gridColumn: "1 / -1" }}>
+                    Pick an Armada POI, enter lat/lon, or click the map. Depot is remembered for this tenant.
+                  </p>
                 </>
               ) : null}
               {depotMode === "multi" ? (
@@ -1254,9 +1366,12 @@ export default function DispatchBoard() {
                     <select
                       id="dispatch-depot-pick"
                       value={selectedDepotId}
-                      onChange={(e) => setSelectedDepotId(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedDepotId(e.target.value);
+                        setDepotPoiPickKey("");
+                      }}
                     >
-                      <option value="">New depot (pin on map)</option>
+                      <option value="">New depot (POI or map)</option>
                       {depots.map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.name}
@@ -1272,7 +1387,7 @@ export default function DispatchBoard() {
                         id="dispatch-depot-name"
                         value={newDepotName}
                         onChange={(e) => setNewDepotName(e.target.value)}
-                        placeholder={`Depot ${depots.length + 1}`}
+                        placeholder={`Depot ${depots.length + 1} (or use POI name)`}
                       />
                     </div>
                   ) : (
@@ -1297,6 +1412,48 @@ export default function DispatchBoard() {
                       />
                     </div>
                   )}
+                  <div className="field">
+                    <label htmlFor="dispatch-multi-depot-poi-filter">Filter POIs</label>
+                    <input
+                      id="dispatch-multi-depot-poi-filter"
+                      value={depotPoiFilter}
+                      onChange={(e) => setDepotPoiFilter(e.target.value)}
+                      placeholder="Type to narrow…"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="dispatch-multi-depot-poi">Armada POI (depot)</label>
+                    <select
+                      id="dispatch-multi-depot-poi"
+                      value={depotPoiPickKey}
+                      disabled={!poiCatalogReady || depotPoiOptions.length === 0 || busy}
+                      onChange={(e) => void applyDepotPoiKey(e.target.value)}
+                    >
+                      <option value="">
+                        {!poiCatalogReady
+                          ? "Loading POIs…"
+                          : poiCatalog.length === 0
+                            ? "No POIs with coordinates"
+                            : depotPoiOptions.length === 0
+                              ? "No matches — clear filter"
+                              : selectedDepotId
+                                ? `Move depot to POI (${depotPoiOptions.length})`
+                                : `Create depot from POI (${depotPoiOptions.length})`}
+                      </option>
+                      {depotPoiOptions.map((p) => {
+                        const result = placeResultFromPoi(p);
+                        if (!result) return null;
+                        const cat = (p.categoryName || "").trim();
+                        return (
+                          <option key={result.key} value={result.key}>
+                            {p.name}
+                            {cat ? ` · ${cat}` : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
                   <div className="dispatch-create-actions" style={{ gridColumn: "1 / -1" }}>
                     <button
                       type="button"
@@ -1362,8 +1519,9 @@ export default function DispatchBoard() {
                     Return to depot (roundtrip)
                   </label>
                   <p className="dispatch-search-hint" style={{ gridColumn: "1 / -1" }}>
-                    Orders go to the nearest depot. Vehicles use their capacity depot when set; otherwise
-                    they are balanced across depots by demand. {depots.length} depot(s) saved.
+                    Create or move a depot from an Armada POI, or pin on the map. Orders go to the nearest
+                    depot. Vehicles use their capacity depot when set; otherwise they are balanced across
+                    depots by demand. {depots.length} depot(s) saved.
                   </p>
                 </>
               ) : null}
@@ -1918,7 +2076,7 @@ export default function DispatchBoard() {
             ) : null}
             <ul className="dispatch-job-tabs">
               {jobs.map((j) => (
-                <li key={j.id}>
+                <li key={j.id} className="dispatch-job-tab-wrap">
                   <button
                     type="button"
                     className={`dispatch-job-tab${selectedId === j.id ? " is-active" : ""}`}
@@ -1932,6 +2090,21 @@ export default function DispatchBoard() {
                       {j.stops.length} stops · {j.utilizationPct ?? 0}%
                     </span>
                   </button>
+                  {j.status === "draft" || j.status === "assigned" ? (
+                    <button
+                      type="button"
+                      className="dispatch-job-tab-cancel"
+                      disabled={busy}
+                      title="Cancel job"
+                      aria-label={`Cancel job ${j.title}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleCancelJob(j);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -2126,7 +2299,7 @@ export default function DispatchBoard() {
                     Status
                     <select
                       value={selected.status}
-                      disabled={busy}
+                      disabled={busy || selected.status === "cancelled"}
                       onChange={(e) => void updateJob(selected.id, { status: e.target.value })}
                     >
                       {(Object.keys(DISPATCH_STATUS_LABELS) as DispatchStatus[]).map((s) => (
@@ -2136,6 +2309,17 @@ export default function DispatchBoard() {
                       ))}
                     </select>
                   </label>
+                  {selected.status === "draft" || selected.status === "assigned" ? (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      style={{ gridColumn: "1 / -1" }}
+                      disabled={busy}
+                      onClick={() => void handleCancelJob(selected)}
+                    >
+                      Cancel job
+                    </button>
+                  ) : null}
                 </div>
 
                 <div className="dispatch-routing-opts">

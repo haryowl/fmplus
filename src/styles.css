@@ -308,7 +308,7 @@ span.btn-ghost {
   color: var(--ink-faint);
 }
 
-.field input,
+.field input:not([type="checkbox"]):not([type="radio"]),
 .field select {
   height: 38px;
   border: 1px solid var(--line-strong);
@@ -3621,28 +3621,61 @@ html.onesheet-root body {
   resize: vertical;
 }
 
-.route-plan-roundtrip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.9rem;
-  padding: 8px 0;
+.route-plan-page .filters.route-plan-toolbar {
+  grid-template-columns: minmax(160px, 1.2fr) minmax(160px, 1.2fr) minmax(280px, 2fr) auto auto auto;
+  align-items: end;
 }
 
 .route-plan-avoid-field {
-  grid-column: span 2;
+  min-width: 0;
 }
 
 .route-plan-avoid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, max-content));
+  column-gap: 18px;
+  row-gap: 6px;
   align-items: center;
+  min-height: 38px;
 }
 
-.route-plan-avoid .route-plan-roundtrip {
-  padding: 4px 0;
-  font-size: 0.84rem;
+.route-plan-avoid-field .route-plan-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.route-plan-avoid-field .route-plan-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+@media (max-width: 980px) {
+  .route-plan-page .filters.route-plan-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .route-plan-avoid-field {
+    grid-column: 1 / -1;
+  }
+
+  .route-plan-avoid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .dispatch-routing-opts {
@@ -4330,6 +4363,12 @@ html.onesheet-root body {
   overflow-x: auto;
 }
 
+.dispatch-job-tab-wrap {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
 .dispatch-job-tab {
   display: grid;
   gap: 3px;
@@ -4357,6 +4396,30 @@ html.onesheet-root body {
 .dispatch-job-tab.is-active {
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+
+.dispatch-job-tab-cancel {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 2px 4px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.dispatch-job-tab-cancel:hover:not(:disabled) {
+  color: #9a4a2e;
+}
+
+.dispatch-job-tab-cancel:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .dispatch-vehicle-meta {

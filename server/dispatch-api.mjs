@@ -1456,6 +1456,16 @@ export async function handleDispatchRequest(req, res) {
         if (status === "done" || status === "cancelled") {
           sets.push(`completed_at = COALESCE(completed_at, now())`);
         }
+        // Cancelling returns linked orders to the inbox so they can be re-planned.
+        if (status === "cancelled" && existing.status !== "cancelled") {
+          await dbQuery(
+            `UPDATE dispatch_orders
+             SET status = 'pending', job_id = NULL, stop_id = NULL, updated_at = now()
+             WHERE job_id = $1 AND status = 'assigned'`,
+            [existing.id],
+          );
+          await dbQuery(`DELETE FROM dispatch_stops WHERE job_id = $1`, [existing.id]);
+        }
       }
       if ("fieldNote" in body) {
         params.push(String(body.fieldNote || "").trim().slice(0, 2000) || null);
