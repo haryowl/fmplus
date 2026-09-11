@@ -37,7 +37,9 @@ import {
   type VehicleCapacity,
 } from "../lib/dispatch";
 import {
+  listPoiDropdownOptions,
   loadDispatchPoiCatalog,
+  placeResultFromPoi,
   placeSearchSourceLabel,
   reverseAddress,
   searchDispatchPlaces,
@@ -108,8 +110,11 @@ export default function DispatchBoard() {
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
+  const [placeMode, setPlaceMode] = useState<"poi" | "search">("poi");
   const [poiCatalog, setPoiCatalog] = useState<ArmadaPoi[]>([]);
   const [poiCatalogReady, setPoiCatalogReady] = useState(false);
+  const [poiFilter, setPoiFilter] = useState("");
+  const [poiPickKey, setPoiPickKey] = useState("");
   const [pinBusy, setPinBusy] = useState(false);
 
   const [jobTitle, setJobTitle] = useState("");
@@ -137,6 +142,11 @@ export default function DispatchBoard() {
     if (!selected?.stops?.length) return [];
     return buildStopRouteMeta(selected.stops, jobRoute?.legs || []);
   }, [selected, jobRoute]);
+
+  const poiOptions = useMemo(
+    () => listPoiDropdownOptions(poiCatalog, poiFilter),
+    [poiCatalog, poiFilter],
+  );
 
   const routePathKey = useMemo(() => {
     if (!selected) return "";
@@ -338,6 +348,10 @@ export default function DispatchBoard() {
   }, [ready, query.tenantKey]);
 
   useEffect(() => {
+    if (placeMode !== "search") {
+      setSearchResults([]);
+      return;
+    }
     const q = searchQ.trim();
     if (q.length < 2) {
       setSearchResults([]);
@@ -346,7 +360,7 @@ export default function DispatchBoard() {
     const ac = new AbortController();
     const t = window.setTimeout(() => {
       setSearchBusy(true);
-      searchDispatchPlaces(q, poiCatalog, ac.signal)
+      searchDispatchPlaces(q, ac.signal)
         .then((results) => setSearchResults(results))
         .catch((err: Error) => {
           if (err.name !== "AbortError") setSearchResults([]);
@@ -357,7 +371,7 @@ export default function DispatchBoard() {
       window.clearTimeout(t);
       ac.abort();
     };
-  }, [searchQ, poiCatalog]);
+  }, [searchQ, placeMode]);
 
   function toggleOrder(id: string) {
     setSelectedOrderIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -375,7 +389,17 @@ export default function DispatchBoard() {
     setPlacing(true);
     setSearchQ("");
     setSearchResults([]);
+    setPoiPickKey("");
     setError("");
+  }
+
+  function applyPoiKey(key: string) {
+    setPoiPickKey(key);
+    if (!key) return;
+    const poi = poiCatalog.find((p) => placeResultFromPoi(p)?.key === key);
+    if (!poi) return;
+    const result = placeResultFromPoi(poi);
+    if (result) applyPin(result);
   }
 
   async function onMapClick(lat: number, lon: number) {
@@ -871,45 +895,123 @@ export default function DispatchBoard() {
             </header>
 
             <div className="dispatch-search-wrap">
-              <div className="dispatch-search-box">
-                <span className="dispatch-search-icon" aria-hidden>
-                  ⌕
-                </span>
-                <input
-                  value={searchQ}
-                  onChange={(e) => setSearchQ(e.target.value)}
-                  placeholder="Search POI, service point, street…"
-                  autoComplete="off"
-                  aria-label="Find place"
-                />
+              <div className="dispatch-place-mode" role="tablist" aria-label="Place picker mode">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={placeMode === "poi"}
+                  className={placeMode === "poi" ? "is-active" : undefined}
+                  onClick={() => {
+                    setPlaceMode("poi");
+                    setSearchQ("");
+                    setSearchResults([]);
+                  }}
+                >
+                  POI
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={placeMode === "search"}
+                  className={placeMode === "search" ? "is-active" : undefined}
+                  onClick={() => {
+                    setPlaceMode("search");
+                    setPoiPickKey("");
+                    setPoiFilter("");
+                  }}
+                >
+                  Street / other
+                </button>
               </div>
-              {searchBusy ? (
-                <p className="dispatch-search-hint">Searching places…</p>
-              ) : !poiCatalogReady && searchQ.trim().length >= 2 ? (
-                <p className="dispatch-search-hint">Loading saved POIs…</p>
-              ) : null}
-              {searchResults.length > 0 ? (
-                <ul className="dispatch-search-results">
-                  {searchResults.map((r) => (
-                    <li key={r.key}>
-                      <button type="button" onClick={() => applyPin(r)}>
-                        <span className="dispatch-search-result-main">
-                          <span
-                            className={`dispatch-search-source dispatch-search-source-${r.source}`}
-                          >
-                            {placeSearchSourceLabel(r.source)}
-                          </span>
-                          <span className="dispatch-search-label">{r.label}</span>
-                        </span>
-                        {r.subtitle ? <span className="dispatch-search-sub">{r.subtitle}</span> : null}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+
+              {placeMode === "poi" ? (
+                <>
+                  <div className="field">
+                    <label htmlFor="dispatch-poi-filter">Filter POIs</label>
+                    <input
+                      id="dispatch-poi-filter"
+                      value={poiFilter}
+                      onChange={(e) => setPoiFilter(e.target.value)}
+                      placeholder="Type to narrow the list…"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="dispatch-poi-select">Armada POI</label>
+                    <select
+                      id="dispatch-poi-select"
+                      value={poiPickKey}
+                      disabled={!poiCatalogReady || poiOptions.length === 0}
+                      onChange={(e) => applyPoiKey(e.target.value)}
+                    >
+                      <option value="">
+                        {!poiCatalogReady
+                          ? "Loading POIs…"
+                          : poiCatalog.length === 0
+                            ? "No POIs with coordinates"
+                            : poiOptions.length === 0
+                              ? "No matches — clear filter"
+                              : `Select POI (${poiOptions.length})`}
+                      </option>
+                      {poiOptions.map((p) => {
+                        const result = placeResultFromPoi(p);
+                        if (!result) return null;
+                        const cat = (p.categoryName || "").trim();
+                        return (
+                          <option key={result.key} value={result.key}>
+                            {p.name}
+                            {cat ? ` · ${cat}` : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <p className="dispatch-search-hint">
+                    All Armada POIs with coordinates appear here — no service-point link required. Or switch to
+                    Street / other for free-text search, or click the map.
+                  </p>
+                </>
               ) : (
-                <p className="dispatch-search-hint">
-                  Search Armada POIs, service points, or street — or click the map to drop a pin.
-                </p>
+                <>
+                  <div className="dispatch-search-box">
+                    <span className="dispatch-search-icon" aria-hidden>
+                      ⌕
+                    </span>
+                    <input
+                      value={searchQ}
+                      onChange={(e) => setSearchQ(e.target.value)}
+                      placeholder="Search service point, street, area…"
+                      autoComplete="off"
+                      aria-label="Find place"
+                    />
+                  </div>
+                  {searchBusy ? <p className="dispatch-search-hint">Searching…</p> : null}
+                  {searchResults.length > 0 ? (
+                    <ul className="dispatch-search-results">
+                      {searchResults.map((r) => (
+                        <li key={r.key}>
+                          <button type="button" onClick={() => applyPin(r)}>
+                            <span className="dispatch-search-result-main">
+                              <span
+                                className={`dispatch-search-source dispatch-search-source-${r.source}`}
+                              >
+                                {placeSearchSourceLabel(r.source)}
+                              </span>
+                              <span className="dispatch-search-label">{r.label}</span>
+                            </span>
+                            {r.subtitle ? (
+                              <span className="dispatch-search-sub">{r.subtitle}</span>
+                            ) : null}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="dispatch-search-hint">
+                      Free-text search for service points and streets — or click the map to drop a pin.
+                    </p>
+                  )}
+                </>
               )}
             </div>
 

@@ -69,32 +69,35 @@ function hasCoords(lat: number | null | undefined, lon: number | null | undefine
   );
 }
 
-export function filterPoisForSearch(pois: ArmadaPoi[], q: string, limit = 8): PlaceSearchResult[] {
-  const needle = q.trim().toLowerCase();
-  if (needle.length < 2) return [];
-  const out: PlaceSearchResult[] = [];
-  for (const p of pois) {
-    if (!hasCoords(p.lat, p.lon)) continue;
-    const name = (p.name || "").trim();
-    const cat = (p.categoryName || "").trim();
-    const hay = `${name} ${cat}`.toLowerCase();
-    if (!hay.includes(needle)) continue;
-    out.push({
-      key: `poi:${p.id ?? name}:${p.lat},${p.lon}`,
-      source: "poi",
-      label: name || "POI",
-      lat: Number(p.lat),
-      lon: Number(p.lon),
-      subtitle: cat ? `POI · ${cat}` : "POI",
-      customerHint: name,
-      zoneHint: cat,
-    });
-    if (out.length >= limit) break;
-  }
-  return out;
+export function placeResultFromPoi(p: ArmadaPoi): PlaceSearchResult | null {
+  if (!hasCoords(p.lat, p.lon)) return null;
+  const name = (p.name || "").trim() || "POI";
+  const cat = (p.categoryName || "").trim();
+  return {
+    key: `poi:${p.id ?? name}:${p.lat},${p.lon}`,
+    source: "poi",
+    label: name,
+    lat: Number(p.lat),
+    lon: Number(p.lon),
+    subtitle: cat ? `POI · ${cat}` : "POI",
+    customerHint: name,
+    zoneHint: cat,
+  };
 }
 
-/** Prefetch Armada POIs once for Dispatch search (filters client-side). */
+/** Sorted POIs for dropdown; optional name/category filter. Always independent of service points. */
+export function listPoiDropdownOptions(pois: ArmadaPoi[], filter = ""): ArmadaPoi[] {
+  const needle = filter.trim().toLowerCase();
+  const out = pois.filter((p) => {
+    if (!hasCoords(p.lat, p.lon)) return false;
+    if (!needle) return true;
+    const hay = `${p.name || ""} ${p.categoryName || ""}`.toLowerCase();
+    return hay.includes(needle);
+  });
+  return out.sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }));
+}
+
+/** Prefetch Armada POIs once for Dispatch (coords required for pinning). */
 export async function loadDispatchPoiCatalog(signal?: AbortSignal): Promise<ArmadaPoi[]> {
   try {
     const res = await fetchPlacesPois("", signal);
@@ -106,30 +109,25 @@ export async function loadDispatchPoiCatalog(signal?: AbortSignal): Promise<Arma
 }
 
 /**
- * Orders place search: saved POIs + service points + street/area (Nominatim).
- * POI list should be prefetched; service points / addresses fetch per query.
+ * Free-text Orders search: service points + street/area (Nominatim).
+ * POIs are chosen via the dedicated dropdown, not this path.
  */
 export async function searchDispatchPlaces(
   q: string,
-  poiCatalog: ArmadaPoi[],
   signal?: AbortSignal,
 ): Promise<PlaceSearchResult[]> {
   const trimmed = q.trim();
   if (trimmed.length < 2) return [];
-
-  const pois = filterPoisForSearch(poiCatalog, trimmed, 8);
 
   const [addrSettled, pointsSettled] = await Promise.allSettled([
     searchAddresses(trimmed, signal),
     fetchServicePoints(trimmed, signal),
   ]);
 
-  const linkedPoiIds = new Set<number>();
   const servicePoints: PlaceSearchResult[] = [];
   if (pointsSettled.status === "fulfilled") {
     for (const sp of pointsSettled.value) {
       if (!hasCoords(sp.lat, sp.lon)) continue;
-      if (sp.armadaPoiId != null) linkedPoiIds.add(Number(sp.armadaPoiId));
       const name = (sp.name || "").trim() || "Service point";
       const type = (sp.pointType || "").trim();
       servicePoints.push({
@@ -146,13 +144,6 @@ export async function searchDispatchPlaces(
     }
   }
 
-  // Drop POIs already represented by a linked service point
-  const poisDeduped = pois.filter((p) => {
-    const idMatch = /^poi:(\d+):/.exec(p.key);
-    if (!idMatch) return true;
-    return !linkedPoiIds.has(Number(idMatch[1]));
-  });
-
   const addresses: PlaceSearchResult[] = [];
   if (addrSettled.status === "fulfilled") {
     for (const a of addrSettled.value.slice(0, 8)) {
@@ -168,7 +159,7 @@ export async function searchDispatchPlaces(
     }
   }
 
-  return [...servicePoints, ...poisDeduped, ...addresses];
+  return [...servicePoints, ...addresses];
 }
 
 export function placeSearchSourceLabel(source: PlaceSearchSource): string {
