@@ -4075,14 +4075,43 @@ html.onesheet-root body {
 .dispatch-vehicle-pane input:not([type="checkbox"]):not([type="radio"]),
 .dispatch-vehicle-pane select,
 .dispatch-order-draft input:not([type="checkbox"]):not([type="radio"]) {
-  height: 38px;
-  border-radius: 10px;
+  height: 30px;
+  border-radius: 8px;
   border: 1px solid var(--line-strong);
   background: #fff;
-  padding: 0 10px;
-  font: inherit;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
   width: 100%;
   box-sizing: border-box;
+}
+
+.dispatch-create .field {
+  gap: 3px;
+}
+
+.dispatch-create .field > label,
+.dispatch-create label.field {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.dispatch-create .field input,
+.dispatch-create .field select,
+.dispatch-create label.field input,
+.dispatch-create label.field select {
+  height: 28px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--ink);
+  padding: 0 8px;
 }
 
 .dispatch-pool-list-wrap {
@@ -4572,7 +4601,7 @@ html.onesheet-root body {
 .dispatch-create-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px 10px;
 }
 
 .dispatch-create-actions {
@@ -4585,12 +4614,12 @@ html.onesheet-root body {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 10px;
+  gap: 8px;
   width: max-content;
   max-width: 100%;
   margin: 0;
-  padding: 8px 0;
-  font-size: 0.84rem;
+  padding: 4px 0;
+  font-size: 0.78rem;
   font-weight: 500;
   color: var(--ink);
   grid-column: 1 / -1;
