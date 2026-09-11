@@ -230,6 +230,50 @@ async function loadJob(tenantId, jobId) {
   return found.rows[0] || null;
 }
 
+/** Reorder stop sort_order using road/haversine matrix; optional depot as fixed start. */
+async function reorderJobStopsRoad(jobId, depot = null) {
+  const stops = await loadStops(jobId);
+  const withCoords = stops.filter(
+    (s) =>
+      s.lat != null &&
+      s.lon != null &&
+      Number.isFinite(Number(s.lat)) &&
+      Number.isFinite(Number(s.lon)),
+  );
+  if (withCoords.length === 0) return null;
+
+  const useDepot =
+    depot && Number.isFinite(Number(depot.lat)) && Number.isFinite(Number(depot.lon));
+
+  if (!useDepot && withCoords.length < 2) return null;
+
+  const customerPoints = withCoords.map((s) => ({
+    lat: Number(s.lat),
+    lon: Number(s.lon),
+  }));
+  const points = useDepot
+    ? [{ lat: Number(depot.lat), lon: Number(depot.lon) }, ...customerPoints]
+    : customerPoints;
+  const matrix = await getDistanceMatrix(points);
+  const { order } = optimizeOpenTour(points, matrix.matrixKm);
+
+  const customerOrder = useDepot
+    ? order.filter((i) => i !== 0).map((i) => i - 1)
+    : order;
+
+  for (let i = 0; i < customerOrder.length; i++) {
+    const stop = withCoords[customerOrder[i]];
+    if (!stop) continue;
+    await dbQuery(`UPDATE dispatch_stops SET sort_order = $1 WHERE id = $2`, [i, stop.id]);
+  }
+  let tail = customerOrder.length;
+  for (const s of stops) {
+    if (withCoords.some((c) => c.id === s.id)) continue;
+    await dbQuery(`UPDATE dispatch_stops SET sort_order = $1 WHERE id = $2`, [tail++, s.id]);
+  }
+  return matrix;
+}
+
 async function requireDispatchModule(tenantId) {
   const row = await dbQuery(`SELECT entitlements FROM tenants WHERE id = $1`, [tenantId]);
   const ent = mergeEntitlements(row.rows[0]?.entitlements);
@@ -1275,6 +1319,7 @@ export async function handleDispatchRequest(req, res) {
               userDisplayName: j.user_display_name || "",
               fullVolumeCapacityM3: cap.volumeCapacityM3,
               fullWeightCapacityKg: cap.weightCapacityKg,
+              existingStops: stops.length,
             },
           });
         }
@@ -1302,10 +1347,18 @@ export async function handleDispatchRequest(req, res) {
               userDisplayName: p.label || "",
               fullVolumeCapacityM3: Number(p.volume_capacity_m3) || 12,
               fullWeightCapacityKg: Number(p.weight_capacity_kg) || 1500,
+              existingStops: 0,
             },
           });
         }
       }
+
+      // Prefer empty / lighter jobs before fuller ones and larger residual capacity
+      vehicles.sort(
+        (a, b) =>
+          (Number(a.meta?.existingStops) || 0) - (Number(b.meta?.existingStops) || 0) ||
+          b.volumeCapacityM3 * b.weightCapacityKg - a.volumeCapacityM3 * a.weightCapacityKg,
+      );
 
       if (!vehicles.length) {
         json(res, 400, {
@@ -1429,12 +1482,29 @@ export async function handleDispatchRequest(req, res) {
           );
         }
         await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [jobId]);
+        const depotForReorder =
+          useDepot && depotLat != null && depotLon != null
+            ? { lat: depotLat, lon: depotLon }
+            : null;
+        await reorderJobStopsRoad(jobId, depotForReorder);
         const row = await loadJob(dbTenant.id, jobId);
         const stops = await loadStops(jobId);
+        const routeGeom = await buildRouteForPoints(
+          stops
+            .filter(
+              (s) =>
+                s.lat != null &&
+                s.lon != null &&
+                Number.isFinite(Number(s.lat)) &&
+                Number.isFinite(Number(s.lon)),
+            )
+            .map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) })),
+        );
         applied.push({
           ...route,
           jobId,
           job: publicJob(row, stops),
+          route: routeGeom,
         });
       }
 

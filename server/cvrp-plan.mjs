@@ -134,9 +134,10 @@ export function planCvrp({
     orderIndexes: [], // indexes into orders[]
   }));
 
-  // Sort vehicles: larger capacity first (helps packing)
+  // Prefer empty / lighter jobs, then larger residual capacity
   vehicleStates.sort(
     (a, b) =>
+      (Number(a.meta?.existingStops) || 0) - (Number(b.meta?.existingStops) || 0) ||
       b.volumeCapacityM3 * b.weightCapacityKg - a.volumeCapacityM3 * a.weightCapacityKg ||
       b.volumeCapacityM3 - a.volumeCapacityM3,
   );

@@ -135,6 +135,7 @@ export default function DispatchBoard() {
   const [depotLon, setDepotLon] = useState("");
   const [planRoundtrip, setPlanRoundtrip] = useState(false);
   const [planPreview, setPlanPreview] = useState<DispatchPlanDayResult | null>(null);
+  const [pinningDepot, setPinningDepot] = useState(false);
   const [jobRoute, setJobRoute] = useState<RouteGeometryResult | null>(null);
   const [routeBusy, setRouteBusy] = useState(false);
 
@@ -145,9 +146,18 @@ export default function DispatchBoard() {
     orderForm.lat != null && orderForm.lon != null
       ? { lat: orderForm.lat, lon: orderForm.lon }
       : null;
+  const depotPin = useMemo(() => {
+    const lat = Number(depotLat);
+    const lon = Number(depotLon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    return { lat, lon };
+  }, [depotLat, depotLon]);
+  const mapDraftPin =
+    showPlanDay && depotMode === "depot" && (pinningDepot || depotPin) ? depotPin : draftPin;
   const fitKey = selected
-    ? `${selected.id}-${selected.stops.map((s) => s.id).join(",")}-${draftPin ? "pin" : ""}-${jobRoute?.geometry?.length || 0}`
-    : `empty-${draftPin ? `${draftPin.lat},${draftPin.lon}` : ""}`;
+    ? `${selected.id}-${selected.stops.map((s) => s.id).join(",")}-${mapDraftPin ? "pin" : ""}-${jobRoute?.geometry?.length || 0}`
+    : `empty-${mapDraftPin ? `${mapDraftPin.lat},${mapDraftPin.lon}` : ""}`;
 
   const stopRouteMeta = useMemo(() => {
     if (!selected?.stops?.length) return [];
@@ -413,7 +423,42 @@ export default function DispatchBoard() {
     if (result) applyPin(result);
   }
 
+  useEffect(() => {
+    if (!query.tenantKey) return;
+    try {
+      const raw = localStorage.getItem(`fmplus.dispatch.depot.${query.tenantKey}`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { lat?: number; lon?: number };
+      if (Number.isFinite(Number(parsed.lat)) && Number.isFinite(Number(parsed.lon))) {
+        setDepotLat(String(parsed.lat));
+        setDepotLon(String(parsed.lon));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [query.tenantKey]);
+
+  function persistDepot(lat: number, lon: number) {
+    setDepotLat(String(lat));
+    setDepotLon(String(lon));
+    if (!query.tenantKey) return;
+    try {
+      localStorage.setItem(
+        `fmplus.dispatch.depot.${query.tenantKey}`,
+        JSON.stringify({ lat, lon }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+
   async function onMapClick(lat: number, lon: number) {
+    if (showPlanDay && depotMode === "depot" && pinningDepot) {
+      persistDepot(lat, lon);
+      setPinningDepot(false);
+      setError("");
+      return;
+    }
     setPinBusy(true);
     setError("");
     setPlacing(true);
@@ -834,6 +879,7 @@ export default function DispatchBoard() {
               onClick={() => {
                 setShowPlanDay((v) => !v);
                 setPlanPreview(null);
+                setPinningDepot(false);
                 setShowNewJob(false);
               }}
             >
@@ -901,6 +947,34 @@ export default function DispatchBoard() {
                       placeholder="106.8272"
                     />
                   </div>
+                  <div className="dispatch-create-actions" style={{ gridColumn: "1 / -1" }}>
+                    <button
+                      type="button"
+                      className={`btn-secondary${pinningDepot ? " is-active" : ""}`}
+                      onClick={() => setPinningDepot((v) => !v)}
+                    >
+                      {pinningDepot ? "Click the map…" : "Set depot on map"}
+                    </button>
+                    {depotPin ? (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => {
+                          setDepotLat("");
+                          setDepotLon("");
+                          if (query.tenantKey) {
+                            try {
+                              localStorage.removeItem(`fmplus.dispatch.depot.${query.tenantKey}`);
+                            } catch {
+                              /* ignore */
+                            }
+                          }
+                        }}
+                      >
+                        Clear depot
+                      </button>
+                    ) : null}
+                  </div>
                   <label className="dispatch-plan-check">
                     <input
                       type="checkbox"
@@ -909,6 +983,11 @@ export default function DispatchBoard() {
                     />
                     Return to depot (roundtrip)
                   </label>
+                  {pinningDepot ? (
+                    <p className="dispatch-search-hint" style={{ gridColumn: "1 / -1" }}>
+                      Click the live board map to drop the depot pin. It is remembered for this tenant.
+                    </p>
+                  ) : null}
                 </>
               ) : null}
             </div>
@@ -1423,7 +1502,7 @@ export default function DispatchBoard() {
               <DispatchJobMap
                 stops={selected?.stops || []}
                 fitKey={fitKey}
-                draftPin={draftPin}
+                draftPin={mapDraftPin}
                 routeGeometry={jobRoute?.geometry || []}
                 onMapClick={(lat, lon) => void onMapClick(lat, lon)}
               />
