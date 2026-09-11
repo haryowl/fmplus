@@ -13,13 +13,18 @@
  * GET/PUT /api/dispatch/vehicle-capacities
  * PUT /api/dispatch/vehicle-capacities/:armadaUserId
  * GET/PUT /api/dispatch/depot
- * POST /api/dispatch/plan-day — CVRP auto-plan (fleet + depot modes)
+ * GET/POST /api/dispatch/depots · PATCH/DELETE /api/dispatch/depots/:id
+ * POST /api/dispatch/plan-day — CVRP auto-plan (fleet + depot / multi-depot modes)
  */
 import crypto from "node:crypto";
 import { databaseUrlConfigured, dbQuery } from "./db.mjs";
 import { mergeEntitlements, moduleEnabled } from "./entitlements.mjs";
 import { resolveDbTenant } from "./maintenance-api.mjs";
-import { planCvrp } from "./cvrp-plan.mjs";
+import {
+  assignVehiclesToDepots,
+  partitionOrdersByNearestDepot,
+  planCvrp,
+} from "./cvrp-plan.mjs";
 import { optimizeOpenTour } from "./route-optimize.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
@@ -75,6 +80,67 @@ function numOrNull(v) {
   if (v == null || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function publicDepot(row) {
+  return {
+    id: row.id,
+    name: row.name || "Depot",
+    lat: Number(row.lat),
+    lon: Number(row.lon),
+    isDefault: Boolean(row.is_default),
+    updatedAt: row.updated_at || null,
+  };
+}
+
+async function syncTenantDefaultDepot(tenantId, lat, lon) {
+  await dbQuery(
+    `UPDATE tenants SET dispatch_depot_lat = $1, dispatch_depot_lon = $2, updated_at = now()
+     WHERE id = $3`,
+    [lat, lon, tenantId],
+  );
+}
+
+async function clearOtherDefaultDepots(tenantId, keepId) {
+  await dbQuery(
+    `UPDATE dispatch_depots SET is_default = false, updated_at = now()
+     WHERE tenant_id = $1 AND id <> $2 AND is_default = true`,
+    [tenantId, keepId],
+  );
+}
+
+async function ensureDefaultDepotFromLegacy(tenantId) {
+  const existing = await dbQuery(
+    `SELECT id FROM dispatch_depots WHERE tenant_id = $1 LIMIT 1`,
+    [tenantId],
+  );
+  if (existing.rows.length) return;
+  const legacy = await dbQuery(
+    `SELECT dispatch_depot_lat, dispatch_depot_lon FROM tenants WHERE id = $1`,
+    [tenantId],
+  );
+  const r = legacy.rows[0] || {};
+  const lat = r.dispatch_depot_lat == null ? null : Number(r.dispatch_depot_lat);
+  const lon = r.dispatch_depot_lon == null ? null : Number(r.dispatch_depot_lon);
+  if (lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  await dbQuery(
+    `INSERT INTO dispatch_depots (tenant_id, name, lat, lon, is_default)
+     VALUES ($1, 'Default', $2, $3, true)`,
+    [tenantId, lat, lon],
+  );
+}
+
+async function listDepotsForTenant(tenantId) {
+  await ensureDefaultDepotFromLegacy(tenantId);
+  const rows = await dbQuery(
+    `SELECT id, name, lat, lon, is_default, updated_at
+     FROM dispatch_depots
+     WHERE tenant_id = $1
+     ORDER BY is_default DESC, name ASC, created_at ASC
+     LIMIT 50`,
+    [tenantId],
+  );
+  return rows.rows.map(publicDepot);
 }
 
 /** YYYY-MM-DD or null. */
@@ -451,7 +517,7 @@ export async function handleDispatchRequest(req, res) {
     // —— Vehicle capacity presets (keyed by Armada user id) ——
     if (url.pathname === "/api/dispatch/vehicle-capacities" && req.method === "GET") {
       const rows = await dbQuery(
-        `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, label, updated_at
+        `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, updated_at
          FROM vehicle_capacities
          WHERE tenant_id = $1
          ORDER BY armada_user_id ASC
@@ -464,6 +530,7 @@ export async function handleDispatchRequest(req, res) {
           volumeCapacityM3: Number(r.volume_capacity_m3) || 12,
           weightCapacityKg: Number(r.weight_capacity_kg) || 1500,
           label: r.label || "",
+          depotId: r.depot_id || null,
           updatedAt: r.updated_at,
         })),
       });
@@ -485,17 +552,34 @@ export async function handleDispatchRequest(req, res) {
         return true;
       }
       const label = String(body.label || "").trim().slice(0, 200) || null;
+      const hasDepotField = Object.prototype.hasOwnProperty.call(body, "depotId");
+      let depotId = null;
+      if (hasDepotField) {
+        if (body.depotId != null && body.depotId !== "") {
+          const did = String(body.depotId);
+          const ok = await dbQuery(
+            `SELECT id FROM dispatch_depots WHERE id = $1 AND tenant_id = $2`,
+            [did, dbTenant.id],
+          );
+          if (!ok.rows.length) {
+            json(res, 400, { error: "Unknown depotId" });
+            return true;
+          }
+          depotId = ok.rows[0].id;
+        }
+      }
       const upserted = await dbQuery(
         `INSERT INTO vehicle_capacities (
-           tenant_id, armada_user_id, volume_capacity_m3, weight_capacity_kg, label, updated_at
-         ) VALUES ($1, $2, $3, $4, $5, now())
+           tenant_id, armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, now())
          ON CONFLICT (tenant_id, armada_user_id) DO UPDATE SET
            volume_capacity_m3 = EXCLUDED.volume_capacity_m3,
            weight_capacity_kg = EXCLUDED.weight_capacity_kg,
            label = COALESCE(EXCLUDED.label, vehicle_capacities.label),
+           depot_id = CASE WHEN $7 THEN EXCLUDED.depot_id ELSE vehicle_capacities.depot_id END,
            updated_at = now()
-         RETURNING armada_user_id, volume_capacity_m3, weight_capacity_kg, label, updated_at`,
-        [dbTenant.id, armadaUserId, vol, wt, label],
+         RETURNING armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, updated_at`,
+        [dbTenant.id, armadaUserId, vol, wt, label, depotId, hasDepotField],
       );
       const r = upserted.rows[0];
       json(res, 200, {
@@ -504,14 +588,21 @@ export async function handleDispatchRequest(req, res) {
           volumeCapacityM3: Number(r.volume_capacity_m3) || 12,
           weightCapacityKg: Number(r.weight_capacity_kg) || 1500,
           label: r.label || "",
+          depotId: r.depot_id || null,
           updatedAt: r.updated_at,
         },
       });
       return true;
     }
 
-    // —— Tenant depot (CVRP default) ——
+    // —— Tenant depot (CVRP default / single) ——
     if (url.pathname === "/api/dispatch/depot" && req.method === "GET") {
+      const depots = await listDepotsForTenant(dbTenant.id);
+      const def = depots.find((d) => d.isDefault) || depots[0] || null;
+      if (def) {
+        json(res, 200, { depot: { lat: def.lat, lon: def.lon, id: def.id, name: def.name } });
+        return true;
+      }
       const row = await dbQuery(
         `SELECT dispatch_depot_lat, dispatch_depot_lon FROM tenants WHERE id = $1`,
         [dbTenant.id],
@@ -537,6 +628,11 @@ export async function handleDispatchRequest(req, res) {
            WHERE id = $1`,
           [dbTenant.id],
         );
+        await dbQuery(
+          `UPDATE dispatch_depots SET is_default = false, updated_at = now()
+           WHERE tenant_id = $1 AND is_default = true`,
+          [dbTenant.id],
+        );
         json(res, 200, { depot: null });
         return true;
       }
@@ -551,12 +647,159 @@ export async function handleDispatchRequest(req, res) {
         json(res, 400, { error: "Valid lat and lon required (or depot: null to clear)" });
         return true;
       }
-      await dbQuery(
-        `UPDATE tenants SET dispatch_depot_lat = $1, dispatch_depot_lon = $2, updated_at = now()
-         WHERE id = $3`,
-        [lat, lon, dbTenant.id],
+      await syncTenantDefaultDepot(dbTenant.id, lat, lon);
+      const existing = await dbQuery(
+        `SELECT id FROM dispatch_depots WHERE tenant_id = $1 AND is_default = true LIMIT 1`,
+        [dbTenant.id],
       );
-      json(res, 200, { depot: { lat, lon } });
+      let depotRow;
+      if (existing.rows[0]) {
+        const upd = await dbQuery(
+          `UPDATE dispatch_depots SET lat = $1, lon = $2, updated_at = now()
+           WHERE id = $3
+           RETURNING id, name, lat, lon, is_default, updated_at`,
+          [lat, lon, existing.rows[0].id],
+        );
+        depotRow = upd.rows[0];
+      } else {
+        const ins = await dbQuery(
+          `INSERT INTO dispatch_depots (tenant_id, name, lat, lon, is_default)
+           VALUES ($1, 'Default', $2, $3, true)
+           RETURNING id, name, lat, lon, is_default, updated_at`,
+          [dbTenant.id, lat, lon],
+        );
+        depotRow = ins.rows[0];
+      }
+      json(res, 200, {
+        depot: { lat, lon, id: depotRow.id, name: depotRow.name || "Default" },
+      });
+      return true;
+    }
+
+    // —— Named depots (multi-depot) ——
+    if (url.pathname === "/api/dispatch/depots" && req.method === "GET") {
+      const depots = await listDepotsForTenant(dbTenant.id);
+      json(res, 200, { depots });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/depots" && req.method === "POST") {
+      const body = await readJson(req);
+      const lat = numOrNull(body.lat);
+      const lon = numOrNull(body.lon);
+      if (lat == null || lon == null || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+        json(res, 400, { error: "Valid lat and lon required" });
+        return true;
+      }
+      const name = String(body.name || "Depot").trim().slice(0, 80) || "Depot";
+      const current = await listDepotsForTenant(dbTenant.id);
+      if (current.length >= 20) {
+        json(res, 400, { error: "Maximum 20 depots per tenant" });
+        return true;
+      }
+      const makeDefault = body.isDefault === true || current.length === 0;
+      if (makeDefault) {
+        await dbQuery(
+          `UPDATE dispatch_depots SET is_default = false, updated_at = now()
+           WHERE tenant_id = $1 AND is_default = true`,
+          [dbTenant.id],
+        );
+      }
+      const ins = await dbQuery(
+        `INSERT INTO dispatch_depots (tenant_id, name, lat, lon, is_default)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, name, lat, lon, is_default, updated_at`,
+        [dbTenant.id, name, lat, lon, makeDefault],
+      );
+      if (makeDefault) {
+        await syncTenantDefaultDepot(dbTenant.id, lat, lon);
+      }
+      json(res, 201, { depot: publicDepot(ins.rows[0]) });
+      return true;
+    }
+
+    const depotOne = /^\/api\/dispatch\/depots\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (depotOne && req.method === "PATCH") {
+      const depotId = depotOne[1];
+      const body = await readJson(req);
+      const existing = await dbQuery(
+        `SELECT * FROM dispatch_depots WHERE id = $1 AND tenant_id = $2`,
+        [depotId, dbTenant.id],
+      );
+      if (!existing.rows[0]) {
+        json(res, 404, { error: "Depot not found" });
+        return true;
+      }
+      const cur = existing.rows[0];
+      const lat = body.lat != null ? numOrNull(body.lat) : Number(cur.lat);
+      const lon = body.lon != null ? numOrNull(body.lon) : Number(cur.lon);
+      if (lat == null || lon == null || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+        json(res, 400, { error: "Valid lat and lon required" });
+        return true;
+      }
+      const name =
+        body.name != null
+          ? String(body.name).trim().slice(0, 80) || cur.name
+          : cur.name;
+      if (body.isDefault === true) {
+        await clearOtherDefaultDepots(dbTenant.id, depotId);
+        isDefault = true;
+      }
+      if (body.isDefault === false && isDefault) {
+        // keep at least one default if this is the only depot
+        const count = await dbQuery(
+          `SELECT COUNT(*)::int AS n FROM dispatch_depots WHERE tenant_id = $1`,
+          [dbTenant.id],
+        );
+        if ((count.rows[0]?.n || 0) > 1) isDefault = false;
+      }
+      const upd = await dbQuery(
+        `UPDATE dispatch_depots
+         SET name = $1, lat = $2, lon = $3, is_default = $4, updated_at = now()
+         WHERE id = $5
+         RETURNING id, name, lat, lon, is_default, updated_at`,
+        [name, lat, lon, isDefault, depotId],
+      );
+      if (isDefault) {
+        await syncTenantDefaultDepot(dbTenant.id, lat, lon);
+      }
+      json(res, 200, { depot: publicDepot(upd.rows[0]) });
+      return true;
+    }
+
+    if (depotOne && req.method === "DELETE") {
+      const depotId = depotOne[1];
+      const existing = await dbQuery(
+        `SELECT * FROM dispatch_depots WHERE id = $1 AND tenant_id = $2`,
+        [depotId, dbTenant.id],
+      );
+      if (!existing.rows[0]) {
+        json(res, 404, { error: "Depot not found" });
+        return true;
+      }
+      const wasDefault = Boolean(existing.rows[0].is_default);
+      await dbQuery(`DELETE FROM dispatch_depots WHERE id = $1`, [depotId]);
+      if (wasDefault) {
+        const next = await dbQuery(
+          `SELECT id, lat, lon FROM dispatch_depots
+           WHERE tenant_id = $1 ORDER BY created_at ASC LIMIT 1`,
+          [dbTenant.id],
+        );
+        if (next.rows[0]) {
+          await dbQuery(
+            `UPDATE dispatch_depots SET is_default = true, updated_at = now() WHERE id = $1`,
+            [next.rows[0].id],
+          );
+          await syncTenantDefaultDepot(dbTenant.id, Number(next.rows[0].lat), Number(next.rows[0].lon));
+        } else {
+          await dbQuery(
+            `UPDATE tenants SET dispatch_depot_lat = NULL, dispatch_depot_lon = NULL, updated_at = now()
+             WHERE id = $1`,
+            [dbTenant.id],
+          );
+        }
+      }
+      json(res, 200, { ok: true });
       return true;
     }
 
@@ -1283,8 +1526,8 @@ export async function handleDispatchRequest(req, res) {
         return true;
       }
       const depotMode = String(body.depotMode || "open").toLowerCase();
-      if (!["open", "depot"].includes(depotMode)) {
-        json(res, 400, { error: "depotMode must be open | depot" });
+      if (!["open", "depot", "multi"].includes(depotMode)) {
+        json(res, 400, { error: "depotMode must be open | depot | multi" });
         return true;
       }
       const apply = body.apply === true;
@@ -1332,13 +1575,44 @@ export async function handleDispatchRequest(req, res) {
           return true;
         }
       }
+
+      /** @type {{ id: string, name: string, lat: number, lon: number, isDefault?: boolean }[]} */
+      let multiDepots = [];
+      if (depotMode === "multi") {
+        const all = await listDepotsForTenant(dbTenant.id);
+        const filterIds = Array.isArray(body.depotIds)
+          ? new Set(body.depotIds.map((x) => String(x)))
+          : null;
+        multiDepots = filterIds
+          ? all.filter((d) => filterIds.has(String(d.id)))
+          : all;
+        if (!multiDepots.length) {
+          json(res, 400, {
+            error: "depotMode=multi requires at least one saved depot (add depots first)",
+          });
+          return true;
+        }
+      }
+
       const persistDepot = body.persistDepot === true && depotMode === "depot";
       if (persistDepot && depotLat != null && depotLon != null) {
-        await dbQuery(
-          `UPDATE tenants SET dispatch_depot_lat = $1, dispatch_depot_lon = $2, updated_at = now()
-           WHERE id = $3`,
-          [depotLat, depotLon, dbTenant.id],
+        await syncTenantDefaultDepot(dbTenant.id, depotLat, depotLon);
+        const existing = await dbQuery(
+          `SELECT id FROM dispatch_depots WHERE tenant_id = $1 AND is_default = true LIMIT 1`,
+          [dbTenant.id],
         );
+        if (existing.rows[0]) {
+          await dbQuery(
+            `UPDATE dispatch_depots SET lat = $1, lon = $2, updated_at = now() WHERE id = $3`,
+            [depotLat, depotLon, existing.rows[0].id],
+          );
+        } else {
+          await dbQuery(
+            `INSERT INTO dispatch_depots (tenant_id, name, lat, lon, is_default)
+             VALUES ($1, 'Default', $2, $3, true)`,
+            [dbTenant.id, depotLat, depotLon],
+          );
+        }
       }
 
       const orderRows = await dbQuery(
@@ -1419,7 +1693,7 @@ export async function handleDispatchRequest(req, res) {
 
       if (fleetMode === "presets" || fleetMode === "both") {
         const presets = await dbQuery(
-          `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, label
+          `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id
            FROM vehicle_capacities WHERE tenant_id = $1
            ORDER BY armada_user_id ASC LIMIT 100`,
           [dbTenant.id],
@@ -1440,6 +1714,7 @@ export async function handleDispatchRequest(req, res) {
               fullVolumeCapacityM3: Number(p.volume_capacity_m3) || 12,
               fullWeightCapacityKg: Number(p.weight_capacity_kg) || 1500,
               existingStops: 0,
+              depotId: p.depot_id || null,
             },
           });
         }
@@ -1452,6 +1727,24 @@ export async function handleDispatchRequest(req, res) {
           b.volumeCapacityM3 * b.weightCapacityKg - a.volumeCapacityM3 * a.weightCapacityKg,
       );
 
+      // Attach depot from capacity preset when planning from existing jobs
+      if (depotMode === "multi") {
+        const capRows = await dbQuery(
+          `SELECT armada_user_id, depot_id FROM vehicle_capacities WHERE tenant_id = $1`,
+          [dbTenant.id],
+        );
+        const depotByArmada = new Map(
+          capRows.rows.map((r) => [Number(r.armada_user_id), r.depot_id || null]),
+        );
+        for (const v of vehicles) {
+          if (v.meta?.depotId) continue;
+          const uid = v.meta?.armadaUserId;
+          if (uid != null && depotByArmada.has(Number(uid))) {
+            v.meta.depotId = depotByArmada.get(Number(uid));
+          }
+        }
+      }
+
       if (!vehicles.length) {
         json(res, 400, {
           error:
@@ -1462,50 +1755,167 @@ export async function handleDispatchRequest(req, res) {
         return true;
       }
 
-      const useDepot = depotMode === "depot";
-      const depotIndex = useDepot ? 0 : null;
-      const points = useDepot
-        ? [{ lat: depotLat, lon: depotLon }, ...orders.map((o) => ({ lat: o.lat, lon: o.lon }))]
-        : orders.map((o) => ({ lat: o.lat, lon: o.lon }));
-
-      if (points.length > 80) {
-        json(res, 400, {
-          error: `Too many points for matrix (${points.length}). Cap is 80 (depot + orders).`,
-        });
-        return true;
-      }
-
-      const matrix = await getDistanceMatrix(points);
-      const plan = planCvrp({
-        orders,
-        vehicles,
-        matrixKm: matrix.matrixKm,
-        points,
-        depotIndex,
-        roundtrip: useDepot && roundtrip,
+      const planOpts = {
         twMode,
         serviceMinutes,
         dayStartMin,
         maxStopsPerVehicle,
-      });
+      };
+
+      /** @type {any[]} */
+      let planRoutes = [];
+      /** @type {any[]} */
+      let planUnassigned = [...skipped];
+      let planEngine = "haversine";
+      let planWarning = null;
+      let planBalanceMoves = 0;
+      let planRoundtrip = false;
+      /** @type {{ lat: number, lon: number } | null} */
+      let previewDepot = null;
+      /** @type {any[] | null} */
+      let previewDepots = null;
+
+      if (depotMode === "multi") {
+        const orderClusters = partitionOrdersByNearestDepot(orders, multiDepots);
+        /** @type {Map<string, { vol: number, wt: number, orderCount: number }>} */
+        const demandByDepot = new Map();
+        for (const d of multiDepots) {
+          const idxs = orderClusters.get(String(d.id)) || [];
+          let vol = 0;
+          let wt = 0;
+          for (const i of idxs) {
+            vol += Math.max(0, Number(orders[i].volumeM3) || 0);
+            wt += Math.max(0, Number(orders[i].weightKg) || 0);
+          }
+          demandByDepot.set(String(d.id), { vol, wt, orderCount: idxs.length });
+        }
+        const vehicleClusters = assignVehiclesToDepots(vehicles, multiDepots, demandByDepot);
+        const engines = new Set();
+        const warnings = [];
+
+        for (const d of multiDepots) {
+          const did = String(d.id);
+          const orderIdxs = orderClusters.get(did) || [];
+          const vehicleIdxs = vehicleClusters.get(did) || [];
+          if (!orderIdxs.length) continue;
+
+          const clusterOrders = orderIdxs.map((i) => orders[i]);
+          if (!vehicleIdxs.length) {
+            for (const o of clusterOrders) {
+              planUnassigned.push({
+                orderId: o.id,
+                label: o.label || o.id,
+                reason: "no_vehicle_at_depot",
+                depotId: did,
+              });
+            }
+            continue;
+          }
+
+          const clusterVehicles = vehicleIdxs.map((i) => vehicles[i]);
+          const points = [
+            { lat: d.lat, lon: d.lon },
+            ...clusterOrders.map((o) => ({ lat: o.lat, lon: o.lon })),
+          ];
+          if (points.length > 80) {
+            json(res, 400, {
+              error: `Too many points for depot “${d.name}” (${points.length}). Cap is 80 (depot + orders).`,
+            });
+            return true;
+          }
+          const matrix = await getDistanceMatrix(points);
+          engines.add(matrix.engine);
+          if (matrix.warning) warnings.push(matrix.warning);
+          const plan = planCvrp({
+            orders: clusterOrders,
+            vehicles: clusterVehicles,
+            matrixKm: matrix.matrixKm,
+            points,
+            depotIndex: 0,
+            roundtrip,
+            ...planOpts,
+          });
+          planBalanceMoves += plan.balanceMoves || 0;
+          planRoundtrip = planRoundtrip || plan.roundtrip;
+          for (const route of plan.routes) {
+            planRoutes.push({
+              ...route,
+              meta: {
+                ...(route.meta || {}),
+                depotId: did,
+                depotName: d.name,
+                depot: { lat: d.lat, lon: d.lon },
+              },
+              depotId: did,
+              depotName: d.name,
+            });
+          }
+          for (const u of plan.unassigned) {
+            planUnassigned.push({ ...u, depotId: did });
+          }
+        }
+
+        planEngine = engines.has("osrm") ? (engines.size > 1 ? "mixed" : "osrm") : "haversine";
+        planWarning = warnings[0] || null;
+        previewDepots = multiDepots.map((d) => ({
+          id: d.id,
+          name: d.name,
+          lat: d.lat,
+          lon: d.lon,
+          orderCount: (orderClusters.get(String(d.id)) || []).length,
+          vehicleCount: (vehicleClusters.get(String(d.id)) || []).length,
+        }));
+      } else {
+        const useDepot = depotMode === "depot";
+        const depotIndex = useDepot ? 0 : null;
+        const points = useDepot
+          ? [{ lat: depotLat, lon: depotLon }, ...orders.map((o) => ({ lat: o.lat, lon: o.lon }))]
+          : orders.map((o) => ({ lat: o.lat, lon: o.lon }));
+
+        if (points.length > 80) {
+          json(res, 400, {
+            error: `Too many points for matrix (${points.length}). Cap is 80 (depot + orders).`,
+          });
+          return true;
+        }
+
+        const matrix = await getDistanceMatrix(points);
+        const plan = planCvrp({
+          orders,
+          vehicles,
+          matrixKm: matrix.matrixKm,
+          points,
+          depotIndex,
+          roundtrip: useDepot && roundtrip,
+          ...planOpts,
+        });
+        planRoutes = plan.routes;
+        planUnassigned = [...plan.unassigned, ...skipped];
+        planEngine = matrix.engine;
+        planWarning = matrix.warning || null;
+        planBalanceMoves = plan.balanceMoves || 0;
+        planRoundtrip = plan.roundtrip;
+        previewDepot = useDepot ? { lat: depotLat, lon: depotLon } : null;
+      }
 
       const preview = {
         serviceDate,
         fleetMode,
         depotMode,
         apply: false,
-        engine: matrix.engine,
-        warning: matrix.warning || null,
-        depot: useDepot ? { lat: depotLat, lon: depotLon } : null,
-        roundtrip: plan.roundtrip,
-        balanceMoves: plan.balanceMoves || 0,
-        twMode: plan.twMode,
-        serviceMinutes: plan.serviceMinutes,
-        dayStartMin: plan.dayStartMin,
-        maxStopsPerVehicle: plan.maxStopsPerVehicle,
+        engine: planEngine,
+        warning: planWarning,
+        depot: previewDepot,
+        depots: previewDepots,
+        roundtrip: planRoundtrip,
+        balanceMoves: planBalanceMoves,
+        twMode,
+        serviceMinutes,
+        dayStartMin,
+        maxStopsPerVehicle,
         onlyEmptyJobs,
-        routes: plan.routes,
-        unassigned: [...plan.unassigned, ...skipped],
+        routes: planRoutes,
+        unassigned: planUnassigned,
         vehicleCount: vehicles.length,
         orderCount: orders.length,
       };
@@ -1517,7 +1927,7 @@ export async function handleDispatchRequest(req, res) {
 
       // Apply: create jobs for presets, assign orders in planned order, set sort_order
       const applied = [];
-      for (const route of plan.routes) {
+      for (const route of planRoutes) {
         let jobId = route.meta?.jobId || null;
         if (!jobId && route.meta?.kind === "preset") {
           const uid = route.meta.armadaUserId;
@@ -1584,11 +1994,15 @@ export async function handleDispatchRequest(req, res) {
           );
         }
         await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [jobId]);
-        const depotForReorder =
-          useDepot && depotLat != null && depotLon != null
-            ? { lat: depotLat, lon: depotLon }
-            : null;
-        await reorderJobStopsRoad(jobId, depotForReorder);
+        const routeDepot =
+          route.meta?.depot &&
+          Number.isFinite(Number(route.meta.depot.lat)) &&
+          Number.isFinite(Number(route.meta.depot.lon))
+            ? { lat: Number(route.meta.depot.lat), lon: Number(route.meta.depot.lon) }
+            : depotMode === "depot" && depotLat != null && depotLon != null
+              ? { lat: depotLat, lon: depotLon }
+              : null;
+        await reorderJobStopsRoad(jobId, routeDepot);
         const row = await loadJob(dbTenant.id, jobId);
         const stops = await loadStops(jobId);
         const routeGeom = await buildRouteForPoints(

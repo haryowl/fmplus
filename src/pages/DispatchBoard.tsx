@@ -7,12 +7,15 @@ import {
   assignOrdersToJob,
   cancelDispatchOrder,
   capacityForVehicle,
+  createDispatchDepot,
   createDispatchJob,
   createDispatchOrder,
+  deleteDispatchDepot,
   deleteDispatchOrder,
   DISPATCH_STATUS_LABELS,
   dispatchAssigneeLabel,
   dispatchVehicleLabel,
+  fetchDispatchDepots,
   fetchDispatchFieldUsers,
   fetchDispatchJobs,
   fetchDispatchOrders,
@@ -22,6 +25,7 @@ import {
   formatDispatchWindow,
   formatServiceDateLabel,
   optimizeJobStops,
+  patchDispatchDepot,
   patchDispatchJob,
   patchDispatchOrder,
   planDispatchDay,
@@ -32,6 +36,7 @@ import {
   upsertVehicleCapacity,
   utilizationTone,
   withTenantQuery,
+  type DispatchDepot,
   type DispatchFieldUser,
   type DispatchFleetMode,
   type DispatchDepotMode,
@@ -136,6 +141,10 @@ export default function DispatchBoard() {
   const [depotMode, setDepotMode] = useState<DispatchDepotMode>("open");
   const [depotLat, setDepotLat] = useState("");
   const [depotLon, setDepotLon] = useState("");
+  const [depots, setDepots] = useState<DispatchDepot[]>([]);
+  const [selectedDepotId, setSelectedDepotId] = useState("");
+  const [newDepotName, setNewDepotName] = useState("");
+  const [editDepotId, setEditDepotId] = useState("");
   const [planRoundtrip, setPlanRoundtrip] = useState(false);
   const [planTwMode, setPlanTwMode] = useState<DispatchTwMode>("soft");
   const [planServiceMin, setPlanServiceMin] = useState("8");
@@ -161,8 +170,18 @@ export default function DispatchBoard() {
     if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
     return { lat, lon };
   }, [depotLat, depotLon]);
+  const selectedDepot = useMemo(
+    () => depots.find((d) => d.id === selectedDepotId) || null,
+    [depots, selectedDepotId],
+  );
   const mapDraftPin =
-    showPlanDay && depotMode === "depot" && (pinningDepot || depotPin) ? depotPin : draftPin;
+    showPlanDay &&
+    ((depotMode === "depot" && (pinningDepot || depotPin)) ||
+      (depotMode === "multi" && (pinningDepot || selectedDepot)))
+      ? depotMode === "multi" && selectedDepot
+        ? { lat: selectedDepot.lat, lon: selectedDepot.lon }
+        : depotPin
+      : draftPin;
   const fitKey = selected
     ? `${selected.id}-${selected.stops.map((s) => s.id).join(",")}-${mapDraftPin ? "pin" : ""}-${jobRoute?.geometry?.length || 0}`
     : `empty-${mapDraftPin ? `${mapDraftPin.lat},${mapDraftPin.lon}` : ""}`;
@@ -266,7 +285,9 @@ export default function DispatchBoard() {
     if (!selected) return;
     setEditVolCap(String(selected.volumeCapacityM3 ?? 12));
     setEditWtCap(String(selected.weightCapacityKg ?? 1500));
-  }, [selected?.id, selected?.volumeCapacityM3, selected?.weightCapacityKg]);
+    const cap = vehicleCaps.find((c) => c.armadaUserId === selected.armadaUserId);
+    setEditDepotId(cap?.depotId || "");
+  }, [selected?.id, selected?.volumeCapacityM3, selected?.weightCapacityKg, selected?.armadaUserId, vehicleCaps]);
 
   useEffect(() => {
     if (!ready) return;
@@ -434,26 +455,38 @@ export default function DispatchBoard() {
   useEffect(() => {
     if (!ready || !query.tenantKey) return;
     let cancelled = false;
-    fetchDispatchDepot()
-      .then((depot) => {
-        if (cancelled || !depot) return;
-        setDepotLat(String(depot.lat));
-        setDepotLon(String(depot.lon));
-      })
-      .catch(() => {
-        /* optional local fallback below */
-        try {
-          const raw = localStorage.getItem(`fmplus.dispatch.depot.${query.tenantKey}`);
-          if (!raw || cancelled) return;
-          const parsed = JSON.parse(raw) as { lat?: number; lon?: number };
-          if (Number.isFinite(Number(parsed.lat)) && Number.isFinite(Number(parsed.lon))) {
-            setDepotLat(String(parsed.lat));
-            setDepotLon(String(parsed.lon));
-          }
-        } catch {
-          /* ignore */
+    void (async () => {
+      try {
+        const list = await fetchDispatchDepots();
+        if (cancelled) return;
+        setDepots(list);
+        const def = list.find((d) => d.isDefault) || list[0];
+        if (def) {
+          setSelectedDepotId(def.id);
+          setDepotLat(String(def.lat));
+          setDepotLon(String(def.lon));
         }
-      });
+      } catch {
+        try {
+          const depot = await fetchDispatchDepot();
+          if (cancelled || !depot) return;
+          setDepotLat(String(depot.lat));
+          setDepotLon(String(depot.lon));
+        } catch {
+          try {
+            const raw = localStorage.getItem(`fmplus.dispatch.depot.${query.tenantKey}`);
+            if (!raw || cancelled) return;
+            const parsed = JSON.parse(raw) as { lat?: number; lon?: number };
+            if (Number.isFinite(Number(parsed.lat)) && Number.isFinite(Number(parsed.lon))) {
+              setDepotLat(String(parsed.lat));
+              setDepotLon(String(parsed.lon));
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -472,9 +505,11 @@ export default function DispatchBoard() {
         /* ignore */
       }
     }
-    void saveDispatchDepot({ lat, lon }).catch(() => {
-      /* migration may not be applied yet */
-    });
+    void saveDispatchDepot({ lat, lon })
+      .then(() => fetchDispatchDepots().then((list) => setDepots(list)))
+      .catch(() => {
+        /* migration may not be applied yet */
+      });
   }
 
   async function clearPersistedDepot() {
@@ -494,11 +529,55 @@ export default function DispatchBoard() {
     }
   }
 
+  async function refreshDepots() {
+    const list = await fetchDispatchDepots();
+    setDepots(list);
+    if (selectedDepotId && !list.some((d) => d.id === selectedDepotId)) {
+      const def = list.find((d) => d.isDefault) || list[0];
+      setSelectedDepotId(def?.id || "");
+    }
+    return list;
+  }
+
   async function onMapClick(lat: number, lon: number) {
     if (showPlanDay && depotMode === "depot" && pinningDepot) {
       persistDepot(lat, lon);
       setPinningDepot(false);
       setError("");
+      return;
+    }
+    if (showPlanDay && depotMode === "multi" && pinningDepot) {
+      setBusy(true);
+      setError("");
+      try {
+        if (selectedDepotId) {
+          const updated = await patchDispatchDepot(selectedDepotId, { lat, lon });
+          setDepots((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+          if (updated.isDefault) {
+            setDepotLat(String(lat));
+            setDepotLon(String(lon));
+          }
+        } else {
+          const created = await createDispatchDepot({
+            name: newDepotName.trim() || `Depot ${depots.length + 1}`,
+            lat,
+            lon,
+            isDefault: depots.length === 0,
+          });
+          setDepots((prev) => [...prev, created]);
+          setSelectedDepotId(created.id);
+          setNewDepotName("");
+          if (created.isDefault) {
+            setDepotLat(String(lat));
+            setDepotLon(String(lon));
+          }
+        }
+        setPinningDepot(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Save depot failed");
+      } finally {
+        setBusy(false);
+      }
       return;
     }
     setPinBusy(true);
@@ -703,6 +782,7 @@ export default function DispatchBoard() {
         volumeCapacityM3: vol,
         weightCapacityKg: wt,
         label: dispatchVehicleLabel(selected),
+        depotId: editDepotId || null,
       });
       setVehicleCaps((prev) => {
         const rest = prev.filter((c) => c.armadaUserId !== saved.armadaUserId);
@@ -969,10 +1049,14 @@ export default function DispatchBoard() {
                 <select
                   id="dispatch-depot-mode"
                   value={depotMode}
-                  onChange={(e) => setDepotMode(e.target.value as DispatchDepotMode)}
+                  onChange={(e) => {
+                    setDepotMode(e.target.value as DispatchDepotMode);
+                    setPinningDepot(false);
+                  }}
                 >
                   <option value="open">Open tours (no depot)</option>
-                  <option value="depot">From depot</option>
+                  <option value="depot">From one depot</option>
+                  <option value="multi">Multi-depot</option>
                 </select>
               </div>
               <div className="field">
@@ -1079,6 +1163,126 @@ export default function DispatchBoard() {
                   ) : null}
                 </>
               ) : null}
+              {depotMode === "multi" ? (
+                <>
+                  <div className="field" style={{ gridColumn: "1 / -1" }}>
+                    <label htmlFor="dispatch-depot-pick">Active depot</label>
+                    <select
+                      id="dispatch-depot-pick"
+                      value={selectedDepotId}
+                      onChange={(e) => setSelectedDepotId(e.target.value)}
+                    >
+                      <option value="">New depot (pin on map)</option>
+                      {depots.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                          {d.isDefault ? " · default" : ""} · {d.lat.toFixed(4)}, {d.lon.toFixed(4)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {!selectedDepotId ? (
+                    <div className="field" style={{ gridColumn: "1 / -1" }}>
+                      <label htmlFor="dispatch-depot-name">New depot name</label>
+                      <input
+                        id="dispatch-depot-name"
+                        value={newDepotName}
+                        onChange={(e) => setNewDepotName(e.target.value)}
+                        placeholder={`Depot ${depots.length + 1}`}
+                      />
+                    </div>
+                  ) : (
+                    <div className="field" style={{ gridColumn: "1 / -1" }}>
+                      <label htmlFor="dispatch-depot-rename">Rename depot</label>
+                      <input
+                        id="dispatch-depot-rename"
+                        value={selectedDepot?.name || ""}
+                        onChange={(e) => {
+                          const name = e.target.value;
+                          setDepots((prev) =>
+                            prev.map((d) => (d.id === selectedDepotId ? { ...d, name } : d)),
+                          );
+                        }}
+                        onBlur={() => {
+                          if (!selectedDepotId || !selectedDepot) return;
+                          void patchDispatchDepot(selectedDepotId, { name: selectedDepot.name }).catch(
+                            (err) =>
+                              setError(err instanceof Error ? err.message : "Rename depot failed"),
+                          );
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div className="dispatch-create-actions" style={{ gridColumn: "1 / -1" }}>
+                    <button
+                      type="button"
+                      className={`btn-secondary${pinningDepot ? " is-active" : ""}`}
+                      onClick={() => setPinningDepot((v) => !v)}
+                    >
+                      {pinningDepot
+                        ? "Click the map…"
+                        : selectedDepotId
+                          ? "Move depot on map"
+                          : "Pin new depot on map"}
+                    </button>
+                    {selectedDepotId ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          disabled={busy || selectedDepot?.isDefault}
+                          onClick={() => {
+                            void patchDispatchDepot(selectedDepotId, { isDefault: true })
+                              .then((d) => {
+                                setDepots((prev) =>
+                                  prev.map((x) => ({
+                                    ...x,
+                                    isDefault: x.id === d.id,
+                                    ...(x.id === d.id ? d : {}),
+                                  })),
+                                );
+                                setDepotLat(String(d.lat));
+                                setDepotLon(String(d.lon));
+                              })
+                              .catch((err) =>
+                                setError(err instanceof Error ? err.message : "Set default failed"),
+                              );
+                          }}
+                        >
+                          Make default
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          disabled={busy}
+                          onClick={() => {
+                            if (!window.confirm(`Delete depot “${selectedDepot?.name || ""}”?`)) return;
+                            void deleteDispatchDepot(selectedDepotId)
+                              .then(() => refreshDepots())
+                              .catch((err) =>
+                                setError(err instanceof Error ? err.message : "Delete depot failed"),
+                              );
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                  <label className="dispatch-plan-check">
+                    <input
+                      type="checkbox"
+                      checked={planRoundtrip}
+                      onChange={(e) => setPlanRoundtrip(e.target.checked)}
+                    />
+                    Return to depot (roundtrip)
+                  </label>
+                  <p className="dispatch-search-hint" style={{ gridColumn: "1 / -1" }}>
+                    Orders go to the nearest depot. Vehicles use their capacity depot when set; otherwise
+                    they are balanced across depots by demand. {depots.length} depot(s) saved.
+                  </p>
+                </>
+              ) : null}
             </div>
             <p className="dispatch-search-hint">
               Packs pending orders onto vehicles under volume + weight caps using road distances when OSRM is up.
@@ -1123,11 +1327,17 @@ export default function DispatchBoard() {
                   {planPreview.balanceMoves
                     ? ` · ${planPreview.balanceMoves} balance move(s)`
                     : ""}
+                  {planPreview.depots?.length
+                    ? ` · ${planPreview.depots.length} depot(s)`
+                    : ""}
                 </p>
                 <ul className="dispatch-plan-routes">
                   {planPreview.routes.map((r) => (
                     <li key={r.key}>
-                      <strong>{r.label}</strong>
+                      <strong>
+                        {r.label}
+                        {r.depotName ? ` · ${r.depotName}` : ""}
+                      </strong>
                       <span>
                         {r.orderIds.length} stops · {r.utilizationPct}% · {r.distanceKm} km · {r.volumeUsed}/
                         {r.volumeCapacityM3} m³ · {r.weightUsed}/{r.weightCapacityKg} kg
@@ -1747,6 +1957,23 @@ export default function DispatchBoard() {
                         disabled={busy || selected.status === "done" || selected.status === "cancelled"}
                         onChange={(e) => setEditWtCap(e.target.value)}
                       />
+                    </div>
+                    <div className="field" style={{ gridColumn: "1 / -1" }}>
+                      <label htmlFor="dispatch-cap-depot">Home depot</label>
+                      <select
+                        id="dispatch-cap-depot"
+                        value={editDepotId}
+                        disabled={busy || selected.status === "done" || selected.status === "cancelled"}
+                        onChange={(e) => setEditDepotId(e.target.value)}
+                      >
+                        <option value="">Auto-balance (multi-depot)</option>
+                        {depots.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                            {d.isDefault ? " · default" : ""}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                   <div className="dispatch-cap-edit-actions">

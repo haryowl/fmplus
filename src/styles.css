@@ -4405,7 +4405,8 @@ html.onesheet-root body {
   min-width: 0;
 }
 
-.dispatch-cap-edit-fields input {
+.dispatch-cap-edit-fields input,
+.dispatch-cap-edit-fields select {
   min-width: 0;
 }
 

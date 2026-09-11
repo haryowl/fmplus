@@ -1,8 +1,9 @@
 /**
  * Capacitated VRP (dual volume + weight) — greedy cheapest insertion,
  * soft time-window preference, inter-route balance relocate, open-tour 2-opt.
+ * Multi-depot: partition orders to nearest depot, then planCvrp per cluster.
  */
-import { optimizeOpenTour, pathCost } from "./route-optimize.mjs";
+import { haversineKm, optimizeOpenTour, pathCost } from "./route-optimize.mjs";
 
 const SPEED_KMH = 35;
 const TW_LATE_PENALTY_KM = 40;
@@ -347,6 +348,94 @@ function balanceRelocate(
     if (!improved) break;
   }
   return moves;
+}
+
+/**
+ * Assign each order index to the nearest depot (haversine).
+ * @param {{ lat: number, lon: number }[]} orders
+ * @param {{ id: string, lat: number, lon: number }[]} depots
+ * @returns {Map<string, number[]>} depotId → order indexes
+ */
+export function partitionOrdersByNearestDepot(orders, depots) {
+  /** @type {Map<string, number[]>} */
+  const clusters = new Map();
+  for (const d of depots) clusters.set(String(d.id), []);
+  if (!depots.length) return clusters;
+  for (let i = 0; i < orders.length; i++) {
+    const o = orders[i];
+    let bestId = String(depots[0].id);
+    let bestKm = Infinity;
+    for (const d of depots) {
+      const km = haversineKm(o.lat, o.lon, d.lat, d.lon);
+      if (km < bestKm) {
+        bestKm = km;
+        bestId = String(d.id);
+      }
+    }
+    clusters.get(bestId).push(i);
+  }
+  return clusters;
+}
+
+/**
+ * Bind vehicles to depots: honor meta.depotId, then greedily fill depots
+ * with the highest remaining order demand / assigned capacity ratio.
+ * @param {{ volumeCapacityM3: number, weightCapacityKg: number, meta?: object }[]} vehicles
+ * @param {{ id: string }[]} depots
+ * @param {Map<string, { vol: number, wt: number, orderCount: number }>} demandByDepot
+ * @returns {Map<string, number[]>} depotId → vehicle indexes
+ */
+export function assignVehiclesToDepots(vehicles, depots, demandByDepot) {
+  /** @type {Map<string, number[]>} */
+  const out = new Map();
+  for (const d of depots) out.set(String(d.id), []);
+  if (!depots.length) return out;
+
+  const depotIds = new Set(depots.map((d) => String(d.id)));
+  const unbound = [];
+  for (let i = 0; i < vehicles.length; i++) {
+    const raw = vehicles[i].meta?.depotId;
+    const id = raw != null && raw !== "" ? String(raw) : "";
+    if (id && depotIds.has(id)) out.get(id).push(i);
+    else unbound.push(i);
+  }
+
+  const capScore = (v) =>
+    Math.max(0.1, num(v.volumeCapacityM3, 12)) * Math.max(1, num(v.weightCapacityKg, 1500));
+
+  /** @type {Map<string, number>} */
+  const assignedCap = new Map();
+  for (const d of depots) {
+    const id = String(d.id);
+    let cap = 0;
+    for (const vi of out.get(id) || []) cap += capScore(vehicles[vi]);
+    assignedCap.set(id, cap);
+  }
+
+  unbound.sort((a, b) => capScore(vehicles[b]) - capScore(vehicles[a]));
+  for (const vi of unbound) {
+    let bestId = String(depots[0].id);
+    let bestNeed = -Infinity;
+    for (const d of depots) {
+      const id = String(d.id);
+      const dem = demandByDepot.get(id) || { vol: 0, wt: 0, orderCount: 0 };
+      if (dem.orderCount <= 0) continue;
+      const demand = dem.vol * dem.wt + dem.orderCount;
+      const cap = assignedCap.get(id) || 0.1;
+      const need = demand / cap;
+      if (need > bestNeed) {
+        bestNeed = need;
+        bestId = id;
+      }
+    }
+    // If no depot has orders, spread evenly by current vehicle count
+    if (bestNeed === -Infinity) {
+      bestId = [...out.entries()].sort((a, b) => a[1].length - b[1].length)[0][0];
+    }
+    out.get(bestId).push(vi);
+    assignedCap.set(bestId, (assignedCap.get(bestId) || 0) + capScore(vehicles[vi]));
+  }
+  return out;
 }
 
 /**

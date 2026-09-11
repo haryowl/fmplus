@@ -95,7 +95,17 @@ export type VehicleCapacity = {
   volumeCapacityM3: number;
   weightCapacityKg: number;
   label?: string;
+  depotId?: string | null;
   updatedAt?: string;
+};
+
+export type DispatchDepot = {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  isDefault: boolean;
+  updatedAt?: string | null;
 };
 
 export type DispatchPhoto = {
@@ -302,7 +312,7 @@ export async function optimizeJobStops(jobId: string): Promise<{
 }
 
 export type DispatchFleetMode = "jobs" | "presets" | "both";
-export type DispatchDepotMode = "open" | "depot";
+export type DispatchDepotMode = "open" | "depot" | "multi";
 export type DispatchTwMode = "off" | "soft" | "hard";
 
 export type DispatchPlanDayStop = {
@@ -329,6 +339,8 @@ export type DispatchPlanDayRoute = {
   lateStops?: number;
   stops?: DispatchPlanDayStop[];
   meta?: Record<string, unknown>;
+  depotId?: string;
+  depotName?: string;
 };
 
 export type DispatchPlanDayResult = {
@@ -339,6 +351,14 @@ export type DispatchPlanDayResult = {
   engine: string;
   warning: string | null;
   depot: { lat: number; lon: number } | null;
+  depots?: {
+    id: string;
+    name: string;
+    lat: number;
+    lon: number;
+    orderCount: number;
+    vehicleCount: number;
+  }[] | null;
   roundtrip: boolean;
   balanceMoves?: number;
   twMode?: DispatchTwMode;
@@ -347,17 +367,22 @@ export type DispatchPlanDayResult = {
   maxStopsPerVehicle?: number;
   onlyEmptyJobs?: boolean;
   routes: DispatchPlanDayRoute[];
-  unassigned: { orderId: string; label?: string; reason: string }[];
+  unassigned: { orderId: string; label?: string; reason: string; depotId?: string }[];
   vehicleCount: number;
   orderCount: number;
 };
 
-export async function fetchDispatchDepot(): Promise<{ lat: number; lon: number } | null> {
+export async function fetchDispatchDepot(): Promise<{
+  lat: number;
+  lon: number;
+  id?: string;
+  name?: string;
+} | null> {
   const res = await fetch("/api/dispatch/depot", {
     headers: { accept: "application/json", ...tenantHeaders() },
   });
   const data = (await res.json().catch(() => ({}))) as {
-    depot?: { lat: number; lon: number } | null;
+    depot?: { lat: number; lon: number; id?: string; name?: string } | null;
     error?: string;
   };
   if (!res.ok) throw new Error(data.error || `Depot ${res.status}`);
@@ -366,18 +391,77 @@ export async function fetchDispatchDepot(): Promise<{ lat: number; lon: number }
 
 export async function saveDispatchDepot(
   depot: { lat: number; lon: number } | null,
-): Promise<{ lat: number; lon: number } | null> {
+): Promise<{ lat: number; lon: number; id?: string; name?: string } | null> {
   const res = await fetch("/api/dispatch/depot", {
     method: "PUT",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify(depot == null ? { depot: null } : depot),
   });
   const data = (await res.json().catch(() => ({}))) as {
-    depot?: { lat: number; lon: number } | null;
+    depot?: { lat: number; lon: number; id?: string; name?: string } | null;
     error?: string;
   };
   if (!res.ok) throw new Error(data.error || `Save depot ${res.status}`);
   return data.depot || null;
+}
+
+export async function fetchDispatchDepots(): Promise<DispatchDepot[]> {
+  const res = await fetch("/api/dispatch/depots", {
+    headers: { accept: "application/json", ...tenantHeaders() },
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    depots?: DispatchDepot[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Depots ${res.status}`);
+  return data.depots || [];
+}
+
+export async function createDispatchDepot(body: {
+  name?: string;
+  lat: number;
+  lon: number;
+  isDefault?: boolean;
+}): Promise<DispatchDepot> {
+  const res = await fetch("/api/dispatch/depots", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    depot?: DispatchDepot;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Create depot ${res.status}`);
+  if (!data.depot) throw new Error("Create depot failed");
+  return data.depot;
+}
+
+export async function patchDispatchDepot(
+  id: string,
+  body: { name?: string; lat?: number; lon?: number; isDefault?: boolean },
+): Promise<DispatchDepot> {
+  const res = await fetch(`/api/dispatch/depots/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    depot?: DispatchDepot;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Update depot ${res.status}`);
+  if (!data.depot) throw new Error("Update depot failed");
+  return data.depot;
+}
+
+export async function deleteDispatchDepot(id: string): Promise<void> {
+  const res = await fetch(`/api/dispatch/depots/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { accept: "application/json", ...tenantHeaders() },
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(data.error || `Delete depot ${res.status}`);
 }
 
 export async function planDispatchDay(body: {
@@ -389,6 +473,7 @@ export async function planDispatchDay(body: {
   depotLat?: number | null;
   depotLon?: number | null;
   persistDepot?: boolean;
+  depotIds?: string[];
   twMode?: DispatchTwMode;
   serviceMinutes?: number;
   dayStart?: string;
@@ -436,6 +521,7 @@ export async function upsertVehicleCapacity(body: {
   volumeCapacityM3: number;
   weightCapacityKg: number;
   label?: string;
+  depotId?: string | null;
 }): Promise<VehicleCapacity> {
   const res = await fetch(`/api/dispatch/vehicle-capacities/${encodeURIComponent(String(body.armadaUserId))}`, {
     method: "PUT",
@@ -444,6 +530,7 @@ export async function upsertVehicleCapacity(body: {
       volumeCapacityM3: body.volumeCapacityM3,
       weightCapacityKg: body.weightCapacityKg,
       label: body.label,
+      ...(Object.prototype.hasOwnProperty.call(body, "depotId") ? { depotId: body.depotId } : {}),
     }),
   });
   const data = (await res.json().catch(() => ({}))) as {
