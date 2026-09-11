@@ -18,6 +18,7 @@ import {
   fetchDispatchOrders,
   fetchStopPhotos,
   fetchVehicleCapacities,
+  fetchDispatchDepot,
   formatDispatchWindow,
   formatServiceDateLabel,
   optimizeJobStops,
@@ -25,6 +26,7 @@ import {
   patchDispatchOrder,
   planDispatchDay,
   returnStopToInbox,
+  saveDispatchDepot,
   shiftServiceDate,
   todayServiceDate,
   upsertVehicleCapacity,
@@ -424,29 +426,63 @@ export default function DispatchBoard() {
   }
 
   useEffect(() => {
-    if (!query.tenantKey) return;
-    try {
-      const raw = localStorage.getItem(`fmplus.dispatch.depot.${query.tenantKey}`);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as { lat?: number; lon?: number };
-      if (Number.isFinite(Number(parsed.lat)) && Number.isFinite(Number(parsed.lon))) {
-        setDepotLat(String(parsed.lat));
-        setDepotLon(String(parsed.lon));
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [query.tenantKey]);
+    if (!ready || !query.tenantKey) return;
+    let cancelled = false;
+    fetchDispatchDepot()
+      .then((depot) => {
+        if (cancelled || !depot) return;
+        setDepotLat(String(depot.lat));
+        setDepotLon(String(depot.lon));
+      })
+      .catch(() => {
+        /* optional local fallback below */
+        try {
+          const raw = localStorage.getItem(`fmplus.dispatch.depot.${query.tenantKey}`);
+          if (!raw || cancelled) return;
+          const parsed = JSON.parse(raw) as { lat?: number; lon?: number };
+          if (Number.isFinite(Number(parsed.lat)) && Number.isFinite(Number(parsed.lon))) {
+            setDepotLat(String(parsed.lat));
+            setDepotLon(String(parsed.lon));
+          }
+        } catch {
+          /* ignore */
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, query.tenantKey]);
 
   function persistDepot(lat: number, lon: number) {
     setDepotLat(String(lat));
     setDepotLon(String(lon));
-    if (!query.tenantKey) return;
+    if (query.tenantKey) {
+      try {
+        localStorage.setItem(
+          `fmplus.dispatch.depot.${query.tenantKey}`,
+          JSON.stringify({ lat, lon }),
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+    void saveDispatchDepot({ lat, lon }).catch(() => {
+      /* migration may not be applied yet */
+    });
+  }
+
+  async function clearPersistedDepot() {
+    setDepotLat("");
+    setDepotLon("");
+    if (query.tenantKey) {
+      try {
+        localStorage.removeItem(`fmplus.dispatch.depot.${query.tenantKey}`);
+      } catch {
+        /* ignore */
+      }
+    }
     try {
-      localStorage.setItem(
-        `fmplus.dispatch.depot.${query.tenantKey}`,
-        JSON.stringify({ lat, lon }),
-      );
+      await saveDispatchDepot(null);
     } catch {
       /* ignore */
     }
@@ -705,6 +741,7 @@ export default function DispatchBoard() {
         roundtrip: planRoundtrip,
         depotLat: depotMode === "depot" ? dLat : null,
         depotLon: depotMode === "depot" ? dLon : null,
+        persistDepot: depotMode === "depot" && dLat != null && dLon != null,
       });
       setPlanPreview(plan);
       if (apply) {
@@ -959,17 +996,7 @@ export default function DispatchBoard() {
                       <button
                         type="button"
                         className="btn-secondary"
-                        onClick={() => {
-                          setDepotLat("");
-                          setDepotLon("");
-                          if (query.tenantKey) {
-                            try {
-                              localStorage.removeItem(`fmplus.dispatch.depot.${query.tenantKey}`);
-                            } catch {
-                              /* ignore */
-                            }
-                          }
-                        }}
+                        onClick={() => void clearPersistedDepot()}
                       >
                         Clear depot
                       </button>
@@ -1031,6 +1058,9 @@ export default function DispatchBoard() {
                 <p className="dispatch-search-hint">
                   {planPreview.routes.length} route(s) · {planPreview.orderCount} orders considered ·{" "}
                   {planPreview.unassigned.length} unassigned
+                  {planPreview.balanceMoves
+                    ? ` · ${planPreview.balanceMoves} balance move(s)`
+                    : ""}
                 </p>
                 <ul className="dispatch-plan-routes">
                   {planPreview.routes.map((r) => (

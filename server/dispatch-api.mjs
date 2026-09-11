@@ -12,6 +12,7 @@
  * GET /api/dispatch/field-users
  * GET/PUT /api/dispatch/vehicle-capacities
  * PUT /api/dispatch/vehicle-capacities/:armadaUserId
+ * GET/PUT /api/dispatch/depot
  * POST /api/dispatch/plan-day — CVRP auto-plan (fleet + depot modes)
  */
 import crypto from "node:crypto";
@@ -506,6 +507,56 @@ export async function handleDispatchRequest(req, res) {
           updatedAt: r.updated_at,
         },
       });
+      return true;
+    }
+
+    // —— Tenant depot (CVRP default) ——
+    if (url.pathname === "/api/dispatch/depot" && req.method === "GET") {
+      const row = await dbQuery(
+        `SELECT dispatch_depot_lat, dispatch_depot_lon FROM tenants WHERE id = $1`,
+        [dbTenant.id],
+      );
+      const r = row.rows[0] || {};
+      const lat = r.dispatch_depot_lat == null ? null : Number(r.dispatch_depot_lat);
+      const lon = r.dispatch_depot_lon == null ? null : Number(r.dispatch_depot_lon);
+      json(res, 200, {
+        depot:
+          lat != null && lon != null && Number.isFinite(lat) && Number.isFinite(lon)
+            ? { lat, lon }
+            : null,
+      });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/depot" && req.method === "PUT") {
+      const body = await readJson(req);
+      const clear = body.depot === null || body.clear === true;
+      if (clear) {
+        await dbQuery(
+          `UPDATE tenants SET dispatch_depot_lat = NULL, dispatch_depot_lon = NULL, updated_at = now()
+           WHERE id = $1`,
+          [dbTenant.id],
+        );
+        json(res, 200, { depot: null });
+        return true;
+      }
+      const lat = numOrNull(body.lat ?? body.depot?.lat);
+      const lon = numOrNull(body.lon ?? body.depot?.lon);
+      if (
+        lat == null ||
+        lon == null ||
+        Math.abs(lat) > 90 ||
+        Math.abs(lon) > 180
+      ) {
+        json(res, 400, { error: "Valid lat and lon required (or depot: null to clear)" });
+        return true;
+      }
+      await dbQuery(
+        `UPDATE tenants SET dispatch_depot_lat = $1, dispatch_depot_lon = $2, updated_at = now()
+         WHERE id = $3`,
+        [lat, lon, dbTenant.id],
+      );
+      json(res, 200, { depot: { lat, lon } });
       return true;
     }
 
@@ -1238,8 +1289,17 @@ export async function handleDispatchRequest(req, res) {
       }
       const apply = body.apply === true;
       const roundtrip = body.roundtrip === true;
-      const depotLat = numOrNull(body.depotLat ?? body.depot?.lat);
-      const depotLon = numOrNull(body.depotLon ?? body.depot?.lon);
+      let depotLat = numOrNull(body.depotLat ?? body.depot?.lat);
+      let depotLon = numOrNull(body.depotLon ?? body.depot?.lon);
+      if (depotMode === "depot" && (depotLat == null || depotLon == null)) {
+        const saved = await dbQuery(
+          `SELECT dispatch_depot_lat, dispatch_depot_lon FROM tenants WHERE id = $1`,
+          [dbTenant.id],
+        );
+        const s = saved.rows[0] || {};
+        if (depotLat == null && s.dispatch_depot_lat != null) depotLat = Number(s.dispatch_depot_lat);
+        if (depotLon == null && s.dispatch_depot_lon != null) depotLon = Number(s.dispatch_depot_lon);
+      }
       if (depotMode === "depot") {
         if (
           depotLat == null ||
@@ -1247,9 +1307,19 @@ export async function handleDispatchRequest(req, res) {
           Math.abs(depotLat) > 90 ||
           Math.abs(depotLon) > 180
         ) {
-          json(res, 400, { error: "depotMode=depot requires valid depotLat and depotLon" });
+          json(res, 400, {
+            error: "depotMode=depot requires depot lat/lon (body or saved tenant depot)",
+          });
           return true;
         }
+      }
+      const persistDepot = body.persistDepot === true && depotMode === "depot";
+      if (persistDepot && depotLat != null && depotLon != null) {
+        await dbQuery(
+          `UPDATE tenants SET dispatch_depot_lat = $1, dispatch_depot_lon = $2, updated_at = now()
+           WHERE id = $3`,
+          [depotLat, depotLon, dbTenant.id],
+        );
       }
 
       const orderRows = await dbQuery(
@@ -1275,6 +1345,8 @@ export async function handleDispatchRequest(req, res) {
           volumeM3: o.volume_m3 == null ? 0 : Number(o.volume_m3) || 0,
           weightKg: o.weight_kg == null ? 0 : Number(o.weight_kg) || 0,
           label: o.customer_name || o.external_ref || o.id,
+          windowStart: o.window_start || "",
+          windowEnd: o.window_end || "",
         });
       }
       if (!orders.length) {
@@ -1402,6 +1474,7 @@ export async function handleDispatchRequest(req, res) {
         warning: matrix.warning || null,
         depot: useDepot ? { lat: depotLat, lon: depotLon } : null,
         roundtrip: plan.roundtrip,
+        balanceMoves: plan.balanceMoves || 0,
         routes: plan.routes,
         unassigned: [...plan.unassigned, ...skipped],
         vehicleCount: vehicles.length,

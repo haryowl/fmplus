@@ -327,11 +327,40 @@ export type DispatchPlanDayResult = {
   warning: string | null;
   depot: { lat: number; lon: number } | null;
   roundtrip: boolean;
+  balanceMoves?: number;
   routes: DispatchPlanDayRoute[];
   unassigned: { orderId: string; label?: string; reason: string }[];
   vehicleCount: number;
   orderCount: number;
 };
+
+export async function fetchDispatchDepot(): Promise<{ lat: number; lon: number } | null> {
+  const res = await fetch("/api/dispatch/depot", {
+    headers: { accept: "application/json", ...tenantHeaders() },
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    depot?: { lat: number; lon: number } | null;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Depot ${res.status}`);
+  return data.depot || null;
+}
+
+export async function saveDispatchDepot(
+  depot: { lat: number; lon: number } | null,
+): Promise<{ lat: number; lon: number } | null> {
+  const res = await fetch("/api/dispatch/depot", {
+    method: "PUT",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(depot == null ? { depot: null } : depot),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    depot?: { lat: number; lon: number } | null;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Save depot ${res.status}`);
+  return data.depot || null;
+}
 
 export async function planDispatchDay(body: {
   serviceDate: string;
@@ -341,6 +370,7 @@ export async function planDispatchDay(body: {
   roundtrip?: boolean;
   depotLat?: number | null;
   depotLon?: number | null;
+  persistDepot?: boolean;
 }): Promise<DispatchPlanDayResult> {
   const res = await fetch("/api/dispatch/plan-day", {
     method: "POST",
