@@ -8,6 +8,29 @@ export type RoutePoint = {
   id?: string;
 };
 
+/** OSRM car-profile excludes (hard avoid). Soft prefer needs a custom profile. */
+export type RoutingOptions = {
+  avoidTolls?: boolean;
+  avoidMotorways?: boolean;
+  avoidFerries?: boolean;
+};
+
+export function routingPayload(opts: RoutingOptions | null | undefined): RoutingOptions {
+  return {
+    avoidTolls: Boolean(opts?.avoidTolls),
+    avoidMotorways: Boolean(opts?.avoidMotorways),
+    avoidFerries: Boolean(opts?.avoidFerries),
+  };
+}
+
+export function routingSummary(opts: RoutingOptions | null | undefined): string {
+  const parts: string[] = [];
+  if (opts?.avoidTolls) parts.push("no tolls");
+  if (opts?.avoidMotorways) parts.push("no motorways");
+  if (opts?.avoidFerries) parts.push("no ferries");
+  return parts.join(" · ");
+}
+
 export type RouteOrderedStop = RoutePoint & {
   seq: number;
   role: "start" | "stop" | "return";
@@ -17,6 +40,7 @@ export type RouteOptimizeResult = {
   engine: "osrm" | "haversine";
   warning: string | null;
   roundtrip: boolean;
+  routing?: RoutingOptions & { exclude?: string[] };
   totalDistanceKm: number;
   totalDurationSec: number | null;
   orderedStops: RouteOrderedStop[];
@@ -62,6 +86,7 @@ export type RouteGeometryResult = {
 export async function fetchRouteGeometry(
   points: Array<{ lat: number; lon: number }>,
   signal?: AbortSignal,
+  routing?: RoutingOptions | null,
 ): Promise<RouteGeometryResult> {
   if (points.length < 2) {
     return {
@@ -82,7 +107,13 @@ export async function fetchRouteGeometry(
       "content-type": "application/json",
       ...tenantHeaders(),
     },
-    body: JSON.stringify({ start, stops, roundtrip: false, preserveOrder: true }),
+    body: JSON.stringify({
+      start,
+      stops,
+      roundtrip: false,
+      preserveOrder: true,
+      routing: routingPayload(routing),
+    }),
     signal,
   });
   const data = (await res.json().catch(() => ({}))) as {
@@ -217,6 +248,7 @@ export async function optimizeRoutePlan(input: {
   start: RoutePoint;
   stops: RoutePoint[];
   roundtrip?: boolean;
+  routing?: RoutingOptions;
 }): Promise<RouteOptimizeResult> {
   const res = await fetch("/api/route-plan/optimize", {
     method: "POST",
@@ -225,7 +257,12 @@ export async function optimizeRoutePlan(input: {
       "content-type": "application/json",
       ...tenantHeaders(),
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      start: input.start,
+      stops: input.stops,
+      roundtrip: input.roundtrip,
+      routing: routingPayload(input.routing),
+    }),
   });
   const data = (await res.json().catch(() => ({}))) as RouteOptimizeResult & { error?: string };
   if (!res.ok) throw new Error(data.error || `Optimize ${res.status}`);
@@ -246,6 +283,7 @@ export function downloadRoutePlanExcel(result: RouteOptimizeResult): void {
     ["Distance km", result.totalDistanceKm],
     ["Duration", formatRouteDuration(result.totalDurationSec)],
     ["Roundtrip", result.roundtrip ? "yes" : "no"],
+    ["Avoid", routingSummary(result.routing) || "none"],
     ["Warning", result.warning || ""],
   ];
   const legs: ExcelCell[][] = [

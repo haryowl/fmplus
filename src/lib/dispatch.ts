@@ -292,14 +292,23 @@ export async function returnStopToInbox(jobId: string, stopId: string): Promise<
   return data.job;
 }
 
-export async function optimizeJobStops(jobId: string): Promise<{
+export async function optimizeJobStops(
+  jobId: string,
+  routing?: import("./routePlan").RoutingOptions | null,
+): Promise<{
   job: DispatchJob;
   route: import("./routePlan").RouteGeometryResult | null;
 }> {
   const res = await fetch(`/api/dispatch/jobs/${encodeURIComponent(jobId)}/optimize-stops`, {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
-    body: "{}",
+    body: JSON.stringify({
+      routing: {
+        avoidTolls: Boolean(routing?.avoidTolls),
+        avoidMotorways: Boolean(routing?.avoidMotorways),
+        avoidFerries: Boolean(routing?.avoidFerries),
+      },
+    }),
   });
   const data = (await res.json().catch(() => ({}))) as {
     job?: DispatchJob;
@@ -366,6 +375,12 @@ export type DispatchPlanDayResult = {
   dayStartMin?: number;
   maxStopsPerVehicle?: number;
   onlyEmptyJobs?: boolean;
+  routing?: {
+    avoidTolls?: boolean;
+    avoidMotorways?: boolean;
+    avoidFerries?: boolean;
+    exclude?: string[];
+  } | null;
   routes: DispatchPlanDayRoute[];
   unassigned: { orderId: string; label?: string; reason: string; depotId?: string }[];
   vehicleCount: number;
@@ -479,6 +494,11 @@ export async function planDispatchDay(body: {
   dayStart?: string;
   maxStopsPerVehicle?: number;
   onlyEmptyJobs?: boolean;
+  routing?: {
+    avoidTolls?: boolean;
+    avoidMotorways?: boolean;
+    avoidFerries?: boolean;
+  };
 }): Promise<DispatchPlanDayResult> {
   const res = await fetch("/api/dispatch/plan-day", {
     method: "POST",

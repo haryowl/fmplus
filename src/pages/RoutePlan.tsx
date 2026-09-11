@@ -40,6 +40,9 @@ export default function RoutePlanPage() {
   const [stops, setStops] = useState<RoutePoint[]>([]);
   const [paste, setPaste] = useState("");
   const [roundtrip, setRoundtrip] = useState(false);
+  const [avoidTolls, setAvoidTolls] = useState(false);
+  const [avoidMotorways, setAvoidMotorways] = useState(false);
+  const [avoidFerries, setAvoidFerries] = useState(false);
   const [result, setResult] = useState<RouteOptimizeResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -198,7 +201,12 @@ export default function RoutePlanPage() {
     setBusy(true);
     setError("");
     try {
-      const next = await optimizeRoutePlan({ start, stops, roundtrip });
+      const next = await optimizeRoutePlan({
+        start,
+        stops,
+        roundtrip,
+        routing: { avoidTolls, avoidMotorways, avoidFerries },
+      });
       setResult(next);
       setFitKey(`opt-${Date.now()}`);
     } catch (err) {
@@ -277,6 +285,44 @@ export default function RoutePlanPage() {
               />
               Roundtrip
             </label>
+          </div>
+          <div className="field route-plan-avoid-field">
+            <label>Road options</label>
+            <div className="route-plan-avoid">
+              <label className="route-plan-roundtrip">
+                <input
+                  type="checkbox"
+                  checked={avoidTolls}
+                  onChange={(e) => {
+                    setAvoidTolls(e.target.checked);
+                    setResult(null);
+                  }}
+                />
+                Avoid tolls
+              </label>
+              <label className="route-plan-roundtrip">
+                <input
+                  type="checkbox"
+                  checked={avoidMotorways}
+                  onChange={(e) => {
+                    setAvoidMotorways(e.target.checked);
+                    setResult(null);
+                  }}
+                />
+                Avoid motorways
+              </label>
+              <label className="route-plan-roundtrip">
+                <input
+                  type="checkbox"
+                  checked={avoidFerries}
+                  onChange={(e) => {
+                    setAvoidFerries(e.target.checked);
+                    setResult(null);
+                  }}
+                />
+                Avoid ferries
+              </label>
+            </div>
           </div>
           <div className="field">
             <label>&nbsp;</label>

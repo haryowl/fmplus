@@ -151,6 +151,9 @@ export default function DispatchBoard() {
   const [planDayStart, setPlanDayStart] = useState("08:00");
   const [planMaxStops, setPlanMaxStops] = useState("");
   const [planOnlyEmpty, setPlanOnlyEmpty] = useState(false);
+  const [avoidTolls, setAvoidTolls] = useState(false);
+  const [avoidMotorways, setAvoidMotorways] = useState(false);
+  const [avoidFerries, setAvoidFerries] = useState(false);
   const [planPreview, setPlanPreview] = useState<DispatchPlanDayResult | null>(null);
   const [pinningDepot, setPinningDepot] = useState(false);
   const [jobRoute, setJobRoute] = useState<RouteGeometryResult | null>(null);
@@ -353,7 +356,7 @@ export default function DispatchBoard() {
     }
     const ac = new AbortController();
     setRouteBusy(true);
-    fetchRouteGeometry(points, ac.signal)
+    fetchRouteGeometry(points, ac.signal, { avoidTolls, avoidMotorways, avoidFerries })
       .then((route) => {
         const geomLen = route.geometry?.length || 0;
         const hasPath = geomLen >= 2;
@@ -379,7 +382,7 @@ export default function DispatchBoard() {
       })
       .finally(() => setRouteBusy(false));
     return () => ac.abort();
-  }, [selected, routePathKey]);
+  }, [selected, routePathKey, avoidTolls, avoidMotorways, avoidFerries]);
 
   useEffect(() => {
     if (!ready || !query.tenantKey) return;
@@ -833,6 +836,7 @@ export default function DispatchBoard() {
         dayStart: planDayStart || "08:00",
         maxStopsPerVehicle: planMaxStops.trim() ? Number(planMaxStops) : 0,
         onlyEmptyJobs: planOnlyEmpty,
+        routing: { avoidTolls, avoidMotorways, avoidFerries },
       });
       setPlanPreview(plan);
       if (apply) {
@@ -852,7 +856,11 @@ export default function DispatchBoard() {
     setBusy(true);
     setError("");
     try {
-      const { job, route } = await optimizeJobStops(selected.id);
+      const { job, route } = await optimizeJobStops(selected.id, {
+        avoidTolls,
+        avoidMotorways,
+        avoidFerries,
+      });
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
       if (route && route.distanceKm && route.distanceKm > 0) {
         setJobRoute(route);
@@ -1110,6 +1118,32 @@ export default function DispatchBoard() {
                 />
                 Only use empty open jobs
               </label>
+              <div className="dispatch-routing-opts" style={{ gridColumn: "1 / -1" }}>
+                <label className="dispatch-plan-check">
+                  <input
+                    type="checkbox"
+                    checked={avoidTolls}
+                    onChange={(e) => setAvoidTolls(e.target.checked)}
+                  />
+                  Avoid tolls
+                </label>
+                <label className="dispatch-plan-check">
+                  <input
+                    type="checkbox"
+                    checked={avoidMotorways}
+                    onChange={(e) => setAvoidMotorways(e.target.checked)}
+                  />
+                  Avoid motorways
+                </label>
+                <label className="dispatch-plan-check">
+                  <input
+                    type="checkbox"
+                    checked={avoidFerries}
+                    onChange={(e) => setAvoidFerries(e.target.checked)}
+                  />
+                  Avoid ferries
+                </label>
+              </div>
               {depotMode === "depot" ? (
                 <>
                   <div className="field">
@@ -2040,6 +2074,32 @@ export default function DispatchBoard() {
                   </label>
                 </div>
 
+                <div className="dispatch-routing-opts">
+                  <label className="dispatch-plan-check">
+                    <input
+                      type="checkbox"
+                      checked={avoidTolls}
+                      onChange={(e) => setAvoidTolls(e.target.checked)}
+                    />
+                    Avoid tolls
+                  </label>
+                  <label className="dispatch-plan-check">
+                    <input
+                      type="checkbox"
+                      checked={avoidMotorways}
+                      onChange={(e) => setAvoidMotorways(e.target.checked)}
+                    />
+                    Avoid motorways
+                  </label>
+                  <label className="dispatch-plan-check">
+                    <input
+                      type="checkbox"
+                      checked={avoidFerries}
+                      onChange={(e) => setAvoidFerries(e.target.checked)}
+                    />
+                    Avoid ferries
+                  </label>
+                </div>
                 <button type="button" className="btn-secondary dispatch-opt-btn" disabled={busy} onClick={() => void handleOptimize()}>
                   Optimize stop order
                 </button>

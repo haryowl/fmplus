@@ -9,6 +9,11 @@
 import { securityHeaders } from "./proxy-lt.mjs";
 import { haversineKm, optimizeOpenTour } from "./route-optimize.mjs";
 import { getDistanceMatrix, osrmBaseUrl } from "./routing-matrix.mjs";
+import {
+  parseRoutingOptions,
+  osrmExcludeQuery,
+  routingOptionsSummary,
+} from "./routing-options.mjs";
 
 const MAX_STOPS = 25;
 
@@ -87,8 +92,8 @@ function straightGeometry(ordered) {
   return ordered.map((p) => [p.lat, p.lon]);
 }
 
-async function osrmTable(base, points) {
-  const out = await getDistanceMatrix(points);
+async function osrmTable(base, points, routing = null) {
+  const out = await getDistanceMatrix(points, routing);
   if (out.engine !== "osrm") {
     throw new Error(out.warning || "OSRM table unavailable");
   }
@@ -96,6 +101,7 @@ async function osrmTable(base, points) {
     matrixKm: out.matrixKm,
     durations: out.durations,
     unreachablePairs: out.unreachablePairs,
+    routing: out.routing,
   };
 }
 
@@ -151,11 +157,12 @@ function geometryFromOsrmRoute(route) {
 
 /**
  * Primary path — identical to the pre-regression Route plan call
- * (no radiuses; geojson overview=full).
+ * (no radiuses; geojson overview=full). Optional exclude=toll,motorway,ferry.
  */
-async function osrmRoute(base, ordered) {
+async function osrmRoute(base, ordered, routing = null) {
+  const opts = parseRoutingOptions(routing || {});
   const coords = ordered.map((p) => `${p.lon},${p.lat}`).join(";");
-  const url = `${base}/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+  const url = `${base}/route/v1/driving/${coords}?overview=full&geometries=geojson${osrmExcludeQuery(opts)}`;
   const res = await osrmFetch(url, 45_000);
   let parsed = null;
   try {
@@ -214,7 +221,8 @@ function haversineRoute(points) {
 }
 
 /** Ordered waypoints → road geometry + per-leg stats (OSRM when available). */
-export async function buildRouteForPoints(points) {
+export async function buildRouteForPoints(points, routing = null) {
+  const opts = parseRoutingOptions(routing || {});
   if (!Array.isArray(points) || points.length < 2) {
     return {
       engine: "haversine",
@@ -223,6 +231,7 @@ export async function buildRouteForPoints(points) {
       distanceKm: 0,
       durationSec: 0,
       warning: "Need at least 2 points",
+      routing: opts,
     };
   }
   const normalized = points.map((p) => ({
@@ -237,6 +246,7 @@ export async function buildRouteForPoints(points) {
       distanceKm: 0,
       durationSec: 0,
       warning: "Invalid coordinates",
+      routing: opts,
     };
   }
 
@@ -246,12 +256,13 @@ export async function buildRouteForPoints(points) {
     return {
       engine: "haversine",
       ...fallback,
+      routing: opts,
       warning: "OSRM not configured (set OSRM_BASE_URL)",
     };
   }
 
   try {
-    const routed = await osrmRoute(base, normalized);
+    const routed = await osrmRoute(base, normalized, opts);
     const osrmUseless =
       !Number.isFinite(routed.distanceKm) ||
       routed.distanceKm <= 0 ||
@@ -261,6 +272,7 @@ export async function buildRouteForPoints(points) {
       return {
         engine: "haversine",
         ...fallback,
+        routing: opts,
         warning:
           "OSRM returned an empty/zero route (check extract coverage); using straight-line estimate",
       };
@@ -277,12 +289,14 @@ export async function buildRouteForPoints(points) {
           : fallback.legs,
       distanceKm: routed.distanceKm,
       durationSec: routed.durationSec > 0 ? routed.durationSec : fallback.durationSec,
+      routing: opts,
       warning: legsAllZero ? "OSRM path OK but leg times missing; estimated from distance" : null,
     };
   } catch (err) {
     return {
       engine: "haversine",
       ...fallback,
+      routing: opts,
       warning: err instanceof Error ? err.message : String(err),
     };
   }
@@ -356,13 +370,14 @@ export async function handleRoutePlanRequest(req, res) {
         points.push(p);
       }
 
-      const routed = await buildRouteForPoints(points);
+      const routed = await buildRouteForPoints(points, parseRoutingOptions(body));
       json(res, 200, routed);
       return true;
     }
 
     if (url.pathname === "/api/route-plan/optimize" && req.method === "POST") {
       const body = await readJson(req);
+      const routing = parseRoutingOptions(body);
       const start = asPoint(body.start, "Start");
       if (!start) {
         json(res, 400, { error: "start { lat, lon } is required" });
@@ -401,7 +416,7 @@ export async function handleRoutePlanRequest(req, res) {
 
       if (base) {
         try {
-          const { matrixKm, durations, unreachablePairs } = await osrmTable(base, points);
+          const { matrixKm, durations, unreachablePairs } = await osrmTable(base, points, routing);
           let ordered;
           if (preserveOrder) {
             orderIdx = points.map((_, i) => i);
@@ -435,7 +450,7 @@ export async function handleRoutePlanRequest(req, res) {
               "OSRM has no road path for these coordinates (outside the map extract). Showing straight-line only. Rebuild with ./scripts/setup-osrm.sh --regions=java,sumatra,kalimantan,sulawesi (or indonesia-latest).";
           } else {
             try {
-              const routed = await osrmRoute(base, ordered);
+              const routed = await osrmRoute(base, ordered, routing);
               geometry = routed.geometry;
               distanceKm = routed.distanceKm;
               durationSec = routed.durationSec;
@@ -545,10 +560,18 @@ export async function handleRoutePlanRequest(req, res) {
         });
       }
 
+      const avoidNote = routingOptionsSummary(routing);
+      if (avoidNote && engine === "osrm" && !warning) {
+        warning = `Avoiding: ${avoidNote}`;
+      } else if (avoidNote && warning) {
+        warning = `${warning} · Avoiding: ${avoidNote}`;
+      }
+
       json(res, 200, {
         engine,
         warning: warning || null,
         roundtrip,
+        routing,
         totalDistanceKm: Math.round(distanceKm * 1000) / 1000,
         totalDurationSec: durationSec == null ? null : Math.round(durationSec),
         orderedStops,

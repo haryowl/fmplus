@@ -3629,6 +3629,35 @@ html.onesheet-root body {
   padding: 8px 0;
 }
 
+.route-plan-avoid-field {
+  grid-column: span 2;
+}
+
+.route-plan-avoid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: center;
+}
+
+.route-plan-avoid .route-plan-roundtrip {
+  padding: 4px 0;
+  font-size: 0.84rem;
+}
+
+.dispatch-routing-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0 0 8px;
+}
+
+.dispatch-routing-opts .dispatch-plan-check {
+  grid-column: auto;
+  padding: 2px 0;
+  font-size: 0.78rem;
+}
+
 .route-plan-map-hint {
   margin: 0;
   font-size: 0.85rem;

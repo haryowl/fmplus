@@ -28,6 +28,7 @@ import {
 import { optimizeOpenTour } from "./route-optimize.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
+import { parseRoutingOptions } from "./routing-options.mjs";
 import { getObject, objectStorageConfigured, putObject } from "./storage.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 
@@ -298,7 +299,7 @@ async function loadJob(tenantId, jobId) {
 }
 
 /** Reorder stop sort_order using road/haversine matrix; optional depot as fixed start. */
-async function reorderJobStopsRoad(jobId, depot = null) {
+async function reorderJobStopsRoad(jobId, depot = null, routing = null) {
   const stops = await loadStops(jobId);
   const withCoords = stops.filter(
     (s) =>
@@ -321,7 +322,7 @@ async function reorderJobStopsRoad(jobId, depot = null) {
   const points = useDepot
     ? [{ lat: Number(depot.lat), lon: Number(depot.lon) }, ...customerPoints]
     : customerPoints;
-  const matrix = await getDistanceMatrix(points);
+  const matrix = await getDistanceMatrix(points, routing);
   const { order } = optimizeOpenTour(points, matrix.matrixKm);
 
   const customerOrder = useDepot
@@ -1276,6 +1277,8 @@ export async function handleDispatchRequest(req, res) {
         json(res, 404, { error: "Job not found" });
         return true;
       }
+      const body = await readJson(req);
+      const routing = parseRoutingOptions(body);
       const stops = await loadStops(job.id);
       const withCoords = stops.filter(
         (s) => s.lat != null && s.lon != null && Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lon)),
@@ -1285,7 +1288,7 @@ export async function handleDispatchRequest(req, res) {
         return true;
       }
       const points = withCoords.map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) }));
-      const matrix = await getDistanceMatrix(points);
+      const matrix = await getDistanceMatrix(points, routing);
       const { order } = optimizeOpenTour(points, matrix.matrixKm);
       for (let i = 0; i < order.length; i++) {
         const stop = withCoords[order[i]];
@@ -1299,12 +1302,13 @@ export async function handleDispatchRequest(req, res) {
       }
       await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [job.id]);
       const orderedPoints = order.map((idx) => points[idx]);
-      const route = await buildRouteForPoints(orderedPoints);
+      const route = await buildRouteForPoints(orderedPoints, routing);
       const row = await loadJob(dbTenant.id, job.id);
       json(res, 200, {
         job: publicJob(row, await loadStops(job.id)),
         engine: route.engine,
         matrixEngine: matrix.engine,
+        routing,
         route,
         warning: matrix.warning || route.warning || null,
       });
@@ -1533,6 +1537,7 @@ export async function handleDispatchRequest(req, res) {
       const apply = body.apply === true;
       const roundtrip = body.roundtrip === true;
       const onlyEmptyJobs = body.onlyEmptyJobs === true;
+      const routing = parseRoutingOptions(body);
       const twMode = String(body.twMode || "soft").toLowerCase();
       if (!["off", "soft", "hard"].includes(twMode)) {
         json(res, 400, { error: "twMode must be off | soft | hard" });
@@ -1823,7 +1828,7 @@ export async function handleDispatchRequest(req, res) {
             });
             return true;
           }
-          const matrix = await getDistanceMatrix(points);
+          const matrix = await getDistanceMatrix(points, routing);
           engines.add(matrix.engine);
           if (matrix.warning) warnings.push(matrix.warning);
           const plan = planCvrp({
@@ -1879,7 +1884,7 @@ export async function handleDispatchRequest(req, res) {
           return true;
         }
 
-        const matrix = await getDistanceMatrix(points);
+        const matrix = await getDistanceMatrix(points, routing);
         const plan = planCvrp({
           orders,
           vehicles,
@@ -1914,6 +1919,7 @@ export async function handleDispatchRequest(req, res) {
         dayStartMin,
         maxStopsPerVehicle,
         onlyEmptyJobs,
+        routing,
         routes: planRoutes,
         unassigned: planUnassigned,
         vehicleCount: vehicles.length,
@@ -2002,7 +2008,7 @@ export async function handleDispatchRequest(req, res) {
             : depotMode === "depot" && depotLat != null && depotLon != null
               ? { lat: depotLat, lon: depotLon }
               : null;
-        await reorderJobStopsRoad(jobId, routeDepot);
+        await reorderJobStopsRoad(jobId, routeDepot, routing);
         const row = await loadJob(dbTenant.id, jobId);
         const stops = await loadStops(jobId);
         const routeGeom = await buildRouteForPoints(
@@ -2015,6 +2021,7 @@ export async function handleDispatchRequest(req, res) {
                 Number.isFinite(Number(s.lon)),
             )
             .map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) })),
+          routing,
         );
         applied.push({
           ...route,
