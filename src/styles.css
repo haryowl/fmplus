@@ -3843,7 +3843,7 @@ html.onesheet-root body {
   padding: 4px;
   display: grid;
   gap: 2px;
-  max-height: 168px;
+  max-height: 240px;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -3851,7 +3851,8 @@ html.onesheet-root body {
 }
 
 .dispatch-search-results button {
-  display: block;
+  display: grid;
+  gap: 2px;
   width: 100%;
   text-align: left;
   padding: 10px 12px;
@@ -3867,6 +3868,57 @@ html.onesheet-root body {
 
 .dispatch-search-results button:hover {
   background: var(--accent-soft);
+}
+
+.dispatch-search-result-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dispatch-search-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dispatch-search-sub {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  padding-left: 46px;
+}
+
+.dispatch-search-source {
+  flex: 0 0 auto;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  line-height: 1.2;
+}
+
+.dispatch-search-source-poi {
+  background: #e8f0fb;
+  border-color: #9db7e0;
+  color: #1f4f8a;
+}
+
+.dispatch-search-source-service_point {
+  background: #eaf6ee;
+  border-color: #8fbf9a;
+  color: #1e5c34;
+}
+
+.dispatch-search-source-address {
+  background: #f3f1ec;
+  border-color: #c9c2b6;
+  color: #5e584f;
 }
 
 .dispatch-order-draft {

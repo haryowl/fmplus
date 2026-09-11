@@ -36,7 +36,14 @@ import {
   type DispatchStatus,
   type VehicleCapacity,
 } from "../lib/dispatch";
-import { reverseAddress, searchAddresses, type GeocodeResult } from "../lib/geocode";
+import {
+  loadDispatchPoiCatalog,
+  placeSearchSourceLabel,
+  reverseAddress,
+  searchDispatchPlaces,
+  type PlaceSearchResult,
+} from "../lib/geocode";
+import type { ArmadaPoi } from "../lib/places";
 import {
   buildStopRouteMeta,
   estimateStraightRoute,
@@ -99,8 +106,10 @@ export default function DispatchBoard() {
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [placing, setPlacing] = useState(false);
   const [searchQ, setSearchQ] = useState("");
-  const [searchResults, setSearchResults] = useState<GeocodeResult[]>([]);
+  const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
+  const [poiCatalog, setPoiCatalog] = useState<ArmadaPoi[]>([]);
+  const [poiCatalogReady, setPoiCatalogReady] = useState(false);
   const [pinBusy, setPinBusy] = useState(false);
 
   const [jobTitle, setJobTitle] = useState("");
@@ -313,6 +322,22 @@ export default function DispatchBoard() {
   }, [selected, routePathKey]);
 
   useEffect(() => {
+    if (!ready || !query.tenantKey) return;
+    const ac = new AbortController();
+    setPoiCatalogReady(false);
+    loadDispatchPoiCatalog(ac.signal)
+      .then((pois) => {
+        setPoiCatalog(pois);
+        setPoiCatalogReady(true);
+      })
+      .catch(() => {
+        setPoiCatalog([]);
+        setPoiCatalogReady(true);
+      });
+    return () => ac.abort();
+  }, [ready, query.tenantKey]);
+
+  useEffect(() => {
     const q = searchQ.trim();
     if (q.length < 2) {
       setSearchResults([]);
@@ -321,7 +346,7 @@ export default function DispatchBoard() {
     const ac = new AbortController();
     const t = window.setTimeout(() => {
       setSearchBusy(true);
-      searchAddresses(q, ac.signal)
+      searchDispatchPlaces(q, poiCatalog, ac.signal)
         .then((results) => setSearchResults(results))
         .catch((err: Error) => {
           if (err.name !== "AbortError") setSearchResults([]);
@@ -332,19 +357,20 @@ export default function DispatchBoard() {
       window.clearTimeout(t);
       ac.abort();
     };
-  }, [searchQ]);
+  }, [searchQ, poiCatalog]);
 
   function toggleOrder(id: string) {
     setSelectedOrderIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  function applyPin(result: GeocodeResult) {
+  function applyPin(result: PlaceSearchResult) {
     setOrderForm((f) => ({
       ...f,
       address: result.label,
       lat: result.lat,
       lon: result.lon,
-      customerName: f.customerName || shortCustomerFromLabel(result.label),
+      customerName: f.customerName || result.customerHint || shortCustomerFromLabel(result.label),
+      zone: f.zone || result.zoneHint || "",
     }));
     setPlacing(true);
     setSearchQ("");
@@ -852,24 +878,38 @@ export default function DispatchBoard() {
                 <input
                   value={searchQ}
                   onChange={(e) => setSearchQ(e.target.value)}
-                  placeholder="Search street, area, landmark…"
+                  placeholder="Search POI, service point, street…"
                   autoComplete="off"
                   aria-label="Find place"
                 />
               </div>
-              {searchBusy ? <p className="dispatch-search-hint">Searching places…</p> : null}
+              {searchBusy ? (
+                <p className="dispatch-search-hint">Searching places…</p>
+              ) : !poiCatalogReady && searchQ.trim().length >= 2 ? (
+                <p className="dispatch-search-hint">Loading saved POIs…</p>
+              ) : null}
               {searchResults.length > 0 ? (
                 <ul className="dispatch-search-results">
                   {searchResults.map((r) => (
-                    <li key={`${r.lat},${r.lon},${r.label}`}>
+                    <li key={r.key}>
                       <button type="button" onClick={() => applyPin(r)}>
-                        {r.label}
+                        <span className="dispatch-search-result-main">
+                          <span
+                            className={`dispatch-search-source dispatch-search-source-${r.source}`}
+                          >
+                            {placeSearchSourceLabel(r.source)}
+                          </span>
+                          <span className="dispatch-search-label">{r.label}</span>
+                        </span>
+                        {r.subtitle ? <span className="dispatch-search-sub">{r.subtitle}</span> : null}
                       </button>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="dispatch-search-hint">Click the map to drop a pin, or search above.</p>
+                <p className="dispatch-search-hint">
+                  Search Armada POIs, service points, or street — or click the map to drop a pin.
+                </p>
               )}
             </div>
 

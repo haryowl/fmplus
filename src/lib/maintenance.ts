@@ -805,9 +805,10 @@ export async function evaluateMaintReminders(): Promise<{ checked: number; emitt
   return { checked: data.checked || 0, emitted: data.emitted || 0 };
 }
 
-export async function fetchServicePoints(q = ""): Promise<ServicePoint[]> {
+export async function fetchServicePoints(q = "", signal?: AbortSignal): Promise<ServicePoint[]> {
   const res = await fetch(`/api/maintenance/service-points?q=${encodeURIComponent(q)}`, {
     headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
   });
   const data = (await res.json().catch(() => ({}))) as { points?: ServicePoint[]; error?: string };
   if (!res.ok) throw new Error(data.error || `Points ${res.status}`);
