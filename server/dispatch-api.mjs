@@ -10,6 +10,8 @@
  * GET /api/dispatch/stops/:stopId/photos
  * GET /api/dispatch/photos/:id
  * GET /api/dispatch/field-users
+ * GET/PUT /api/dispatch/vehicle-capacities
+ * PUT /api/dispatch/vehicle-capacities/:armadaUserId
  */
 import crypto from "node:crypto";
 import { databaseUrlConfigured, dbQuery } from "./db.mjs";
@@ -398,6 +400,68 @@ export async function handleDispatchRequest(req, res) {
       return true;
     }
 
+    // —— Vehicle capacity presets (keyed by Armada user id) ——
+    if (url.pathname === "/api/dispatch/vehicle-capacities" && req.method === "GET") {
+      const rows = await dbQuery(
+        `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, label, updated_at
+         FROM vehicle_capacities
+         WHERE tenant_id = $1
+         ORDER BY armada_user_id ASC
+         LIMIT 500`,
+        [dbTenant.id],
+      );
+      json(res, 200, {
+        capacities: rows.rows.map((r) => ({
+          armadaUserId: Number(r.armada_user_id),
+          volumeCapacityM3: Number(r.volume_capacity_m3) || 12,
+          weightCapacityKg: Number(r.weight_capacity_kg) || 1500,
+          label: r.label || "",
+          updatedAt: r.updated_at,
+        })),
+      });
+      return true;
+    }
+
+    const vehicleCapOne = /^\/api\/dispatch\/vehicle-capacities\/(\d+)$/i.exec(url.pathname);
+    if (vehicleCapOne && req.method === "PUT") {
+      const armadaUserId = Number(vehicleCapOne[1]);
+      if (!Number.isInteger(armadaUserId) || armadaUserId <= 0) {
+        json(res, 400, { error: "Invalid armada user id" });
+        return true;
+      }
+      const body = await readJson(req);
+      const vol = numOrNull(body.volumeCapacityM3);
+      const wt = numOrNull(body.weightCapacityKg);
+      if (vol == null || vol <= 0 || wt == null || wt <= 0) {
+        json(res, 400, { error: "volumeCapacityM3 and weightCapacityKg must be > 0" });
+        return true;
+      }
+      const label = String(body.label || "").trim().slice(0, 200) || null;
+      const upserted = await dbQuery(
+        `INSERT INTO vehicle_capacities (
+           tenant_id, armada_user_id, volume_capacity_m3, weight_capacity_kg, label, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, now())
+         ON CONFLICT (tenant_id, armada_user_id) DO UPDATE SET
+           volume_capacity_m3 = EXCLUDED.volume_capacity_m3,
+           weight_capacity_kg = EXCLUDED.weight_capacity_kg,
+           label = COALESCE(EXCLUDED.label, vehicle_capacities.label),
+           updated_at = now()
+         RETURNING armada_user_id, volume_capacity_m3, weight_capacity_kg, label, updated_at`,
+        [dbTenant.id, armadaUserId, vol, wt, label],
+      );
+      const r = upserted.rows[0];
+      json(res, 200, {
+        capacity: {
+          armadaUserId: Number(r.armada_user_id),
+          volumeCapacityM3: Number(r.volume_capacity_m3) || 12,
+          weightCapacityKg: Number(r.weight_capacity_kg) || 1500,
+          label: r.label || "",
+          updatedAt: r.updated_at,
+        },
+      });
+      return true;
+    }
+
     // —— Orders ——
     if (url.pathname === "/api/dispatch/orders" && req.method === "GET") {
       const status = String(url.searchParams.get("status") || "pending").toLowerCase();
@@ -709,8 +773,21 @@ export async function handleDispatchRequest(req, res) {
       let status = String(body.status || (assigneeId ? "assigned" : "draft")).toLowerCase();
       if (!STATUSES.includes(status)) status = assigneeId ? "assigned" : "draft";
       if (assigneeId && status === "draft") status = "assigned";
-      const volCap = numOrNull(body.volumeCapacityM3);
-      const wtCap = numOrNull(body.weightCapacityKg);
+      let volCap = numOrNull(body.volumeCapacityM3);
+      let wtCap = numOrNull(body.weightCapacityKg);
+      if ((volCap == null || wtCap == null) && armadaUserId != null) {
+        const preset = await dbQuery(
+          `SELECT volume_capacity_m3, weight_capacity_kg
+           FROM vehicle_capacities
+           WHERE tenant_id = $1 AND armada_user_id = $2`,
+          [dbTenant.id, armadaUserId],
+        );
+        const p = preset.rows[0];
+        if (p) {
+          if (volCap == null) volCap = Number(p.volume_capacity_m3);
+          if (wtCap == null) wtCap = Number(p.weight_capacity_kg);
+        }
+      }
       const serviceDate = parseServiceDate(body.serviceDate) || todayYmd();
 
       const inserted = await dbQuery(

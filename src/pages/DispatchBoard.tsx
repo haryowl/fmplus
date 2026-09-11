@@ -6,6 +6,7 @@ import { ViewNav } from "../components/ViewNav";
 import {
   assignOrdersToJob,
   cancelDispatchOrder,
+  capacityForVehicle,
   createDispatchJob,
   createDispatchOrder,
   deleteDispatchOrder,
@@ -16,6 +17,7 @@ import {
   fetchDispatchJobs,
   fetchDispatchOrders,
   fetchStopPhotos,
+  fetchVehicleCapacities,
   formatDispatchWindow,
   formatServiceDateLabel,
   optimizeJobStops,
@@ -24,6 +26,7 @@ import {
   returnStopToInbox,
   shiftServiceDate,
   todayServiceDate,
+  upsertVehicleCapacity,
   utilizationTone,
   withTenantQuery,
   type DispatchFieldUser,
@@ -31,6 +34,7 @@ import {
   type DispatchOrder,
   type DispatchPhoto,
   type DispatchStatus,
+  type VehicleCapacity,
 } from "../lib/dispatch";
 import { reverseAddress, searchAddresses, type GeocodeResult } from "../lib/geocode";
 import {
@@ -101,6 +105,11 @@ export default function DispatchBoard() {
 
   const [jobTitle, setJobTitle] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
+  const [jobVolCap, setJobVolCap] = useState("12");
+  const [jobWtCap, setJobWtCap] = useState("1500");
+  const [vehicleCaps, setVehicleCaps] = useState<VehicleCapacity[]>([]);
+  const [editVolCap, setEditVolCap] = useState("12");
+  const [editWtCap, setEditWtCap] = useState("1500");
   const [jobRoute, setJobRoute] = useState<RouteGeometryResult | null>(null);
   const [routeBusy, setRouteBusy] = useState(false);
 
@@ -184,9 +193,11 @@ export default function DispatchBoard() {
   useEffect(() => {
     if (!ready || !query.tenantKey) return;
     let cancelled = false;
-    fetchDispatchFieldUsers()
-      .then((list) => {
-        if (!cancelled) setFieldUsers(list);
+    Promise.all([fetchDispatchFieldUsers(), fetchVehicleCapacities()])
+      .then(([list, caps]) => {
+        if (cancelled) return;
+        setFieldUsers(list);
+        setVehicleCaps(caps);
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);
@@ -195,6 +206,19 @@ export default function DispatchBoard() {
       cancelled = true;
     };
   }, [ready, query.tenantKey, reload]);
+
+  useEffect(() => {
+    const id = userId ? Number(userId) : null;
+    const cap = capacityForVehicle(vehicleCaps, id);
+    setJobVolCap(String(cap.volumeCapacityM3));
+    setJobWtCap(String(cap.weightCapacityKg));
+  }, [userId, vehicleCaps]);
+
+  useEffect(() => {
+    if (!selected) return;
+    setEditVolCap(String(selected.volumeCapacityM3 ?? 12));
+    setEditWtCap(String(selected.weightCapacityKg ?? 1500));
+  }, [selected?.id, selected?.volumeCapacityM3, selected?.weightCapacityKg]);
 
   useEffect(() => {
     if (!ready) return;
@@ -461,6 +485,8 @@ export default function DispatchBoard() {
     setBusy(true);
     setError("");
     try {
+      const vol = Number(jobVolCap);
+      const wt = Number(jobWtCap);
       const job = await createDispatchJob({
         title: jobTitle.trim(),
         serviceDate: planDate,
@@ -468,6 +494,8 @@ export default function DispatchBoard() {
         armadaUserId: selectedUser ? Number(selectedUser.id) : null,
         armadaUsername: selectedUser?.username || "",
         userDisplayName: selectedUser ? userOptionLabel(selectedUser) : "",
+        volumeCapacityM3: Number.isFinite(vol) && vol > 0 ? vol : null,
+        weightCapacityKg: Number.isFinite(wt) && wt > 0 ? wt : null,
       });
       setJobTitle("");
       setShowNewJob(false);
@@ -475,6 +503,65 @@ export default function DispatchBoard() {
       setReload((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create job failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleApplyJobCapacity() {
+    if (!selected) return;
+    const vol = Number(editVolCap);
+    const wt = Number(editWtCap);
+    if (!(vol > 0) || !(wt > 0)) {
+      setError("Capacity must be greater than 0");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const job = await patchDispatchJob(selected.id, {
+        volumeCapacityM3: vol,
+        weightCapacityKg: wt,
+      });
+      setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update capacity failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveVehicleDefault() {
+    if (!selected?.armadaUserId) {
+      setError("Assign an Armada vehicle on the job before saving a vehicle default");
+      return;
+    }
+    const vol = Number(editVolCap);
+    const wt = Number(editWtCap);
+    if (!(vol > 0) || !(wt > 0)) {
+      setError("Capacity must be greater than 0");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const job = await patchDispatchJob(selected.id, {
+        volumeCapacityM3: vol,
+        weightCapacityKg: wt,
+      });
+      setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
+      const saved = await upsertVehicleCapacity({
+        armadaUserId: selected.armadaUserId,
+        volumeCapacityM3: vol,
+        weightCapacityKg: wt,
+        label: dispatchVehicleLabel(selected),
+      });
+      setVehicleCaps((prev) => {
+        const rest = prev.filter((c) => c.armadaUserId !== saved.armadaUserId);
+        return [...rest, saved].sort((a, b) => a.armadaUserId - b.armadaUserId);
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save vehicle capacity failed");
     } finally {
       setBusy(false);
     }
@@ -705,14 +792,41 @@ export default function DispatchBoard() {
                 Vehicle
                 <select value={userId} onChange={(e) => setUserId(e.target.value)} disabled={!selectedGroup}>
                   <option value="">{selectedGroup ? "Select vehicle" : "Pick group first"}</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {userOptionLabel(u)}
-                    </option>
-                  ))}
+                  {users.map((u) => {
+                    const cap = capacityForVehicle(vehicleCaps, Number(u.id));
+                    return (
+                      <option key={u.id} value={u.id}>
+                        {userOptionLabel(u)} · {cap.volumeCapacityM3} m³ / {cap.weightCapacityKg} kg
+                      </option>
+                    );
+                  })}
                 </select>
               </label>
+              <label className="field">
+                Volume capacity (m³)
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={jobVolCap}
+                  onChange={(e) => setJobVolCap(e.target.value)}
+                />
+              </label>
+              <label className="field">
+                Weight capacity (kg)
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={jobWtCap}
+                  onChange={(e) => setJobWtCap(e.target.value)}
+                />
+              </label>
             </div>
+            <p className="dispatch-search-hint">
+              Caps follow the vehicle preset when you pick a vehicle. Change them here for this job only, or save as
+              default from the vehicle pane after create.
+            </p>
             <div className="dispatch-create-actions">
               <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void handleCreateJob()}>
                 Create job
@@ -1096,6 +1210,57 @@ export default function DispatchBoard() {
                       </div>
                     </div>
                   </div>
+                </div>
+
+                <div className="dispatch-cap-edit">
+                  <label className="field">
+                    Cap m³
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={editVolCap}
+                      disabled={busy || selected.status === "done" || selected.status === "cancelled"}
+                      onChange={(e) => setEditVolCap(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    Cap kg
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={editWtCap}
+                      disabled={busy || selected.status === "done" || selected.status === "cancelled"}
+                      onChange={(e) => setEditWtCap(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={busy || selected.status === "done" || selected.status === "cancelled"}
+                    onClick={() => void handleApplyJobCapacity()}
+                  >
+                    Apply to job
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={
+                      busy ||
+                      !selected.armadaUserId ||
+                      selected.status === "done" ||
+                      selected.status === "cancelled"
+                    }
+                    title={
+                      selected.armadaUserId
+                        ? "Remember this capacity for the Armada vehicle"
+                        : "Job needs an Armada vehicle"
+                    }
+                    onClick={() => void handleSaveVehicleDefault()}
+                  >
+                    Save as vehicle default
+                  </button>
                 </div>
 
                 <div className="dispatch-detail-actions">

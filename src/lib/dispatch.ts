@@ -89,6 +89,15 @@ export type DispatchFieldUser = {
   enabled: boolean;
 };
 
+/** Per-vehicle capacity preset (Armada GPS user within tenant). */
+export type VehicleCapacity = {
+  armadaUserId: number;
+  volumeCapacityM3: number;
+  weightCapacityKg: number;
+  label?: string;
+  updatedAt?: string;
+};
+
 export type DispatchPhoto = {
   id: string;
   stopId?: string | null;
@@ -292,6 +301,55 @@ export async function fetchDispatchFieldUsers(): Promise<DispatchFieldUser[]> {
   const data = (await res.json().catch(() => ({}))) as { users?: DispatchFieldUser[]; error?: string };
   if (!res.ok) throw new Error(data.error || `Field users ${res.status}`);
   return data.users || [];
+}
+
+export async function fetchVehicleCapacities(signal?: AbortSignal): Promise<VehicleCapacity[]> {
+  const res = await fetch("/api/dispatch/vehicle-capacities", {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    capacities?: VehicleCapacity[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Vehicle capacities ${res.status}`);
+  return data.capacities || [];
+}
+
+export async function upsertVehicleCapacity(body: {
+  armadaUserId: number;
+  volumeCapacityM3: number;
+  weightCapacityKg: number;
+  label?: string;
+}): Promise<VehicleCapacity> {
+  const res = await fetch(`/api/dispatch/vehicle-capacities/${encodeURIComponent(String(body.armadaUserId))}`, {
+    method: "PUT",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify({
+      volumeCapacityM3: body.volumeCapacityM3,
+      weightCapacityKg: body.weightCapacityKg,
+      label: body.label,
+    }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    capacity?: VehicleCapacity;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Save capacity ${res.status}`);
+  if (!data.capacity) throw new Error("Save capacity failed");
+  return data.capacity;
+}
+
+export function capacityForVehicle(
+  capacities: VehicleCapacity[],
+  armadaUserId: number | null | undefined,
+): { volumeCapacityM3: number; weightCapacityKg: number } {
+  const id = armadaUserId == null ? null : Number(armadaUserId);
+  const hit = id != null ? capacities.find((c) => c.armadaUserId === id) : undefined;
+  return {
+    volumeCapacityM3: hit?.volumeCapacityM3 ?? 12,
+    weightCapacityKg: hit?.weightCapacityKg ?? 1500,
+  };
 }
 
 export async function fetchDispatchOrders(
