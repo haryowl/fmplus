@@ -8,6 +8,7 @@
  */
 import { securityHeaders } from "./proxy-lt.mjs";
 import { haversineKm, optimizeOpenTour } from "./route-optimize.mjs";
+import { getDistanceMatrix, osrmBaseUrl } from "./routing-matrix.mjs";
 
 const MAX_STOPS = 25;
 
@@ -60,8 +61,7 @@ async function readJson(req) {
 }
 
 function osrmBase() {
-  const raw = String(process.env.OSRM_BASE_URL || process.env.OSRM_URL || "").trim();
-  return raw.replace(/\/+$/, "");
+  return osrmBaseUrl();
 }
 
 function asPoint(raw, fallbackLabel) {
@@ -88,38 +88,15 @@ function straightGeometry(ordered) {
 }
 
 async function osrmTable(base, points) {
-  const coords = points.map((p) => `${p.lon},${p.lat}`).join(";");
-  const url = `${base}/table/v1/driving/${coords}?annotations=distance,duration`;
-  const res = await osrmFetch(url, 45_000);
-  let parsed = null;
-  try {
-    parsed = res.text ? JSON.parse(res.text) : null;
-  } catch {
-    parsed = null;
+  const out = await getDistanceMatrix(points);
+  if (out.engine !== "osrm") {
+    throw new Error(out.warning || "OSRM table unavailable");
   }
-  if (!res.ok || !parsed || parsed.code !== "Ok") {
-    throw new Error(
-      (parsed && (parsed.message || parsed.code)) || res.text.slice(0, 160) || `OSRM table HTTP ${res.status}`,
-    );
-  }
-  const distances = parsed.distances;
-  const durations = parsed.durations;
-  if (!Array.isArray(distances) || distances.length !== points.length) {
-    throw new Error("OSRM table returned unexpected distances");
-  }
-  // Convert meters → km for optimizeOpenTour. null = unreachable / outside extract.
-  const matrixKm = distances.map((row) =>
-    row.map((m) => (typeof m === "number" && Number.isFinite(m) && m >= 0 ? m / 1000 : null)),
-  );
-  const unreachablePairs = matrixKm.reduce((n, row, i) => {
-    for (let j = 0; j < row.length; j++) {
-      if (i !== j && row[j] == null) n += 1;
-    }
-    return n;
-  }, 0);
-  // TSP needs finite costs; treat unreachable as huge so we can still order, then warn.
-  const matrixForOpt = matrixKm.map((row) => row.map((m) => (m == null ? 1e9 : m)));
-  return { matrixKm: matrixForOpt, durations, unreachablePairs };
+  return {
+    matrixKm: out.matrixKm,
+    durations: out.durations,
+    unreachablePairs: out.unreachablePairs,
+  };
 }
 
 function decodeOsrmPolyline(encoded, precision = 5) {

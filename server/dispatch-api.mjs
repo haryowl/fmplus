@@ -12,13 +12,16 @@
  * GET /api/dispatch/field-users
  * GET/PUT /api/dispatch/vehicle-capacities
  * PUT /api/dispatch/vehicle-capacities/:armadaUserId
+ * POST /api/dispatch/plan-day — CVRP auto-plan (fleet + depot modes)
  */
 import crypto from "node:crypto";
 import { databaseUrlConfigured, dbQuery } from "./db.mjs";
 import { mergeEntitlements, moduleEnabled } from "./entitlements.mjs";
 import { resolveDbTenant } from "./maintenance-api.mjs";
+import { planCvrp } from "./cvrp-plan.mjs";
 import { optimizeOpenTour } from "./route-optimize.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
+import { getDistanceMatrix } from "./routing-matrix.mjs";
 import { getObject, objectStorageConfigured, putObject } from "./storage.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 
@@ -839,7 +842,38 @@ export async function handleDispatchRequest(req, res) {
         json(res, 400, { error: "orderIds required" });
         return true;
       }
+      const rejectOverCapacity = body.rejectOverCapacity === true;
       const existingStops = await loadStops(job.id);
+      const cap = capacityFrom(job, existingStops);
+      let pendingVol = 0;
+      let pendingWt = 0;
+      if (rejectOverCapacity) {
+        for (const oid of orderIds.slice(0, 50)) {
+          const ord = await dbQuery(
+            `SELECT volume_m3, weight_kg FROM dispatch_orders
+             WHERE id = $1 AND tenant_id = $2 AND status = 'pending'`,
+            [oid, dbTenant.id],
+          );
+          const o = ord.rows[0];
+          if (!o) continue;
+          pendingVol += Number(o.volume_m3) || 0;
+          pendingWt += Number(o.weight_kg) || 0;
+        }
+        if (
+          cap.volumeUsed + pendingVol > cap.volumeCapacityM3 + 1e-9 ||
+          cap.weightUsed + pendingWt > cap.weightCapacityKg + 1e-9
+        ) {
+          json(res, 409, {
+            error: "Assign would exceed vehicle capacity (volume or weight)",
+            capacity: {
+              ...cap,
+              pendingVolumeM3: Math.round(pendingVol * 1000) / 1000,
+              pendingWeightKg: Math.round(pendingWt * 10) / 10,
+            },
+          });
+          return true;
+        }
+      }
       let sortBase = existingStops.length;
       for (const oid of orderIds.slice(0, 50)) {
         const ord = await dbQuery(
@@ -913,7 +947,8 @@ export async function handleDispatchRequest(req, res) {
         return true;
       }
       const points = withCoords.map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) }));
-      const { order } = optimizeOpenTour(points);
+      const matrix = await getDistanceMatrix(points);
+      const { order } = optimizeOpenTour(points, matrix.matrixKm);
       for (let i = 0; i < order.length; i++) {
         const stop = withCoords[order[i]];
         await dbQuery(`UPDATE dispatch_stops SET sort_order = $1 WHERE id = $2`, [i, stop.id]);
@@ -931,7 +966,9 @@ export async function handleDispatchRequest(req, res) {
       json(res, 200, {
         job: publicJob(row, await loadStops(job.id)),
         engine: route.engine,
+        matrixEngine: matrix.engine,
         route,
+        warning: matrix.warning || route.warning || null,
       });
       return true;
     }
@@ -1138,6 +1175,275 @@ export async function handleDispatchRequest(req, res) {
       json(res, 200, {
         job: publicJob(row, await loadStops(job.id)),
         returnedOrderId: stop.order_id || null,
+      });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/plan-day" && req.method === "POST") {
+      const body = await readJson(req);
+      const serviceDate = parseServiceDate(body.serviceDate) || todayYmd();
+      const fleetMode = String(body.fleetMode || "both").toLowerCase();
+      if (!["jobs", "presets", "both"].includes(fleetMode)) {
+        json(res, 400, { error: "fleetMode must be jobs | presets | both" });
+        return true;
+      }
+      const depotMode = String(body.depotMode || "open").toLowerCase();
+      if (!["open", "depot"].includes(depotMode)) {
+        json(res, 400, { error: "depotMode must be open | depot" });
+        return true;
+      }
+      const apply = body.apply === true;
+      const roundtrip = body.roundtrip === true;
+      const depotLat = numOrNull(body.depotLat ?? body.depot?.lat);
+      const depotLon = numOrNull(body.depotLon ?? body.depot?.lon);
+      if (depotMode === "depot") {
+        if (
+          depotLat == null ||
+          depotLon == null ||
+          Math.abs(depotLat) > 90 ||
+          Math.abs(depotLon) > 180
+        ) {
+          json(res, 400, { error: "depotMode=depot requires valid depotLat and depotLon" });
+          return true;
+        }
+      }
+
+      const orderRows = await dbQuery(
+        `SELECT * FROM dispatch_orders
+         WHERE tenant_id = $1 AND status = 'pending' AND service_date = $2
+         ORDER BY created_at ASC
+         LIMIT 200`,
+        [dbTenant.id, serviceDate],
+      );
+      const orders = [];
+      const skipped = [];
+      for (const o of orderRows.rows) {
+        const lat = o.lat == null ? null : Number(o.lat);
+        const lon = o.lon == null ? null : Number(o.lon);
+        if (lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+          skipped.push({ orderId: o.id, reason: "no_coords" });
+          continue;
+        }
+        orders.push({
+          id: o.id,
+          lat,
+          lon,
+          volumeM3: o.volume_m3 == null ? 0 : Number(o.volume_m3) || 0,
+          weightKg: o.weight_kg == null ? 0 : Number(o.weight_kg) || 0,
+          label: o.customer_name || o.external_ref || o.id,
+        });
+      }
+      if (!orders.length) {
+        json(res, 400, {
+          error: "No pending orders with coordinates for this date",
+          skipped,
+        });
+        return true;
+      }
+
+      /** @type {{ key: string, label: string, volumeCapacityM3: number, weightCapacityKg: number, meta: object }[]} */
+      const vehicles = [];
+      const usedArmada = new Set();
+
+      if (fleetMode === "jobs" || fleetMode === "both") {
+        const jobs = await dbQuery(
+          `SELECT * FROM dispatch_jobs
+           WHERE tenant_id = $1 AND service_date = $2
+             AND status NOT IN ('done', 'cancelled')
+           ORDER BY created_at ASC
+           LIMIT 50`,
+          [dbTenant.id, serviceDate],
+        );
+        for (const j of jobs.rows) {
+          const stops = await loadStops(j.id);
+          // Prefer empty / light jobs for day planning; still allow jobs with stops (residual capacity)
+          const cap = capacityFrom(j, stops);
+          const residualVol = Math.max(0, cap.volumeCapacityM3 - cap.volumeUsed);
+          const residualWt = Math.max(0, cap.weightCapacityKg - cap.weightUsed);
+          if (residualVol <= 0 || residualWt <= 0) continue;
+          if (j.armada_user_id != null) usedArmada.add(Number(j.armada_user_id));
+          vehicles.push({
+            key: `job:${j.id}`,
+            label: j.title || j.user_display_name || j.armada_username || j.id,
+            volumeCapacityM3: residualVol,
+            weightCapacityKg: residualWt,
+            meta: {
+              kind: "job",
+              jobId: j.id,
+              armadaUserId: j.armada_user_id == null ? null : Number(j.armada_user_id),
+              armadaUsername: j.armada_username || "",
+              userDisplayName: j.user_display_name || "",
+              fullVolumeCapacityM3: cap.volumeCapacityM3,
+              fullWeightCapacityKg: cap.weightCapacityKg,
+            },
+          });
+        }
+      }
+
+      if (fleetMode === "presets" || fleetMode === "both") {
+        const presets = await dbQuery(
+          `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, label
+           FROM vehicle_capacities WHERE tenant_id = $1
+           ORDER BY armada_user_id ASC LIMIT 100`,
+          [dbTenant.id],
+        );
+        for (const p of presets.rows) {
+          const uid = Number(p.armada_user_id);
+          if (fleetMode === "both" && usedArmada.has(uid)) continue;
+          vehicles.push({
+            key: `preset:${uid}`,
+            label: p.label || `Vehicle #${uid}`,
+            volumeCapacityM3: Number(p.volume_capacity_m3) || 12,
+            weightCapacityKg: Number(p.weight_capacity_kg) || 1500,
+            meta: {
+              kind: "preset",
+              armadaUserId: uid,
+              armadaUsername: "",
+              userDisplayName: p.label || "",
+              fullVolumeCapacityM3: Number(p.volume_capacity_m3) || 12,
+              fullWeightCapacityKg: Number(p.weight_capacity_kg) || 1500,
+            },
+          });
+        }
+      }
+
+      if (!vehicles.length) {
+        json(res, 400, {
+          error:
+            fleetMode === "jobs"
+              ? "No open jobs with residual capacity for this date"
+              : "No vehicles available — create open jobs and/or save vehicle capacity presets",
+        });
+        return true;
+      }
+
+      const useDepot = depotMode === "depot";
+      const depotIndex = useDepot ? 0 : null;
+      const points = useDepot
+        ? [{ lat: depotLat, lon: depotLon }, ...orders.map((o) => ({ lat: o.lat, lon: o.lon }))]
+        : orders.map((o) => ({ lat: o.lat, lon: o.lon }));
+
+      if (points.length > 80) {
+        json(res, 400, {
+          error: `Too many points for matrix (${points.length}). Cap is 80 (depot + orders).`,
+        });
+        return true;
+      }
+
+      const matrix = await getDistanceMatrix(points);
+      const plan = planCvrp({
+        orders,
+        vehicles,
+        matrixKm: matrix.matrixKm,
+        points,
+        depotIndex,
+        roundtrip: useDepot && roundtrip,
+      });
+
+      const preview = {
+        serviceDate,
+        fleetMode,
+        depotMode,
+        apply: false,
+        engine: matrix.engine,
+        warning: matrix.warning || null,
+        depot: useDepot ? { lat: depotLat, lon: depotLon } : null,
+        roundtrip: plan.roundtrip,
+        routes: plan.routes,
+        unassigned: [...plan.unassigned, ...skipped],
+        vehicleCount: vehicles.length,
+        orderCount: orders.length,
+      };
+
+      if (!apply) {
+        json(res, 200, { plan: preview });
+        return true;
+      }
+
+      // Apply: create jobs for presets, assign orders in planned order, set sort_order
+      const applied = [];
+      for (const route of plan.routes) {
+        let jobId = route.meta?.jobId || null;
+        if (!jobId && route.meta?.kind === "preset") {
+          const uid = route.meta.armadaUserId;
+          const title = String(route.label || `Auto · #${uid}`).slice(0, 200);
+          const inserted = await dbQuery(
+            `INSERT INTO dispatch_jobs (
+               tenant_id, status, title,
+               armada_user_id, armada_username, user_display_name,
+               volume_capacity_m3, weight_capacity_kg, service_date
+             ) VALUES ($1,'draft',$2,$3,$4,$5,$6,$7,$8)
+             RETURNING id`,
+            [
+              dbTenant.id,
+              title,
+              uid,
+              null,
+              route.meta.userDisplayName || title,
+              route.meta.fullVolumeCapacityM3 || route.volumeCapacityM3,
+              route.meta.fullWeightCapacityKg || route.weightCapacityKg,
+              serviceDate,
+            ],
+          );
+          jobId = inserted.rows[0].id;
+        }
+        if (!jobId) continue;
+
+        // Assign in route order
+        let sortBase = (await loadStops(jobId)).length;
+        for (const oid of route.orderIds) {
+          const ord = await dbQuery(
+            `SELECT * FROM dispatch_orders
+             WHERE id = $1 AND tenant_id = $2 AND status = 'pending'`,
+            [oid, dbTenant.id],
+          );
+          const o = ord.rows[0];
+          if (!o) continue;
+          const inserted = await dbQuery(
+            `INSERT INTO dispatch_stops (
+               job_id, sort_order, name, address, lat, lon, notes,
+               zone, volume_m3, weight_kg, window_start, window_end, order_id
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+             RETURNING id`,
+            [
+              jobId,
+              sortBase++,
+              o.customer_name || o.external_ref || `Stop ${sortBase}`,
+              o.address,
+              o.lat,
+              o.lon,
+              o.notes,
+              o.zone,
+              o.volume_m3,
+              o.weight_kg,
+              o.window_start,
+              o.window_end,
+              o.id,
+            ],
+          );
+          await dbQuery(
+            `UPDATE dispatch_orders
+             SET status = 'assigned', job_id = $1, stop_id = $2, updated_at = now()
+             WHERE id = $3`,
+            [jobId, inserted.rows[0].id, o.id],
+          );
+        }
+        await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [jobId]);
+        const row = await loadJob(dbTenant.id, jobId);
+        const stops = await loadStops(jobId);
+        applied.push({
+          ...route,
+          jobId,
+          job: publicJob(row, stops),
+        });
+      }
+
+      json(res, 200, {
+        plan: {
+          ...preview,
+          apply: true,
+          routes: applied,
+        },
       });
       return true;
     }

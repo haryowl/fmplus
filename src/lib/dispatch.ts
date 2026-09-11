@@ -247,11 +247,18 @@ export async function patchDispatchJob(
   return data.job;
 }
 
-export async function assignOrdersToJob(jobId: string, orderIds: string[]): Promise<DispatchJob> {
+export async function assignOrdersToJob(
+  jobId: string,
+  orderIds: string[],
+  opts?: { rejectOverCapacity?: boolean },
+): Promise<DispatchJob> {
   const res = await fetch(`/api/dispatch/jobs/${encodeURIComponent(jobId)}/assign-orders`, {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
-    body: JSON.stringify({ orderIds }),
+    body: JSON.stringify({
+      orderIds,
+      rejectOverCapacity: opts?.rejectOverCapacity === true,
+    }),
   });
   const data = (await res.json().catch(() => ({}))) as { job?: DispatchJob; error?: string };
   if (!res.ok) throw new Error(data.error || `Assign ${res.status}`);
@@ -292,6 +299,61 @@ export async function optimizeJobStops(jobId: string): Promise<{
   if (!res.ok) throw new Error(data.error || `Optimize ${res.status}`);
   if (!data.job) throw new Error("Optimize failed");
   return { job: data.job, route: data.route || null };
+}
+
+export type DispatchFleetMode = "jobs" | "presets" | "both";
+export type DispatchDepotMode = "open" | "depot";
+
+export type DispatchPlanDayRoute = {
+  key: string;
+  label: string;
+  jobId?: string;
+  orderIds: string[];
+  volumeUsed: number;
+  weightUsed: number;
+  volumeCapacityM3: number;
+  weightCapacityKg: number;
+  utilizationPct: number;
+  distanceKm: number;
+  meta?: Record<string, unknown>;
+};
+
+export type DispatchPlanDayResult = {
+  serviceDate: string;
+  fleetMode: DispatchFleetMode;
+  depotMode: DispatchDepotMode;
+  apply: boolean;
+  engine: string;
+  warning: string | null;
+  depot: { lat: number; lon: number } | null;
+  roundtrip: boolean;
+  routes: DispatchPlanDayRoute[];
+  unassigned: { orderId: string; label?: string; reason: string }[];
+  vehicleCount: number;
+  orderCount: number;
+};
+
+export async function planDispatchDay(body: {
+  serviceDate: string;
+  fleetMode: DispatchFleetMode;
+  depotMode: DispatchDepotMode;
+  apply?: boolean;
+  roundtrip?: boolean;
+  depotLat?: number | null;
+  depotLon?: number | null;
+}): Promise<DispatchPlanDayResult> {
+  const res = await fetch("/api/dispatch/plan-day", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    plan?: DispatchPlanDayResult;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Plan day ${res.status}`);
+  if (!data.plan) throw new Error("Plan day failed");
+  return data.plan;
 }
 
 export async function fetchDispatchFieldUsers(): Promise<DispatchFieldUser[]> {

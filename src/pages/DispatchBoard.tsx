@@ -23,6 +23,7 @@ import {
   optimizeJobStops,
   patchDispatchJob,
   patchDispatchOrder,
+  planDispatchDay,
   returnStopToInbox,
   shiftServiceDate,
   todayServiceDate,
@@ -30,9 +31,12 @@ import {
   utilizationTone,
   withTenantQuery,
   type DispatchFieldUser,
+  type DispatchFleetMode,
+  type DispatchDepotMode,
   type DispatchJob,
   type DispatchOrder,
   type DispatchPhoto,
+  type DispatchPlanDayResult,
   type DispatchStatus,
   type VehicleCapacity,
 } from "../lib/dispatch";
@@ -124,6 +128,13 @@ export default function DispatchBoard() {
   const [vehicleCaps, setVehicleCaps] = useState<VehicleCapacity[]>([]);
   const [editVolCap, setEditVolCap] = useState("12");
   const [editWtCap, setEditWtCap] = useState("1500");
+  const [showPlanDay, setShowPlanDay] = useState(false);
+  const [fleetMode, setFleetMode] = useState<DispatchFleetMode>("both");
+  const [depotMode, setDepotMode] = useState<DispatchDepotMode>("open");
+  const [depotLat, setDepotLat] = useState("");
+  const [depotLon, setDepotLon] = useState("");
+  const [planRoundtrip, setPlanRoundtrip] = useState(false);
+  const [planPreview, setPlanPreview] = useState<DispatchPlanDayResult | null>(null);
   const [jobRoute, setJobRoute] = useState<RouteGeometryResult | null>(null);
   const [routeBusy, setRouteBusy] = useState(false);
 
@@ -622,12 +633,42 @@ export default function DispatchBoard() {
     setBusy(true);
     setError("");
     try {
-      const job = await assignOrdersToJob(selected.id, selectedOrderIds);
+      const job = await assignOrdersToJob(selected.id, selectedOrderIds, {
+        rejectOverCapacity: true,
+      });
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
       setSelectedOrderIds([]);
       setReload((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Assign failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runPlanDay(apply: boolean) {
+    setBusy(true);
+    setError("");
+    try {
+      const dLat = depotLat.trim() ? Number(depotLat) : null;
+      const dLon = depotLon.trim() ? Number(depotLon) : null;
+      const plan = await planDispatchDay({
+        serviceDate: planDate,
+        fleetMode,
+        depotMode,
+        apply,
+        roundtrip: planRoundtrip,
+        depotLat: depotMode === "depot" ? dLat : null,
+        depotLon: depotMode === "depot" ? dLon : null,
+      });
+      setPlanPreview(plan);
+      if (apply) {
+        setShowPlanDay(false);
+        setSelectedOrderIds([]);
+        setReload((n) => n + 1);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Plan day failed");
     } finally {
       setBusy(false);
     }
@@ -787,6 +828,17 @@ export default function DispatchBoard() {
             <button type="button" className="btn-secondary" disabled={loading} onClick={() => setReload((n) => n + 1)}>
               Refresh
             </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setShowPlanDay((v) => !v);
+                setPlanPreview(null);
+                setShowNewJob(false);
+              }}
+            >
+              {showPlanDay ? "Close plan" : "Auto-plan day"}
+            </button>
             <button type="button" className="btn btn-primary" onClick={() => setShowNewJob((v) => !v)}>
               {showNewJob ? "Close" : "New job"}
             </button>
@@ -797,6 +849,136 @@ export default function DispatchBoard() {
           <p className="dispatch-alert" role="alert">
             {error || bootError}
           </p>
+        )}
+
+        {showPlanDay && (
+          <section className="dispatch-rail dispatch-create dispatch-plan-day">
+            <header className="dispatch-pane-head">
+              <p className="dispatch-eyebrow">CVRP · {formatServiceDateLabel(planDate)}</p>
+              <h2>Auto-plan day</h2>
+            </header>
+            <div className="dispatch-create-grid">
+              <div className="field">
+                <label htmlFor="dispatch-fleet-mode">Fleet mode</label>
+                <select
+                  id="dispatch-fleet-mode"
+                  value={fleetMode}
+                  onChange={(e) => setFleetMode(e.target.value as DispatchFleetMode)}
+                >
+                  <option value="both">Open jobs + capacity presets</option>
+                  <option value="jobs">Open jobs only</option>
+                  <option value="presets">Capacity presets only (create jobs on apply)</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="dispatch-depot-mode">Depot mode</label>
+                <select
+                  id="dispatch-depot-mode"
+                  value={depotMode}
+                  onChange={(e) => setDepotMode(e.target.value as DispatchDepotMode)}
+                >
+                  <option value="open">Open tours (no depot)</option>
+                  <option value="depot">From depot</option>
+                </select>
+              </div>
+              {depotMode === "depot" ? (
+                <>
+                  <div className="field">
+                    <label htmlFor="dispatch-depot-lat">Depot lat</label>
+                    <input
+                      id="dispatch-depot-lat"
+                      value={depotLat}
+                      onChange={(e) => setDepotLat(e.target.value)}
+                      placeholder="-6.1754"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="dispatch-depot-lon">Depot lon</label>
+                    <input
+                      id="dispatch-depot-lon"
+                      value={depotLon}
+                      onChange={(e) => setDepotLon(e.target.value)}
+                      placeholder="106.8272"
+                    />
+                  </div>
+                  <label className="dispatch-plan-check">
+                    <input
+                      type="checkbox"
+                      checked={planRoundtrip}
+                      onChange={(e) => setPlanRoundtrip(e.target.checked)}
+                    />
+                    Return to depot (roundtrip)
+                  </label>
+                </>
+              ) : null}
+            </div>
+            <p className="dispatch-search-hint">
+              Packs pending orders onto vehicles under volume + weight caps using road distances when OSRM is up.
+              Preview first, then apply.
+            </p>
+            <div className="dispatch-create-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy}
+                onClick={() => void runPlanDay(false)}
+              >
+                Preview plan
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy || !planPreview}
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      `Apply plan for ${formatServiceDateLabel(planDate)}? This assigns orders to jobs (and may create jobs from presets).`,
+                    )
+                  ) {
+                    return;
+                  }
+                  void runPlanDay(true);
+                }}
+              >
+                Apply plan
+              </button>
+            </div>
+            {planPreview ? (
+              <div className="dispatch-plan-preview">
+                <p className="dispatch-eyebrow">
+                  Preview · {planPreview.engine}
+                  {planPreview.warning ? ` · ${planPreview.warning}` : ""}
+                </p>
+                <p className="dispatch-search-hint">
+                  {planPreview.routes.length} route(s) · {planPreview.orderCount} orders considered ·{" "}
+                  {planPreview.unassigned.length} unassigned
+                </p>
+                <ul className="dispatch-plan-routes">
+                  {planPreview.routes.map((r) => (
+                    <li key={r.key}>
+                      <strong>{r.label}</strong>
+                      <span>
+                        {r.orderIds.length} stops · {r.utilizationPct}% · {r.distanceKm} km · {r.volumeUsed}/
+                        {r.volumeCapacityM3} m³ · {r.weightUsed}/{r.weightCapacityKg} kg
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {planPreview.unassigned.length > 0 ? (
+                  <p className="dispatch-search-hint">
+                    Unassigned:{" "}
+                    {planPreview.unassigned
+                      .slice(0, 8)
+                      .map((u) => u.label || u.orderId)
+                      .join(", ")}
+                    {planPreview.unassigned.length > 8
+                      ? ` (+${planPreview.unassigned.length - 8} more)`
+                      : ""}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
         )}
 
         {showNewJob && (
