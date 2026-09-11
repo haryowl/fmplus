@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { STREET_TILE } from "../lib/mapTiles";
 import { formatLiters } from "../lib/format";
 import type { RefillEvent } from "../lib/metrics";
 import { offsetToMinutes } from "../lib/time";
@@ -31,7 +32,7 @@ type Basemap = "satellite" | "streets" | "terrain";
 
 const BASEMAPS: Record<
   Basemap,
-  { url: string; maxZoom: number; attribution: string }
+  { url: string; maxZoom: number; attribution: string; subdomains?: string | string[] }
 > = {
   satellite: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -40,15 +41,17 @@ const BASEMAPS: Record<
       'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
   },
   streets: {
-    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    maxZoom: 18,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    url: STREET_TILE.url,
+    maxZoom: STREET_TILE.maxZoom,
+    attribution: STREET_TILE.attribution,
+    subdomains: STREET_TILE.subdomains,
   },
   terrain: {
     url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
     maxZoom: 17,
     attribution:
       '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
+    subdomains: "abc",
   },
 };
 
@@ -271,6 +274,7 @@ export function TrackMap({ data, refills = [], timezone = "+08:00" }: Props) {
     tileRef.current = L.tileLayer(spec.url, {
       attribution: spec.attribution,
       maxZoom: spec.maxZoom,
+      ...(spec.subdomains ? { subdomains: spec.subdomains } : {}),
     }).addTo(map);
     tileRef.current.bringToBack();
   }, [basemap, mapReady]);

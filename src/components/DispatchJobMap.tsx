@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { STREET_TILE, streetTileOptions } from "../lib/mapTiles";
 import type { DispatchStop } from "../lib/dispatch";
 
 type DraftPin = { lat: number; lon: number };
@@ -69,10 +70,7 @@ export function DispatchJobMap({
     const el = elRef.current;
     if (!el || mapRef.current) return;
     const map = L.map(el, { scrollWheelZoom: true }).setView([-6.9175, 107.6191], 12);
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(map);
+    L.tileLayer(STREET_TILE.url, streetTileOptions()).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
     map.on("click", (e) => {
       clickRef.current?.(e.latlng.lat, e.latlng.lng);

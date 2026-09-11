@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { STREET_TILE, streetTileOptions } from "../lib/mapTiles";
 import { formatSpeed } from "../lib/format";
 import { ageLabel } from "../lib/lastStatus";
 import type { LastStatusRow } from "../lib/lastStatus";
@@ -60,10 +61,7 @@ export function LiveOpsMap({ rows, now, fitKey, selectedId, onSelect }: Props) {
     const el = elRef.current;
     if (!el || mapRef.current) return;
     const map = L.map(el, { scrollWheelZoom: true }).setView([-2.5, 118], 5);
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(map);
+    L.tileLayer(STREET_TILE.url, streetTileOptions()).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
     return () => {

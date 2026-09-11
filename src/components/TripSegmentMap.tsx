@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { STREET_TILE, streetTileOptions } from "../lib/mapTiles";
 import type { TripSegment } from "../lib/tripSegments";
 
 export type MapFocusPoint = {
@@ -73,10 +74,7 @@ export function TripSegmentMap({ segments, selectedId, focusPoint = null, onSele
     const el = hostRef.current;
     if (!el || mapRef.current) return;
     const map = L.map(el, { scrollWheelZoom: true }).setView([-2.5, 118], 5);
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(map);
+    L.tileLayer(STREET_TILE.url, streetTileOptions()).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
     focusLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
