@@ -80,7 +80,10 @@ let patchedProcessWay = false;
     if (end > open) {
       const inner = text.slice(open + 1, end);
       if (!inner.includes("ganjil_genap")) {
-        const insert = inner.replace(/\s*$/, "") + "\n      Set {'ganjil_genap'},\n    ";
+        // Ensure a comma after the last Set { ... } entry
+        let body = inner.replace(/\s*$/, "");
+        if (!/,\s*$/.test(body)) body += ",";
+        const insert = `${body}\n      Set {'ganjil_genap'},\n    `;
         text = text.slice(0, open + 1) + insert + text.slice(end);
       }
       patchedExcludable = true;
