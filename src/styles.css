@@ -4273,20 +4273,45 @@ html.onesheet-root body {
 
 .dispatch-cap-edit {
   display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.dispatch-cap-edit .dispatch-eyebrow {
+  margin: 0;
+}
+
+.dispatch-cap-edit-fields {
+  display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin-top: 10px;
+  min-width: 0;
 }
 
-.dispatch-cap-edit .btn-secondary {
-  grid-column: span 1;
+.dispatch-cap-edit-fields .field {
+  min-width: 0;
 }
 
-@media (min-width: 720px) {
-  .dispatch-cap-edit {
-    grid-template-columns: 1fr 1fr auto auto;
-    align-items: end;
-  }
+.dispatch-cap-edit-fields input {
+  min-width: 0;
+}
+
+.dispatch-cap-edit-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.dispatch-cap-edit-actions .btn-secondary {
+  width: 100%;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
+  padding: 8px 10px;
+  height: auto;
 }
 
 .dispatch-cap-label {

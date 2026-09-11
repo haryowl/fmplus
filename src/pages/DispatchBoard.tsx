@@ -802,26 +802,28 @@ export default function DispatchBoard() {
                   })}
                 </select>
               </label>
-              <label className="field">
-                Volume capacity (m³)
+              <div className="field">
+                <label htmlFor="dispatch-new-cap-vol">Volume capacity (m³)</label>
                 <input
+                  id="dispatch-new-cap-vol"
                   type="number"
                   min="0.1"
                   step="0.1"
                   value={jobVolCap}
                   onChange={(e) => setJobVolCap(e.target.value)}
                 />
-              </label>
-              <label className="field">
-                Weight capacity (kg)
+              </div>
+              <div className="field">
+                <label htmlFor="dispatch-new-cap-wt">Weight capacity (kg)</label>
                 <input
+                  id="dispatch-new-cap-wt"
                   type="number"
                   min="1"
                   step="1"
                   value={jobWtCap}
                   onChange={(e) => setJobWtCap(e.target.value)}
                 />
-              </label>
+              </div>
             </div>
             <p className="dispatch-search-hint">
               Caps follow the vehicle preset when you pick a vehicle. Change them here for this job only, or save as
@@ -1213,54 +1215,61 @@ export default function DispatchBoard() {
                 </div>
 
                 <div className="dispatch-cap-edit">
-                  <label className="field">
-                    Cap m³
-                    <input
-                      type="number"
-                      min="0.1"
-                      step="0.1"
-                      value={editVolCap}
+                  <p className="dispatch-eyebrow">Vehicle capacity</p>
+                  <div className="dispatch-cap-edit-fields">
+                    <div className="field">
+                      <label htmlFor="dispatch-cap-vol">Volume (m³)</label>
+                      <input
+                        id="dispatch-cap-vol"
+                        type="number"
+                        min="0.1"
+                        step="0.1"
+                        value={editVolCap}
+                        disabled={busy || selected.status === "done" || selected.status === "cancelled"}
+                        onChange={(e) => setEditVolCap(e.target.value)}
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="dispatch-cap-wt">Weight (kg)</label>
+                      <input
+                        id="dispatch-cap-wt"
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={editWtCap}
+                        disabled={busy || selected.status === "done" || selected.status === "cancelled"}
+                        onChange={(e) => setEditWtCap(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="dispatch-cap-edit-actions">
+                    <button
+                      type="button"
+                      className="btn-secondary"
                       disabled={busy || selected.status === "done" || selected.status === "cancelled"}
-                      onChange={(e) => setEditVolCap(e.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    Cap kg
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={editWtCap}
-                      disabled={busy || selected.status === "done" || selected.status === "cancelled"}
-                      onChange={(e) => setEditWtCap(e.target.value)}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    disabled={busy || selected.status === "done" || selected.status === "cancelled"}
-                    onClick={() => void handleApplyJobCapacity()}
-                  >
-                    Apply to job
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    disabled={
-                      busy ||
-                      !selected.armadaUserId ||
-                      selected.status === "done" ||
-                      selected.status === "cancelled"
-                    }
-                    title={
-                      selected.armadaUserId
-                        ? "Remember this capacity for the Armada vehicle"
-                        : "Job needs an Armada vehicle"
-                    }
-                    onClick={() => void handleSaveVehicleDefault()}
-                  >
-                    Save as vehicle default
-                  </button>
+                      onClick={() => void handleApplyJobCapacity()}
+                    >
+                      Apply to job
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={
+                        busy ||
+                        !selected.armadaUserId ||
+                        selected.status === "done" ||
+                        selected.status === "cancelled"
+                      }
+                      title={
+                        selected.armadaUserId
+                          ? "Remember this capacity for the Armada vehicle"
+                          : "Job needs an Armada vehicle"
+                      }
+                      onClick={() => void handleSaveVehicleDefault()}
+                    >
+                      Save as vehicle default
+                    </button>
+                  </div>
                 </div>
 
                 <div className="dispatch-detail-actions">
