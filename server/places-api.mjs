@@ -29,6 +29,28 @@ function pickName(row) {
   return String(row?.name ?? row?.Name ?? row?.label ?? row?.Label ?? "").trim();
 }
 
+function pickCoord(row, ...keys) {
+  for (const key of keys) {
+    if (row == null || typeof row !== "object") break;
+    if (key in row && row[key] != null && row[key] !== "") {
+      const n = Number(row[key]);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
+}
+
+function pickPoiLatLon(p) {
+  const pos = p?.position ?? p?.Position ?? null;
+  const lat = pickCoord(pos, "latitude", "Latitude", "lat", "Lat");
+  const lon = pickCoord(pos, "longitude", "Longitude", "lon", "Lon", "lng", "Lng");
+  if (lat != null && lon != null) return { lat, lon };
+  return {
+    lat: pickCoord(p, "lat", "Lat", "latitude", "Latitude"),
+    lon: pickCoord(p, "lon", "Lon", "longitude", "Longitude", "lng", "Lng"),
+  };
+}
+
 function pickId(row) {
   const n = Number(row?.id ?? row?.Id ?? row?.ID);
   return Number.isInteger(n) && n > 0 ? n : null;
@@ -277,13 +299,14 @@ export async function handlePlacesRequest(req, res) {
         for (const p of list.rows) {
           const name = pickName(p);
           if (q && !name.toLowerCase().includes(q)) continue;
+          const { lat, lon } = pickPoiLatLon(p);
           pois.push({
             id: pickId(p),
             name: name || `POI ${pickId(p) || "?"}`,
             categoryId: catId,
             categoryName: pickName(cat),
-            lat: Number(p.lat ?? p.Lat ?? p.latitude ?? p.Latitude) || null,
-            lon: Number(p.lon ?? p.Lon ?? p.longitude ?? p.Longitude) || null,
+            lat,
+            lon,
           });
         }
       }
