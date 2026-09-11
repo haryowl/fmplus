@@ -106,13 +106,25 @@ FM Plus can avoid ganjil–genap corridors when the rule is **in force** and the
 
 ```bash
 node scripts/build-osrm-fmplus-profile.mjs
-# Re-extract (example four-island graph name):
+# Confirm log shows: Patched excludable (+ ganjil_genap) and Patched process_way
+
+GRAPH=id-java-sumatra-kalimantan-sulawesi
+# Use the .osm.pbf you already merged (same basename as the graph)
 docker run --rm -t \
   -v "$PWD/data/osrm:/data" \
   -v "$PWD/osrm-profiles:/profiles" \
   ghcr.io/project-osrm/osrm-backend:latest \
-  osrm-extract -p /profiles/car-fmplus.lua /data/id-java-sumatra-kalimantan-sulawesi.osm.pbf
-# then osrm-partition + osrm-customize as in setup-osrm.sh, restart fmplus-osrm
+  osrm-extract -p /profiles/car-fmplus.lua /data/${GRAPH}.osm.pbf
+
+docker run --rm -t -v "$PWD/data/osrm:/data" ghcr.io/project-osrm/osrm-backend:latest \
+  osrm-partition /data/${GRAPH}.osrm
+
+docker run --rm -t -v "$PWD/data/osrm:/data" ghcr.io/project-osrm/osrm-backend:latest \
+  osrm-customize /data/${GRAPH}.osrm
+
+docker restart fmplus-osrm
+# or: OSRM_GRAPH=$GRAPH ./scripts/setup-osrm.sh --start-only
+systemctl restart fmplus
 ```
 
 Until that rebuild, Optimize still runs but warns that corridor exclude is unavailable.
