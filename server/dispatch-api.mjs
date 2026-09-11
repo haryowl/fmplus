@@ -1859,7 +1859,7 @@ export async function handleDispatchRequest(req, res) {
               avoidTolls: routing.avoidTolls,
               avoidMotorways: routing.avoidMotorways,
               avoidFerries: routing.avoidFerries,
-              exclude: routing.exclude.filter((c) => c !== "ganjil_genap"),
+              exclude: routing.exclude.filter((c) => c !== "ganjilgenap" && c !== "ganjil_genap"),
               plateParity: fleetParity,
               respectGanjilGenap: true,
               serviceDate,

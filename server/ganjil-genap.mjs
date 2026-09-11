@@ -1,6 +1,6 @@
 /**
  * Jakarta ganjil–genap (odd/even plate) — schedule + plate matching.
- * Hard road avoidance needs OSRM graph built with car-fmplus.lua (class ganjil_genap).
+ * Hard road avoidance needs OSRM graph built with car-fmplus.lua (class ganjilgenap).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -154,7 +154,11 @@ export function ganjilGenapDecision(input = {}) {
   const respect = input.respect !== false;
   const parity = normalizePlateParity(input.plateParity);
   const status = isGanjilGenapActive(input.at);
-  const className = String(process.env.OSRM_GANJIL_GENAP_CLASS || "ganjil_genap").trim() || "ganjil_genap";
+  const className =
+    String(process.env.OSRM_GANJIL_GENAP_CLASS || "ganjilgenap")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "") || "ganjilgenap";
   const restrictedUrl = String(
     process.env.OSRM_BASE_URL_RESTRICTED || process.env.OSRM_RESTRICTED_URL || "",
   )

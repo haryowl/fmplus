@@ -60,8 +60,11 @@ export async function getDistanceMatrix(points, routing = null) {
       parsed = null;
     }
     if (!res.ok || !parsed || parsed.code !== "Ok") {
-      // Unknown exclude class (graph built without car-fmplus) → retry without ganjil_genap
-      const gg = String(process.env.OSRM_GANJIL_GENAP_CLASS || "ganjil_genap").toLowerCase();
+      // Unknown exclude class (graph built without car-fmplus) → retry without ganjilgenap
+      const gg =
+        String(process.env.OSRM_GANJIL_GENAP_CLASS || "ganjilgenap")
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "") || "ganjilgenap";
       if (excludeQ.includes(gg) && opts.exclude.includes(gg)) {
         const fallbackExclude = opts.exclude.filter((c) => c !== gg);
         const retryOpts = { ...opts, exclude: fallbackExclude };
@@ -94,7 +97,7 @@ export async function getDistanceMatrix(points, routing = null) {
             unreachablePairs,
             routing: retryOpts,
             warning:
-              "Ganjil–genap avoid requested but OSRM graph has no ganjil_genap class — rebuild with osrm-profiles/car-fmplus.lua (see docs/osrm.md). Routing without corridor exclude.",
+              "Ganjil–genap avoid requested but OSRM graph has no ganjilgenap class — rebuild with osrm-profiles/car-fmplus.lua (see docs/osrm.md). Routing without corridor exclude.",
           };
         }
       }

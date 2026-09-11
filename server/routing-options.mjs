@@ -1,10 +1,10 @@
 /**
  * OSRM car-profile exclude flags + Jakarta ganjil–genap resolution.
- * Stock: toll, motorway, ferry. Custom: ganjil_genap (car-fmplus.lua rebuild).
+ * Stock: toll, motorway, ferry. Custom: ganjilgenap (car-fmplus.lua rebuild).
  */
 import { ganjilGenapDecision, jakartaDateTimeFromYmdAndHm, normalizePlateParity } from "./ganjil-genap.mjs";
 
-export const OSRM_EXCLUDE_CLASSES = ["toll", "motorway", "ferry", "ganjil_genap"];
+export const OSRM_EXCLUDE_CLASSES = ["toll", "motorway", "ferry", "ganjilgenap"];
 
 /**
  * @typedef {{
@@ -23,9 +23,10 @@ export const OSRM_EXCLUDE_CLASSES = ["toll", "motorway", "ferry", "ganjil_genap"
  */
 
 function allowedExcludeClass(s) {
-  const name = String(process.env.OSRM_GANJIL_GENAP_CLASS || "ganjil_genap")
+  const name = String(process.env.OSRM_GANJIL_GENAP_CLASS || "ganjilgenap")
     .toLowerCase()
-    .trim();
+    .trim()
+    .replace(/[^a-z0-9]/g, "");
   if (OSRM_EXCLUDE_CLASSES.includes(s)) return true;
   if (name && s === name) return true;
   return false;
@@ -97,7 +98,7 @@ export function parseRoutingOptions(raw) {
 }
 
 /**
- * Resolve plate/time → maybe add ganjil_genap exclude or restricted OSRM base.
+ * Resolve plate/time → maybe add ganjilgenap exclude or restricted OSRM base.
  * @param {RoutingOptions} opts
  */
 export function applyGanjilGenapToRouting(opts) {

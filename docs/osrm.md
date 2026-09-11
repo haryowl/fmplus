@@ -102,11 +102,11 @@ Then open `/route?k=…` — header should say **OSRM roads**. Dispatch Jobs sho
 FM Plus can avoid ganjil–genap corridors when the rule is **in force** and the vehicle plate **does not match** the calendar date (or plate is unknown).
 
 1. **App logic** (no rebuild): schedule in `server/data/jakarta-ganjil-genap.json`, plate parity on vehicle capacity, UI checkboxes on Route plan / Dispatch.
-2. **Hard avoid in OSRM** (rebuild once): tag corridors with excludable class `ganjil_genap`:
+2. **Hard avoid in OSRM** (rebuild once): tag corridors with excludable class `ganjilgenap` (letters/digits only — OSRM rejects underscores):
 
 ```bash
 node scripts/build-osrm-fmplus-profile.mjs
-# Confirm log shows: Patched excludable (+ ganjil_genap) and Patched process_way
+# Confirm log shows: Patched excludable (+ ganjilgenap) and Patched process_way
 
 GRAPH=id-java-sumatra-kalimantan-sulawesi
 # Use the .osm.pbf you already merged (same basename as the graph)
