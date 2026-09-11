@@ -26,6 +26,8 @@ export type DispatchStop = {
   weightKg?: number | null;
   windowStart?: string;
   windowEnd?: string;
+  /** Minutes at stop; null/undefined = use plan default */
+  serviceMinutes?: number | null;
   status: DispatchStopStatus;
   arrivedAt: string | null;
   completedAt: string | null;
@@ -73,6 +75,8 @@ export type DispatchOrder = {
   windowEnd: string;
   /** Promised / plan day YYYY-MM-DD */
   serviceDate: string;
+  /** Minutes at stop; null = use Auto-plan Service min / stop */
+  serviceMinutes: number | null;
   status: DispatchOrderStatus;
   jobId: string | null;
   stopId: string | null;
@@ -141,6 +145,21 @@ export function formatDispatchWindow(stop: { windowStart?: string; windowEnd?: s
   const b = (stop.windowEnd || "").trim();
   if (a && b) return `${a}–${b}`;
   return a || b || "";
+}
+
+/** e.g. "12 min stop" or empty when unset (plan default). */
+export function formatDispatchServiceMinutes(
+  stop: { serviceMinutes?: number | null },
+  fallbackDefault?: number | null,
+): string {
+  const raw = stop.serviceMinutes;
+  if (raw != null && Number.isFinite(Number(raw))) {
+    return `${Math.round(Number(raw))} min stop`;
+  }
+  if (fallbackDefault != null && Number.isFinite(Number(fallbackDefault))) {
+    return `${Math.round(Number(fallbackDefault))} min stop`;
+  }
+  return "";
 }
 
 export function utilizationTone(pct: number | undefined): "ok" | "warn" | "over" {
@@ -331,6 +350,8 @@ export type DispatchPlanDayStop = {
   orderId: string | null;
   label: string;
   arriveAt: string;
+  departAt?: string;
+  serviceMinutes?: number;
   windowStart: string;
   windowEnd: string;
   late: boolean;
@@ -611,6 +632,7 @@ export async function createDispatchOrder(body: {
   windowStart?: string;
   windowEnd?: string;
   serviceDate?: string;
+  serviceMinutes?: number | null;
   notes?: string;
 }): Promise<DispatchOrder> {
   const res = await fetch("/api/dispatch/orders", {

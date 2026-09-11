@@ -23,6 +23,7 @@ import {
   fetchVehicleCapacities,
   fetchDispatchDepot,
   formatDispatchWindow,
+  formatDispatchServiceMinutes,
   formatServiceDateLabel,
   optimizeJobStops,
   patchDispatchDepot,
@@ -77,6 +78,7 @@ const emptyOrderForm = {
   weightKg: "",
   windowStart: "08:00",
   windowEnd: "12:00",
+  serviceMinutes: "",
   lat: null as number | null,
   lon: null as number | null,
 };
@@ -196,8 +198,8 @@ export default function DispatchBoard() {
 
   const stopRouteMeta = useMemo(() => {
     if (!selected?.stops?.length) return [];
-    return buildStopRouteMeta(selected.stops, jobRoute?.legs || []);
-  }, [selected, jobRoute]);
+    return buildStopRouteMeta(selected.stops, jobRoute?.legs || [], Number(planServiceMin) || 8);
+  }, [selected, jobRoute, planServiceMin]);
 
   const poiOptions = useMemo(
     () => listPoiDropdownOptions(poiCatalog, poiFilter),
@@ -695,6 +697,7 @@ export default function DispatchBoard() {
       weightKg: o.weightKg != null ? String(o.weightKg) : "",
       windowStart: o.windowStart || "",
       windowEnd: o.windowEnd || "",
+      serviceMinutes: o.serviceMinutes != null ? String(o.serviceMinutes) : "",
       lat: o.lat,
       lon: o.lon,
     });
@@ -724,6 +727,10 @@ export default function DispatchBoard() {
       weightKg: orderForm.weightKg === "" ? null : Number(orderForm.weightKg),
       windowStart: orderForm.windowStart.trim() || undefined,
       windowEnd: orderForm.windowEnd.trim() || undefined,
+      serviceMinutes:
+        orderForm.serviceMinutes.trim() === ""
+          ? null
+          : Number(orderForm.serviceMinutes),
       serviceDate: planDate,
       lat: orderForm.lat,
       lon: orderForm.lon,
@@ -1190,7 +1197,7 @@ export default function DispatchBoard() {
                 />
               </div>
               <div className="field">
-                <label htmlFor="dispatch-service-min">Service min / stop</label>
+                <label htmlFor="dispatch-service-min">Service min / stop (default)</label>
                 <input
                   id="dispatch-service-min"
                   type="number"
@@ -1590,6 +1597,7 @@ export default function DispatchBoard() {
                           {r.stops.map((s, idx) => (
                             <li key={`${r.key}-${s.orderId || idx}`} className={s.late ? "is-late" : undefined}>
                               {s.arriveAt} · {s.label || s.orderId || `Stop ${idx + 1}`}
+                              {s.serviceMinutes != null ? ` · ${s.serviceMinutes} min stop` : ""}
                               {s.windowEnd ? ` (≤${s.windowEnd})` : ""}
                               {s.late ? " · late" : ""}
                             </li>
@@ -1947,6 +1955,24 @@ export default function DispatchBoard() {
                     <p className="dispatch-window-warn">End time should be after start time.</p>
                   ) : null}
                 </div>
+                <div className="dispatch-order-form-row dispatch-order-form-row-2">
+                  <label className="field">
+                    Stop time (min)
+                    <input
+                      type="number"
+                      min={0}
+                      max={120}
+                      step={1}
+                      value={orderForm.serviceMinutes}
+                      onChange={(e) => setOrderForm((f) => ({ ...f, serviceMinutes: e.target.value }))}
+                      placeholder={`Default ${planServiceMin || 8}`}
+                    />
+                  </label>
+                  <p className="dispatch-search-hint" style={{ alignSelf: "end", margin: 0 }}>
+                    Time at the location for delivery/pickup. Leave blank to use Auto-plan “Service min /
+                    stop”.
+                  </p>
+                </div>
                 <div className="dispatch-create-actions">
                   <button
                     type="button"
@@ -1999,6 +2025,12 @@ export default function DispatchBoard() {
                             {o.weightKg != null ? `${o.weightKg} kg` : "—"}
                             <span aria-hidden>·</span>
                             {formatDispatchWindow(o) || "Open window"}
+                            {formatDispatchServiceMinutes(o) ? (
+                              <>
+                                <span aria-hidden>·</span>
+                                {formatDispatchServiceMinutes(o)}
+                              </>
+                            ) : null}
                           </span>
                           <span className="dispatch-order-actions">
                             <button
@@ -2399,6 +2431,9 @@ export default function DispatchBoard() {
                                 {stop.zone ? ` · ${stop.zone}` : ""}
                                 {stop.volumeM3 != null ? ` · ${stop.volumeM3} m³` : ""}
                                 {formatDispatchWindow(stop) ? ` · ${formatDispatchWindow(stop)}` : ""}
+                                {formatDispatchServiceMinutes(stop, Number(planServiceMin) || 8)
+                                  ? ` · ${formatDispatchServiceMinutes(stop, Number(planServiceMin) || 8)}`
+                                  : ""}
                               </span>
                               <span className="dispatch-stop-leg">
                                 {i === 0 ? (

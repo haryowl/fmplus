@@ -46,6 +46,17 @@ function travelMinutes(matrix, fromIdx, toIdx) {
   return (km / SPEED_KMH) * 60;
 }
 
+/** Per-order dwell minutes; null/undefined → plan default. */
+export function resolveServiceMinutes(order, defaultMin = DEFAULT_SERVICE_MIN) {
+  const fallback = Math.max(0, Math.min(120, Number(defaultMin) || DEFAULT_SERVICE_MIN));
+  if (order == null || order.serviceMinutes == null || order.serviceMinutes === "") {
+    return fallback;
+  }
+  const n = Number(order.serviceMinutes);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(120, n));
+}
+
 /**
  * Simulate arrivals along a customer route (matrix indices).
  * Returns per-stop { matrixIdx, arriveMin, departMin, late, early }.
@@ -70,7 +81,8 @@ export function simulateRouteSchedule({
     const early = winStart != null && arriveMin < winStart;
     const late = winEnd != null && arriveMin > winEnd;
     if (early) t = winStart; // wait until window opens
-    const departMin = t + serviceMinutes;
+    const svc = resolveServiceMinutes(order, serviceMinutes);
+    const departMin = t + svc;
     stops.push({
       matrixIdx: cur,
       orderId: order?.id || null,
@@ -79,6 +91,7 @@ export function simulateRouteSchedule({
       arriveAt: formatMinutesClock(arriveMin),
       departMin,
       departAt: formatMinutesClock(departMin),
+      serviceMinutes: svc,
       windowStart: order?.windowStart || "",
       windowEnd: order?.windowEnd || "",
       early,
@@ -170,7 +183,7 @@ function evaluateTwInsertion({
       return { penalty, feasible: true };
     }
     if (ws != null && t < ws) t = ws;
-    t += serviceMinutes;
+    t += resolveServiceMinutes(curOrder, serviceMinutes);
     prev = cur;
   }
   return { penalty: 0, feasible: true };
@@ -585,6 +598,8 @@ export function planCvrp({
           orderId: s.orderId,
           label: s.label,
           arriveAt: s.arriveAt,
+          departAt: s.departAt,
+          serviceMinutes: s.serviceMinutes,
           windowStart: s.windowStart,
           windowEnd: s.windowEnd,
           late: s.late,

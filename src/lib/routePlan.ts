@@ -189,10 +189,12 @@ export function parseClockToMinutes(value: string | undefined | null): number | 
 /**
  * Per-stop ETA + leg-from-previous, given ordered stops and route legs.
  * Departure = earliest windowStart, else 08:00.
+ * Optional per-stop serviceMinutes (dwell) is added after each arrival before the next leg.
  */
 export function buildStopRouteMeta(
-  stops: Array<{ windowStart?: string }>,
+  stops: Array<{ windowStart?: string; serviceMinutes?: number | null }>,
   legs: RouteLeg[],
+  defaultServiceMinutes = 0,
 ): Array<{
   legDistanceKm: number | null;
   legDurationSec: number | null;
@@ -200,18 +202,29 @@ export function buildStopRouteMeta(
 }> {
   const start =
     stops.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ?? 8 * 60;
-  let elapsed = 0;
-  return stops.map((_, i) => {
+  let elapsedMin = 0;
+  return stops.map((stop, i) => {
     if (i === 0) {
+      const svc0 =
+        stop.serviceMinutes != null && Number.isFinite(Number(stop.serviceMinutes))
+          ? Math.max(0, Number(stop.serviceMinutes))
+          : Math.max(0, defaultServiceMinutes);
+      elapsedMin = svc0;
       return { legDistanceKm: null, legDurationSec: null, eta: formatClockMinutes(start) };
     }
     const leg = legs[i - 1];
     const durationSec = leg?.durationSec ?? 0;
-    elapsed += durationSec;
+    elapsedMin += durationSec / 60;
+    const eta = formatClockMinutes(start + elapsedMin);
+    const svc =
+      stop.serviceMinutes != null && Number.isFinite(Number(stop.serviceMinutes))
+        ? Math.max(0, Number(stop.serviceMinutes))
+        : Math.max(0, defaultServiceMinutes);
+    elapsedMin += svc;
     return {
       legDistanceKm: leg?.distanceKm ?? null,
       legDurationSec: leg?.durationSec ?? null,
-      eta: formatClockMinutes(start + elapsed / 60),
+      eta,
     };
   });
 }

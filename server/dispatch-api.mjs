@@ -84,6 +84,14 @@ function numOrNull(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Dwell minutes at stop; null = use plan default. Clamped 0–120. */
+function serviceMinutesOrNull(v) {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(120, Math.round(n)));
+}
+
 function publicDepot(row) {
   return {
     id: row.id,
@@ -183,6 +191,7 @@ function publicStop(row) {
     weightKg: row.weight_kg == null ? null : Number(row.weight_kg),
     windowStart: row.window_start || "",
     windowEnd: row.window_end || "",
+    serviceMinutes: row.service_minutes == null ? null : Number(row.service_minutes),
     status: row.status || "pending",
     arrivedAt: row.arrived_at || null,
     completedAt: row.completed_at || null,
@@ -254,6 +263,7 @@ function publicOrder(row) {
     windowStart: row.window_start || "",
     windowEnd: row.window_end || "",
     serviceDate: formatServiceDate(row.service_date) || todayYmd(),
+    serviceMinutes: row.service_minutes == null ? null : Number(row.service_minutes),
     status: row.status || "pending",
     jobId: row.job_id || null,
     stopId: row.stop_id || null,
@@ -278,7 +288,7 @@ export function publicDispatchPhoto(row, urlPrefix = "/api/dispatch/photos") {
 async function loadStops(jobId) {
   const rows = await dbQuery(
     `SELECT id, order_id, sort_order, name, address, lat, lon, notes, zone,
-            volume_m3, weight_kg, window_start, window_end,
+            volume_m3, weight_kg, window_start, window_end, service_minutes,
             status, arrived_at, completed_at
      FROM dispatch_stops WHERE job_id = $1 ORDER BY sort_order ASC, created_at ASC`,
     [jobId],
@@ -368,6 +378,7 @@ function normalizeStops(raw) {
       weightKg: numOrNull(s.weightKg ?? s.weight_kg),
       windowStart: String(s.windowStart || s.window_start || "").trim().slice(0, 16) || null,
       windowEnd: String(s.windowEnd || s.window_end || "").trim().slice(0, 16) || null,
+      serviceMinutes: serviceMinutesOrNull(s.serviceMinutes ?? s.service_minutes),
       orderId: s.orderId || s.order_id || null,
       sortOrder: Number.isInteger(Number(s.sortOrder)) ? Number(s.sortOrder) : i,
     });
@@ -399,8 +410,8 @@ async function replaceStops(jobId, stops) {
     const inserted = await dbQuery(
       `INSERT INTO dispatch_stops (
          job_id, sort_order, name, address, lat, lon, notes,
-         zone, volume_m3, weight_kg, window_start, window_end, order_id
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         zone, volume_m3, weight_kg, window_start, window_end, service_minutes, order_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING id`,
       [
         jobId,
@@ -415,6 +426,7 @@ async function replaceStops(jobId, stops) {
         s.weightKg,
         s.windowStart,
         s.windowEnd,
+        s.serviceMinutes,
         s.orderId,
       ],
     );
@@ -863,8 +875,8 @@ export async function handleDispatchRequest(req, res) {
       const inserted = await dbQuery(
         `INSERT INTO dispatch_orders (
            tenant_id, external_ref, customer_name, address, lat, lon, zone,
-           volume_m3, weight_kg, window_start, window_end, notes, service_date
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+           volume_m3, weight_kg, window_start, window_end, notes, service_date, service_minutes
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          RETURNING *`,
         [
           dbTenant.id,
@@ -880,6 +892,7 @@ export async function handleDispatchRequest(req, res) {
           String(body.windowEnd || "").trim().slice(0, 16) || null,
           String(body.notes || "").trim().slice(0, 2000) || null,
           serviceDate,
+          serviceMinutesOrNull(body.serviceMinutes),
         ],
       );
       json(res, 201, { order: publicOrder(inserted.rows[0]) });
@@ -944,6 +957,10 @@ export async function handleDispatchRequest(req, res) {
         params.push(numOrNull(body.weightKg));
         sets.push(`weight_kg = $${params.length}`);
       }
+      if ("serviceMinutes" in body) {
+        params.push(serviceMinutesOrNull(body.serviceMinutes));
+        sets.push(`service_minutes = $${params.length}`);
+      }
       if ("status" in body) {
         const st = String(body.status || "").toLowerCase();
         if (!ORDER_STATUSES.includes(st)) {
@@ -986,8 +1003,9 @@ export async function handleDispatchRequest(req, res) {
              weight_kg = $7,
              window_start = $8,
              window_end = $9,
-             notes = $10
-           WHERE id = $11`,
+             notes = $10,
+             service_minutes = $11
+           WHERE id = $12`,
           [
             row.customer_name || row.external_ref || null,
             row.address,
@@ -999,6 +1017,7 @@ export async function handleDispatchRequest(req, res) {
             row.window_start,
             row.window_end,
             row.notes,
+            row.service_minutes,
             row.stop_id,
           ],
         );
@@ -1246,8 +1265,8 @@ export async function handleDispatchRequest(req, res) {
         const inserted = await dbQuery(
           `INSERT INTO dispatch_stops (
              job_id, sort_order, name, address, lat, lon, notes,
-             zone, volume_m3, weight_kg, window_start, window_end, order_id
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+             zone, volume_m3, weight_kg, window_start, window_end, service_minutes, order_id
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
            RETURNING id`,
           [
             job.id,
@@ -1262,6 +1281,7 @@ export async function handleDispatchRequest(req, res) {
             o.weight_kg,
             o.window_start,
             o.window_end,
+            o.service_minutes,
             o.id,
           ],
         );
@@ -1717,6 +1737,10 @@ export async function handleDispatchRequest(req, res) {
           label: o.customer_name || o.external_ref || o.id,
           windowStart: o.window_start || "",
           windowEnd: o.window_end || "",
+          serviceMinutes:
+            o.service_minutes == null || o.service_minutes === ""
+              ? null
+              : Number(o.service_minutes),
         });
       }
       if (!orders.length) {
@@ -2092,8 +2116,8 @@ export async function handleDispatchRequest(req, res) {
           const inserted = await dbQuery(
             `INSERT INTO dispatch_stops (
                job_id, sort_order, name, address, lat, lon, notes,
-               zone, volume_m3, weight_kg, window_start, window_end, order_id
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+               zone, volume_m3, weight_kg, window_start, window_end, service_minutes, order_id
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
              RETURNING id`,
             [
               jobId,
@@ -2108,6 +2132,7 @@ export async function handleDispatchRequest(req, res) {
               o.weight_kg,
               o.window_start,
               o.window_end,
+              o.service_minutes,
               o.id,
             ],
           );

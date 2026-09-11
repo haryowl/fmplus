@@ -134,6 +134,7 @@ function publicDispatchStop(row) {
     weightKg: row.weight_kg == null ? null : Number(row.weight_kg),
     windowStart: row.window_start || "",
     windowEnd: row.window_end || "",
+    serviceMinutes: row.service_minutes == null ? null : Number(row.service_minutes),
     status: row.status || "pending",
     arrivedAt: row.arrived_at || null,
     completedAt: row.completed_at || null,
@@ -201,7 +202,7 @@ async function loadAssignedDispatchJob(tenantId, jobId, fieldUserId) {
 async function loadDispatchStops(jobId) {
   const rows = await dbQuery(
     `SELECT id, order_id, sort_order, name, address, lat, lon, notes, zone,
-            volume_m3, weight_kg, window_start, window_end,
+            volume_m3, weight_kg, window_start, window_end, service_minutes,
             status, arrived_at, completed_at
      FROM dispatch_stops WHERE job_id = $1 ORDER BY sort_order ASC, created_at ASC`,
     [jobId],
