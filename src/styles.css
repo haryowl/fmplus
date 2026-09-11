@@ -4068,13 +4068,13 @@ html.onesheet-root body {
   color: var(--danger);
 }
 
-.dispatch-pool input,
+.dispatch-pool input:not([type="checkbox"]):not([type="radio"]),
 .dispatch-pool select,
-.dispatch-create input,
+.dispatch-create input:not([type="checkbox"]):not([type="radio"]),
 .dispatch-create select,
-.dispatch-vehicle-pane input,
+.dispatch-vehicle-pane input:not([type="checkbox"]):not([type="radio"]),
 .dispatch-vehicle-pane select,
-.dispatch-order-draft input {
+.dispatch-order-draft input:not([type="checkbox"]):not([type="radio"]) {
   height: 38px;
   border-radius: 10px;
   border: 1px solid var(--line-strong);
@@ -4582,12 +4582,28 @@ html.onesheet-root body {
 }
 
 .dispatch-plan-check {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 10px;
+  width: max-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 8px 0;
   font-size: 0.84rem;
-  color: var(--ink-soft);
+  font-weight: 500;
+  color: var(--ink);
   grid-column: 1 / -1;
+  cursor: pointer;
+}
+
+.dispatch-plan-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .dispatch-plan-preview {
