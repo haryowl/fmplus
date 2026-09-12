@@ -4868,6 +4868,82 @@ html.onesheet-root body {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  align-items: center;
+}
+
+.field-pill-done {
+  background: #e8f5ec;
+  color: #1e5c34;
+}
+
+.field-dispatch-cal {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.field-dispatch-cal-dow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.field-dispatch-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.field-dispatch-cal-empty {
+  min-height: 44px;
+}
+
+.field-dispatch-cal-day {
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.field-dispatch-cal-day:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.field-dispatch-cal-day.has-jobs {
+  border-color: var(--line);
+  background: #f7f4ef;
+  opacity: 1;
+}
+
+.field-dispatch-cal-day.is-today .field-dispatch-cal-num {
+  font-weight: 800;
+  text-decoration: underline;
+}
+
+.field-dispatch-cal-num {
+  font-size: 0.9rem;
+}
+
+.field-dispatch-cal-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9a4a2e;
 }
 
 .field-action-row {

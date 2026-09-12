@@ -34,9 +34,18 @@ export type DispatchStop = {
   windowEnd?: string;
   /** Minutes at stop; null/undefined = use plan default */
   serviceMinutes?: number | null;
+  proofRequired?: boolean;
   status: DispatchStopStatus;
   arrivedAt: string | null;
   completedAt: string | null;
+  startPhoneLat?: number | null;
+  startPhoneLon?: number | null;
+  startArmadaLat?: number | null;
+  startArmadaLon?: number | null;
+  completePhoneLat?: number | null;
+  completePhoneLon?: number | null;
+  completeArmadaLat?: number | null;
+  completeArmadaLon?: number | null;
 };
 
 export type DispatchJob = {
@@ -86,6 +95,8 @@ export type DispatchOrder = {
   serviceDate: string;
   /** Minutes at stop; null = use Auto-plan Service min / stop */
   serviceMinutes: number | null;
+  /** When true, field FINISH requires at least one POD photo */
+  proofRequired: boolean;
   status: DispatchOrderStatus;
   jobId: string | null;
   stopId: string | null;
@@ -653,6 +664,7 @@ export async function createDispatchOrder(body: {
   windowEnd?: string;
   serviceDate?: string;
   serviceMinutes?: number | null;
+  proofRequired?: boolean;
   notes?: string;
 }): Promise<DispatchOrder> {
   const res = await fetch("/api/dispatch/orders", {
@@ -736,6 +748,76 @@ export async function uploadDispatchStopPhoto(
   if (!res.ok) throw new Error(data.error || `Upload ${res.status}`);
   if (!data.photo) throw new Error("Upload failed");
   return data.photo;
+}
+
+export async function fieldDispatchCalendar(
+  from: string,
+  to: string,
+): Promise<{ date: string; jobCount: number }[]> {
+  const res = await fetch(
+    `/api/field/dispatch/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    { credentials: "include", headers: { accept: "application/json" } },
+  );
+  const data = (await res.json().catch(() => ({}))) as {
+    days?: { date: string; jobCount: number }[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Calendar ${res.status}`);
+  return data.days || [];
+}
+
+export type FieldStopPatchBody = {
+  status?: "arrived" | "done" | "skipped";
+  notes?: string;
+  phoneLat?: number | null;
+  phoneLon?: number | null;
+};
+
+export async function fieldPatchStop(
+  jobId: string,
+  stopId: string,
+  body: FieldStopPatchBody,
+): Promise<{ job: DispatchJob; stop: DispatchStop }> {
+  const res = await fetch(
+    `/api/field/dispatch/jobs/${encodeURIComponent(jobId)}/stops/${encodeURIComponent(stopId)}`,
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  const data = (await res.json().catch(() => ({}))) as {
+    job?: DispatchJob;
+    stop?: DispatchStop;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Stop update ${res.status}`);
+  if (!data.job || !data.stop) throw new Error("Stop update failed");
+  return { job: data.job, stop: data.stop };
+}
+
+/** Browser geolocation; null if denied/unavailable. */
+export function readPhonePosition(timeoutMs = 12_000): Promise<{ lat: number; lon: number } | null> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+          resolve(null);
+          return;
+        }
+        resolve({ lat, lon });
+      },
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 30_000 },
+    );
+  });
 }
 
 /** Parse lines like: -6.2, 106.8 Depot A */

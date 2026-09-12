@@ -288,6 +288,12 @@ function formatServiceDate(rowVal) {
   return String(rowVal).slice(0, 10);
 }
 
+function coordOrNull(v) {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 function publicStop(row) {
   return {
     id: row.id,
@@ -304,9 +310,18 @@ function publicStop(row) {
     windowStart: row.window_start || "",
     windowEnd: row.window_end || "",
     serviceMinutes: row.service_minutes == null ? null : Number(row.service_minutes),
+    proofRequired: row.proof_required === true,
     status: row.status || "pending",
     arrivedAt: row.arrived_at || null,
     completedAt: row.completed_at || null,
+    startPhoneLat: coordOrNull(row.start_phone_lat),
+    startPhoneLon: coordOrNull(row.start_phone_lon),
+    startArmadaLat: coordOrNull(row.start_armada_lat),
+    startArmadaLon: coordOrNull(row.start_armada_lon),
+    completePhoneLat: coordOrNull(row.complete_phone_lat),
+    completePhoneLon: coordOrNull(row.complete_phone_lon),
+    completeArmadaLat: coordOrNull(row.complete_armada_lat),
+    completeArmadaLon: coordOrNull(row.complete_armada_lon),
   };
 }
 
@@ -390,6 +405,7 @@ function publicOrder(row) {
     windowEnd: row.window_end || "",
     serviceDate: formatServiceDate(row.service_date) || todayYmd(),
     serviceMinutes: row.service_minutes == null ? null : Number(row.service_minutes),
+    proofRequired: row.proof_required === true,
     status: row.status || "pending",
     jobId: row.job_id || null,
     stopId: row.stop_id || null,
@@ -413,10 +429,7 @@ export function publicDispatchPhoto(row, urlPrefix = "/api/dispatch/photos") {
 
 async function loadStops(jobId) {
   const rows = await dbQuery(
-    `SELECT id, order_id, sort_order, name, address, lat, lon, notes, zone,
-            volume_m3, weight_kg, window_start, window_end, service_minutes,
-            status, arrived_at, completed_at
-     FROM dispatch_stops WHERE job_id = $1 ORDER BY sort_order ASC, created_at ASC`,
+    `SELECT * FROM dispatch_stops WHERE job_id = $1 ORDER BY sort_order ASC, created_at ASC`,
     [jobId],
   );
   return rows.rows;
@@ -505,6 +518,7 @@ function normalizeStops(raw) {
       windowStart: String(s.windowStart || s.window_start || "").trim().slice(0, 16) || null,
       windowEnd: String(s.windowEnd || s.window_end || "").trim().slice(0, 16) || null,
       serviceMinutes: serviceMinutesOrNull(s.serviceMinutes ?? s.service_minutes),
+      proofRequired: s.proofRequired === true || s.proof_required === true,
       orderId: s.orderId || s.order_id || null,
       sortOrder: Number.isInteger(Number(s.sortOrder)) ? Number(s.sortOrder) : i,
     });
@@ -536,8 +550,8 @@ async function replaceStops(jobId, stops) {
     const inserted = await dbQuery(
       `INSERT INTO dispatch_stops (
          job_id, sort_order, name, address, lat, lon, notes,
-         zone, volume_m3, weight_kg, window_start, window_end, service_minutes, order_id
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         zone, volume_m3, weight_kg, window_start, window_end, service_minutes, proof_required, order_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING id`,
       [
         jobId,
@@ -553,6 +567,7 @@ async function replaceStops(jobId, stops) {
         s.windowStart,
         s.windowEnd,
         s.serviceMinutes,
+        s.proofRequired === true,
         s.orderId,
       ],
     );
@@ -1001,8 +1016,8 @@ export async function handleDispatchRequest(req, res) {
       const inserted = await dbQuery(
         `INSERT INTO dispatch_orders (
            tenant_id, external_ref, customer_name, address, lat, lon, zone,
-           volume_m3, weight_kg, window_start, window_end, notes, service_date, service_minutes
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           volume_m3, weight_kg, window_start, window_end, notes, service_date, service_minutes, proof_required
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
          RETURNING *`,
         [
           dbTenant.id,
@@ -1019,6 +1034,7 @@ export async function handleDispatchRequest(req, res) {
           String(body.notes || "").trim().slice(0, 2000) || null,
           serviceDate,
           serviceMinutesOrNull(body.serviceMinutes),
+          body.proofRequired === true || body.proof_required === true,
         ],
       );
       json(res, 201, { order: publicOrder(inserted.rows[0]) });
@@ -1087,6 +1103,10 @@ export async function handleDispatchRequest(req, res) {
         params.push(serviceMinutesOrNull(body.serviceMinutes));
         sets.push(`service_minutes = $${params.length}`);
       }
+      if ("proofRequired" in body || "proof_required" in body) {
+        params.push(body.proofRequired === true || body.proof_required === true);
+        sets.push(`proof_required = $${params.length}`);
+      }
       if ("status" in body) {
         const st = String(body.status || "").toLowerCase();
         if (!ORDER_STATUSES.includes(st)) {
@@ -1130,8 +1150,9 @@ export async function handleDispatchRequest(req, res) {
              window_start = $8,
              window_end = $9,
              notes = $10,
-             service_minutes = $11
-           WHERE id = $12`,
+             service_minutes = $11,
+             proof_required = $12
+           WHERE id = $13`,
           [
             row.customer_name || row.external_ref || null,
             row.address,
@@ -1144,6 +1165,7 @@ export async function handleDispatchRequest(req, res) {
             row.window_end,
             row.notes,
             row.service_minutes,
+            row.proof_required === true,
             row.stop_id,
           ],
         );
@@ -1391,8 +1413,8 @@ export async function handleDispatchRequest(req, res) {
         const inserted = await dbQuery(
           `INSERT INTO dispatch_stops (
              job_id, sort_order, name, address, lat, lon, notes,
-             zone, volume_m3, weight_kg, window_start, window_end, service_minutes, order_id
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+             zone, volume_m3, weight_kg, window_start, window_end, service_minutes, proof_required, order_id
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
            RETURNING id`,
           [
             job.id,
@@ -1408,6 +1430,7 @@ export async function handleDispatchRequest(req, res) {
             o.window_start,
             o.window_end,
             o.service_minutes,
+            o.proof_required === true,
             o.id,
           ],
         );
@@ -2392,8 +2415,8 @@ export async function handleDispatchRequest(req, res) {
           const inserted = await dbQuery(
             `INSERT INTO dispatch_stops (
                job_id, sort_order, name, address, lat, lon, notes,
-               zone, volume_m3, weight_kg, window_start, window_end, service_minutes, order_id
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+               zone, volume_m3, weight_kg, window_start, window_end, service_minutes, proof_required, order_id
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
              RETURNING id`,
             [
               jobId,
@@ -2409,6 +2432,7 @@ export async function handleDispatchRequest(req, res) {
               o.window_start,
               o.window_end,
               o.service_minutes,
+              o.proof_required === true,
               o.id,
             ],
           );

@@ -20,6 +20,8 @@ import {
 import { applyEventPatch, loadEventDetail, loadPhotoBytes, parseDataUrl, publicEvent, savePhoto } from "./maintenance-api.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 import { mergeEntitlements } from "./entitlements.mjs";
+import { tenantByKey } from "./tenants.mjs";
+import { fetchVehiclePositions } from "./vehicle-positions.mjs";
 
 const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
   lat, lon, notification_id, started_at, ended_at, odometer_km,
@@ -119,6 +121,22 @@ async function mobileFlagsForTenant(tenantId) {
   };
 }
 
+function fieldCoordOrNull(v) {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
+function cleanPhonePair(lat, lon) {
+  const a = fieldCoordOrNull(lat);
+  const b = fieldCoordOrNull(lon);
+  if (a == null || b == null) return null;
+  if (Math.abs(a) > 90 || Math.abs(b) > 180) return null;
+  if (a === 0 && b === 0) return null;
+  return { lat: a, lon: b };
+}
+
 function publicDispatchStop(row) {
   return {
     id: row.id,
@@ -135,9 +153,18 @@ function publicDispatchStop(row) {
     windowStart: row.window_start || "",
     windowEnd: row.window_end || "",
     serviceMinutes: row.service_minutes == null ? null : Number(row.service_minutes),
+    proofRequired: row.proof_required === true,
     status: row.status || "pending",
     arrivedAt: row.arrived_at || null,
     completedAt: row.completed_at || null,
+    startPhoneLat: fieldCoordOrNull(row.start_phone_lat),
+    startPhoneLon: fieldCoordOrNull(row.start_phone_lon),
+    startArmadaLat: fieldCoordOrNull(row.start_armada_lat),
+    startArmadaLon: fieldCoordOrNull(row.start_armada_lon),
+    completePhoneLat: fieldCoordOrNull(row.complete_phone_lat),
+    completePhoneLon: fieldCoordOrNull(row.complete_phone_lon),
+    completeArmadaLat: fieldCoordOrNull(row.complete_armada_lat),
+    completeArmadaLon: fieldCoordOrNull(row.complete_armada_lon),
   };
 }
 
@@ -222,13 +249,20 @@ async function loadAssignedDispatchJob(tenantId, jobId, fieldUserId) {
 
 async function loadDispatchStops(jobId) {
   const rows = await dbQuery(
-    `SELECT id, order_id, sort_order, name, address, lat, lon, notes, zone,
-            volume_m3, weight_kg, window_start, window_end, service_minutes,
-            status, arrived_at, completed_at
-     FROM dispatch_stops WHERE job_id = $1 ORDER BY sort_order ASC, created_at ASC`,
+    `SELECT * FROM dispatch_stops WHERE job_id = $1 ORDER BY sort_order ASC, created_at ASC`,
     [jobId],
   );
   return rows.rows;
+}
+
+async function resolveArmadaCoords(user, armadaUserId) {
+  if (armadaUserId == null) return null;
+  const vault = tenantByKey(user.tenantKey);
+  if (!vault?.appId || !vault?.token) return null;
+  const map = await fetchVehiclePositions(vault);
+  const pos = map.get(Number(armadaUserId));
+  if (!pos) return null;
+  return { lat: pos.lat, lon: pos.lon };
 }
 
 export async function handleFieldRequest(req, res) {
@@ -495,6 +529,39 @@ export async function handleFieldRequest(req, res) {
         return true;
       }
 
+      if (url.pathname === "/api/field/dispatch/calendar" && req.method === "GET") {
+        const fromParam = String(url.searchParams.get("from") || "").trim().slice(0, 10);
+        const toParam = String(url.searchParams.get("to") || "").trim().slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(fromParam) || !/^\d{4}-\d{2}-\d{2}$/.test(toParam)) {
+          json(res, 400, { error: "from and to are required as YYYY-MM-DD" });
+          return true;
+        }
+        const rows = await dbQuery(
+          `SELECT service_date::text AS service_date, COUNT(*)::int AS job_count
+           FROM dispatch_jobs
+           WHERE tenant_id = $1
+             AND assigned_field_user_id = $2
+             AND service_date >= $3::date
+             AND service_date <= $4::date
+             AND status IN ('assigned', 'en_route', 'arrived', 'done')
+           GROUP BY service_date
+           ORDER BY service_date ASC`,
+          [user.tenantId, user.id, fromParam, toParam],
+        );
+        json(res, 200, {
+          from: fromParam,
+          to: toParam,
+          days: rows.rows.map((r) => ({
+            date:
+              r.service_date instanceof Date
+                ? r.service_date.toISOString().slice(0, 10)
+                : String(r.service_date).slice(0, 10),
+            jobCount: Number(r.job_count) || 0,
+          })),
+        });
+        return true;
+      }
+
       if (url.pathname === "/api/field/dispatch/jobs" && req.method === "GET") {
         const dateParam = String(url.searchParams.get("date") || "").trim().slice(0, 10);
         const serviceDate = /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
@@ -605,25 +672,106 @@ export async function handleFieldRequest(req, res) {
           return true;
         }
         const body = await readJson(req);
+        const stopId = stopMatch[2];
+        const existingStop = await dbQuery(
+          `SELECT * FROM dispatch_stops WHERE id = $1 AND job_id = $2`,
+          [stopId, job.id],
+        );
+        const stopRow = existingStop.rows[0];
+        if (!stopRow) {
+          json(res, 404, { error: "Stop not found" });
+          return true;
+        }
+
+        const phone = cleanPhonePair(body.phoneLat ?? body.lat, body.phoneLon ?? body.lon ?? body.lng);
+        const armada = await resolveArmadaCoords(user, job.armada_user_id);
+
+        // Notes-only update while in progress (no status change)
+        if (!("status" in body) && "notes" in body) {
+          if (stopRow.status !== "arrived" && stopRow.status !== "pending") {
+            json(res, 400, { error: "Notes can only be updated before the stop is completed" });
+            return true;
+          }
+          const updated = await dbQuery(
+            `UPDATE dispatch_stops
+             SET notes = $1
+             WHERE id = $2 AND job_id = $3
+             RETURNING *`,
+            [String(body.notes || "").trim().slice(0, 2000) || null, stopId, job.id],
+          );
+          const row = await loadAssignedDispatchJob(user.tenantId, job.id, user.id);
+          json(res, 200, {
+            stop: publicDispatchStop(updated.rows[0]),
+            job: publicDispatchJob(row, await loadDispatchStops(row.id)),
+          });
+          return true;
+        }
+
         const status = String(body.status || "").toLowerCase();
         if (!["arrived", "done", "skipped"].includes(status)) {
           json(res, 400, { error: "Stop status must be arrived, done, or skipped" });
           return true;
         }
+
+        if (status === "done" && stopRow.proof_required === true) {
+          const photos = await dbQuery(
+            `SELECT id FROM dispatch_stop_photos WHERE stop_id = $1 LIMIT 1`,
+            [stopId],
+          );
+          if (!photos.rows[0]) {
+            json(res, 400, { error: "Proof photo is required before finishing this order" });
+            return true;
+          }
+        }
+
+        const sets = [`status = $1`];
+        const params = [status];
+        if (status === "arrived") {
+          sets.push(`arrived_at = COALESCE(arrived_at, now())`);
+          if (phone) {
+            params.push(phone.lat, phone.lon);
+            sets.push(`start_phone_lat = COALESCE(start_phone_lat, $${params.length - 1})`);
+            sets.push(`start_phone_lon = COALESCE(start_phone_lon, $${params.length})`);
+          }
+          if (armada) {
+            params.push(armada.lat, armada.lon);
+            sets.push(`start_armada_lat = COALESCE(start_armada_lat, $${params.length - 1})`);
+            sets.push(`start_armada_lon = COALESCE(start_armada_lon, $${params.length})`);
+          }
+        }
+        if (status === "done" || status === "skipped") {
+          sets.push(`completed_at = COALESCE(completed_at, now())`);
+          sets.push(`arrived_at = COALESCE(arrived_at, now())`);
+          if (status === "done") {
+            if (phone) {
+              params.push(phone.lat, phone.lon);
+              sets.push(`complete_phone_lat = $${params.length - 1}`);
+              sets.push(`complete_phone_lon = $${params.length}`);
+            }
+            if (armada) {
+              params.push(armada.lat, armada.lon);
+              sets.push(`complete_armada_lat = $${params.length - 1}`);
+              sets.push(`complete_armada_lon = $${params.length}`);
+            }
+          }
+        }
+        if ("notes" in body) {
+          params.push(String(body.notes || "").trim().slice(0, 2000) || null);
+          sets.push(`notes = $${params.length}`);
+        }
+        params.push(stopId, job.id);
         const updated = await dbQuery(
           `UPDATE dispatch_stops
-           SET status = $1,
-               arrived_at = CASE WHEN $1 = 'arrived' THEN COALESCE(arrived_at, now()) ELSE arrived_at END,
-               completed_at = CASE WHEN $1 IN ('done','skipped') THEN COALESCE(completed_at, now()) ELSE completed_at END
-           WHERE id = $2 AND job_id = $3
+           SET ${sets.join(", ")}
+           WHERE id = $${params.length - 1} AND job_id = $${params.length}
            RETURNING *`,
-          [status, stopMatch[2], job.id],
+          params,
         );
         if (!updated.rows[0]) {
           json(res, 404, { error: "Stop not found" });
           return true;
         }
-        // Auto-bump job to en_route/arrived when first stop progresses
+        // Auto-bump job to en_route when first stop progresses
         if (job.status === "assigned" && (status === "arrived" || status === "done")) {
           await dbQuery(
             `UPDATE dispatch_jobs
@@ -636,6 +784,10 @@ export async function handleFieldRequest(req, res) {
         json(res, 200, {
           stop: publicDispatchStop(updated.rows[0]),
           job: publicDispatchJob(row, await loadDispatchStops(row.id)),
+          gps: {
+            phone: phone || null,
+            armada: armada || null,
+          },
         });
         return true;
       }

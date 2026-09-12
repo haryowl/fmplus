@@ -81,6 +81,7 @@ const emptyOrderForm = {
   windowStart: "08:00",
   windowEnd: "12:00",
   serviceMinutes: "",
+  proofRequired: false,
   lat: null as number | null,
   lon: null as number | null,
 };
@@ -716,6 +717,7 @@ export default function DispatchBoard() {
       windowStart: o.windowStart || "",
       windowEnd: o.windowEnd || "",
       serviceMinutes: o.serviceMinutes != null ? String(o.serviceMinutes) : "",
+      proofRequired: o.proofRequired === true,
       lat: o.lat,
       lon: o.lon,
     });
@@ -749,6 +751,7 @@ export default function DispatchBoard() {
         orderForm.serviceMinutes.trim() === ""
           ? null
           : Number(orderForm.serviceMinutes),
+      proofRequired: orderForm.proofRequired,
       serviceDate: planDate,
       lat: orderForm.lat,
       lon: orderForm.lon,
@@ -2045,6 +2048,14 @@ export default function DispatchBoard() {
                     stop”.
                   </p>
                 </div>
+                <label className="dispatch-plan-check" style={{ marginTop: 4 }}>
+                  <input
+                    type="checkbox"
+                    checked={orderForm.proofRequired}
+                    onChange={(e) => setOrderForm((f) => ({ ...f, proofRequired: e.target.checked }))}
+                  />
+                  Proof photo required (Mobile Dispatch FINISH)
+                </label>
                 <div className="dispatch-create-actions">
                   <button
                     type="button"
@@ -2089,6 +2100,11 @@ export default function DispatchBoard() {
                           <span className="dispatch-order-card-top">
                             <strong>{o.customerName || o.externalRef || "Order"}</strong>
                             {o.zone ? <span className="dispatch-zone-tag">{o.zone}</span> : null}
+                            {o.proofRequired ? (
+                              <span className="dispatch-zone-tag" title="Proof photo required on FINISH">
+                                POD req
+                              </span>
+                            ) : null}
                           </span>
                           {o.address ? <span className="dispatch-order-addr">{o.address}</span> : null}
                           <span className="dispatch-order-meta">
