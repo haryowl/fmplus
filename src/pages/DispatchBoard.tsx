@@ -2154,6 +2154,7 @@ export default function DispatchBoard() {
                 <label className="field">
                   Customer
                   <input
+                    size={1}
                     value={orderForm.customerName}
                     onChange={(e) => setOrderForm((f) => ({ ...f, customerName: e.target.value }))}
                     placeholder="Toko Sari Maju"
@@ -2162,6 +2163,7 @@ export default function DispatchBoard() {
                 <label className="field">
                   Reference
                   <input
+                    size={1}
                     value={orderForm.externalRef}
                     onChange={(e) => setOrderForm((f) => ({ ...f, externalRef: e.target.value }))}
                     placeholder="#ORD-1842"
@@ -2171,6 +2173,7 @@ export default function DispatchBoard() {
                   <label className="field">
                     Zone
                     <input
+                      size={1}
                       value={orderForm.zone}
                       onChange={(e) => setOrderForm((f) => ({ ...f, zone: e.target.value }))}
                       placeholder="Dago"
@@ -2179,6 +2182,7 @@ export default function DispatchBoard() {
                   <label className="field">
                     m³
                     <input
+                      size={1}
                       value={orderForm.volumeM3}
                       onChange={(e) => setOrderForm((f) => ({ ...f, volumeM3: e.target.value }))}
                       inputMode="decimal"
@@ -2187,6 +2191,7 @@ export default function DispatchBoard() {
                   <label className="field">
                     kg
                     <input
+                      size={1}
                       value={orderForm.weightKg}
                       onChange={(e) => setOrderForm((f) => ({ ...f, weightKg: e.target.value }))}
                       inputMode="decimal"
@@ -2257,6 +2262,7 @@ export default function DispatchBoard() {
                     Stop time (min)
                     <input
                       type="number"
+                      size={1}
                       min={0}
                       max={120}
                       step={1}
@@ -2276,7 +2282,7 @@ export default function DispatchBoard() {
                     checked={orderForm.proofRequired}
                     onChange={(e) => setOrderForm((f) => ({ ...f, proofRequired: e.target.checked }))}
                   />
-                  Proof photo required (Mobile Dispatch FINISH)
+                  Proof photo required on FINISH
                 </label>
                 {!editingOrderId ? (
                   <>
