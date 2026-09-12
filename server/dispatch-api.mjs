@@ -6,6 +6,7 @@
  * POST /api/dispatch/jobs/:id/optimize-stops
  * POST /api/dispatch/jobs/:id/stops/:stopId/return
  * GET/POST /api/dispatch/orders
+ * POST /api/dispatch/orders/import
  * PATCH/DELETE /api/dispatch/orders/:id
  * GET /api/dispatch/stops/:stopId/photos
  * GET /api/dispatch/photos/:id
@@ -35,6 +36,7 @@ import { securityHeaders } from "./proxy-lt.mjs";
 import { tenantFromRequest } from "./tenants.mjs";
 import { fetchVehiclePositions } from "./vehicle-positions.mjs";
 import { maybeNotifyDispatchJobAssigned } from "./dispatch-notify.mjs";
+import { csvBool, csvNum, parseCsv } from "./csv-parse.mjs";
 
 const STATUSES = ["draft", "assigned", "en_route", "arrived", "done", "cancelled"];
 const STOP_STATUSES = ["pending", "arrived", "done", "skipped"];
@@ -1329,6 +1331,118 @@ export async function handleDispatchRequest(req, res) {
         ],
       );
       json(res, 201, { order: publicOrder(inserted.rows[0]) });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/orders/import" && req.method === "POST") {
+      const body = await readJson(req);
+      const defaultDate = parseServiceDate(body.serviceDate) || todayYmd();
+      let rawRows = Array.isArray(body.rows) ? body.rows : null;
+      if (!rawRows && typeof body.csv === "string") {
+        rawRows = parseCsv(body.csv).rows;
+      }
+      if (!rawRows || !rawRows.length) {
+        json(res, 400, { error: "rows or csv required" });
+        return true;
+      }
+      if (rawRows.length > 200) {
+        json(res, 400, { error: "Maximum 200 rows per import" });
+        return true;
+      }
+
+      const created = [];
+      const skipped = [];
+      const errors = [];
+
+      for (let i = 0; i < rawRows.length; i++) {
+        const row = rawRows[i] && typeof rawRows[i] === "object" ? rawRows[i] : {};
+        const line = i + 2; // header is line 1
+        const customerName = String(
+          row.customer_name || row.customerName || row.name || "",
+        )
+          .trim()
+          .slice(0, 200);
+        const lat = csvNum(row.lat);
+        const lon = csvNum(row.lon ?? row.lng);
+        if (!customerName) {
+          errors.push({ line, error: "customer_name is required" });
+          continue;
+        }
+        if (
+          lat == null ||
+          lon == null ||
+          Math.abs(lat) > 90 ||
+          Math.abs(lon) > 180
+        ) {
+          errors.push({ line, error: "valid lat and lon are required" });
+          continue;
+        }
+        const serviceDate = parseServiceDate(row.service_date || row.serviceDate) || defaultDate;
+        const externalRef = String(row.external_ref || row.externalRef || "")
+          .trim()
+          .slice(0, 80);
+        if (externalRef) {
+          const dup = await dbQuery(
+            `SELECT id FROM dispatch_orders
+             WHERE tenant_id = $1 AND service_date = $2::date
+               AND external_ref = $3 AND status = 'pending'
+             LIMIT 1`,
+            [dbTenant.id, serviceDate, externalRef],
+          );
+          if (dup.rows[0]) {
+            skipped.push({
+              line,
+              reason: "duplicate external_ref for date",
+              externalRef,
+              orderId: dup.rows[0].id,
+            });
+            continue;
+          }
+        }
+        try {
+          const inserted = await dbQuery(
+            `INSERT INTO dispatch_orders (
+               tenant_id, external_ref, customer_name, address, lat, lon, zone,
+               volume_m3, weight_kg, window_start, window_end, notes, service_date,
+               service_minutes, proof_required
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+             RETURNING *`,
+            [
+              dbTenant.id,
+              externalRef || null,
+              customerName,
+              String(row.address || "").trim().slice(0, 500) || null,
+              lat,
+              lon,
+              String(row.zone || "").trim().slice(0, 80) || null,
+              csvNum(row.volume_m3 ?? row.volumeM3),
+              csvNum(row.weight_kg ?? row.weightKg),
+              String(row.window_start || row.windowStart || "").trim().slice(0, 16) || null,
+              String(row.window_end || row.windowEnd || "").trim().slice(0, 16) || null,
+              String(row.notes || "").trim().slice(0, 2000) || null,
+              serviceDate,
+              serviceMinutesOrNull(row.service_minutes ?? row.serviceMinutes),
+              csvBool(row.proof_required ?? row.proofRequired),
+            ],
+          );
+          created.push(publicOrder(inserted.rows[0]));
+        } catch (err) {
+          errors.push({
+            line,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      json(res, 200, {
+        created: created.length,
+        skipped: skipped.length,
+        errors: errors.length,
+        orders: created,
+        skippedRows: skipped,
+        errorRows: errors,
+        serviceDate: defaultDate,
+      });
       return true;
     }
 

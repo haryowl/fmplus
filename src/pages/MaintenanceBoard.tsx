@@ -15,6 +15,7 @@ import {
   fetchScheduleSummary,
   fetchServiceEvents,
   formatServiceDuration,
+  importServiceEvents,
   patchServiceEvent,
   scheduleLabel,
   SCHEDULE_HEALTH_LABELS,
@@ -27,6 +28,12 @@ import {
   type ServiceEvent,
   type ServiceEventStatus,
 } from "../lib/maintenance";
+import {
+  downloadCsv,
+  maintenanceEventCsvTemplate,
+  parseCsv,
+} from "../lib/csvImport";
+import { CsvImportPanel } from "../components/CsvImportPanel";
 import { filterStatusRows, type LastStatusRow } from "../lib/lastStatus";
 import { formatKm, formatSpeed } from "../lib/format";
 import { fullHref, tripsHref, writeLocationSearch } from "../lib/routing";
@@ -988,6 +995,48 @@ export default function MaintenanceBoard() {
               </button>
             </div>
           </form>
+        )}
+
+        {!eventId && boardPanel === "jobs" && (
+          <CsvImportPanel
+            title="Import jobs CSV"
+            disabled={Boolean(busyId)}
+            templateFilename="maintenance-jobs-template.csv"
+            hint="Required: title and armada_user_id or armada_username. Optional: schedule fields, assigned_username (field user). Max 200 rows."
+            onDownloadTemplate={() =>
+              downloadCsv("maintenance-jobs-template.csv", maintenanceEventCsvTemplate())
+            }
+            parseFile={(text) => {
+              const { headers, rows } = parseCsv(text);
+              if (!headers.includes("title")) {
+                return { rows: [], error: "CSV must include title column" };
+              }
+              if (!headers.includes("armada_user_id") && !headers.includes("armada_username")) {
+                return {
+                  rows: [],
+                  error: "CSV must include armada_user_id or armada_username",
+                };
+              }
+              if (!rows.length) return { rows: [], error: "No data rows found" };
+              if (rows.length > 200) return { rows: [], error: "Maximum 200 rows per import" };
+              return { rows };
+            }}
+            onImport={async (rows) => {
+              setBusyId("import");
+              setError("");
+              try {
+                const out = await importServiceEvents({ rows });
+                setReload((n) => n + 1);
+                return out;
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : "Import failed";
+                setError(msg);
+                throw err;
+              } finally {
+                setBusyId(null);
+              }
+            }}
+          />
         )}
 
         {error && <div className="banner error">{error}</div>}

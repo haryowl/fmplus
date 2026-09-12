@@ -2322,6 +2322,175 @@ export async function handleMaintenanceRequest(req, res) {
       return true;
     }
 
+    if (url.pathname === "/api/maintenance/events/import" && req.method === "POST") {
+      const { csvNum, parseCsv } = await import("./csv-parse.mjs");
+      const body = await readJson(req);
+      let rawRows = Array.isArray(body.rows) ? body.rows : null;
+      if (!rawRows && typeof body.csv === "string") {
+        rawRows = parseCsv(body.csv).rows;
+      }
+      if (!rawRows || !rawRows.length) {
+        json(res, 400, { error: "rows or csv required" });
+        return true;
+      }
+      if (rawRows.length > 200) {
+        json(res, 400, { error: "Maximum 200 rows per import" });
+        return true;
+      }
+
+      const created = [];
+      const errors = [];
+
+      for (let i = 0; i < rawRows.length; i++) {
+        const row = rawRows[i] && typeof rawRows[i] === "object" ? rawRows[i] : {};
+        const line = i + 2;
+        const title = String(row.title || "").trim().slice(0, 200);
+        if (!title) {
+          errors.push({ line, error: "title is required" });
+          continue;
+        }
+        const userIdRaw = Number(row.armada_user_id ?? row.armadaUserId ?? row.user_id ?? row.userId);
+        const armadaUserId =
+          Number.isInteger(userIdRaw) && userIdRaw > 0 ? userIdRaw : null;
+        const armadaUsername = String(
+          row.armada_username || row.armadaUsername || row.username || "",
+        )
+          .trim()
+          .slice(0, 120) || null;
+        const userDisplayName = String(
+          row.user_display_name || row.userDisplayName || row.display_name || "",
+        )
+          .trim()
+          .slice(0, 200) || null;
+        if (!armadaUserId && !armadaUsername) {
+          errors.push({ line, error: "armada_user_id or armada_username is required" });
+          continue;
+        }
+
+        let assignedFieldUserId = null;
+        const assignedUsername = String(
+          row.assigned_username || row.assignedUsername || row.assignee || "",
+        )
+          .trim()
+          .slice(0, 80);
+        if (assignedUsername) {
+          const fu = await dbQuery(
+            `SELECT id FROM field_users
+             WHERE tenant_id = $1 AND enabled = true
+               AND lower(username) = lower($2)
+             LIMIT 1`,
+            [dbTenant.id, assignedUsername],
+          );
+          if (!fu.rows[0]) {
+            errors.push({ line, error: `assigned_username not found: ${assignedUsername}` });
+            continue;
+          }
+          assignedFieldUserId = fu.rows[0].id;
+        }
+
+        const notes = String(row.notes || "").trim() || null;
+        const odoRaw = csvNum(row.odometer_km ?? row.odometerKm);
+        const remindDueRaw = String(row.remind_due_at || row.remindDueAt || "").trim();
+        let remindDueAt = null;
+        if (remindDueRaw) {
+          const d = new Date(remindDueRaw.length <= 10 ? `${remindDueRaw}T00:00:00` : remindDueRaw);
+          if (!Number.isNaN(d.getTime())) remindDueAt = d.toISOString();
+        }
+        const remindIntervalDays = (() => {
+          const n = csvNum(row.remind_interval_days ?? row.remindIntervalDays);
+          return n != null && n > 0 ? Math.round(n) : null;
+        })();
+        const remindIntervalKm = (() => {
+          const n = csvNum(row.remind_interval_km ?? row.remindIntervalKm);
+          return n != null && n > 0 ? n : null;
+        })();
+        const remindIntervalHours = (() => {
+          const n = csvNum(row.remind_interval_hours ?? row.remindIntervalHours);
+          return n != null && n > 0 ? n : null;
+        })();
+        const remindBeforeDays = (() => {
+          const n = csvNum(row.remind_before_days ?? row.remindBeforeDays);
+          return n != null && n >= 0 ? Math.round(n) : null;
+        })();
+        const remindBeforeKm = (() => {
+          const n = csvNum(row.remind_before_km ?? row.remindBeforeKm);
+          return n != null && n >= 0 ? n : null;
+        })();
+        const remindBeforeHours = (() => {
+          const n = csvNum(row.remind_before_hours ?? row.remindBeforeHours);
+          return n != null && n >= 0 ? n : null;
+        })();
+        let remindHoursSinceAt = null;
+        if (remindIntervalHours) remindHoursSinceAt = new Date().toISOString();
+
+        try {
+          const inserted = await dbQuery(
+            `INSERT INTO service_events (
+               tenant_id, status, title, notes, armada_user_id, armada_username, user_display_name,
+               odometer_km, assigned_field_user_id,
+               remind_due_at, remind_interval_days, remind_interval_km, remind_baseline_odometer_km,
+               remind_interval_hours, remind_hours_since_at,
+               remind_before_days, remind_before_km, remind_before_hours
+             ) VALUES (
+               $1, 'due', $2, $3, $4, $5, $6, $7, $8,
+               $9, $10, $11, $12, $13, $14, $15, $16, $17
+             )
+             RETURNING ${SELECT_COLS}`,
+            [
+              dbTenant.id,
+              title,
+              notes,
+              armadaUserId,
+              armadaUsername,
+              userDisplayName || armadaUsername,
+              odoRaw,
+              assignedFieldUserId,
+              remindDueAt,
+              remindIntervalDays,
+              remindIntervalKm,
+              odoRaw,
+              remindIntervalHours,
+              remindHoursSinceAt,
+              remindBeforeDays,
+              remindBeforeKm,
+              remindBeforeHours,
+            ],
+          );
+          const event = publicEvent(inserted.rows[0]);
+          if (assignedFieldUserId) {
+            try {
+              const { fanOutEventReminder } = await import("./maintenance-remind.mjs");
+              await fanOutEventReminder({
+                tenantId: dbTenant.id,
+                tenantKey: dbTenant.key || "",
+                event,
+                kind: "assigned",
+                title: `Job assigned · ${event.userDisplayName || event.armadaUsername || "Vehicle"}`,
+                body: `${event.title} was assigned to you.`,
+                payload: { assignedFieldUserId },
+              });
+            } catch (err) {
+              console.error("[maintenance] import assigned notify", err);
+            }
+          }
+          created.push(event);
+        } catch (err) {
+          errors.push({
+            line,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      json(res, 200, {
+        created: created.length,
+        errors: errors.length,
+        events: created,
+        errorRows: errors,
+      });
+      return true;
+    }
+
     if (url.pathname === "/api/maintenance/reminders" && req.method === "GET") {
       const status = String(url.searchParams.get("status") || "open").toLowerCase();
       const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));

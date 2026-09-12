@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchGroups, fetchUsersForGroup, groupOptionLabel, userOptionLabel } from "../lib/api";
 import { BrandMark } from "../components/BrandMark";
+import { CsvImportPanel } from "../components/CsvImportPanel";
 import { DispatchJobMap } from "../components/DispatchJobMap";
 import { ViewNav } from "../components/ViewNav";
+import {
+  DISPATCH_ORDER_CSV_HEADERS,
+  dispatchOrderCsvTemplate,
+  downloadCsv,
+  parseCsv,
+} from "../lib/csvImport";
 import {
   assignOrdersToJob,
   cancelDispatchOrder,
@@ -31,6 +38,7 @@ import {
   formatDispatchServiceMinutes,
   formatServiceDateLabel,
   generateDispatchOrdersFromTemplates,
+  importDispatchOrders,
   optimizeJobStops,
   patchDispatchDepot,
   patchDispatchJob,
@@ -1971,6 +1979,49 @@ export default function DispatchBoard() {
                 {showTemplates ? "Hide routines" : `Routines (${templates.length})`}
               </button>
             </div>
+
+            <CsvImportPanel
+              title="Import orders CSV"
+              disabled={busy}
+              templateFilename="dispatch-orders-template.csv"
+              hint="Required: customer_name, lat, lon. Optional: address, external_ref, zone, volume_m3, weight_kg, windows, proof_required. Max 200 rows. Duplicate external_ref on this date is skipped."
+              onDownloadTemplate={() =>
+                downloadCsv("dispatch-orders-template.csv", dispatchOrderCsvTemplate())
+              }
+              parseFile={(text) => {
+                const { headers, rows } = parseCsv(text);
+                if (!headers.includes("customer_name")) {
+                  return { rows: [], error: "CSV must include customer_name column" };
+                }
+                if (!headers.includes("lat") || !headers.includes("lon")) {
+                  return { rows: [], error: "CSV must include lat and lon columns" };
+                }
+                const missing = DISPATCH_ORDER_CSV_HEADERS.filter(
+                  (h) => h === "customer_name" || h === "lat" || h === "lon",
+                ).filter((h) => !headers.includes(h));
+                if (missing.length) {
+                  return { rows: [], error: `Missing columns: ${missing.join(", ")}` };
+                }
+                if (!rows.length) return { rows: [], error: "No data rows found" };
+                if (rows.length > 200) return { rows: [], error: "Maximum 200 rows per import" };
+                return { rows };
+              }}
+              onImport={async (rows) => {
+                setBusy(true);
+                setError("");
+                try {
+                  const out = await importDispatchOrders({ serviceDate: planDate, rows });
+                  setReload((n) => n + 1);
+                  return out;
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : "Import failed";
+                  setError(msg);
+                  throw err;
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            />
 
             {showTemplates ? (
               <div className="dispatch-template-list">

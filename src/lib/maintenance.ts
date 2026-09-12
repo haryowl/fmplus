@@ -665,6 +665,35 @@ export async function createServiceEvent(body: {
   return data.event;
 }
 
+export async function importServiceEvents(body: {
+  rows: Record<string, string>[];
+}): Promise<{
+  created: number;
+  errors: number;
+  events: ServiceEvent[];
+  errorRows: Array<{ line: number; error: string }>;
+}> {
+  const res = await fetch("/api/maintenance/events/import", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    created?: number;
+    errors?: number;
+    events?: ServiceEvent[];
+    errorRows?: Array<{ line: number; error: string }>;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Import events ${res.status}`);
+  return {
+    created: Number(data.created) || 0,
+    errors: Number(data.errors) || 0,
+    events: data.events || [],
+    errorRows: data.errorRows || [],
+  };
+}
+
 export async function patchServiceEvent(
   id: string,
   body: Record<string, unknown>,

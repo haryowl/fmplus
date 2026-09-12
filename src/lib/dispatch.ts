@@ -706,6 +706,45 @@ export async function createDispatchOrder(body: {
   return data.order;
 }
 
+export async function importDispatchOrders(body: {
+  serviceDate?: string;
+  rows: Record<string, string>[];
+}): Promise<{
+  created: number;
+  skipped: number;
+  errors: number;
+  orders: DispatchOrder[];
+  skippedRows: Array<{ line: number; reason: string; externalRef?: string; orderId?: string }>;
+  errorRows: Array<{ line: number; error: string }>;
+  serviceDate: string;
+}> {
+  const res = await fetch("/api/dispatch/orders/import", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    created?: number;
+    skipped?: number;
+    errors?: number;
+    orders?: DispatchOrder[];
+    skippedRows?: Array<{ line: number; reason: string; externalRef?: string; orderId?: string }>;
+    errorRows?: Array<{ line: number; error: string }>;
+    serviceDate?: string;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Import orders ${res.status}`);
+  return {
+    created: Number(data.created) || 0,
+    skipped: Number(data.skipped) || 0,
+    errors: Number(data.errors) || 0,
+    orders: data.orders || [],
+    skippedRows: data.skippedRows || [],
+    errorRows: data.errorRows || [],
+    serviceDate: data.serviceDate || body.serviceDate || "",
+  };
+}
+
 export async function patchDispatchOrder(
   id: string,
   patch: Record<string, unknown>,
