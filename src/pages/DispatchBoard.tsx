@@ -2163,10 +2163,6 @@ export default function DispatchBoard() {
                       })}
                     </select>
                   </div>
-                  <p className="dispatch-search-hint">
-                    All Armada POIs with coordinates appear here — no service-point link required. Or switch to
-                    Street / other for free-text search, or click the map.
-                  </p>
                 </>
               ) : (
                 <>

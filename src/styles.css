@@ -3848,25 +3848,27 @@ html.onesheet-root body {
   grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.45fr) minmax(300px, 1fr);
   gap: 12px;
   align-items: stretch;
-  height: min(72vh, 760px);
-  min-height: min(72vh, 760px);
-  max-height: min(72vh, 760px);
+  min-height: min(64vh, 640px);
+  height: min(78vh, 840px);
+  max-height: min(78vh, 840px);
 }
 
 .dispatch-rail {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   min-height: 0;
   min-width: 0;
   max-width: 100%;
   height: 100%;
-  padding: 16px;
+  padding: 14px;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 8px 24px rgba(23, 22, 20, 0.04);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-sizing: border-box;
 }
 
@@ -3895,14 +3897,14 @@ html.onesheet-root body {
 
 .dispatch-search-wrap {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .dispatch-place-mode {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
-  padding: 3px;
+  padding: 2px;
   border-radius: 10px;
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -3912,9 +3914,9 @@ html.onesheet-root body {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  padding: 8px 10px;
+  padding: 6px 8px;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 600;
   color: var(--ink-soft);
   cursor: pointer;
@@ -4371,11 +4373,18 @@ html.onesheet-root body {
 .dispatch-rail.dispatch-pool {
   overflow: hidden;
   min-width: 0;
+  gap: 8px;
+  padding: 12px;
+}
+
+.dispatch-rail.dispatch-vehicle-pane {
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .dispatch-order-filter {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   margin: 0;
   flex: 0 0 auto;
 }
@@ -4389,20 +4398,20 @@ html.onesheet-root body {
 }
 
 .dispatch-order-filter input {
-  height: 34px;
-  border-radius: 10px;
+  height: 32px;
+  border-radius: 8px;
   border: 1px solid var(--line-strong);
   background: #fff;
   padding: 0 10px;
   font: inherit;
-  font-size: 0.84rem;
+  font-size: 0.82rem;
   width: 100%;
   box-sizing: border-box;
 }
 
 .dispatch-order-filter-meta {
   margin: 0;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   color: var(--ink-faint);
 }
 
@@ -4528,17 +4537,18 @@ html.onesheet-root body {
 
 .dispatch-inbox-actions {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   margin-top: auto;
   flex: 0 0 auto;
 }
 
 .dispatch-inbox-actions .dispatch-assign-btn {
   margin-top: 0;
+  height: 38px;
 }
 
 .dispatch-inbox-actions .btn-secondary {
-  height: 38px;
+  height: 34px;
   border-radius: 11px;
   width: 100%;
 }
@@ -4546,26 +4556,26 @@ html.onesheet-root body {
 .dispatch-routine-bar {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin: 0 0 10px;
+  gap: 6px;
+  margin: 0;
 }
 
 .dispatch-routine-bar .btn-secondary {
-  height: 34px;
+  height: 32px;
   border-radius: 10px;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
 }
 
 .csv-import {
   display: grid;
-  gap: 8px;
-  margin: 0 0 12px;
+  gap: 6px;
+  margin: 0;
 }
 
 .csv-import > .btn-secondary {
-  height: 34px;
+  height: 32px;
   border-radius: 10px;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   width: 100%;
 }
 
@@ -4962,8 +4972,8 @@ html.onesheet-root body {
   padding: 0;
   display: grid;
   gap: 8px;
-  max-height: 280px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
 }
 
 .dispatch-stop-list li {
