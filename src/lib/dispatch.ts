@@ -750,20 +750,34 @@ export async function uploadDispatchStopPhoto(
   return data.photo;
 }
 
+export type DispatchCalendarSummary = {
+  pending: number;
+  inProgress: number;
+  completed: number;
+};
+
 export async function fieldDispatchCalendar(
   from: string,
   to: string,
-): Promise<{ date: string; jobCount: number }[]> {
+): Promise<{ days: { date: string; jobCount: number }[]; summary: DispatchCalendarSummary }> {
   const res = await fetch(
     `/api/field/dispatch/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
     { credentials: "include", headers: { accept: "application/json" } },
   );
   const data = (await res.json().catch(() => ({}))) as {
     days?: { date: string; jobCount: number }[];
+    summary?: DispatchCalendarSummary;
     error?: string;
   };
   if (!res.ok) throw new Error(data.error || `Calendar ${res.status}`);
-  return data.days || [];
+  return {
+    days: data.days || [],
+    summary: {
+      pending: Number(data.summary?.pending) || 0,
+      inProgress: Number(data.summary?.inProgress) || 0,
+      completed: Number(data.summary?.completed) || 0,
+    },
+  };
 }
 
 export type FieldStopPatchBody = {

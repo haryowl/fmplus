@@ -3049,6 +3049,31 @@ html.onesheet-root body {
 .field-legend-progress { background: #0b6b62; }
 .field-legend-done { background: #5a7a72; }
 
+.field-legend-pct {
+  margin-left: 6px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  font-size: 0.72rem;
+}
+
+.field-dispatch-month-chart {
+  margin: 0 0 12px;
+}
+
+.field-dispatch-month-chart .field-panel-head {
+  margin-bottom: 10px;
+}
+
+.field-dispatch-month-chart .field-panel-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.field-dispatch-month-chart .field-panel-head .muted {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+}
+
 .field-jobs-chart-note {
   grid-column: 1 / -1;
   margin: 0;
@@ -4835,21 +4860,38 @@ html.onesheet-root body {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .field-dispatch-stop {
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: 12px;
+  padding: 14px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: 14px;
   background: #fff;
+  box-shadow: 0 1px 0 rgba(28, 27, 24, 0.04);
+}
+
+.field-dispatch-stop.is-done {
+  border-color: #c9ddd0;
+  background: linear-gradient(180deg, #f7fbf8 0%, #fff 48%);
+}
+
+.field-dispatch-stop.is-active {
+  border-color: #b7cfc9;
+  background: linear-gradient(180deg, #f3faf8 0%, #fff 55%);
 }
 
 .field-dispatch-stop.is-next {
   border-color: #c49a5a;
   background: #fff9f0;
+}
+
+.field-dispatch-stop-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
 .field-dispatch-stop-top {
@@ -4860,15 +4902,150 @@ html.onesheet-root body {
 }
 
 .field-dispatch-stop-num {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #1c1b18;
+  color: #fff;
   font-weight: 700;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
+  flex: 0 0 auto;
+}
+
+.field-dispatch-stop-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.98rem;
+  line-height: 1.25;
+}
+
+.field-dispatch-stop-addr {
+  margin: 2px 0 0;
+  font-size: 0.84rem;
+  color: var(--ink-soft);
+  line-height: 1.35;
+}
+
+.field-dispatch-stop-meta {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+}
+
+.field-order-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.field-order-chip-done {
+  background: #e8f3ea;
+  border-color: #8aaf8f;
+  color: #1e5c34;
+}
+
+.field-order-chip-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: #08443e;
+}
+
+.field-dispatch-exec {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(28, 27, 24, 0.04);
+  display: grid;
+  gap: 6px;
+}
+
+.field-dispatch-exec-row {
+  display: grid;
+  grid-template-columns: 48px 52px 1fr;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 0.74rem;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+}
+
+.field-dispatch-exec-label {
+  font-weight: 700;
+  color: var(--ink-soft);
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.66rem;
+}
+
+.field-dispatch-exec-time {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.field-dispatch-exec-coords {
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
 }
 
 .field-dispatch-stop-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
+}
+
+.field-order-btn {
+  box-sizing: border-box;
+  height: 36px;
+  min-width: 96px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.field-order-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.field-order-btn-nav {
+  background: #1c1b18;
+  border-color: #2c2a27;
+  color: #f5f3ee;
+}
+
+.field-order-btn-start {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #f6fffc;
+  min-width: 96px;
+}
+
+.field-order-btn-done {
+  background: #e8f3ea;
+  border-color: #8aaf8f;
+  color: #1e5c34;
+  cursor: default;
 }
 
 .field-pill-done {

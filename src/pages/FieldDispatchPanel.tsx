@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { FieldDispatchMonthChart } from "../components/FieldDispatchMonthChart";
 import { prepareImageDataUrl } from "../lib/imageUpload";
 import {
   DISPATCH_STATUS_LABELS,
@@ -13,6 +14,7 @@ import {
   shiftServiceDate,
   todayServiceDate,
   uploadDispatchStopPhoto,
+  type DispatchCalendarSummary,
   type DispatchJob,
   type DispatchPhoto,
   type DispatchStatus,
@@ -40,6 +42,33 @@ type Props = {
 };
 
 type View = "calendar" | "jobs" | "orders" | "activeStop";
+
+function formatFieldClock(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatFieldCoord(lat: number | null | undefined, lon: number | null | undefined): string {
+  if (lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) return "—";
+  return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+}
+
+function primaryStopCoords(
+  phoneLat: number | null | undefined,
+  phoneLon: number | null | undefined,
+  armadaLat: number | null | undefined,
+  armadaLon: number | null | undefined,
+): { lat: number; lon: number; source: "phone" | "armada" } | null {
+  if (phoneLat != null && phoneLon != null && Number.isFinite(phoneLat) && Number.isFinite(phoneLon)) {
+    return { lat: phoneLat, lon: phoneLon, source: "phone" };
+  }
+  if (armadaLat != null && armadaLon != null && Number.isFinite(armadaLat) && Number.isFinite(armadaLon)) {
+    return { lat: armadaLat, lon: armadaLon, source: "armada" };
+  }
+  return null;
+}
 
 function monthBounds(year: number, month: number): { from: string; to: string } {
   const from = `${year}-${String(month + 1).padStart(2, "0")}-01`;
@@ -69,6 +98,11 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
     return Number(t.slice(5, 7)) - 1;
   });
   const [markedDays, setMarkedDays] = useState<Record<string, number>>({});
+  const [monthSummary, setMonthSummary] = useState<DispatchCalendarSummary>({
+    pending: 0,
+    inProgress: 0,
+    completed: 0,
+  });
   const [fieldNote, setFieldNote] = useState("");
   const [stopNote, setStopNote] = useState("");
   const [photos, setPhotos] = useState<DispatchPhoto[]>([]);
@@ -121,14 +155,16 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
   const loadCalendar = useCallback(async () => {
     const { from, to } = monthBounds(calYear, calMonth);
     try {
-      const days = await fieldDispatchCalendar(from, to);
+      const { days, summary } = await fieldDispatchCalendar(from, to);
       const map: Record<string, number> = {};
       for (const d of days) map[d.date] = d.jobCount;
       setMarkedDays(map);
+      setMonthSummary(summary);
       onErrorRef.current("");
     } catch (err) {
       onErrorRef.current(err instanceof Error ? err.message : "Could not load calendar");
       setMarkedDays({});
+      setMonthSummary({ pending: 0, inProgress: 0, completed: 0 });
     }
   }, [calYear, calMonth]);
 
@@ -360,6 +396,7 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
         <p className="muted" style={{ margin: "0 0 8px" }}>
           Days with assigned jobs are marked. Tap a marked day to open jobs.
         </p>
+        <FieldDispatchMonthChart counts={monthSummary} periodLabel={monthLabel} />
         <div className="field-dispatch-cal" role="grid" aria-label="Dispatch calendar">
           <div className="field-dispatch-cal-dow" role="row">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
@@ -473,8 +510,14 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
         </section>
 
         <div className="field-action-row">
-          <button type="button" className="btn btn-primary" disabled={busy || locked} onClick={() => void finishActiveStop()}>
-            FINISH
+          <button
+            type="button"
+            className="field-order-btn field-order-btn-start"
+            style={{ minWidth: 120, height: 40, fontSize: "0.85rem" }}
+            disabled={busy || locked}
+            onClick={() => void finishActiveStop()}
+          >
+            Finish
           </button>
         </div>
       </div>
@@ -584,7 +627,7 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
           </section>
         ) : null}
 
-        <section className="field-panel">
+        <section className="field-panel field-orders-panel">
           <header className="field-panel-head">
             <h3>Orders · {selected.stops.length}</h3>
           </header>
@@ -594,27 +637,76 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
             <ul className="field-dispatch-stops">
               {selected.stops.map((stop, i) => {
                 const done = stop.status === "done" || stop.status === "skipped";
+                const inProgress = stop.status === "arrived";
+                const startCoords = primaryStopCoords(
+                  stop.startPhoneLat,
+                  stop.startPhoneLon,
+                  stop.startArmadaLat,
+                  stop.startArmadaLon,
+                );
+                const completeCoords = primaryStopCoords(
+                  stop.completePhoneLat,
+                  stop.completePhoneLon,
+                  stop.completeArmadaLat,
+                  stop.completeArmadaLon,
+                );
                 return (
-                  <li key={stop.id} className="field-dispatch-stop">
-                    <div>
+                  <li
+                    key={stop.id}
+                    className={`field-dispatch-stop${done ? " is-done" : ""}${inProgress ? " is-active" : ""}`}
+                  >
+                    <div className="field-dispatch-stop-main">
                       <div className="field-dispatch-stop-top">
-                        <span className="field-dispatch-stop-num">#{i + 1}</span>
-                        <strong>{stop.name}</strong>
-                        {stop.proofRequired ? <span className="field-pill">POD</span> : null}
+                        <span className="field-dispatch-stop-num">{i + 1}</span>
+                        <strong className="field-dispatch-stop-title">{stop.name}</strong>
+                        {stop.proofRequired ? <span className="field-order-chip">POD</span> : null}
+                        {done ? <span className="field-order-chip field-order-chip-done">Done</span> : null}
+                        {inProgress ? (
+                          <span className="field-order-chip field-order-chip-active">Started</span>
+                        ) : null}
                       </div>
                       {formatDispatchWindow(stop) ? (
-                        <p className="muted">⏱ {formatDispatchWindow(stop)}</p>
+                        <p className="field-dispatch-stop-meta">Window {formatDispatchWindow(stop)}</p>
                       ) : null}
-                      {stop.address ? <p className="muted">{stop.address}</p> : null}
-                      <p className="muted">
-                        {stop.zone ? `${stop.zone} · ` : ""}
-                        {stop.volumeM3 != null ? `${stop.volumeM3} m³` : "—"}
+                      {stop.address ? <p className="field-dispatch-stop-addr">{stop.address}</p> : null}
+                      <p className="field-dispatch-stop-meta">
+                        {[stop.zone || null, stop.volumeM3 != null ? `${stop.volumeM3} m³` : null]
+                          .filter(Boolean)
+                          .join(" · ") || "—"}
                       </p>
+
+                      {(done || inProgress) && (stop.arrivedAt || startCoords) ? (
+                        <div className="field-dispatch-exec">
+                          <div className="field-dispatch-exec-row">
+                            <span className="field-dispatch-exec-label">Start</span>
+                            <span className="field-dispatch-exec-time">{formatFieldClock(stop.arrivedAt)}</span>
+                            <span className="field-dispatch-exec-coords">
+                              {startCoords
+                                ? `${formatFieldCoord(startCoords.lat, startCoords.lon)} · ${startCoords.source}`
+                                : "—"}
+                            </span>
+                          </div>
+                          {done ? (
+                            <div className="field-dispatch-exec-row">
+                              <span className="field-dispatch-exec-label">Finish</span>
+                              <span className="field-dispatch-exec-time">
+                                {formatFieldClock(stop.completedAt)}
+                              </span>
+                              <span className="field-dispatch-exec-coords">
+                                {completeCoords
+                                  ? `${formatFieldCoord(completeCoords.lat, completeCoords.lon)} · ${completeCoords.source}`
+                                  : "—"}
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
+
                     <div className="field-dispatch-stop-actions">
                       {stop.lat != null && stop.lon != null ? (
                         <a
-                          className="btn-ghost"
+                          className="field-order-btn field-order-btn-nav"
                           href={mapsNavigateUrl(stop.lat, stop.lon)}
                           target="_blank"
                           rel="noreferrer"
@@ -623,15 +715,17 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                         </a>
                       ) : null}
                       {done ? (
-                        <span className="field-pill field-pill-done">COMPLETED</span>
+                        <span className="field-order-btn field-order-btn-done" aria-label="Completed">
+                          Completed
+                        </span>
                       ) : !locked ? (
                         <button
                           type="button"
-                          className="btn btn-primary"
+                          className="field-order-btn field-order-btn-start"
                           disabled={busy}
                           onClick={() => void openActiveStop(stop)}
                         >
-                          START
+                          {inProgress ? "Resume" : "Start"}
                         </button>
                       ) : null}
                     </div>

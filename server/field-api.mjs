@@ -548,6 +548,20 @@ export async function handleFieldRequest(req, res) {
            ORDER BY service_date ASC`,
           [user.tenantId, user.id, fromParam, toParam],
         );
+        const summaryRows = await dbQuery(
+          `SELECT
+             COUNT(*) FILTER (WHERE status = 'assigned')::int AS pending,
+             COUNT(*) FILTER (WHERE status IN ('en_route', 'arrived'))::int AS in_progress,
+             COUNT(*) FILTER (WHERE status = 'done')::int AS completed
+           FROM dispatch_jobs
+           WHERE tenant_id = $1
+             AND assigned_field_user_id = $2
+             AND service_date >= $3::date
+             AND service_date <= $4::date
+             AND status IN ('assigned', 'en_route', 'arrived', 'done')`,
+          [user.tenantId, user.id, fromParam, toParam],
+        );
+        const summary = summaryRows.rows[0] || {};
         json(res, 200, {
           from: fromParam,
           to: toParam,
@@ -558,6 +572,11 @@ export async function handleFieldRequest(req, res) {
                 : String(r.service_date).slice(0, 10),
             jobCount: Number(r.job_count) || 0,
           })),
+          summary: {
+            pending: Number(summary.pending) || 0,
+            inProgress: Number(summary.in_progress) || 0,
+            completed: Number(summary.completed) || 0,
+          },
         });
         return true;
       }
