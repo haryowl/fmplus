@@ -735,6 +735,9 @@ export default function DispatchBoard() {
       windowEnd: o.windowEnd || "",
       serviceMinutes: o.serviceMinutes != null ? String(o.serviceMinutes) : "",
       proofRequired: o.proofRequired === true,
+      saveAsTemplate: false,
+      templateCadence: "daily",
+      templateWeekday: String(new Date().getDay()),
       lat: o.lat,
       lon: o.lon,
     });
