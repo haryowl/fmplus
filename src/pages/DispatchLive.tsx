@@ -51,6 +51,8 @@ function matchSearch(row: DispatchLiveStop, q: string): boolean {
     row.jobTitle,
     row.lat != null && row.lon != null ? `${row.lat},${row.lon}` : "",
     row.plannedLat != null && row.plannedLon != null ? `${row.plannedLat},${row.plannedLon}` : "",
+    row.phoneLat != null && row.phoneLon != null ? `${row.phoneLat},${row.phoneLon}` : "",
+    row.vehicleLat != null && row.vehicleLon != null ? `${row.vehicleLat},${row.vehicleLon}` : "",
   ]
     .filter(Boolean)
     .join(" ")
@@ -436,10 +438,12 @@ export default function DispatchLive() {
                         <th>#</th>
                         <th>Order / stop</th>
                         <th>Status</th>
-                        <th>Window</th>
-                        <th>Time</th>
+                        <th>Start</th>
+                        <th>End</th>
                         <th>POD</th>
-                        <th>Coords</th>
+                        <th>Plan</th>
+                        <th>Phone</th>
+                        <th>Vehicle</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -464,6 +468,17 @@ export default function DispatchLive() {
   );
 }
 
+function formatCoordPair(lat: number | null | undefined, lon: number | null | undefined): string {
+  if (lat == null || lon == null) return "—";
+  return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+}
+
+function formatStraightDist(km: number | null | undefined): string {
+  if (km == null || !Number.isFinite(km)) return "";
+  if (km < 1) return `${Math.round(km * 1000)} m from plan`;
+  return `${km.toFixed(2)} km from plan`;
+}
+
 function FragmentGroup({
   group,
   focusStopId,
@@ -483,7 +498,7 @@ function FragmentGroup({
   return (
     <>
       <tr className="dispatch-live-group-row">
-        <td colSpan={7}>
+        <td colSpan={9}>
           <button
             type="button"
             className="dispatch-live-group-btn"
@@ -497,16 +512,8 @@ function FragmentGroup({
       {group.rows.map((row) => {
         const tone = statusTone(row.status);
         const selected = focusStopId === row.stopId;
-        const coords =
-          row.lat != null && row.lon != null
-            ? `${row.lat.toFixed(5)}, ${row.lon.toFixed(5)}`
-            : row.plannedLat != null && row.plannedLon != null
-              ? `plan ${row.plannedLat.toFixed(5)}, ${row.plannedLon.toFixed(5)}`
-              : "—";
-        const window =
-          row.windowStart || row.windowEnd
-            ? `${row.windowStart || "—"}–${row.windowEnd || "—"}`
-            : "—";
+        const phoneDist = formatStraightDist(row.planToPhoneKm);
+        const vehicleDist = formatStraightDist(row.planToVehicleKm);
         return (
           <tr
             key={row.stopId}
@@ -523,12 +530,20 @@ function FragmentGroup({
             <td>
               <em className={`dispatch-live-pill tone-${tone}`}>{statusLabel(tone)}</em>
             </td>
-            <td>{window}</td>
-            <td>{row.timeLabel || row.plannedEta || "—"}</td>
+            <td>{row.arrivedLabel || "—"}</td>
+            <td>{row.completedLabel || "—"}</td>
             <td>
               <em className={`dispatch-live-pod pod-${row.pod}`}>{podLabel(row.pod)}</em>
             </td>
-            <td className="dispatch-live-coords">{coords}</td>
+            <td className="dispatch-live-coords">{formatCoordPair(row.plannedLat, row.plannedLon)}</td>
+            <td className="dispatch-live-coords">
+              {formatCoordPair(row.phoneLat, row.phoneLon)}
+              {phoneDist ? <span className="dispatch-live-sub">{phoneDist}</span> : null}
+            </td>
+            <td className="dispatch-live-coords">
+              {formatCoordPair(row.vehicleLat, row.vehicleLon)}
+              {vehicleDist ? <span className="dispatch-live-sub">{vehicleDist}</span> : null}
+            </td>
           </tr>
         );
       })}

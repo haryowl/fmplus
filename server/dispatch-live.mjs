@@ -5,6 +5,7 @@ import { dbQuery } from "./db.mjs";
 import { fetchVehiclePositions } from "./vehicle-positions.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { buildStopRouteMeta } from "./stop-route-meta.mjs";
+import { haversineKm } from "./route-optimize.mjs";
 
 const DEFAULT_SERVICE_MIN = 8;
 
@@ -104,6 +105,12 @@ function pickCompleteCoords(stop) {
     return { lat: armLat, lon: armLon, source: "armada" };
   }
   return { lat: null, lon: null, source: null };
+}
+
+function distPlanKm(plannedLat, plannedLon, lat, lon) {
+  if (plannedLat == null || plannedLon == null || lat == null || lon == null) return null;
+  const km = haversineKm(plannedLat, plannedLon, lat, lon);
+  return Number.isFinite(km) ? Math.round(km * 1000) / 1000 : null;
 }
 
 function formatTimeWib(iso) {
@@ -306,6 +313,12 @@ export async function buildDispatchLiveSnapshot(opts) {
         "";
       const label = s.name || s.order_customer_name || externalRef || `Stop ${idx + 1}`;
       const timeIso = s.completed_at || s.arrived_at || null;
+      const plannedLat = coordOrNull(s.lat);
+      const plannedLon = coordOrNull(s.lon);
+      const phoneLat = coordOrNull(s.complete_phone_lat);
+      const phoneLon = coordOrNull(s.complete_phone_lon);
+      const vehicleLat = coordOrNull(s.complete_armada_lat);
+      const vehicleLon = coordOrNull(s.complete_armada_lon);
 
       const row = {
         stopId: s.id,
@@ -326,11 +339,20 @@ export async function buildDispatchLiveSnapshot(opts) {
             : Number(s.service_minutes),
         arrivedAt: s.arrived_at || null,
         completedAt: s.completed_at || null,
+        /** @deprecated prefer arrivedLabel / completedLabel */
         timeLabel: formatTimeWib(timeIso),
+        arrivedLabel: formatTimeWib(s.arrived_at),
+        completedLabel: formatTimeWib(s.completed_at),
         lat: coords.lat,
         lon: coords.lon,
-        plannedLat: coordOrNull(s.lat),
-        plannedLon: coordOrNull(s.lon),
+        plannedLat,
+        plannedLon,
+        phoneLat,
+        phoneLon,
+        vehicleLat,
+        vehicleLon,
+        planToPhoneKm: distPlanKm(plannedLat, plannedLon, phoneLat, phoneLon),
+        planToVehicleKm: distPlanKm(plannedLat, plannedLon, vehicleLat, vehicleLon),
         plannedEta: null,
         plannedLegDistanceKm: null,
         plannedLegDurationSec: null,

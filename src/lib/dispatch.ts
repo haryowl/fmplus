@@ -1086,11 +1086,22 @@ export type DispatchLiveStop = {
   serviceMinutes?: number | null;
   arrivedAt: string | null;
   completedAt: string | null;
+  /** Legacy: completed_at || arrived_at clock (prefer arrivedLabel / completedLabel). */
   timeLabel: string;
+  arrivedLabel?: string;
+  completedLabel?: string;
   lat: number | null;
   lon: number | null;
   plannedLat: number | null;
   plannedLon: number | null;
+  phoneLat?: number | null;
+  phoneLon?: number | null;
+  vehicleLat?: number | null;
+  vehicleLon?: number | null;
+  /** Straight-line km from plan → phone COMPLETE fix. */
+  planToPhoneKm?: number | null;
+  /** Straight-line km from plan → Armada vehicle COMPLETE fix. */
+  planToVehicleKm?: number | null;
   /** Planned road ETA (HH:MM), same chain as Jobs sequence. */
   plannedEta?: string | null;
   plannedLegDistanceKm?: number | null;

@@ -8112,6 +8112,11 @@ html.onesheet-root body {
   white-space: nowrap;
 }
 
+.dispatch-live-coords .dispatch-live-sub {
+  white-space: normal;
+  margin-top: 2px;
+}
+
 .dispatch-live-pod {
   font-style: normal;
   font-weight: 600;
