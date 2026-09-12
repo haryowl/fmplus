@@ -34,6 +34,7 @@ import { getObject, objectStorageConfigured, putObject } from "./storage.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 import { tenantFromRequest } from "./tenants.mjs";
 import { fetchVehiclePositions } from "./vehicle-positions.mjs";
+import { maybeNotifyDispatchJobAssigned } from "./dispatch-notify.mjs";
 
 const STATUSES = ["draft", "assigned", "en_route", "arrived", "done", "cancelled"];
 const STOP_STATUSES = ["pending", "arrived", "done", "skipped"];
@@ -1690,7 +1691,20 @@ export async function handleDispatchRequest(req, res) {
       await replaceStops(jobId, normalizeStops(body.stops));
       const row = await loadJob(dbTenant.id, jobId);
       const stops = await loadStops(jobId);
-      json(res, 201, { job: publicJob(row, stops) });
+      const job = publicJob(row, stops);
+      if (assigneeId) {
+        try {
+          await maybeNotifyDispatchJobAssigned({
+            tenantId: dbTenant.id,
+            tenantKey: dbTenant.key,
+            job,
+            prevAssignedFieldUserId: null,
+          });
+        } catch (err) {
+          console.error("[dispatch] assigned notify", err);
+        }
+      }
+      json(res, 201, { job });
       return true;
     }
 
@@ -1922,9 +1936,11 @@ export async function handleDispatchRequest(req, res) {
         json(res, 404, { error: "Job not found" });
         return true;
       }
+      const prevAssignedFieldUserId = existing.assigned_field_user_id || null;
       const body = await readJson(req);
       const sets = [];
       const params = [];
+      let assigneeChanged = false;
 
       if ("title" in body) {
         const title = String(body.title || "").trim().slice(0, 200);
@@ -1980,6 +1996,8 @@ export async function handleDispatchRequest(req, res) {
         } else {
           sets.push(`assigned_at = NULL`);
         }
+        assigneeChanged =
+          String(assigneeId || "") !== String(prevAssignedFieldUserId || "");
       }
       if ("status" in body) {
         const status = String(body.status || "").toLowerCase();
@@ -2041,7 +2059,21 @@ export async function handleDispatchRequest(req, res) {
       }
 
       const row = await loadJob(dbTenant.id, existing.id);
-      json(res, 200, { job: publicJob(row, await loadStops(row.id)) });
+      const stops = await loadStops(row.id);
+      const job = publicJob(row, stops);
+      if (assigneeChanged && job.assignedFieldUserId) {
+        try {
+          await maybeNotifyDispatchJobAssigned({
+            tenantId: dbTenant.id,
+            tenantKey: dbTenant.key,
+            job,
+            prevAssignedFieldUserId,
+          });
+        } catch (err) {
+          console.error("[dispatch] assigned notify", err);
+        }
+      }
+      json(res, 200, { job });
       return true;
     }
 
