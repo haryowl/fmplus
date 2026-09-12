@@ -4045,14 +4045,19 @@ html.onesheet-root body {
   border: 1px solid #bddfd6;
   position: relative;
   isolation: isolate;
-  overflow: visible;
+  overflow-x: clip;
+  overflow-y: visible;
   min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .dispatch-order-draft > * {
   position: relative;
   z-index: 0;
   min-width: 0;
+  max-width: 100%;
 }
 
 .dispatch-order-draft > .dispatch-eyebrow {
@@ -4061,6 +4066,8 @@ html.onesheet-root body {
 
 .dispatch-order-draft .field {
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .dispatch-order-draft label.field {
@@ -4069,15 +4076,52 @@ html.onesheet-root body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ink-faint);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .dispatch-order-draft label.field input,
-.dispatch-order-draft label.field select {
+.dispatch-order-draft label.field select,
+.dispatch-order-draft input:not([type="checkbox"]):not([type="radio"]),
+.dispatch-order-draft select {
   text-transform: none;
   letter-spacing: normal;
   font-size: 12px;
   font-weight: 500;
   color: var(--ink);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.dispatch-order-draft .dispatch-plan-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.dispatch-order-draft .dispatch-plan-check input[type="checkbox"] {
+  margin-top: 2px;
+}
+
+.dispatch-order-draft .dispatch-create-actions {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dispatch-order-draft .dispatch-order-form-row {
+  grid-template-columns: 1fr;
+}
+
+.dispatch-order-draft .dispatch-order-form-row-2 {
+  grid-template-columns: 1fr;
 }
 
 .dispatch-pin-chip {
@@ -4092,9 +4136,15 @@ html.onesheet-root body {
   line-height: 1.35;
   color: var(--ink-soft);
   margin: 0;
-  flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
   box-sizing: border-box;
   width: 100%;
+}
+
+.dispatch-pin-chip > span:last-child {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .dispatch-pin-chip strong {
