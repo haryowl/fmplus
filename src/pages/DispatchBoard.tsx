@@ -2252,7 +2252,7 @@ export default function DispatchBoard() {
                     <p className="dispatch-window-warn">End time should be after start time.</p>
                   ) : null}
                 </div>
-                <div className="dispatch-order-form-row dispatch-order-form-row-2">
+                <div className="dispatch-order-form-row dispatch-order-form-row-stop">
                   <label className="field">
                     Stop time (min)
                     <input
@@ -2265,7 +2265,7 @@ export default function DispatchBoard() {
                       placeholder={`Default ${planServiceMin || 8}`}
                     />
                   </label>
-                  <p className="dispatch-search-hint" style={{ alignSelf: "end", margin: 0 }}>
+                  <p className="dispatch-search-hint dispatch-order-field-hint">
                     Time at the location for delivery/pickup. Leave blank to use Auto-plan “Service min /
                     stop”.
                   </p>
@@ -2291,7 +2291,7 @@ export default function DispatchBoard() {
                       Also save as routine template
                     </label>
                     {orderForm.saveAsTemplate ? (
-                      <div className="dispatch-order-form-row dispatch-order-form-row-2">
+                      <div className="dispatch-order-form-row dispatch-order-form-row-stop">
                         <label className="field">
                           Cadence
                           <select
@@ -2327,7 +2327,7 @@ export default function DispatchBoard() {
                             </select>
                           </label>
                         ) : (
-                          <p className="dispatch-search-hint" style={{ alignSelf: "end", margin: 0 }}>
+                          <p className="dispatch-search-hint dispatch-order-field-hint">
                             Generate creates a pending order for matching days.
                           </p>
                         )}
