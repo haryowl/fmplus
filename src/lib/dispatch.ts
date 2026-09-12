@@ -1060,3 +1060,103 @@ export function withTenantQuery(url: string): string {
   const join = url.includes("?") ? "&" : "?";
   return `${url}${join}k=${encodeURIComponent(k)}`;
 }
+
+export type DispatchLiveStopStatus =
+  | "delivered"
+  | "in_transit"
+  | "pending"
+  | "delayed"
+  | "skipped";
+
+export type DispatchLivePod = "yes" | "no" | "pending";
+
+export type DispatchLiveStop = {
+  stopId: string;
+  jobId: string;
+  orderId: string | null;
+  externalRef: string;
+  stopNumber: number;
+  name: string;
+  address: string;
+  status: DispatchLiveStopStatus;
+  stopStatus: string;
+  delayed: boolean;
+  windowStart: string;
+  windowEnd: string;
+  arrivedAt: string | null;
+  completedAt: string | null;
+  timeLabel: string;
+  lat: number | null;
+  lon: number | null;
+  plannedLat: number | null;
+  plannedLon: number | null;
+  pod: DispatchLivePod;
+  photoCount: number;
+  proofRequired: boolean;
+  pctComplete: number;
+  skipReason: string;
+  driverName?: string;
+  driverInitials?: string;
+  vehicleLabel?: string;
+  jobTitle?: string;
+  jobStatus?: string;
+};
+
+export type DispatchLiveDriver = {
+  jobId: string;
+  jobTitle: string;
+  jobStatus: string;
+  serviceDate: string;
+  assignedFieldUserId: string | null;
+  driverName: string;
+  driverInitials: string;
+  vehicleLabel: string;
+  armadaUserId: number | null;
+  liveLat: number | null;
+  liveLon: number | null;
+  pctComplete: number;
+  doneCount: number;
+  stopCount: number;
+  currentOrderRef: string;
+  currentStatus: DispatchLiveStopStatus | string;
+  timeWindowLabel: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  stops: DispatchLiveStop[];
+};
+
+export type DispatchLiveSummary = {
+  totalStops: number;
+  driverCount: number;
+  activeDrivers: number;
+  inTransit: number;
+  delivered: number;
+  pending: number;
+  delayed: number;
+  skipped: number;
+  avgCompletion: number;
+  inTransitPct: number;
+};
+
+export type DispatchLiveSnapshot = {
+  serviceDate: string;
+  updatedAt: string;
+  timezone: string;
+  summary: DispatchLiveSummary;
+  drivers: DispatchLiveDriver[];
+  manifest: DispatchLiveStop[];
+};
+
+export async function fetchDispatchLive(
+  serviceDate?: string,
+  signal?: AbortSignal,
+): Promise<DispatchLiveSnapshot> {
+  const date = serviceDate || todayServiceDate();
+  const res = await fetch(`/api/dispatch/live?date=${encodeURIComponent(date)}`, {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as DispatchLiveSnapshot & { error?: string };
+  if (!res.ok) throw new Error(data.error || `Dispatch live ${res.status}`);
+  return data;
+}

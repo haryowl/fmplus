@@ -10,6 +10,7 @@ export type AppView =
   | "places"
   | "routePlan"
   | "dispatchDesk"
+  | "dispatchLive"
   | "maintenance"
   | "admin"
   | "field"
@@ -27,6 +28,14 @@ export function viewFromPath(pathname: string): AppView {
   if (leaf === "exceptions" || leaf === "exceptions.html") return "exceptions";
   if (leaf === "places" || leaf === "places.html") return "places";
   if (leaf === "route" || leaf === "route.html" || leaf === "routes") return "routePlan";
+  if (
+    leaf === "dispatch-live" ||
+    leaf === "dispatch-live.html" ||
+    leaf === "dispatchlive" ||
+    (leaf === "jobs" && (next === "live" || next === "live.html"))
+  ) {
+    return "dispatchLive";
+  }
   if (leaf === "jobs" || leaf === "jobs.html") return "dispatchDesk";
   if (leaf === "maintenance" || leaf === "maintenance.html") return "maintenance";
   if (leaf === "fleet" && (next === "compact" || next === "compact.html")) return "fleetCompact";
@@ -92,6 +101,10 @@ export function routePlanHref(search: string): string {
 
 export function jobsHref(search: string): string {
   return withSearch("/jobs", search);
+}
+
+export function dispatchLiveHref(search: string): string {
+  return withSearch("/dispatch-live", search);
 }
 
 export function maintenanceHref(search: string): string {

@@ -36,5 +36,7 @@ describe("entitlements", () => {
   it("maps views to module keys", () => {
     expect(moduleKeyForView("fleetCompact")).toBe("fleetCompact");
     expect(moduleKeyForView("trips")).toBe("trips");
+    expect(moduleKeyForView("dispatchDesk")).toBe("dispatch");
+    expect(moduleKeyForView("dispatchLive")).toBe("dispatch");
   });
 });

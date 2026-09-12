@@ -13,6 +13,7 @@ import {
   placesHref,
   routePlanHref,
   jobsHref,
+  dispatchLiveHref,
   viewFromPath,
   withSearch,
 } from "./routing";
@@ -38,6 +39,9 @@ describe("viewFromPath", () => {
     expect(viewFromPath("/route/")).toBe("routePlan");
     expect(viewFromPath("/jobs")).toBe("dispatchDesk");
     expect(viewFromPath("/jobs/")).toBe("dispatchDesk");
+    expect(viewFromPath("/dispatch-live")).toBe("dispatchLive");
+    expect(viewFromPath("/dispatch-live/")).toBe("dispatchLive");
+    expect(viewFromPath("/jobs/live")).toBe("dispatchLive");
     expect(viewFromPath("/maintenance")).toBe("maintenance");
     expect(viewFromPath("/maintenance/")).toBe("maintenance");
     expect(viewFromPath("/admin")).toBe("admin");
@@ -85,6 +89,7 @@ describe("withSearch", () => {
     expect(placesHref(q)).toBe("/places?groupId=12&userId=99&embed=1");
     expect(routePlanHref(q)).toBe("/route?groupId=12&userId=99&embed=1");
     expect(jobsHref(q)).toBe("/jobs?groupId=12&userId=99&embed=1");
+    expect(dispatchLiveHref(q)).toBe("/dispatch-live?groupId=12&userId=99&embed=1");
     expect(maintenanceHref(q)).toBe("/maintenance?groupId=12&userId=99&embed=1");
     expect(withSearch("/compact", "")).toBe("/compact");
   });

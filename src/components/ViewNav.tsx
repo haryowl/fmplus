@@ -1,5 +1,6 @@
 import {
   compactHref,
+  dispatchLiveHref,
   exceptionsHref,
   fleetCompactHref,
   fleetHref,
@@ -29,6 +30,7 @@ const LINKS: { view: AppView; label: string; href: (search: string) => string }[
   { view: "places", label: "Places", href: placesHref },
   { view: "routePlan", label: "Route", href: routePlanHref },
   { view: "dispatchDesk", label: "Jobs", href: jobsHref },
+  { view: "dispatchLive", label: "Dispatch Live", href: dispatchLiveHref },
   { view: "maintenance", label: "Maintenance", href: maintenanceHref },
 ];
 

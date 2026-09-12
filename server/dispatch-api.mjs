@@ -7,6 +7,7 @@
  * POST /api/dispatch/jobs/:id/stops/:stopId/return
  * GET/POST /api/dispatch/orders
  * POST /api/dispatch/orders/import
+ * GET /api/dispatch/live?date=YYYY-MM-DD
  * PATCH/DELETE /api/dispatch/orders/:id
  * GET /api/dispatch/stops/:stopId/photos
  * GET /api/dispatch/photos/:id
@@ -37,6 +38,7 @@ import { tenantFromRequest } from "./tenants.mjs";
 import { fetchVehiclePositions } from "./vehicle-positions.mjs";
 import { maybeNotifyDispatchJobAssigned } from "./dispatch-notify.mjs";
 import { csvBool, csvNum, parseCsv } from "./csv-parse.mjs";
+import { buildDispatchLiveSnapshot } from "./dispatch-live.mjs";
 
 const STATUSES = ["draft", "assigned", "en_route", "arrived", "done", "cancelled"];
 const STOP_STATUSES = ["pending", "arrived", "done", "skipped"];
@@ -1692,6 +1694,18 @@ export async function handleDispatchRequest(req, res) {
     }
 
     // —— Jobs ——
+    if (url.pathname === "/api/dispatch/live" && req.method === "GET") {
+      const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
+      const vault = tenantFromRequest(req);
+      const snapshot = await buildDispatchLiveSnapshot({
+        tenantId: dbTenant.id,
+        serviceDate: date,
+        vaultTenant: vault,
+      });
+      json(res, 200, snapshot);
+      return true;
+    }
+
     if (url.pathname === "/api/dispatch/jobs" && req.method === "GET") {
       const status = String(url.searchParams.get("status") || "open").toLowerCase();
       const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
