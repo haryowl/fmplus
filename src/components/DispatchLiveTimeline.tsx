@@ -19,17 +19,17 @@ type Props = {
   onSelectJob: (jobId: string) => void;
 };
 
-function statusTone(status: string): string {
-  if (
-    status === "delivered" ||
-    status === "in_transit" ||
-    status === "delayed" ||
-    status === "skipped" ||
-    status === "pending"
-  ) {
-    return status;
-  }
-  return "pending";
+function nodeGlyph(node: TimelineNode): string {
+  if (node.role === "depot") return "D";
+  if (node.role === "return") return "R";
+  return String(node.stopNumber);
+}
+
+function formatDelta(deltaMin: number | null): string {
+  if (deltaMin == null) return "";
+  if (deltaMin === 0) return "on plan";
+  if (deltaMin > 0) return `+${deltaMin} min vs plan`;
+  return `${deltaMin} min vs plan`;
 }
 
 export function DispatchLiveTimeline({
@@ -71,7 +71,7 @@ export function DispatchLiveTimeline({
       <div className="dispatch-pane-head">
         <h2>Progress</h2>
         <span className="dispatch-live-timeline-hint">
-          {minToHm(axis.startMin)}–{minToHm(axis.endMin)} WIB · planned ETA until actual
+          {minToHm(axis.startMin)}–{minToHm(axis.endMin)} WIB · faded plan · green actual
         </span>
       </div>
 
@@ -126,6 +126,8 @@ function TimelineRowView({
 }) {
   const focused = focusJobId === row.jobId;
   const span = Math.max(1, axis.endMin - axis.startMin);
+  const plannedChain = row.nodes.filter((n) => n.plannedPct != null);
+  const actualChain = row.nodes.filter((n) => n.actualPct != null);
 
   return (
     <li className={`dispatch-live-gantt-row${focused ? " is-focused" : ""}`}>
@@ -160,43 +162,138 @@ function TimelineRowView({
           <i className="dispatch-live-gantt-now" style={{ left: `${axis.nowPct}%` }} aria-hidden />
         ) : null}
 
-        {row.nodes.map((node, idx) => {
-          const next = row.nodes[idx + 1];
-          if (!next) return null;
-          const left = Math.min(node.pct, next.pct);
-          const width = Math.abs(next.pct - node.pct);
+        {/* Planned path (faded) */}
+        {plannedChain.map((node, idx) => {
+          const next = plannedChain[idx + 1];
+          if (!next || node.plannedPct == null || next.plannedPct == null) return null;
+          const left = Math.min(node.plannedPct, next.plannedPct);
+          const width = Math.abs(next.plannedPct - node.plannedPct);
           return (
             <span
-              key={`${node.stopId}-seg`}
-              className={`dispatch-live-gantt-seg tone-${statusTone(node.status)}`}
+              key={`${node.stopId}-plan-seg`}
+              className="dispatch-live-gantt-seg is-planned"
               style={{ left: `${left}%`, width: `${Math.max(width, 0.4)}%` }}
               aria-hidden
             />
           );
         })}
 
+        {/* Actual path (highlight) */}
+        {actualChain.map((node, idx) => {
+          const next = actualChain[idx + 1];
+          if (!next || node.actualPct == null || next.actualPct == null) return null;
+          const left = Math.min(node.actualPct, next.actualPct);
+          const width = Math.abs(next.actualPct - node.actualPct);
+          return (
+            <span
+              key={`${node.stopId}-act-seg`}
+              className="dispatch-live-gantt-seg is-actual"
+              style={{ left: `${left}%`, width: `${Math.max(width, 0.4)}%` }}
+              aria-hidden
+            />
+          );
+        })}
+
+        {/* Pending connector when no actuals yet: use primary pct */}
+        {actualChain.length < 2
+          ? row.nodes.map((node, idx) => {
+              const next = row.nodes[idx + 1];
+              if (!next) return null;
+              if (node.plannedPct != null && next.plannedPct != null) return null;
+              const left = Math.min(node.pct, next.pct);
+              const width = Math.abs(next.pct - node.pct);
+              return (
+                <span
+                  key={`${node.stopId}-seg`}
+                  className="dispatch-live-gantt-seg is-pending"
+                  style={{ left: `${left}%`, width: `${Math.max(width, 0.4)}%` }}
+                  aria-hidden
+                />
+              );
+            })
+          : null}
+
         {row.nodes.map((node) => (
           <WindowBar key={`${node.stopId}-win`} node={node} />
         ))}
 
+        {/* Plan↔actual delta whiskers */}
         {row.nodes.map((node) => {
+          if (node.plannedPct == null || node.actualPct == null) return null;
+          if (Math.abs(node.plannedPct - node.actualPct) < 0.35) return null;
+          const left = Math.min(node.plannedPct, node.actualPct);
+          const width = Math.abs(node.actualPct - node.plannedPct);
+          return (
+            <span
+              key={`${node.stopId}-delta`}
+              className="dispatch-live-gantt-delta"
+              style={{ left: `${left}%`, width: `${width}%` }}
+              aria-hidden
+            />
+          );
+        })}
+
+        {/* Faded planned marks (always when planned known) */}
+        {row.nodes.map((node) => {
+          if (node.plannedPct == null) return null;
+          const selected = focusStopId === node.stopId && node.actualPct == null;
+          const title = [
+            `${node.label}`,
+            `Plan ${node.plannedTimeLabel || minToHm(node.plannedMinute!)}`,
+            node.actualTimeLabel ? `Actual ${node.actualTimeLabel}` : null,
+            formatDelta(node.deltaMin) || null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+            <button
+              key={`${node.stopId}-plan`}
+              type="button"
+              className={`dispatch-live-gantt-node is-planned${
+                node.role === "depot" || node.role === "return" ? " is-anchor" : ""
+              }${selected ? " is-selected" : ""}`}
+              style={{ left: `${node.plannedPct}%` }}
+              title={title}
+              aria-label={`Planned ${node.label} ${node.plannedTimeLabel || ""}`}
+              onClick={() => onSelectStop(row.jobId, node.stopId)}
+            >
+              <span>{nodeGlyph(node)}</span>
+            </button>
+          );
+        })}
+
+        {/* Actual / primary marks — green when completed */}
+        {row.nodes.map((node) => {
+          const hasActual = node.actualPct != null;
           const selected = focusStopId === node.stopId;
-          const tone = statusTone(node.status);
+          // If only planned (no actual), the planned mark above is enough — avoid double stack.
+          if (!hasActual && node.plannedPct != null) return null;
+          const left = hasActual ? node.actualPct! : node.pct;
+          const title = [
+            `${node.label}`,
+            hasActual
+              ? `Actual ${node.actualTimeLabel || node.timeLabel}`
+              : node.timeLabel,
+            node.plannedTimeLabel ? `Plan ${node.plannedTimeLabel}` : null,
+            formatDelta(node.deltaMin) || null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
           return (
             <button
               key={node.stopId}
               type="button"
               role="listitem"
               data-stop-id={node.stopId}
-              className={`dispatch-live-gantt-node tone-${tone}${selected ? " is-selected" : ""}${
+              className={`dispatch-live-gantt-node${hasActual ? " is-actual" : " is-pending"}${
                 node.role === "depot" || node.role === "return" ? " is-anchor" : ""
-              }`}
-              style={{ left: `${node.pct}%` }}
-              title={`${node.label} · ${node.timeLabel} (${node.timeSource})`}
-              aria-label={`${node.role === "depot" ? "Depot" : node.role === "return" ? "Return" : `Stop ${node.stopNumber}`} ${node.label}, ${node.status}, ${node.timeLabel}`}
+              }${selected ? " is-selected" : ""}`}
+              style={{ left: `${left}%` }}
+              title={title}
+              aria-label={`${node.role === "depot" ? "Depot" : node.role === "return" ? "Return" : `Stop ${node.stopNumber}`} ${node.label}, ${title}`}
               onClick={() => onSelectStop(row.jobId, node.stopId)}
             >
-              <span>{node.role === "depot" ? "D" : node.role === "return" ? "R" : node.stopNumber}</span>
+              <span>{nodeGlyph(node)}</span>
             </button>
           );
         })}
@@ -206,7 +303,6 @@ function TimelineRowView({
 }
 
 function WindowBar({ node }: { node: TimelineNode }) {
-  // Planned/actual nodes already sit on the Jobs ETA chain — skip full-day window spans.
   if (node.timeSource === "planned" || node.timeSource === "actual") return null;
   if (node.windowStartPct == null || node.windowEndPct == null) return null;
   const left = Math.min(node.windowStartPct, node.windowEndPct);

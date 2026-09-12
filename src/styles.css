@@ -8317,16 +8317,31 @@ html.onesheet-root body {
   pointer-events: none;
 }
 
-.dispatch-live-gantt-seg.tone-delivered {
-  background: color-mix(in srgb, var(--accent) 55%, transparent);
+.dispatch-live-gantt-seg.is-planned {
+  height: 2px;
+  background: color-mix(in srgb, #9a4a2e 28%, transparent);
+  z-index: 1;
 }
 
-.dispatch-live-gantt-seg.tone-in_transit {
-  background: color-mix(in srgb, #0369a1 55%, transparent);
+.dispatch-live-gantt-seg.is-actual {
+  height: 4px;
+  background: color-mix(in srgb, var(--accent) 75%, transparent);
+  z-index: 2;
 }
 
-.dispatch-live-gantt-seg.tone-delayed {
-  background: color-mix(in srgb, #b45309 55%, transparent);
+.dispatch-live-gantt-seg.is-pending {
+  background: color-mix(in srgb, var(--ink) 16%, transparent);
+}
+
+.dispatch-live-gantt-delta {
+  position: absolute;
+  top: 50%;
+  height: 10px;
+  transform: translateY(-50%);
+  border-top: 1px dashed color-mix(in srgb, #9a4a2e 45%, transparent);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.85;
 }
 
 .dispatch-live-gantt-node {
@@ -8348,6 +8363,54 @@ html.onesheet-root body {
   z-index: 3;
   display: grid;
   place-items: center;
+}
+
+.dispatch-live-gantt-node.is-planned {
+  width: 16px;
+  height: 16px;
+  font-size: 0.58rem;
+  font-weight: 600;
+  background: color-mix(in srgb, #9a4a2e 38%, #fff);
+  color: color-mix(in srgb, #9a4a2e 70%, #fff);
+  border-color: color-mix(in srgb, #fff 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #9a4a2e 28%, transparent);
+  opacity: 0.72;
+  z-index: 3;
+}
+
+.dispatch-live-gantt-node.is-planned.is-anchor {
+  border-radius: 4px;
+}
+
+.dispatch-live-gantt-node.is-actual {
+  width: 24px;
+  height: 24px;
+  background: var(--accent);
+  color: #fff;
+  border-color: #fff;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+  z-index: 5;
+}
+
+.dispatch-live-gantt-node.is-actual.is-anchor {
+  border-radius: 6px;
+  background: var(--accent-hover);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-hover) 50%, transparent);
+}
+
+.dispatch-live-gantt-node.is-pending {
+  background: #fff;
+  color: var(--ink-soft);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 16%, transparent);
+  z-index: 4;
+}
+
+.dispatch-live-gantt-node.is-pending.is-anchor {
+  border-radius: 6px;
+  background: color-mix(in srgb, #9a4a2e 42%, #fff);
+  color: #fff;
+  opacity: 0.85;
+  box-shadow: 0 0 0 1px color-mix(in srgb, #9a4a2e 35%, transparent);
 }
 
 .dispatch-live-gantt-node.tone-delivered {
@@ -8381,14 +8444,11 @@ html.onesheet-root body {
 .dispatch-live-gantt-node.is-selected {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  z-index: 4;
+  z-index: 6;
 }
 
 .dispatch-live-gantt-node.is-anchor {
   border-radius: 6px;
-  background: #9a4a2e;
-  color: #fff;
-  box-shadow: 0 0 0 1px #9a4a2e;
 }
 
 @media (max-width: 1100px) {

@@ -43,8 +43,19 @@ export type TimelineNode = {
   label: string;
   status: string;
   role: "stop" | "depot" | "return";
+  /** Primary position (actual if present, else planned/window/sequence). */
   minute: number;
   pct: number;
+  /** Planned road ETA minute when known (kept even after completion). */
+  plannedMinute: number | null;
+  plannedPct: number | null;
+  plannedTimeLabel: string | null;
+  /** Actual arrive/complete minute when known. */
+  actualMinute: number | null;
+  actualPct: number | null;
+  actualTimeLabel: string | null;
+  /** actual − planned in minutes (null if either missing). */
+  deltaMin: number | null;
   windowStartMin: number | null;
   windowEndMin: number | null;
   windowStartPct: number | null;
@@ -327,6 +338,10 @@ export function buildTimelineRows(
   for (const row of rawRows) {
     for (const p of row.placements) {
       if (p.minute != null) seedMinutes.push(p.minute);
+      const planned = hmToMin(p.stop.plannedEta);
+      if (planned != null) seedMinutes.push(planned);
+      const actual = isoToJakartaMin(p.stop.completedAt) ?? isoToJakartaMin(p.stop.arrivedAt);
+      if (actual != null) seedMinutes.push(actual);
       if (p.windowStartMin != null) seedMinutes.push(p.windowStartMin);
       if (p.windowEndMin != null) seedMinutes.push(p.windowEndMin);
     }
@@ -351,12 +366,22 @@ export function buildTimelineRows(
         role === "depot" || role === "return"
           ? p.stop.name
           : p.stop.externalRef || p.stop.name || `Stop ${p.stop.stopNumber}`;
+      const plannedMinute = hmToMin(p.stop.plannedEta);
+      const actualMinute =
+        isoToJakartaMin(p.stop.completedAt) ?? isoToJakartaMin(p.stop.arrivedAt);
+      const plannedTimeLabel = plannedMinute != null ? p.stop.plannedEta || minToHm(plannedMinute) : null;
+      const actualTimeLabel =
+        actualMinute != null
+          ? p.stop.timeLabel || minToHm(actualMinute)
+          : null;
       const timeLabel =
-        timeSource === "actual" && p.stop.timeLabel
-          ? p.stop.timeLabel
-          : timeSource === "planned" && p.stop.plannedEta
-            ? p.stop.plannedEta
+        timeSource === "actual" && actualTimeLabel
+          ? actualTimeLabel
+          : timeSource === "planned" && plannedTimeLabel
+            ? plannedTimeLabel
             : minToHm(minute);
+      const deltaMin =
+        actualMinute != null && plannedMinute != null ? actualMinute - plannedMinute : null;
       return {
         stopId: p.stop.stopId,
         jobId: p.stop.jobId || driver.jobId,
@@ -366,6 +391,13 @@ export function buildTimelineRows(
         role,
         minute,
         pct: 0,
+        plannedMinute,
+        plannedPct: null,
+        plannedTimeLabel,
+        actualMinute,
+        actualPct: null,
+        actualTimeLabel,
+        deltaMin,
         windowStartMin: p.windowStartMin,
         windowEndMin: p.windowEndMin,
         windowStartPct: null,
@@ -388,6 +420,8 @@ export function buildTimelineRows(
   const allMinutes = rows.flatMap((r) =>
     r.nodes.flatMap((n) => {
       const ms = [n.minute];
+      if (n.plannedMinute != null) ms.push(n.plannedMinute);
+      if (n.actualMinute != null) ms.push(n.actualMinute);
       if (n.windowStartMin != null) ms.push(n.windowStartMin);
       if (n.windowEndMin != null) ms.push(n.windowEndMin);
       return ms;
@@ -398,6 +432,10 @@ export function buildTimelineRows(
   for (const row of rows) {
     for (const n of row.nodes) {
       n.pct = minuteToPct(n.minute, axis.startMin, axis.endMin);
+      n.plannedPct =
+        n.plannedMinute != null ? minuteToPct(n.plannedMinute, axis.startMin, axis.endMin) : null;
+      n.actualPct =
+        n.actualMinute != null ? minuteToPct(n.actualMinute, axis.startMin, axis.endMin) : null;
       n.windowStartPct =
         n.windowStartMin != null ? minuteToPct(n.windowStartMin, axis.startMin, axis.endMin) : null;
       n.windowEndPct =

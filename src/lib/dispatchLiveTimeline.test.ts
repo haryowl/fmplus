@@ -187,9 +187,41 @@ describe("buildTimelineRows", () => {
     expect(nodes.map((n) => n.role)).toEqual(["depot", "stop", "stop", "return"]);
     expect(nodes[0]!.timeSource).toBe("planned");
     expect(nodes[0]!.minute).toBe(8 * 60);
+    expect(nodes[0]!.plannedMinute).toBe(8 * 60);
     expect(nodes[1]!.timeSource).toBe("planned");
     expect(nodes[1]!.minute).toBe(8 * 60 + 3);
     expect(nodes[2]!.minute).toBe(8 * 60 + 14);
     expect(nodes[3]!.minute).toBe(9 * 60 + 27);
+  });
+
+  it("keeps planned minute when actual completion exists", () => {
+    const { rows } = buildTimelineRows([
+      {
+        jobId: "j4",
+        driverName: "Dan",
+        driverInitials: "DA",
+        vehicleLabel: "B 4",
+        pctComplete: 50,
+        jobStatus: "en_route",
+        stops: [
+          {
+            stopId: "s1",
+            jobId: "j4",
+            stopNumber: 1,
+            name: "A",
+            status: "delivered",
+            plannedEta: "08:03",
+            completedAt: "2026-09-12T01:30:00.000Z", // 08:30 WIB
+            timeLabel: "08:30",
+          },
+        ],
+      },
+    ]);
+    const n = rows[0]!.nodes[0]!;
+    expect(n.timeSource).toBe("actual");
+    expect(n.actualMinute).toBe(8 * 60 + 30);
+    expect(n.plannedMinute).toBe(8 * 60 + 3);
+    expect(n.deltaMin).toBe(27);
+    expect(n.minute).toBe(8 * 60 + 30);
   });
 });
