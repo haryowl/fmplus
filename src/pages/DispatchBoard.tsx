@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchGroups, fetchUsersForGroup, groupOptionLabel, userOptionLabel } from "../lib/api";
 import { BrandMark } from "../components/BrandMark";
 import { CsvImportPanel } from "../components/CsvImportPanel";
@@ -146,6 +146,7 @@ export default function DispatchBoard() {
 
   const [orderForm, setOrderForm] = useState(emptyOrderForm);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const orderDraftRef = useRef<HTMLDivElement | null>(null);
   const [placing, setPlacing] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
@@ -283,6 +284,16 @@ export default function DispatchBoard() {
       return hay.includes(q);
     });
   }, [orders, orderQuery]);
+
+  useEffect(() => {
+    if (!(placing || draftPin || editingOrderId)) return;
+    const el = orderDraftRef.current;
+    if (!el) return;
+    const t = window.setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 50);
+    return () => window.clearTimeout(t);
+  }, [placing, draftPin, editingOrderId]);
 
   useEffect(() => {
     document.title = "Dispatch · ARMADA M.1";
@@ -1978,8 +1989,10 @@ export default function DispatchBoard() {
           </section>
         )}
 
-        <div className="dispatch-board-3col">
-          <section className="dispatch-rail dispatch-pool">
+        <div className={`dispatch-board-3col${placing || draftPin || editingOrderId ? " is-drafting" : ""}`}>
+          <section
+            className={`dispatch-rail dispatch-pool${placing || draftPin || editingOrderId ? " is-drafting" : ""}`}
+          >
             <header className="dispatch-pane-head">
               <p className="dispatch-eyebrow">Inbox · {formatServiceDateLabel(planDate)}</p>
               <h2>Orders</h2>
@@ -2209,7 +2222,7 @@ export default function DispatchBoard() {
             </div>
 
             {placing || draftPin ? (
-              <div className="dispatch-order-draft">
+              <div className="dispatch-order-draft" ref={orderDraftRef}>
                 <p className="dispatch-eyebrow">{editingOrderId ? "Edit order" : "New stop"}</p>
                 {draftPin && pinLabel ? (
                   <div className="dispatch-pin-chip" title={orderForm.address}>

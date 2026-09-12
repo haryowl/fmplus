@@ -3853,6 +3853,18 @@ html.onesheet-root body {
   max-height: min(78vh, 840px);
 }
 
+.dispatch-board-3col.is-drafting {
+  height: auto;
+  max-height: none;
+  align-items: start;
+}
+
+.dispatch-board-3col.is-drafting > .dispatch-rail {
+  height: auto;
+  min-height: min(64vh, 640px);
+  max-height: none;
+}
+
 .dispatch-rail {
   display: flex;
   flex-direction: column;
@@ -4062,11 +4074,13 @@ html.onesheet-root body {
   border: 1px solid #bddfd6;
   position: relative;
   isolation: isolate;
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
   min-width: 0;
   max-width: 100%;
   width: 100%;
   box-sizing: border-box;
+  flex: 0 0 auto;
 }
 
 .dispatch-order-draft > * {
@@ -4375,6 +4389,22 @@ html.onesheet-root body {
   min-width: 0;
   gap: 8px;
   padding: 12px;
+}
+
+.dispatch-rail.dispatch-pool.is-drafting {
+  overflow: visible;
+  height: auto;
+}
+
+.dispatch-rail.dispatch-pool.is-drafting .dispatch-pool-list-wrap {
+  flex: 0 1 auto;
+  max-height: min(28vh, 260px);
+}
+
+.dispatch-rail.dispatch-pool.is-drafting .dispatch-order-draft {
+  flex: 0 0 auto;
+  max-height: none;
+  overflow: visible;
 }
 
 .dispatch-rail.dispatch-vehicle-pane {
