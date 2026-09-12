@@ -226,8 +226,20 @@ export default function DispatchBoard() {
     : `empty-${mapDraftPin ? `${mapDraftPin.lat},${mapDraftPin.lon}` : ""}`;
 
   const stopRouteMeta = useMemo(() => {
-    if (!selected?.stops?.length) return [];
-    return buildStopRouteMeta(selected.stops, jobRoute?.legs || [], Number(planServiceMin) || 8);
+    if (!selected) {
+      return { depotDepart: null, stops: [], returnLeg: null };
+    }
+    const mode = selected.routeAnchorMode;
+    const hasRouteStart =
+      (mode === "map" || mode === "sequence") &&
+      Boolean(selected.routeStart && Number.isFinite(selected.routeStart.lat));
+    const hasRouteEnd =
+      (mode === "map" || mode === "sequence") &&
+      Boolean(selected.routeEnd && Number.isFinite(selected.routeEnd.lat));
+    return buildStopRouteMeta(selected.stops, jobRoute?.legs || [], Number(planServiceMin) || 8, {
+      hasRouteStart,
+      hasRouteEnd,
+    });
   }, [selected, jobRoute, planServiceMin]);
 
   const poiOptions = useMemo(
@@ -2951,11 +2963,22 @@ export default function DispatchBoard() {
                           <div className="dispatch-stop-body">
                             <strong>{selected.routeStart.label}</strong>
                             <span>Depot / start</span>
+                            <span className="dispatch-stop-leg">
+                              {stopRouteMeta.depotDepart
+                                ? `Depart ${stopRouteMeta.depotDepart}`
+                                : "Depart —"}
+                            </span>
                           </div>
                         </li>
                       ) : null}
                       {selected.stops.map((stop, i) => {
-                        const meta = stopRouteMeta[i];
+                        const meta = stopRouteMeta.stops[i];
+                        const showInbound =
+                          meta &&
+                          (meta.legDistanceKm != null ||
+                            meta.legDurationSec != null ||
+                            i > 0 ||
+                            Boolean(selected.routeStart && selected.routeAnchorMode === "sequence"));
                         return (
                           <li key={stop.id}>
                             <span className="dispatch-stop-idx">{i + 1}</span>
@@ -2979,9 +3002,8 @@ export default function DispatchBoard() {
                                 </span>
                               ) : (
                                 <span className="dispatch-stop-leg">
-                                  {i === 0 ? (
-                                    <>ETA {meta?.eta || "—"} · start</>
-                                  ) : (
+                                  {showInbound &&
+                                  (meta?.legDistanceKm != null || meta?.legDurationSec != null) ? (
                                     <>
                                       {meta?.legDistanceKm != null ? `${meta.legDistanceKm} km` : "—"}
                                       <span aria-hidden> · </span>
@@ -2989,6 +3011,8 @@ export default function DispatchBoard() {
                                       <span aria-hidden> · </span>
                                       ETA {meta?.eta || "—"}
                                     </>
+                                  ) : (
+                                    <>ETA {meta?.eta || "—"} · start</>
                                   )}
                                 </span>
                               )}
@@ -3024,6 +3048,23 @@ export default function DispatchBoard() {
                           <div className="dispatch-stop-body">
                             <strong>{selected.routeEnd.label}</strong>
                             <span>Return</span>
+                            <span className="dispatch-stop-leg">
+                              {stopRouteMeta.returnLeg &&
+                              (stopRouteMeta.returnLeg.legDistanceKm != null ||
+                                stopRouteMeta.returnLeg.legDurationSec != null) ? (
+                                <>
+                                  {stopRouteMeta.returnLeg.legDistanceKm != null
+                                    ? `${stopRouteMeta.returnLeg.legDistanceKm} km`
+                                    : "—"}
+                                  <span aria-hidden> · </span>
+                                  {formatRouteDuration(stopRouteMeta.returnLeg.legDurationSec)}
+                                  <span aria-hidden> · </span>
+                                  ETA {stopRouteMeta.returnLeg.eta || "—"}
+                                </>
+                              ) : (
+                                <>ETA {stopRouteMeta.returnLeg?.eta || "—"}</>
+                              )}
+                            </span>
                           </div>
                         </li>
                       ) : null}

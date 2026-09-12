@@ -1122,6 +1122,9 @@ export type DispatchLiveDriver = {
   timeWindowLabel: string;
   startedAt: string | null;
   completedAt: string | null;
+  routeAnchorMode?: "map" | "sequence" | null;
+  routeStart?: DispatchRouteAnchor | null;
+  routeEnd?: DispatchRouteAnchor | null;
   stops: DispatchLiveStop[];
 };
 

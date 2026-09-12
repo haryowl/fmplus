@@ -188,13 +188,15 @@ function TimelineRowView({
               type="button"
               role="listitem"
               data-stop-id={node.stopId}
-              className={`dispatch-live-gantt-node tone-${tone}${selected ? " is-selected" : ""}`}
+              className={`dispatch-live-gantt-node tone-${tone}${selected ? " is-selected" : ""}${
+                node.role === "depot" || node.role === "return" ? " is-anchor" : ""
+              }`}
               style={{ left: `${node.pct}%` }}
               title={`${node.label} · ${node.timeLabel} (${node.timeSource})`}
-              aria-label={`Stop ${node.stopNumber} ${node.label}, ${node.status}, ${node.timeLabel}`}
+              aria-label={`${node.role === "depot" ? "Depot" : node.role === "return" ? "Return" : `Stop ${node.stopNumber}`} ${node.label}, ${node.status}, ${node.timeLabel}`}
               onClick={() => onSelectStop(row.jobId, node.stopId)}
             >
-              <span>{node.stopNumber}</span>
+              <span>{node.role === "depot" ? "D" : node.role === "return" ? "R" : node.stopNumber}</span>
             </button>
           );
         })}

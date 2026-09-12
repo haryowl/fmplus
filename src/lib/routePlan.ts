@@ -188,45 +188,74 @@ export function parseClockToMinutes(value: string | undefined | null): number | 
 
 /**
  * Per-stop ETA + leg-from-previous, given ordered stops and route legs.
- * Departure = earliest windowStart, else 08:00.
- * Optional per-stop serviceMinutes (dwell) is added after each arrival before the next leg.
+ *
+ * When the road path includes a depot start and/or return, pass
+ * `hasRouteStart` / `hasRouteEnd` so legs align:
+ *   [depot→stop0, stop0→stop1, …, last→return]
+ *
+ * Departure clock = earliest windowStart among stops, else 08:00.
+ * With a depot start that clock is depot departure; without it, first-stop arrival.
+ * Service (dwell) is added after each stop arrival before the next leg.
  */
+export type StopRouteMeta = {
+  legDistanceKm: number | null;
+  legDurationSec: number | null;
+  eta: string | null;
+};
+
+export type SequenceRouteMeta = {
+  /** HH:MM when leaving the depot (only when hasRouteStart). */
+  depotDepart: string | null;
+  stops: StopRouteMeta[];
+  /** Leg from last stop back to depot/return (only when hasRouteEnd). */
+  returnLeg: StopRouteMeta | null;
+};
+
 export function buildStopRouteMeta(
   stops: Array<{ windowStart?: string; serviceMinutes?: number | null }>,
   legs: RouteLeg[],
   defaultServiceMinutes = 0,
-): Array<{
-  legDistanceKm: number | null;
-  legDurationSec: number | null;
-  eta: string | null;
-}> {
+  opts?: { hasRouteStart?: boolean; hasRouteEnd?: boolean },
+): SequenceRouteMeta {
+  const hasRouteStart = Boolean(opts?.hasRouteStart);
+  const hasRouteEnd = Boolean(opts?.hasRouteEnd);
   const start =
     stops.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ?? 8 * 60;
   let elapsedMin = 0;
-  return stops.map((stop, i) => {
-    if (i === 0) {
-      const svc0 =
-        stop.serviceMinutes != null && Number.isFinite(Number(stop.serviceMinutes))
-          ? Math.max(0, Number(stop.serviceMinutes))
-          : Math.max(0, defaultServiceMinutes);
-      elapsedMin = svc0;
-      return { legDistanceKm: null, legDurationSec: null, eta: formatClockMinutes(start) };
+  const depotDepart = hasRouteStart ? formatClockMinutes(start) : null;
+
+  const stopMetas: StopRouteMeta[] = stops.map((stop, i) => {
+    const inboundIdx = hasRouteStart ? i : i === 0 ? null : i - 1;
+    let legDistanceKm: number | null = null;
+    let legDurationSec: number | null = null;
+    if (inboundIdx != null) {
+      const leg = legs[inboundIdx];
+      legDistanceKm = leg?.distanceKm ?? null;
+      legDurationSec = leg?.durationSec ?? null;
+      elapsedMin += (leg?.durationSec ?? 0) / 60;
     }
-    const leg = legs[i - 1];
-    const durationSec = leg?.durationSec ?? 0;
-    elapsedMin += durationSec / 60;
     const eta = formatClockMinutes(start + elapsedMin);
     const svc =
       stop.serviceMinutes != null && Number.isFinite(Number(stop.serviceMinutes))
         ? Math.max(0, Number(stop.serviceMinutes))
         : Math.max(0, defaultServiceMinutes);
     elapsedMin += svc;
-    return {
+    return { legDistanceKm, legDurationSec, eta };
+  });
+
+  let returnLeg: StopRouteMeta | null = null;
+  if (hasRouteEnd && stops.length > 0) {
+    const returnIdx = hasRouteStart ? stops.length : Math.max(0, stops.length - 1);
+    const leg = legs[returnIdx];
+    elapsedMin += (leg?.durationSec ?? 0) / 60;
+    returnLeg = {
       legDistanceKm: leg?.distanceKm ?? null,
       legDurationSec: leg?.durationSec ?? null,
-      eta,
+      eta: formatClockMinutes(start + elapsedMin),
     };
-  });
+  }
+
+  return { depotDepart, stops: stopMetas, returnLeg };
 }
 
 function haversineKmClient(lat1: number, lon1: number, lat2: number, lon2: number): number {

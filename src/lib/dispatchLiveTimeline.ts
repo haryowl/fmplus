@@ -14,6 +14,7 @@ export type TimelineStopInput = {
   arrivedAt?: string | null;
   completedAt?: string | null;
   timeLabel?: string;
+  role?: "stop" | "depot" | "return";
 };
 
 export type TimelineDriverInput = {
@@ -24,6 +25,10 @@ export type TimelineDriverInput = {
   pctComplete: number;
   jobStatus: string;
   startedAt?: string | null;
+  completedAt?: string | null;
+  routeAnchorMode?: string | null;
+  routeStart?: { label?: string; lat?: number | null; lon?: number | null } | null;
+  routeEnd?: { label?: string; lat?: number | null; lon?: number | null } | null;
   stops: TimelineStopInput[];
 };
 
@@ -33,6 +38,7 @@ export type TimelineNode = {
   stopNumber: number;
   label: string;
   status: string;
+  role: "stop" | "depot" | "return";
   minute: number;
   pct: number;
   windowStartMin: number | null;
@@ -250,14 +256,54 @@ export function fillSequenceMinutes(
   return out as number[];
 }
 
+function expandStopsWithAnchors(driver: TimelineDriverInput): TimelineStopInput[] {
+  const mode = String(driver.routeAnchorMode || "").toLowerCase();
+  const useAnchors = mode === "map" || mode === "sequence";
+  const customer = [...driver.stops]
+    .map((s) => ({ ...s, role: s.role || ("stop" as const) }))
+    .sort((a, b) => a.stopNumber - b.stopNumber);
+  const out: TimelineStopInput[] = [];
+
+  if (useAnchors && driver.routeStart) {
+    const departed = Boolean(driver.startedAt);
+    out.push({
+      stopId: `${driver.jobId}::depot-start`,
+      jobId: driver.jobId,
+      stopNumber: 0,
+      name: driver.routeStart.label || "Depot / start",
+      status: departed || driver.jobStatus === "done" ? "delivered" : "pending",
+      arrivedAt: driver.startedAt || null,
+      completedAt: driver.startedAt || null,
+      timeLabel: undefined,
+      role: "depot",
+    });
+  }
+
+  out.push(...customer);
+
+  if (useAnchors && driver.routeEnd) {
+    out.push({
+      stopId: `${driver.jobId}::depot-return`,
+      jobId: driver.jobId,
+      stopNumber: (customer[customer.length - 1]?.stopNumber || customer.length) + 1,
+      name: driver.routeEnd.label || "Return",
+      status: driver.jobStatus === "done" ? "delivered" : "pending",
+      arrivedAt: driver.completedAt || null,
+      completedAt: driver.completedAt || null,
+      timeLabel: undefined,
+      role: "return",
+    });
+  }
+
+  return out;
+}
+
 export function buildTimelineRows(
   drivers: TimelineDriverInput[],
   opts?: { nowMin?: number | null },
 ): { axis: TimelineAxis; rows: TimelineRow[] } {
   const rawRows = drivers.map((d) => {
-    const placements = [...d.stops]
-      .sort((a, b) => a.stopNumber - b.stopNumber)
-      .map(initialPlacement);
+    const placements = expandStopsWithAnchors(d).map(initialPlacement);
     return { driver: d, placements };
   });
 
@@ -284,7 +330,11 @@ export function buildTimelineRows(
       const minute = minutes[i]!;
       const timeSource: TimelineNode["timeSource"] =
         p.timeSource ?? "sequence";
-      const label = p.stop.externalRef || p.stop.name || `Stop ${p.stop.stopNumber}`;
+      const role = p.stop.role || "stop";
+      const label =
+        role === "depot" || role === "return"
+          ? p.stop.name
+          : p.stop.externalRef || p.stop.name || `Stop ${p.stop.stopNumber}`;
       const timeLabel =
         timeSource === "actual" && p.stop.timeLabel
           ? p.stop.timeLabel
@@ -295,6 +345,7 @@ export function buildTimelineRows(
         stopNumber: p.stop.stopNumber,
         label,
         status: p.stop.status,
+        role,
         minute,
         pct: 0,
         windowStartMin: p.windowStartMin,

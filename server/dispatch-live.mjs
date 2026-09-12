@@ -298,6 +298,33 @@ export async function buildDispatchLiveSnapshot(opts) {
       lastDone?.timeLabel || "—",
     ].join(" – ");
 
+    const pathMode = String(job.route_anchor_mode || "").toLowerCase();
+    const routeAnchorMode = pathMode === "map" || pathMode === "sequence" ? pathMode : null;
+    const routeStart =
+      routeAnchorMode &&
+      job.route_start_lat != null &&
+      job.route_start_lon != null &&
+      Number.isFinite(Number(job.route_start_lat)) &&
+      Number.isFinite(Number(job.route_start_lon))
+        ? {
+            lat: Number(job.route_start_lat),
+            lon: Number(job.route_start_lon),
+            label: String(job.route_start_label || "Depot / start"),
+          }
+        : null;
+    const routeEnd =
+      routeAnchorMode &&
+      job.route_end_lat != null &&
+      job.route_end_lon != null &&
+      Number.isFinite(Number(job.route_end_lat)) &&
+      Number.isFinite(Number(job.route_end_lon))
+        ? {
+            lat: Number(job.route_end_lat),
+            lon: Number(job.route_end_lon),
+            label: String(job.route_end_label || "Return"),
+          }
+        : null;
+
     const driver = {
       jobId: job.id,
       jobTitle: job.title || "",
@@ -318,6 +345,9 @@ export async function buildDispatchLiveSnapshot(opts) {
       timeWindowLabel: windowLabel,
       startedAt: job.started_at || null,
       completedAt: job.completed_at || null,
+      routeAnchorMode,
+      routeStart,
+      routeEnd,
       stops: stopsOut,
     };
     drivers.push(driver);

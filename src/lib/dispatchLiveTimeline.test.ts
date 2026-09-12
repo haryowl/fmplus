@@ -109,4 +109,39 @@ describe("buildTimelineRows", () => {
     expect(rows[0]!.nodes[0]!.pct).toBeGreaterThanOrEqual(0);
     expect(rows[0]!.nodes[0]!.pct).toBeLessThanOrEqual(100);
   });
+
+  it("adds depot start and return nodes when anchors exist", () => {
+    const { rows } = buildTimelineRows([
+      {
+        jobId: "j2",
+        driverName: "Bea",
+        driverInitials: "BE",
+        vehicleLabel: "B 2",
+        pctComplete: 0,
+        jobStatus: "assigned",
+        routeAnchorMode: "sequence",
+        routeStart: { label: "Depot", lat: -6.2, lon: 106.8 },
+        routeEnd: { label: "Return Depot", lat: -6.2, lon: 106.8 },
+        startedAt: "2026-09-12T00:00:00.000Z", // 07:00 WIB
+        stops: [
+          {
+            stopId: "s1",
+            jobId: "j2",
+            stopNumber: 1,
+            name: "A",
+            status: "pending",
+            windowStart: "08:00",
+            windowEnd: "09:00",
+          },
+        ],
+      },
+    ]);
+    const nodes = rows[0]!.nodes;
+    expect(nodes).toHaveLength(3);
+    expect(nodes[0]!.role).toBe("depot");
+    expect(nodes[0]!.minute).toBe(7 * 60);
+    expect(nodes[1]!.role).toBe("stop");
+    expect(nodes[2]!.role).toBe("return");
+    expect(nodes[2]!.minute).toBeGreaterThan(nodes[1]!.minute);
+  });
 });
