@@ -32,10 +32,122 @@ import { parseRoutingOptions } from "./routing-options.mjs";
 import { normalizePlateParity } from "./ganjil-genap.mjs";
 import { getObject, objectStorageConfigured, putObject } from "./storage.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
+import { tenantFromRequest } from "./tenants.mjs";
+import { fetchVehiclePositions } from "./vehicle-positions.mjs";
 
 const STATUSES = ["draft", "assigned", "en_route", "arrived", "done", "cancelled"];
 const STOP_STATUSES = ["pending", "arrived", "done", "skipped"];
 const ORDER_STATUSES = ["pending", "assigned", "cancelled"];
+
+/** How depot/start appears on the road: calc | map | sequence */
+function parseDepotPathMode(v) {
+  const s = String(v || "sequence")
+    .toLowerCase()
+    .trim();
+  if (s === "calc" || s === "calculation" || s === "calc_only" || s === "none") return "calc";
+  if (s === "map") return "map";
+  return "sequence";
+}
+
+/** Open-tour start: none | vehicle (last GPS) */
+function parseOpenStartMode(v) {
+  const s = String(v || "none")
+    .toLowerCase()
+    .trim();
+  if (s === "vehicle" || s === "last_position" || s === "gps") return "vehicle";
+  return "none";
+}
+
+function routeAnchorFromRow(lat, lon, label) {
+  if (lat == null || lon == null) return null;
+  const a = Number(lat);
+  const b = Number(lon);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  if (Math.abs(a) > 90 || Math.abs(b) > 180) return null;
+  return {
+    lat: a,
+    lon: b,
+    label: String(label || "").trim() || "Start",
+  };
+}
+
+async function saveJobRouteAnchors(jobId, mode, start, end) {
+  const m = mode === "map" || mode === "sequence" ? mode : null;
+  await dbQuery(
+    `UPDATE dispatch_jobs SET
+       route_anchor_mode = $1,
+       route_start_lat = $2,
+       route_start_lon = $3,
+       route_start_label = $4,
+       route_end_lat = $5,
+       route_end_lon = $6,
+       route_end_label = $7,
+       updated_at = now()
+     WHERE id = $8`,
+    [
+      m,
+      start?.lat ?? null,
+      start?.lon ?? null,
+      start?.label ?? null,
+      end?.lat ?? null,
+      end?.lon ?? null,
+      end?.label ?? null,
+      jobId,
+    ],
+  );
+}
+
+/** Build ordered lat/lon points for OSRM draw: optional start + stops + optional end. */
+function geometryPointsFromStopsAndAnchors(stops, start, end, pathMode) {
+  const customers = [];
+  for (const s of stops) {
+    if (s.lat == null || s.lon == null) continue;
+    const lat = Number(s.lat);
+    const lon = Number(s.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    customers.push({ lat, lon });
+  }
+  if (pathMode !== "map" && pathMode !== "sequence") return customers;
+  const out = [];
+  if (start && Number.isFinite(start.lat) && Number.isFinite(start.lon)) {
+    out.push({ lat: Number(start.lat), lon: Number(start.lon) });
+  }
+  out.push(...customers);
+  if (end && Number.isFinite(end.lat) && Number.isFinite(end.lon)) {
+    out.push({ lat: Number(end.lat), lon: Number(end.lon) });
+  }
+  return out;
+}
+
+function enrichRouteWithAnchors(route, pathMode, roundtrip, fallbackLabel = "Depot") {
+  const depot = route.meta?.depot;
+  const start =
+    depot && Number.isFinite(Number(depot.lat)) && Number.isFinite(Number(depot.lon))
+      ? {
+          lat: Number(depot.lat),
+          lon: Number(depot.lon),
+          label: String(route.depotName || route.meta?.depotName || depot.label || fallbackLabel),
+        }
+      : route.meta?.routeStart &&
+          Number.isFinite(Number(route.meta.routeStart.lat)) &&
+          Number.isFinite(Number(route.meta.routeStart.lon))
+        ? {
+            lat: Number(route.meta.routeStart.lat),
+            lon: Number(route.meta.routeStart.lon),
+            label: String(route.meta.routeStart.label || fallbackLabel),
+          }
+        : null;
+  const end =
+    start && roundtrip
+      ? { lat: start.lat, lon: start.lon, label: `Return · ${start.label}` }
+      : null;
+  return {
+    ...route,
+    pathMode,
+    routeStart: pathMode === "calc" ? null : start,
+    routeEnd: pathMode === "calc" ? null : end,
+  };
+}
 
 function send(res, status, headers, body) {
   res.writeHead(status, securityHeaders(headers));
@@ -225,6 +337,17 @@ function capacityFrom(row, stops) {
 
 function publicJob(row, stops = []) {
   const cap = capacityFrom(row, stops);
+  const routeStart = routeAnchorFromRow(
+    row.route_start_lat,
+    row.route_start_lon,
+    row.route_start_label || "Start",
+  );
+  const routeEnd = routeAnchorFromRow(
+    row.route_end_lat,
+    row.route_end_lon,
+    row.route_end_label || "Return",
+  );
+  const pathMode = String(row.route_anchor_mode || "").toLowerCase();
   return {
     id: row.id,
     status: row.status,
@@ -244,6 +367,9 @@ function publicJob(row, stops = []) {
     serviceDate: formatServiceDate(row.service_date) || todayYmd(),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    routeAnchorMode: pathMode === "map" || pathMode === "sequence" ? pathMode : null,
+    routeStart,
+    routeEnd,
     ...cap,
     stops: stops.map(publicStop),
   };
@@ -1355,29 +1481,55 @@ export async function handleDispatchRequest(req, res) {
       const withCoords = stops.filter(
         (s) => s.lat != null && s.lon != null && Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lon)),
       );
-      if (withCoords.length < 2) {
+      if (withCoords.length < 2 && !(job.route_start_lat != null && withCoords.length >= 1)) {
         json(res, 400, { error: "Need at least 2 stops with coordinates to optimize" });
         return true;
       }
-      const points = withCoords.map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) }));
+      const startAnchor = routeAnchorFromRow(
+        job.route_start_lat,
+        job.route_start_lon,
+        job.route_start_label || "Start",
+      );
+      const endAnchor = routeAnchorFromRow(
+        job.route_end_lat,
+        job.route_end_lon,
+        job.route_end_label || "Return",
+      );
+      const pathMode = String(job.route_anchor_mode || "").toLowerCase();
+      const customerPoints = withCoords.map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) }));
+      const useStart = Boolean(startAnchor);
+      const points = useStart
+        ? [{ lat: startAnchor.lat, lon: startAnchor.lon }, ...customerPoints]
+        : customerPoints;
+      if (points.length < 2) {
+        json(res, 400, { error: "Need at least 2 points to optimize" });
+        return true;
+      }
       const matrix = await getDistanceMatrix(points, routing);
       const { order } = optimizeOpenTour(points, matrix.matrixKm);
-      for (let i = 0; i < order.length; i++) {
-        const stop = withCoords[order[i]];
+      const customerOrder = useStart ? order.filter((i) => i > 0).map((i) => i - 1) : order;
+      for (let i = 0; i < customerOrder.length; i++) {
+        const stop = withCoords[customerOrder[i]];
         await dbQuery(`UPDATE dispatch_stops SET sort_order = $1 WHERE id = $2`, [i, stop.id]);
       }
       // Keep stops without coords at the end
-      let tail = order.length;
+      let tail = customerOrder.length;
       for (const s of stops) {
         if (withCoords.some((c) => c.id === s.id)) continue;
         await dbQuery(`UPDATE dispatch_stops SET sort_order = $1 WHERE id = $2`, [tail++, s.id]);
       }
       await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [job.id]);
-      const orderedPoints = order.map((idx) => points[idx]);
-      const route = await buildRouteForPoints(orderedPoints, routing);
+      const orderedStops = await loadStops(job.id);
+      const geomPts = geometryPointsFromStopsAndAnchors(
+        orderedStops,
+        pathMode === "map" || pathMode === "sequence" ? startAnchor : null,
+        pathMode === "map" || pathMode === "sequence" ? endAnchor : null,
+        pathMode === "map" || pathMode === "sequence" ? pathMode : "calc",
+      );
+      const route = await buildRouteForPoints(geomPts.length >= 2 ? geomPts : customerOrder.map((i) => customerPoints[i]), routing);
       const row = await loadJob(dbTenant.id, job.id);
       json(res, 200, {
-        job: publicJob(row, await loadStops(job.id)),
+        job: publicJob(row, orderedStops),
         engine: route.engine,
         matrixEngine: matrix.engine,
         routing,
@@ -1616,6 +1768,8 @@ export async function handleDispatchRequest(req, res) {
         json(res, 400, { error: "depotMode must be open | depot | multi" });
         return true;
       }
+      const depotPathMode = parseDepotPathMode(body.depotPathMode ?? body.pathMode);
+      const openStartMode = parseOpenStartMode(body.openStartMode);
       const apply = body.apply === true;
       const roundtrip = body.roundtrip === true;
       const onlyEmptyJobs = body.onlyEmptyJobs === true;
@@ -1986,17 +2140,24 @@ export async function handleDispatchRequest(req, res) {
           planBalanceMoves += plan.balanceMoves || 0;
           planRoundtrip = planRoundtrip || plan.roundtrip;
           for (const route of plan.routes) {
-            planRoutes.push({
-              ...route,
-              meta: {
-                ...(route.meta || {}),
-                depotId: did,
-                depotName: d.name,
-                depot: { lat: d.lat, lon: d.lon },
-              },
-              depotId: did,
-              depotName: d.name,
-            });
+            planRoutes.push(
+              enrichRouteWithAnchors(
+                {
+                  ...route,
+                  meta: {
+                    ...(route.meta || {}),
+                    depotId: did,
+                    depotName: d.name,
+                    depot: { lat: d.lat, lon: d.lon, label: d.name },
+                  },
+                  depotId: did,
+                  depotName: d.name,
+                },
+                depotPathMode,
+                roundtrip,
+                d.name,
+              ),
+            );
           }
           for (const u of plan.unassigned) {
             planUnassigned.push({ ...u, depotId: did });
@@ -2013,6 +2174,102 @@ export async function handleDispatchRequest(req, res) {
           orderCount: (orderClusters.get(String(d.id)) || []).length,
           vehicleCount: (vehicleClusters.get(String(d.id)) || []).length,
         }));
+      } else if (depotMode === "open" && openStartMode === "vehicle") {
+        const vault = tenantFromRequest(req);
+        const posMap = await fetchVehiclePositions(vault || {});
+        /** @type {{ id: string, name: string, lat: number, lon: number }[]} */
+        const starts = [];
+        /** @type {Map<string, number[]>} */
+        const vehicleByStart = new Map();
+        for (let vi = 0; vi < vehicles.length; vi++) {
+          const v = vehicles[vi];
+          const uid = v.meta?.armadaUserId;
+          if (uid == null) continue;
+          const pos = posMap.get(Number(uid));
+          if (!pos) continue;
+          const sid = `vehicle:${uid}`;
+          if (!vehicleByStart.has(sid)) {
+            starts.push({ id: sid, name: pos.label, lat: pos.lat, lon: pos.lon });
+            vehicleByStart.set(sid, []);
+          }
+          vehicleByStart.get(sid).push(vi);
+        }
+        if (!starts.length) {
+          json(res, 400, {
+            error:
+              "No vehicle last positions found. Ensure jobs/presets have Armada user IDs and live GPS on Armada.",
+          });
+          return true;
+        }
+        const orderClusters = partitionOrdersByNearestDepot(orders, starts);
+        const engines = new Set();
+        const warnings = [];
+        for (const d of starts) {
+          const did = String(d.id);
+          const orderIdxs = orderClusters.get(did) || [];
+          const vehicleIdxs = vehicleByStart.get(did) || [];
+          if (!orderIdxs.length) continue;
+          const clusterOrders = orderIdxs.map((i) => orders[i]);
+          const clusterVehicles = vehicleIdxs.map((i) => vehicles[i]);
+          if (!clusterVehicles.length) {
+            for (const o of clusterOrders) {
+              planUnassigned.push({
+                orderId: o.id,
+                label: o.label || o.id,
+                reason: "no_vehicle_for_start",
+              });
+            }
+            continue;
+          }
+          const points = [
+            { lat: d.lat, lon: d.lon },
+            ...clusterOrders.map((o) => ({ lat: o.lat, lon: o.lon })),
+          ];
+          if (points.length > 80) {
+            json(res, 400, {
+              error: `Too many points for vehicle start (${points.length}). Cap is 80.`,
+            });
+            return true;
+          }
+          const matrix = await getDistanceMatrix(points, routing);
+          engines.add(matrix.engine);
+          if (matrix.warning) warnings.push(matrix.warning);
+          const plan = planCvrp({
+            orders: clusterOrders,
+            vehicles: clusterVehicles,
+            matrixKm: matrix.matrixKm,
+            points,
+            depotIndex: 0,
+            roundtrip,
+            ...planOpts,
+          });
+          planBalanceMoves += plan.balanceMoves || 0;
+          planRoundtrip = planRoundtrip || plan.roundtrip;
+          for (const route of plan.routes) {
+            planRoutes.push(
+              enrichRouteWithAnchors(
+                {
+                  ...route,
+                  meta: {
+                    ...(route.meta || {}),
+                    routeStart: { lat: d.lat, lon: d.lon, label: d.name },
+                    depot: { lat: d.lat, lon: d.lon, label: d.name },
+                    openStart: "vehicle",
+                  },
+                },
+                depotPathMode,
+                roundtrip,
+                d.name,
+              ),
+            );
+          }
+          for (const u of plan.unassigned) planUnassigned.push(u);
+        }
+        planEngine = engines.has("osrm") ? (engines.size > 1 ? "mixed" : "osrm") : "haversine";
+        planWarning =
+          warnings[0] ||
+          (posMap.size === 0 ? "Could not load Armada vehicle positions" : null);
+        previewDepot = null;
       } else {
         const useDepot = depotMode === "depot";
         const depotIndex = useDepot ? 0 : null;
@@ -2037,7 +2294,24 @@ export async function handleDispatchRequest(req, res) {
           roundtrip: useDepot && roundtrip,
           ...planOpts,
         });
-        planRoutes = plan.routes;
+        planRoutes = plan.routes.map((route) =>
+          enrichRouteWithAnchors(
+            useDepot
+              ? {
+                  ...route,
+                  meta: {
+                    ...(route.meta || {}),
+                    depot: { lat: depotLat, lon: depotLon, label: "Depot" },
+                    depotName: "Depot",
+                  },
+                  depotName: "Depot",
+                }
+              : route,
+            depotPathMode,
+            useDepot && roundtrip,
+            "Depot",
+          ),
+        );
         planUnassigned = [...plan.unassigned, ...skipped];
         planEngine = matrix.engine;
         planWarning = matrix.warning || null;
@@ -2050,6 +2324,8 @@ export async function handleDispatchRequest(req, res) {
         serviceDate,
         fleetMode,
         depotMode,
+        depotPathMode,
+        openStartMode: depotMode === "open" ? openStartMode : "none",
         apply: false,
         engine: planEngine,
         warning: planWarning,
@@ -2144,29 +2420,47 @@ export async function handleDispatchRequest(req, res) {
           );
         }
         await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [jobId]);
-        const routeDepot =
-          route.meta?.depot &&
+        const startAnchor =
+          route.routeStart ||
+          (route.meta?.depot &&
           Number.isFinite(Number(route.meta.depot.lat)) &&
           Number.isFinite(Number(route.meta.depot.lon))
-            ? { lat: Number(route.meta.depot.lat), lon: Number(route.meta.depot.lon) }
+            ? {
+                lat: Number(route.meta.depot.lat),
+                lon: Number(route.meta.depot.lon),
+                label: String(route.depotName || route.meta.depot.label || "Depot"),
+              }
             : depotMode === "depot" && depotLat != null && depotLon != null
-              ? { lat: depotLat, lon: depotLon }
-              : null;
+              ? { lat: depotLat, lon: depotLon, label: "Depot" }
+              : null);
+        const endAnchor =
+          route.routeEnd ||
+          (planRoundtrip && startAnchor
+            ? {
+                lat: startAnchor.lat,
+                lon: startAnchor.lon,
+                label: `Return · ${startAnchor.label}`,
+              }
+            : null);
+        await saveJobRouteAnchors(
+          jobId,
+          depotPathMode,
+          depotPathMode === "calc" ? null : startAnchor,
+          depotPathMode === "calc" ? null : endAnchor,
+        );
+        const routeDepot = startAnchor
+          ? { lat: startAnchor.lat, lon: startAnchor.lon }
+          : null;
         await reorderJobStopsRoad(jobId, routeDepot, routing);
         const row = await loadJob(dbTenant.id, jobId);
         const stops = await loadStops(jobId);
-        const routeGeom = await buildRouteForPoints(
-          stops
-            .filter(
-              (s) =>
-                s.lat != null &&
-                s.lon != null &&
-                Number.isFinite(Number(s.lat)) &&
-                Number.isFinite(Number(s.lon)),
-            )
-            .map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) })),
-          routing,
+        const geomPts = geometryPointsFromStopsAndAnchors(
+          stops,
+          depotPathMode === "calc" ? null : startAnchor,
+          depotPathMode === "calc" ? null : endAnchor,
+          depotPathMode,
         );
+        const routeGeom = await buildRouteForPoints(geomPts, routing);
         applied.push({
           ...route,
           jobId,

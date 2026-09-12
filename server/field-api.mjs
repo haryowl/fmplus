@@ -163,8 +163,18 @@ function fieldCapacityFrom(row, stops) {
   };
 }
 
+function fieldRouteAnchor(lat, lon, label) {
+  if (lat == null || lon == null) return null;
+  const a = Number(lat);
+  const b = Number(lon);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  if (Math.abs(a) > 90 || Math.abs(b) > 180) return null;
+  return { lat: a, lon: b, label: String(label || "").trim() || "Start" };
+}
+
 function publicDispatchJob(row, stops = []) {
   const cap = fieldCapacityFrom(row, stops);
+  const pathMode = String(row.route_anchor_mode || "").toLowerCase();
   return {
     id: row.id,
     status: row.status,
@@ -185,6 +195,17 @@ function publicDispatchJob(row, stops = []) {
         : String(row.service_date || "").slice(0, 10),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    routeAnchorMode: pathMode === "map" || pathMode === "sequence" ? pathMode : null,
+    routeStart: fieldRouteAnchor(
+      row.route_start_lat,
+      row.route_start_lon,
+      row.route_start_label || "Start",
+    ),
+    routeEnd: fieldRouteAnchor(
+      row.route_end_lat,
+      row.route_end_lon,
+      row.route_end_label || "Return",
+    ),
     ...cap,
     stops: stops.map(publicDispatchStop),
   };

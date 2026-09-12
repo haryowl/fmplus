@@ -4606,6 +4606,15 @@ html.onesheet-root body {
   background: var(--surface);
 }
 
+.dispatch-stop-list li.dispatch-stop-anchor {
+  background: rgba(154, 74, 46, 0.06);
+  border-color: rgba(154, 74, 46, 0.28);
+}
+
+.dispatch-stop-list li.dispatch-stop-anchor .dispatch-stop-idx {
+  background: #9a4a2e;
+}
+
 .dispatch-stop-idx {
   width: 28px;
   height: 28px;

@@ -41,6 +41,8 @@ import {
   type DispatchFieldUser,
   type DispatchFleetMode,
   type DispatchDepotMode,
+  type DispatchDepotPathMode,
+  type DispatchOpenStartMode,
   type DispatchTwMode,
   type DispatchJob,
   type DispatchOrder,
@@ -141,6 +143,8 @@ export default function DispatchBoard() {
   const [showPlanDay, setShowPlanDay] = useState(false);
   const [fleetMode, setFleetMode] = useState<DispatchFleetMode>("both");
   const [depotMode, setDepotMode] = useState<DispatchDepotMode>("open");
+  const [depotPathMode, setDepotPathMode] = useState<DispatchDepotPathMode>("sequence");
+  const [openStartMode, setOpenStartMode] = useState<DispatchOpenStartMode>("none");
   const [depotLat, setDepotLat] = useState("");
   const [depotLon, setDepotLon] = useState("");
   const [depots, setDepots] = useState<DispatchDepot[]>([]);
@@ -359,9 +363,23 @@ export default function DispatchBoard() {
       setJobRoute(null);
       return;
     }
-    const points = selected.stops
+    const customers = selected.stops
       .map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) }))
       .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180);
+    const mode = selected.routeAnchorMode;
+    const start =
+      mode === "map" || mode === "sequence"
+        ? selected.routeStart && Number.isFinite(selected.routeStart.lat)
+          ? { lat: selected.routeStart.lat, lon: selected.routeStart.lon }
+          : null
+        : null;
+    const end =
+      mode === "map" || mode === "sequence"
+        ? selected.routeEnd && Number.isFinite(selected.routeEnd.lat)
+          ? { lat: selected.routeEnd.lat, lon: selected.routeEnd.lon }
+          : null
+        : null;
+    const points = [...(start ? [start] : []), ...customers, ...(end ? [end] : [])];
     if (points.length < 2) {
       setJobRoute(null);
       return;
@@ -902,8 +920,15 @@ export default function DispatchBoard() {
         serviceDate: planDate,
         fleetMode,
         depotMode,
+        depotPathMode,
+        openStartMode: depotMode === "open" ? openStartMode : "none",
         apply,
-        roundtrip: planRoundtrip,
+        roundtrip:
+          depotMode === "depot" ||
+          depotMode === "multi" ||
+          (depotMode === "open" && openStartMode === "vehicle")
+            ? planRoundtrip
+            : false,
         depotLat: depotMode === "depot" ? dLat : null,
         depotLon: depotMode === "depot" ? dLon : null,
         persistDepot: depotMode === "depot" && dLat != null && dLon != null,
@@ -1175,6 +1200,45 @@ export default function DispatchBoard() {
                   <option value="multi">Multi-depot</option>
                 </select>
               </div>
+              {depotMode === "open" ? (
+                <div className="field">
+                  <label htmlFor="dispatch-open-start">Start point</label>
+                  <select
+                    id="dispatch-open-start"
+                    value={openStartMode}
+                    onChange={(e) => setOpenStartMode(e.target.value as DispatchOpenStartMode)}
+                  >
+                    <option value="none">None (open between stops)</option>
+                    <option value="vehicle">Vehicle last position</option>
+                  </select>
+                </div>
+              ) : null}
+              {(depotMode === "depot" ||
+                depotMode === "multi" ||
+                (depotMode === "open" && openStartMode === "vehicle")) && (
+                <div className="field">
+                  <label htmlFor="dispatch-depot-path">Depot / start on route</label>
+                  <select
+                    id="dispatch-depot-path"
+                    value={depotPathMode}
+                    onChange={(e) => setDepotPathMode(e.target.value as DispatchDepotPathMode)}
+                  >
+                    <option value="calc">Calculation only</option>
+                    <option value="map">Map (draw start/return)</option>
+                    <option value="sequence">Sequence</option>
+                  </select>
+                </div>
+              )}
+              {depotMode === "open" && openStartMode === "vehicle" ? (
+                <label className="dispatch-plan-check">
+                  <input
+                    type="checkbox"
+                    checked={planRoundtrip}
+                    onChange={(e) => setPlanRoundtrip(e.target.checked)}
+                  />
+                  Return to start (roundtrip)
+                </label>
+              ) : null}
               <div className="field">
                 <label htmlFor="dispatch-tw-mode">Time windows</label>
                 <select
@@ -1594,6 +1658,11 @@ export default function DispatchBoard() {
                       </span>
                       {r.stops && r.stops.length > 0 ? (
                         <ol className="dispatch-plan-stop-etas">
+                          {r.pathMode === "sequence" && r.routeStart ? (
+                            <li key={`${r.key}-start`}>
+                              Start · {r.routeStart.label}
+                            </li>
+                          ) : null}
                           {r.stops.map((s, idx) => (
                             <li key={`${r.key}-${s.orderId || idx}`} className={s.late ? "is-late" : undefined}>
                               {s.arriveAt} · {s.label || s.orderId || `Stop ${idx + 1}`}
@@ -1602,6 +1671,9 @@ export default function DispatchBoard() {
                               {s.late ? " · late" : ""}
                             </li>
                           ))}
+                          {r.pathMode === "sequence" && r.routeEnd ? (
+                            <li key={`${r.key}-end`}>Return · {r.routeEnd.label}</li>
+                          ) : null}
                         </ol>
                       ) : null}
                     </li>
@@ -2092,6 +2164,16 @@ export default function DispatchBoard() {
                 fitKey={fitKey}
                 draftPin={mapDraftPin}
                 routeGeometry={jobRoute?.geometry || []}
+                routeStart={
+                  selected?.routeAnchorMode === "map" || selected?.routeAnchorMode === "sequence"
+                    ? selected.routeStart
+                    : null
+                }
+                routeEnd={
+                  selected?.routeAnchorMode === "map" || selected?.routeAnchorMode === "sequence"
+                    ? selected.routeEnd
+                    : null
+                }
                 onMapClick={(lat, lon) => void onMapClick(lat, lon)}
               />
             </div>
@@ -2415,10 +2497,19 @@ export default function DispatchBoard() {
                       {jobRoute?.distanceKm != null ? ` · ${jobRoute.distanceKm} km` : ""}
                     </span>
                   </div>
-                  {selected.stops.length === 0 ? (
+                  {selected.stops.length === 0 && !selected.routeStart ? (
                     <p className="dispatch-search-hint">Assign orders from the pool.</p>
                   ) : (
                     <ol className="dispatch-stop-list">
+                      {selected.routeAnchorMode === "sequence" && selected.routeStart ? (
+                        <li key="route-start" className="dispatch-stop-anchor">
+                          <span className="dispatch-stop-idx">D</span>
+                          <div className="dispatch-stop-body">
+                            <strong>{selected.routeStart.label}</strong>
+                            <span>Depot / start</span>
+                          </div>
+                        </li>
+                      ) : null}
                       {selected.stops.map((stop, i) => {
                         const meta = stopRouteMeta[i];
                         return (
@@ -2472,6 +2563,15 @@ export default function DispatchBoard() {
                           </li>
                         );
                       })}
+                      {selected.routeAnchorMode === "sequence" && selected.routeEnd ? (
+                        <li key="route-end" className="dispatch-stop-anchor">
+                          <span className="dispatch-stop-idx">R</span>
+                          <div className="dispatch-stop-body">
+                            <strong>{selected.routeEnd.label}</strong>
+                            <span>Return</span>
+                          </div>
+                        </li>
+                      ) : null}
                     </ol>
                   )}
                 </div>

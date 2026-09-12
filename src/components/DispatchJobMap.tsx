@@ -15,6 +15,8 @@ type Props = {
   interactiveEmpty?: boolean;
   /** Road (or fallback) path from parent — [lat, lon][]. */
   routeGeometry?: [number, number][];
+  routeStart?: { lat: number; lon: number; label?: string } | null;
+  routeEnd?: { lat: number; lon: number; label?: string } | null;
 };
 
 function asCoord(lat: unknown, lon: unknown): [number, number] | null {
@@ -32,6 +34,8 @@ export function DispatchJobMap({
   onMapClick,
   interactiveEmpty = true,
   routeGeometry = [],
+  routeStart = null,
+  routeEnd = null,
 }: Props) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -127,6 +131,26 @@ export function DispatchJobMap({
       bounds.push([stop.lat, stop.lon]);
     });
 
+    const addAnchor = (
+      anchor: { lat: number; lon: number; label?: string } | null,
+      letter: string,
+      color: string,
+    ) => {
+      if (!anchor || !Number.isFinite(anchor.lat) || !Number.isFinite(anchor.lon)) return;
+      const icon = L.divIcon({
+        className: "route-plan-marker",
+        html: `<span class="route-plan-marker-dot" style="background:${color}">${letter}</span>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+      });
+      L.marker([anchor.lat, anchor.lon], { icon })
+        .addTo(layer)
+        .bindPopup(anchor.label || letter);
+      bounds.push([anchor.lat, anchor.lon]);
+    };
+    addAnchor(routeStart, "D", "#9a4a2e");
+    addAnchor(routeEnd, "R", "#9a4a2e");
+
     if (draftPin && Number.isFinite(draftPin.lat) && Number.isFinite(draftPin.lon)) {
       const icon = L.divIcon({
         className: "route-plan-marker",
@@ -147,7 +171,7 @@ export function DispatchJobMap({
       /* keep Bandung default */
     }
     setTimeout(() => map.invalidateSize(), 50);
-  }, [stops, fitKey, draftPin, interactiveEmpty, withCoords, stopLine, roadLine]);
+  }, [stops, fitKey, draftPin, interactiveEmpty, withCoords, stopLine, roadLine, routeStart, routeEnd]);
 
   return <div ref={elRef} className="dispatch-job-map" role="img" aria-label="Job stops map" />;
 }

@@ -12,6 +12,12 @@ export type DispatchStopStatus = "pending" | "arrived" | "done" | "skipped";
 
 export type DispatchOrderStatus = "pending" | "assigned" | "cancelled";
 
+export type DispatchRouteAnchor = {
+  lat: number;
+  lon: number;
+  label: string;
+};
+
 export type DispatchStop = {
   id: string;
   orderId?: string | null;
@@ -53,6 +59,9 @@ export type DispatchJob = {
   serviceDate: string;
   createdAt: string;
   updatedAt: string;
+  routeAnchorMode?: "map" | "sequence" | null;
+  routeStart?: DispatchRouteAnchor | null;
+  routeEnd?: DispatchRouteAnchor | null;
   volumeCapacityM3?: number;
   weightCapacityKg?: number;
   volumeUsed?: number;
@@ -344,6 +353,10 @@ export async function optimizeJobStops(
 
 export type DispatchFleetMode = "jobs" | "presets" | "both";
 export type DispatchDepotMode = "open" | "depot" | "multi";
+/** How depot/start appears on the road after plan. */
+export type DispatchDepotPathMode = "calc" | "map" | "sequence";
+/** Open-tour start point. */
+export type DispatchOpenStartMode = "none" | "vehicle";
 export type DispatchTwMode = "off" | "soft" | "hard";
 
 export type DispatchPlanDayStop = {
@@ -374,12 +387,17 @@ export type DispatchPlanDayRoute = {
   meta?: Record<string, unknown>;
   depotId?: string;
   depotName?: string;
+  pathMode?: DispatchDepotPathMode;
+  routeStart?: DispatchRouteAnchor | null;
+  routeEnd?: DispatchRouteAnchor | null;
 };
 
 export type DispatchPlanDayResult = {
   serviceDate: string;
   fleetMode: DispatchFleetMode;
   depotMode: DispatchDepotMode;
+  depotPathMode?: DispatchDepotPathMode;
+  openStartMode?: DispatchOpenStartMode;
   apply: boolean;
   engine: string;
   warning: string | null;
@@ -507,6 +525,8 @@ export async function planDispatchDay(body: {
   serviceDate: string;
   fleetMode: DispatchFleetMode;
   depotMode: DispatchDepotMode;
+  depotPathMode?: DispatchDepotPathMode;
+  openStartMode?: DispatchOpenStartMode;
   apply?: boolean;
   roundtrip?: boolean;
   depotLat?: number | null;
