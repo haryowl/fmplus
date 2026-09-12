@@ -413,6 +413,7 @@ function publicOrder(row) {
     serviceDate: formatServiceDate(row.service_date) || todayYmd(),
     serviceMinutes: row.service_minutes == null ? null : Number(row.service_minutes),
     proofRequired: row.proof_required === true,
+    templateId: row.template_id || null,
     status: row.status || "pending",
     jobId: row.job_id || null,
     stopId: row.stop_id || null,
@@ -420,6 +421,52 @@ function publicOrder(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function publicOrderTemplate(row) {
+  return {
+    id: row.id,
+    enabled: row.enabled !== false,
+    cadence: row.cadence || "daily",
+    weekday: row.weekday == null ? null : Number(row.weekday),
+    externalRef: row.external_ref || "",
+    customerName: row.customer_name || "",
+    address: row.address || "",
+    lat: row.lat == null ? null : Number(row.lat),
+    lon: row.lon == null ? null : Number(row.lon),
+    zone: row.zone || "",
+    volumeM3: row.volume_m3 == null ? null : Number(row.volume_m3),
+    weightKg: row.weight_kg == null ? null : Number(row.weight_kg),
+    windowStart: row.window_start || "",
+    windowEnd: row.window_end || "",
+    serviceMinutes: row.service_minutes == null ? null : Number(row.service_minutes),
+    proofRequired: row.proof_required === true,
+    notes: row.notes || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function parseCadence(v) {
+  const s = String(v || "daily").toLowerCase().trim();
+  if (s === "weekdays" || s === "weekday" || s === "mon-fri") return "weekdays";
+  if (s === "weekly" || s === "week") return "weekly";
+  return "daily";
+}
+
+/** @param {{ cadence: string, weekday: number|null }} tpl @param {string} ymd */
+function templateMatchesDate(tpl, ymd) {
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return false;
+  const dow = d.getDay();
+  const cadence = parseCadence(tpl.cadence);
+  if (cadence === "daily") return true;
+  if (cadence === "weekdays") return dow >= 1 && dow <= 5;
+  if (cadence === "weekly") {
+    const w = tpl.weekday == null ? dow : Number(tpl.weekday);
+    return Number.isInteger(w) && w === dow;
+  }
+  return false;
 }
 
 export function publicDispatchPhoto(row, urlPrefix = "/api/dispatch/photos") {
@@ -983,6 +1030,242 @@ export async function handleDispatchRequest(req, res) {
     }
 
     // —— Orders ——
+    if (url.pathname === "/api/dispatch/order-templates" && req.method === "GET") {
+      const rows = await dbQuery(
+        `SELECT * FROM dispatch_order_templates
+         WHERE tenant_id = $1
+         ORDER BY enabled DESC, customer_name ASC, updated_at DESC
+         LIMIT 200`,
+        [dbTenant.id],
+      );
+      json(res, 200, { templates: rows.rows.map(publicOrderTemplate) });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/order-templates" && req.method === "POST") {
+      const body = await readJson(req);
+      const customerName = String(body.customerName || body.name || "").trim().slice(0, 200);
+      if (!customerName) {
+        json(res, 400, { error: "customerName is required" });
+        return true;
+      }
+      const lat = numOrNull(body.lat);
+      const lon = numOrNull(body.lon ?? body.lng);
+      if (lat == null || lon == null) {
+        json(res, 400, { error: "lat and lon are required for a routine template" });
+        return true;
+      }
+      const cadence = parseCadence(body.cadence);
+      let weekday = body.weekday == null || body.weekday === "" ? null : Number(body.weekday);
+      if (cadence === "weekly") {
+        if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+          weekday = new Date().getDay();
+        }
+      } else {
+        weekday = null;
+      }
+      const inserted = await dbQuery(
+        `INSERT INTO dispatch_order_templates (
+           tenant_id, enabled, cadence, weekday, external_ref, customer_name, address, lat, lon, zone,
+           volume_m3, weight_kg, window_start, window_end, service_minutes, proof_required, notes
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+         RETURNING *`,
+        [
+          dbTenant.id,
+          body.enabled !== false,
+          cadence,
+          weekday,
+          String(body.externalRef || "").trim().slice(0, 80) || null,
+          customerName,
+          String(body.address || "").trim().slice(0, 500) || null,
+          lat,
+          lon,
+          String(body.zone || "").trim().slice(0, 80) || null,
+          numOrNull(body.volumeM3),
+          numOrNull(body.weightKg),
+          String(body.windowStart || "").trim().slice(0, 16) || null,
+          String(body.windowEnd || "").trim().slice(0, 16) || null,
+          serviceMinutesOrNull(body.serviceMinutes),
+          body.proofRequired === true || body.proof_required === true,
+          String(body.notes || "").trim().slice(0, 2000) || null,
+        ],
+      );
+      json(res, 201, { template: publicOrderTemplate(inserted.rows[0]) });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/order-templates/generate" && req.method === "POST") {
+      const body = await readJson(req);
+      const serviceDate = parseServiceDate(body.serviceDate || body.date) || todayYmd();
+      const templates = await dbQuery(
+        `SELECT * FROM dispatch_order_templates
+         WHERE tenant_id = $1 AND enabled = true
+         ORDER BY customer_name ASC`,
+        [dbTenant.id],
+      );
+      const created = [];
+      const skipped = [];
+      for (const tpl of templates.rows) {
+        if (!templateMatchesDate(tpl, serviceDate)) {
+          skipped.push({ templateId: tpl.id, reason: "cadence_mismatch" });
+          continue;
+        }
+        const exists = await dbQuery(
+          `SELECT id FROM dispatch_orders
+           WHERE tenant_id = $1 AND template_id = $2 AND service_date = $3::date
+             AND status <> 'cancelled'
+           LIMIT 1`,
+          [dbTenant.id, tpl.id, serviceDate],
+        );
+        if (exists.rows[0]) {
+          skipped.push({ templateId: tpl.id, reason: "already_exists", orderId: exists.rows[0].id });
+          continue;
+        }
+        const inserted = await dbQuery(
+          `INSERT INTO dispatch_orders (
+             tenant_id, external_ref, customer_name, address, lat, lon, zone,
+             volume_m3, weight_kg, window_start, window_end, notes, service_date,
+             service_minutes, proof_required, template_id, status
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending')
+           RETURNING *`,
+          [
+            dbTenant.id,
+            tpl.external_ref,
+            tpl.customer_name,
+            tpl.address,
+            tpl.lat,
+            tpl.lon,
+            tpl.zone,
+            tpl.volume_m3,
+            tpl.weight_kg,
+            tpl.window_start,
+            tpl.window_end,
+            tpl.notes,
+            serviceDate,
+            tpl.service_minutes,
+            tpl.proof_required === true,
+            tpl.id,
+          ],
+        );
+        created.push(publicOrder(inserted.rows[0]));
+      }
+      json(res, 200, {
+        serviceDate,
+        created: created.length,
+        skipped: skipped.length,
+        orders: created,
+        skipDetails: skipped,
+      });
+      return true;
+    }
+
+    const templateOne = /^\/api\/dispatch\/order-templates\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (templateOne && req.method === "PATCH") {
+      const existing = await dbQuery(
+        `SELECT * FROM dispatch_order_templates WHERE id = $1 AND tenant_id = $2`,
+        [templateOne[1], dbTenant.id],
+      );
+      if (!existing.rows[0]) {
+        json(res, 404, { error: "Template not found" });
+        return true;
+      }
+      const body = await readJson(req);
+      const sets = [];
+      const params = [];
+      if ("enabled" in body) {
+        params.push(body.enabled === true || body.enabled === "true");
+        sets.push(`enabled = $${params.length}`);
+      }
+      if ("cadence" in body) {
+        const cadence = parseCadence(body.cadence);
+        params.push(cadence);
+        sets.push(`cadence = $${params.length}`);
+        if (cadence !== "weekly") {
+          sets.push(`weekday = NULL`);
+        } else if (!("weekday" in body)) {
+          const w = existing.rows[0].weekday;
+          params.push(w == null ? new Date().getDay() : Number(w));
+          sets.push(`weekday = $${params.length}`);
+        }
+      }
+      if ("weekday" in body) {
+        const w = body.weekday == null || body.weekday === "" ? null : Number(body.weekday);
+        params.push(Number.isInteger(w) && w >= 0 && w <= 6 ? w : null);
+        sets.push(`weekday = $${params.length}`);
+      }
+      const map = {
+        externalRef: ["external_ref", (v) => String(v || "").trim().slice(0, 80) || null],
+        customerName: ["customer_name", (v) => String(v || "").trim().slice(0, 200)],
+        address: ["address", (v) => String(v || "").trim().slice(0, 500) || null],
+        zone: ["zone", (v) => String(v || "").trim().slice(0, 80) || null],
+        notes: ["notes", (v) => String(v || "").trim().slice(0, 2000) || null],
+        windowStart: ["window_start", (v) => String(v || "").trim().slice(0, 16) || null],
+        windowEnd: ["window_end", (v) => String(v || "").trim().slice(0, 16) || null],
+      };
+      for (const [key, [col, fn]] of Object.entries(map)) {
+        if (key in body) {
+          const val = fn(body[key]);
+          if (key === "customerName" && !val) {
+            json(res, 400, { error: "customerName cannot be empty" });
+            return true;
+          }
+          params.push(val);
+          sets.push(`${col} = $${params.length}`);
+        }
+      }
+      if ("lat" in body) {
+        params.push(numOrNull(body.lat));
+        sets.push(`lat = $${params.length}`);
+      }
+      if ("lon" in body || "lng" in body) {
+        params.push(numOrNull(body.lon ?? body.lng));
+        sets.push(`lon = $${params.length}`);
+      }
+      if ("volumeM3" in body) {
+        params.push(numOrNull(body.volumeM3));
+        sets.push(`volume_m3 = $${params.length}`);
+      }
+      if ("weightKg" in body) {
+        params.push(numOrNull(body.weightKg));
+        sets.push(`weight_kg = $${params.length}`);
+      }
+      if ("serviceMinutes" in body) {
+        params.push(serviceMinutesOrNull(body.serviceMinutes));
+        sets.push(`service_minutes = $${params.length}`);
+      }
+      if ("proofRequired" in body || "proof_required" in body) {
+        params.push(body.proofRequired === true || body.proof_required === true);
+        sets.push(`proof_required = $${params.length}`);
+      }
+      if (!sets.length) {
+        json(res, 400, { error: "No fields to update" });
+        return true;
+      }
+      sets.push(`updated_at = now()`);
+      params.push(templateOne[1], dbTenant.id);
+      const updated = await dbQuery(
+        `UPDATE dispatch_order_templates SET ${sets.join(", ")}
+         WHERE id = $${params.length - 1} AND tenant_id = $${params.length}
+         RETURNING *`,
+        params,
+      );
+      json(res, 200, { template: publicOrderTemplate(updated.rows[0]) });
+      return true;
+    }
+
+    if (templateOne && req.method === "DELETE") {
+      const deleted = await dbQuery(
+        `DELETE FROM dispatch_order_templates WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+        [templateOne[1], dbTenant.id],
+      );
+      if (!deleted.rows[0]) {
+        json(res, 404, { error: "Template not found" });
+        return true;
+      }
+      json(res, 200, { ok: true });
+      return true;
+    }
+
     if (url.pathname === "/api/dispatch/orders" && req.method === "GET") {
       const status = String(url.searchParams.get("status") || "pending").toLowerCase();
       const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
@@ -1045,6 +1328,59 @@ export async function handleDispatchRequest(req, res) {
         ],
       );
       json(res, 201, { order: publicOrder(inserted.rows[0]) });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/orders/carry-over" && req.method === "POST") {
+      const body = await readJson(req);
+      const fromDate = parseServiceDate(body.fromDate || body.serviceDate) || todayYmd();
+      let toDate = parseServiceDate(body.toDate);
+      if (!toDate) {
+        const d = new Date(`${fromDate}T12:00:00`);
+        d.setDate(d.getDate() + 1);
+        toDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      }
+      if (toDate < fromDate) {
+        json(res, 400, { error: "toDate cannot be before fromDate" });
+        return true;
+      }
+      const rawIds = Array.isArray(body.orderIds) ? body.orderIds : null;
+      const orderIds = rawIds
+        ? rawIds
+            .map((id) => String(id || "").trim())
+            .filter((id) => /^[0-9a-f-]{36}$/i.test(id))
+            .slice(0, 200)
+        : null;
+
+      let updated;
+      if (orderIds && orderIds.length) {
+        updated = await dbQuery(
+          `UPDATE dispatch_orders
+           SET service_date = $1::date, updated_at = now()
+           WHERE tenant_id = $2
+             AND status = 'pending'
+             AND service_date = $3::date
+             AND id = ANY($4::uuid[])
+           RETURNING *`,
+          [toDate, dbTenant.id, fromDate, orderIds],
+        );
+      } else {
+        updated = await dbQuery(
+          `UPDATE dispatch_orders
+           SET service_date = $1::date, updated_at = now()
+           WHERE tenant_id = $2
+             AND status = 'pending'
+             AND service_date = $3::date
+           RETURNING *`,
+          [toDate, dbTenant.id, fromDate],
+        );
+      }
+      json(res, 200, {
+        fromDate,
+        toDate,
+        moved: updated.rows.length,
+        orders: updated.rows.map(publicOrder),
+      });
       return true;
     }
 

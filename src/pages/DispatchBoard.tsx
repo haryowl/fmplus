@@ -7,11 +7,15 @@ import {
   assignOrdersToJob,
   cancelDispatchOrder,
   capacityForVehicle,
+  carryOverDispatchOrders,
+  cadenceLabel,
   createDispatchDepot,
   createDispatchJob,
   createDispatchOrder,
+  createDispatchOrderTemplate,
   deleteDispatchDepot,
   deleteDispatchOrder,
+  deleteDispatchOrderTemplate,
   DISPATCH_STATUS_LABELS,
   dispatchAssigneeLabel,
   dispatchVehicleLabel,
@@ -19,16 +23,19 @@ import {
   fetchDispatchFieldUsers,
   fetchDispatchJobs,
   fetchDispatchOrders,
+  fetchDispatchOrderTemplates,
   fetchStopPhotos,
   fetchVehicleCapacities,
   fetchDispatchDepot,
   formatDispatchWindow,
   formatDispatchServiceMinutes,
   formatServiceDateLabel,
+  generateDispatchOrdersFromTemplates,
   optimizeJobStops,
   patchDispatchDepot,
   patchDispatchJob,
   patchDispatchOrder,
+  patchDispatchOrderTemplate,
   planDispatchDay,
   returnStopToInbox,
   saveDispatchDepot,
@@ -46,6 +53,8 @@ import {
   type DispatchTwMode,
   type DispatchJob,
   type DispatchOrder,
+  type DispatchOrderCadence,
+  type DispatchOrderTemplate,
   type DispatchPhoto,
   type DispatchPlanDayResult,
   type DispatchStatus,
@@ -82,6 +91,9 @@ const emptyOrderForm = {
   windowEnd: "12:00",
   serviceMinutes: "",
   proofRequired: false,
+  saveAsTemplate: false,
+  templateCadence: "daily" as DispatchOrderCadence,
+  templateWeekday: String(new Date().getDay()),
   lat: null as number | null,
   lon: null as number | null,
 };
@@ -104,6 +116,8 @@ export default function DispatchBoard() {
     useEmbedTenant();
   const [jobs, setJobs] = useState<DispatchJob[]>([]);
   const [orders, setOrders] = useState<DispatchOrder[]>([]);
+  const [templates, setTemplates] = useState<DispatchOrderTemplate[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [fieldUsers, setFieldUsers] = useState<DispatchFieldUser[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -315,6 +329,7 @@ export default function DispatchBoard() {
       setError("Open with k= (tenant key) to load dispatch.");
       setJobs([]);
       setOrders([]);
+      setTemplates([]);
       return;
     }
     const ac = new AbortController();
@@ -323,10 +338,12 @@ export default function DispatchBoard() {
     Promise.all([
       fetchDispatchJobs("open", ac.signal, planDate),
       fetchDispatchOrders("pending", ac.signal, planDate),
+      fetchDispatchOrderTemplates(ac.signal),
     ])
-      .then(([jobList, orderList]) => {
+      .then(([jobList, orderList, templateList]) => {
         setJobs(jobList);
         setOrders(orderList);
+        setTemplates(templateList);
         setBootError("");
         if (selectedId && !jobList.some((j) => j.id === selectedId)) setSelectedId(null);
         if (!selectedId && jobList[0]) setSelectedId(jobList[0].id);
@@ -761,11 +778,103 @@ export default function DispatchBoard() {
         await patchDispatchOrder(editingOrderId, payload);
       } else {
         await createDispatchOrder(payload);
+        if (orderForm.saveAsTemplate) {
+          await createDispatchOrderTemplate({
+            ...payload,
+            cadence: orderForm.templateCadence,
+            weekday:
+              orderForm.templateCadence === "weekly"
+                ? Number(orderForm.templateWeekday)
+                : null,
+            enabled: true,
+          });
+        }
       }
       clearDraft();
       setReload((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : editingOrderId ? "Update order failed" : "Create order failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleGenerateTemplates() {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await generateDispatchOrdersFromTemplates(planDate);
+      setReload((n) => n + 1);
+      if (result.created === 0) {
+        setError(
+          result.skipped
+            ? "No new routine orders — already generated for this day or cadence does not match."
+            : "No enabled routines match this day.",
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Generate routines failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleToggleTemplate(t: DispatchOrderTemplate) {
+    setBusy(true);
+    setError("");
+    try {
+      await patchDispatchOrderTemplate(t.id, { enabled: !t.enabled });
+      setReload((n) => n + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update template failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeleteTemplate(t: DispatchOrderTemplate) {
+    if (!window.confirm(`Delete routine “${t.customerName || t.externalRef || "template"}”?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await deleteDispatchOrderTemplate(t.id);
+      setReload((n) => n + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete template failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveOrderAsTemplate(o: DispatchOrder) {
+    if (o.lat == null || o.lon == null) {
+      setError("Order needs coordinates to save as a routine");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await createDispatchOrderTemplate({
+        customerName: o.customerName,
+        externalRef: o.externalRef || undefined,
+        address: o.address || undefined,
+        zone: o.zone || undefined,
+        volumeM3: o.volumeM3,
+        weightKg: o.weightKg,
+        windowStart: o.windowStart || undefined,
+        windowEnd: o.windowEnd || undefined,
+        serviceMinutes: o.serviceMinutes,
+        proofRequired: o.proofRequired,
+        notes: o.notes || undefined,
+        lat: o.lat,
+        lon: o.lon,
+        cadence: "daily",
+        enabled: true,
+      });
+      setShowTemplates(true);
+      setReload((n) => n + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save routine failed");
     } finally {
       setBusy(false);
     }
@@ -782,6 +891,48 @@ export default function DispatchBoard() {
       setReload((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Cancel order failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCarryOver(selectedOnly: boolean) {
+    const ids = selectedOnly ? selectedOrderIds : [];
+    if (selectedOnly && !ids.length) {
+      setError("Select orders to move, or use Carry all leftover");
+      return;
+    }
+    const toDate = shiftServiceDate(planDate, 1);
+    const countLabel = selectedOnly ? `${ids.length} selected order(s)` : "all leftover pending orders";
+    if (
+      !window.confirm(
+        `Move ${countLabel} from ${formatServiceDateLabel(planDate)} to ${formatServiceDateLabel(toDate)}? Same order numbers are kept.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const result = await carryOverDispatchOrders({
+        fromDate: planDate,
+        toDate,
+        orderIds: selectedOnly ? ids : undefined,
+      });
+      setSelectedOrderIds([]);
+      if (editingOrderId && result.orders.some((o) => o.id === editingOrderId)) clearDraft();
+      setReload((n) => n + 1);
+      if (result.moved === 0) {
+        setError("No pending orders to move for this date");
+      } else if (
+        window.confirm(
+          `Moved ${result.moved} order(s) to ${formatServiceDateLabel(result.toDate)}. Switch the board to that day?`,
+        )
+      ) {
+        setPlanDate(result.toDate);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Carry over failed");
     } finally {
       setBusy(false);
     }
@@ -1799,6 +1950,69 @@ export default function DispatchBoard() {
               <h2>Orders</h2>
             </header>
 
+            <div className="dispatch-routine-bar">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy}
+                onClick={() => void handleGenerateTemplates()}
+                title="Create pending inbox orders from enabled routines that match this day"
+              >
+                Generate routines
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowTemplates((v) => !v)}
+              >
+                {showTemplates ? "Hide routines" : `Routines (${templates.length})`}
+              </button>
+            </div>
+
+            {showTemplates ? (
+              <div className="dispatch-template-list">
+                {templates.length === 0 ? (
+                  <p className="dispatch-search-hint">
+                    No routines yet. Add an order with “Also save as routine template”, or use Save as
+                    routine on an inbox card.
+                  </p>
+                ) : (
+                  <ul>
+                    {templates.map((t) => (
+                      <li key={t.id} className={!t.enabled ? "is-disabled" : undefined}>
+                        <div>
+                          <strong>{t.customerName || t.externalRef || "Routine"}</strong>
+                          <span>
+                            {cadenceLabel(t.cadence, t.weekday)}
+                            {t.proofRequired ? " · POD" : ""}
+                            {!t.enabled ? " · off" : ""}
+                          </span>
+                        </div>
+                        <div className="dispatch-order-actions">
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            disabled={busy}
+                            onClick={() => void handleToggleTemplate(t)}
+                          >
+                            {t.enabled ? "Disable" : "Enable"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary dispatch-order-delete"
+                            disabled={busy}
+                            onClick={() => void handleDeleteTemplate(t)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : null}
+
             <div className="dispatch-search-wrap">
               <div className="dispatch-place-mode" role="tablist" aria-label="Place picker mode">
                 <button
@@ -2061,6 +2275,63 @@ export default function DispatchBoard() {
                   />
                   Proof photo required (Mobile Dispatch FINISH)
                 </label>
+                {!editingOrderId ? (
+                  <>
+                    <label className="dispatch-plan-check" style={{ marginTop: 4 }}>
+                      <input
+                        type="checkbox"
+                        checked={orderForm.saveAsTemplate}
+                        onChange={(e) =>
+                          setOrderForm((f) => ({ ...f, saveAsTemplate: e.target.checked }))
+                        }
+                      />
+                      Also save as routine template
+                    </label>
+                    {orderForm.saveAsTemplate ? (
+                      <div className="dispatch-order-form-row dispatch-order-form-row-2">
+                        <label className="field">
+                          Cadence
+                          <select
+                            value={orderForm.templateCadence}
+                            onChange={(e) =>
+                              setOrderForm((f) => ({
+                                ...f,
+                                templateCadence: e.target.value as DispatchOrderCadence,
+                              }))
+                            }
+                          >
+                            <option value="daily">Daily</option>
+                            <option value="weekdays">Mon–Fri</option>
+                            <option value="weekly">Weekly</option>
+                          </select>
+                        </label>
+                        {orderForm.templateCadence === "weekly" ? (
+                          <label className="field">
+                            Weekday
+                            <select
+                              value={orderForm.templateWeekday}
+                              onChange={(e) =>
+                                setOrderForm((f) => ({ ...f, templateWeekday: e.target.value }))
+                              }
+                            >
+                              <option value="0">Sunday</option>
+                              <option value="1">Monday</option>
+                              <option value="2">Tuesday</option>
+                              <option value="3">Wednesday</option>
+                              <option value="4">Thursday</option>
+                              <option value="5">Friday</option>
+                              <option value="6">Saturday</option>
+                            </select>
+                          </label>
+                        ) : (
+                          <p className="dispatch-search-hint" style={{ alignSelf: "end", margin: 0 }}>
+                            Generate creates a pending order for matching days.
+                          </p>
+                        )}
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
                 <div className="dispatch-create-actions">
                   <button
                     type="button"
@@ -2110,6 +2381,11 @@ export default function DispatchBoard() {
                                 POD req
                               </span>
                             ) : null}
+                            {o.templateId ? (
+                              <span className="dispatch-zone-tag" title="Generated from a routine template">
+                                Routine
+                              </span>
+                            ) : null}
                           </span>
                           {o.address ? <span className="dispatch-order-addr">{o.address}</span> : null}
                           <span className="dispatch-order-meta">
@@ -2138,6 +2414,15 @@ export default function DispatchBoard() {
                               type="button"
                               className="btn-secondary"
                               disabled={busy}
+                              title="Save this order’s place and window as a daily routine"
+                              onClick={() => void handleSaveOrderAsTemplate(o)}
+                            >
+                              Save as routine
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              disabled={busy}
                               onClick={() => void handleCancelOrder(o)}
                             >
                               Cancel
@@ -2159,16 +2444,38 @@ export default function DispatchBoard() {
               )}
             </div>
 
-            <button
-              type="button"
-              className="btn btn-primary dispatch-assign-btn"
-              disabled={busy || !selected || !selectedOrderIds.length}
-              onClick={() => void handleAssignSelected()}
-            >
-              {selectedOrderIds.length
-                ? `Assign ${selectedOrderIds.length} to ${selected?.title || "job"}`
-                : "Select orders to assign"}
-            </button>
+            <div className="dispatch-inbox-actions">
+              <button
+                type="button"
+                className="btn btn-primary dispatch-assign-btn"
+                disabled={busy || !selected || !selectedOrderIds.length}
+                onClick={() => void handleAssignSelected()}
+              >
+                {selectedOrderIds.length
+                  ? `Assign ${selectedOrderIds.length} to ${selected?.title || "job"}`
+                  : "Select orders to assign"}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy || !selectedOrderIds.length}
+                title="Move selected pending orders to the next day (same order numbers)"
+                onClick={() => void handleCarryOver(true)}
+              >
+                {selectedOrderIds.length
+                  ? `Move ${selectedOrderIds.length} to next day`
+                  : "Move selected to next day"}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy || orders.length === 0}
+                title="Move all leftover pending orders on this day to the next day"
+                onClick={() => void handleCarryOver(false)}
+              >
+                Carry all leftover
+              </button>
+            </div>
           </section>
 
           <section className="dispatch-rail dispatch-map-pane">

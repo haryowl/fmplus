@@ -99,9 +99,35 @@ export type DispatchOrder = {
   serviceMinutes: number | null;
   /** When true, field FINISH requires at least one POD photo */
   proofRequired: boolean;
+  /** Set when this order was generated from a routine template */
+  templateId?: string | null;
   status: DispatchOrderStatus;
   jobId: string | null;
   stopId: string | null;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DispatchOrderCadence = "daily" | "weekdays" | "weekly";
+
+export type DispatchOrderTemplate = {
+  id: string;
+  enabled: boolean;
+  cadence: DispatchOrderCadence;
+  weekday: number | null;
+  externalRef: string;
+  customerName: string;
+  address: string;
+  lat: number | null;
+  lon: number | null;
+  zone: string;
+  volumeM3: number | null;
+  weightKg: number | null;
+  windowStart: string;
+  windowEnd: string;
+  serviceMinutes: number | null;
+  proofRequired: boolean;
   notes: string;
   createdAt: string;
   updatedAt: string;
@@ -706,6 +732,122 @@ export async function deleteDispatchOrder(id: string): Promise<void> {
   });
   const data = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) throw new Error(data.error || `Delete order ${res.status}`);
+}
+
+/** Move pending inbox orders from one service date to another (same order ids). */
+export async function carryOverDispatchOrders(body: {
+  fromDate: string;
+  toDate?: string;
+  orderIds?: string[];
+}): Promise<{ fromDate: string; toDate: string; moved: number; orders: DispatchOrder[] }> {
+  const res = await fetch("/api/dispatch/orders/carry-over", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    fromDate?: string;
+    toDate?: string;
+    moved?: number;
+    orders?: DispatchOrder[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Carry over ${res.status}`);
+  return {
+    fromDate: data.fromDate || body.fromDate,
+    toDate: data.toDate || body.toDate || "",
+    moved: Number(data.moved) || 0,
+    orders: data.orders || [],
+  };
+}
+
+export async function fetchDispatchOrderTemplates(signal?: AbortSignal): Promise<DispatchOrderTemplate[]> {
+  const res = await fetch("/api/dispatch/order-templates", {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    templates?: DispatchOrderTemplate[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Templates ${res.status}`);
+  return data.templates || [];
+}
+
+export async function createDispatchOrderTemplate(
+  body: Record<string, unknown>,
+): Promise<DispatchOrderTemplate> {
+  const res = await fetch("/api/dispatch/order-templates", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    template?: DispatchOrderTemplate;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Create template ${res.status}`);
+  if (!data.template) throw new Error("Create template failed");
+  return data.template;
+}
+
+export async function patchDispatchOrderTemplate(
+  id: string,
+  patch: Record<string, unknown>,
+): Promise<DispatchOrderTemplate> {
+  const res = await fetch(`/api/dispatch/order-templates/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(patch),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    template?: DispatchOrderTemplate;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Patch template ${res.status}`);
+  if (!data.template) throw new Error("Patch template failed");
+  return data.template;
+}
+
+export async function deleteDispatchOrderTemplate(id: string): Promise<void> {
+  const res = await fetch(`/api/dispatch/order-templates/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { accept: "application/json", ...tenantHeaders() },
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(data.error || `Delete template ${res.status}`);
+}
+
+export async function generateDispatchOrdersFromTemplates(
+  serviceDate: string,
+): Promise<{ created: number; skipped: number; orders: DispatchOrder[] }> {
+  const res = await fetch("/api/dispatch/order-templates/generate", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify({ serviceDate }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    created?: number;
+    skipped?: number;
+    orders?: DispatchOrder[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Generate ${res.status}`);
+  return {
+    created: Number(data.created) || 0,
+    skipped: Number(data.skipped) || 0,
+    orders: data.orders || [],
+  };
+}
+
+export function cadenceLabel(cadence: DispatchOrderCadence, weekday: number | null): string {
+  if (cadence === "weekdays") return "Mon–Fri";
+  if (cadence === "weekly") {
+    const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const w = weekday == null ? null : names[weekday];
+    return w ? `Weekly · ${w}` : "Weekly";
+  }
+  return "Daily";
 }
 
 export async function fetchStopPhotos(stopId: string, field = false): Promise<DispatchPhoto[]> {
