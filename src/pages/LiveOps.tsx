@@ -75,7 +75,7 @@ export default function LiveOps() {
   }, [groupId, timezone]);
 
   useEffect(() => {
-    document.title = "Live Ops · FM Plus";
+    document.title = "Live Ops · ARMADA M.1";
   }, []);
 
   useEffect(() => {

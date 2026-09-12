@@ -29,7 +29,7 @@ export default function LastStatus() {
 
   useEffect(() => {
     const previous = document.title;
-    document.title = "Last status · FM Plus";
+    document.title = "Last status · ARMADA M.1";
     return () => {
       document.title = previous;
     };

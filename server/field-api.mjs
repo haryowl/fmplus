@@ -165,6 +165,13 @@ function publicDispatchStop(row) {
     completePhoneLon: fieldCoordOrNull(row.complete_phone_lon),
     completeArmadaLat: fieldCoordOrNull(row.complete_armada_lat),
     completeArmadaLon: fieldCoordOrNull(row.complete_armada_lon),
+    skipReason: row.skip_reason || "",
+    rescheduledTo:
+      row.rescheduled_to instanceof Date
+        ? row.rescheduled_to.toISOString().slice(0, 10)
+        : row.rescheduled_to
+          ? String(row.rescheduled_to).slice(0, 10)
+          : null,
   };
 }
 
@@ -732,6 +739,15 @@ export async function handleFieldRequest(req, res) {
           return true;
         }
 
+        if (stopRow.status === "done") {
+          json(res, 400, { error: "Completed stops cannot be changed" });
+          return true;
+        }
+        if (stopRow.status === "skipped" && status !== "skipped") {
+          json(res, 400, { error: "Skipped stops cannot be changed" });
+          return true;
+        }
+
         if (status === "done" && stopRow.proof_required === true) {
           const photos = await dbQuery(
             `SELECT id FROM dispatch_stop_photos WHERE stop_id = $1 LIMIT 1`,
@@ -739,6 +755,31 @@ export async function handleFieldRequest(req, res) {
           );
           if (!photos.rows[0]) {
             json(res, 400, { error: "Proof photo is required before finishing this order" });
+            return true;
+          }
+        }
+
+        let skipReason = null;
+        let rescheduleDate = null;
+        if (status === "skipped") {
+          skipReason = String(body.skipReason || body.reason || "").trim().slice(0, 500);
+          if (!skipReason) {
+            json(res, 400, { error: "Reason is required to skip / reschedule" });
+            return true;
+          }
+          rescheduleDate = String(body.rescheduleDate || body.rescheduledTo || "")
+            .trim()
+            .slice(0, 10);
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(rescheduleDate)) {
+            json(res, 400, { error: "rescheduleDate is required (YYYY-MM-DD)" });
+            return true;
+          }
+          const jobDate =
+            job.service_date instanceof Date
+              ? job.service_date.toISOString().slice(0, 10)
+              : String(job.service_date || "").slice(0, 10);
+          if (jobDate && rescheduleDate < jobDate) {
+            json(res, 400, { error: "Reschedule date cannot be before the job service date" });
             return true;
           }
         }
@@ -761,18 +802,22 @@ export async function handleFieldRequest(req, res) {
         if (status === "done" || status === "skipped") {
           sets.push(`completed_at = COALESCE(completed_at, now())`);
           sets.push(`arrived_at = COALESCE(arrived_at, now())`);
-          if (status === "done") {
-            if (phone) {
-              params.push(phone.lat, phone.lon);
-              sets.push(`complete_phone_lat = $${params.length - 1}`);
-              sets.push(`complete_phone_lon = $${params.length}`);
-            }
-            if (armada) {
-              params.push(armada.lat, armada.lon);
-              sets.push(`complete_armada_lat = $${params.length - 1}`);
-              sets.push(`complete_armada_lon = $${params.length}`);
-            }
+          if (phone) {
+            params.push(phone.lat, phone.lon);
+            sets.push(`complete_phone_lat = $${params.length - 1}`);
+            sets.push(`complete_phone_lon = $${params.length}`);
           }
+          if (armada) {
+            params.push(armada.lat, armada.lon);
+            sets.push(`complete_armada_lat = $${params.length - 1}`);
+            sets.push(`complete_armada_lon = $${params.length}`);
+          }
+        }
+        if (status === "skipped") {
+          params.push(skipReason);
+          sets.push(`skip_reason = $${params.length}`);
+          params.push(rescheduleDate);
+          sets.push(`rescheduled_to = $${params.length}::date`);
         }
         if ("notes" in body) {
           params.push(String(body.notes || "").trim().slice(0, 2000) || null);
@@ -790,8 +835,26 @@ export async function handleFieldRequest(req, res) {
           json(res, 404, { error: "Stop not found" });
           return true;
         }
+
+        // Reuse same order: detach and move to reschedule date (order number unchanged)
+        if (status === "skipped" && stopRow.order_id) {
+          await dbQuery(
+            `UPDATE dispatch_orders
+             SET status = 'pending',
+                 job_id = NULL,
+                 stop_id = NULL,
+                 service_date = $1::date,
+                 updated_at = now()
+             WHERE id = $2 AND tenant_id = $3`,
+            [rescheduleDate, stopRow.order_id, user.tenantId],
+          );
+        }
+
         // Auto-bump job to en_route when first stop progresses
-        if (job.status === "assigned" && (status === "arrived" || status === "done")) {
+        if (
+          job.status === "assigned" &&
+          (status === "arrived" || status === "done" || status === "skipped")
+        ) {
           await dbQuery(
             `UPDATE dispatch_jobs
              SET status = 'en_route', started_at = COALESCE(started_at, now()), updated_at = now()

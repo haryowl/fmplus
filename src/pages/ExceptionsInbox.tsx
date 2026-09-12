@@ -67,7 +67,7 @@ export default function ExceptionsInbox() {
   }, [groupId, timezone]);
 
   useEffect(() => {
-    document.title = "Exceptions · FM Plus";
+    document.title = "Exceptions · ARMADA M.1";
   }, []);
 
   useEffect(() => {

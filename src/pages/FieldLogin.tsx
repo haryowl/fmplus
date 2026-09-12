@@ -177,7 +177,7 @@ export default function FieldLogin() {
   }, [mobileMaintenance]);
 
   useEffect(() => {
-    document.title = "Field · FM Plus";
+    document.title = "Field · ARMADA M.1";
     void refreshMe();
   }, [refreshMe]);
 
@@ -528,7 +528,7 @@ export default function FieldLogin() {
           <div className="field-brand">
             <BrandMark size={20} />
             <div>
-              <p className="field-kicker">FM Plus Field</p>
+              <p className="field-kicker">ARMADA M.1</p>
               <h1>{inDispatch ? "Dispatch" : "My jobs"}</h1>
             </div>
           </div>

@@ -181,7 +181,7 @@ export default function TripDetail() {
 
   useEffect(() => {
     const previous = document.title;
-    document.title = "Trip detail · FM Plus";
+    document.title = "Trip detail · ARMADA M.1";
     return () => {
       document.title = previous;
     };

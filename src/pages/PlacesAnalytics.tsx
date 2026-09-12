@@ -36,7 +36,7 @@ export default function PlacesAnalytics() {
   const [linkMsg, setLinkMsg] = useState("");
 
   useEffect(() => {
-    document.title = "Places · FM Plus";
+    document.title = "Places · ARMADA M.1";
   }, []);
 
   useEffect(() => {
@@ -317,7 +317,7 @@ export default function PlacesAnalytics() {
         <section className="places-panel">
           <h2>Service points ↔ Armada POI</h2>
           <p className="muted">
-            Optional link for workshop / depot points. POI catalog stays in Armada; FM Plus stores the id
+            Optional link for workshop / depot points. POI catalog stays in Armada; ARMADA M.1 stores the id
             only.
           </p>
           {!poiAvailable ? (

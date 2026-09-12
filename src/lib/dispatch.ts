@@ -46,6 +46,8 @@ export type DispatchStop = {
   completePhoneLon?: number | null;
   completeArmadaLat?: number | null;
   completeArmadaLon?: number | null;
+  skipReason?: string;
+  rescheduledTo?: string | null;
 };
 
 export type DispatchJob = {
@@ -785,6 +787,8 @@ export type FieldStopPatchBody = {
   notes?: string;
   phoneLat?: number | null;
   phoneLon?: number | null;
+  skipReason?: string;
+  rescheduleDate?: string;
 };
 
 export async function fieldPatchStop(

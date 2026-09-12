@@ -208,7 +208,7 @@ export default function AdminConsole() {
   }, []);
 
   useEffect(() => {
-    document.title = "Admin · FM Plus";
+    document.title = "Admin · ARMADA M.1";
     void refreshMe().then((ok) => {
       if (ok) void loadTenants().catch((err: Error) => setError(err.message));
     });
@@ -479,7 +479,7 @@ export default function AdminConsole() {
         <div className="admin-brand">
           <BrandMark size={22} />
           <div>
-            <p className="admin-kicker">FM Plus</p>
+            <p className="admin-kicker">ARMADA M.1</p>
             <h1>Admin</h1>
           </div>
         </div>

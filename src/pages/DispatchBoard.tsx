@@ -239,7 +239,7 @@ export default function DispatchBoard() {
   }, [orders, jobs]);
 
   useEffect(() => {
-    document.title = "Dispatch · FM Plus";
+    document.title = "Dispatch · ARMADA M.1";
   }, []);
 
   useEffect(() => {
@@ -999,6 +999,11 @@ export default function DispatchBoard() {
 
   async function handleReturnStop(stopId: string, stopName: string) {
     if (!selected) return;
+    const stop = selected.stops.find((s) => s.id === stopId);
+    if (stop && (stop.status === "done" || stop.status === "skipped")) {
+      setError("Completed stops cannot be returned to the inbox");
+      return;
+    }
     if (
       !window.confirm(
         `Return “${stopName || "stop"}” to the inbox? It will leave this job and become unassigned again.`,
@@ -2542,19 +2547,28 @@ export default function DispatchBoard() {
                                   ? ` · ${formatDispatchServiceMinutes(stop, Number(planServiceMin) || 8)}`
                                   : ""}
                               </span>
-                              <span className="dispatch-stop-leg">
-                                {i === 0 ? (
-                                  <>ETA {meta?.eta || "—"} · start</>
-                                ) : (
-                                  <>
-                                    {meta?.legDistanceKm != null ? `${meta.legDistanceKm} km` : "—"}
-                                    <span aria-hidden> · </span>
-                                    {formatRouteDuration(meta?.legDurationSec)}
-                                    <span aria-hidden> · </span>
-                                    ETA {meta?.eta || "—"}
-                                  </>
-                                )}
-                              </span>
+                              {stop.status === "skipped" ? (
+                                <span className="dispatch-stop-leg">
+                                  {stop.skipReason ? `Skip: ${stop.skipReason}` : "Skipped"}
+                                  {stop.rescheduledTo
+                                    ? ` · → ${formatServiceDateLabel(stop.rescheduledTo)}`
+                                    : ""}
+                                </span>
+                              ) : (
+                                <span className="dispatch-stop-leg">
+                                  {i === 0 ? (
+                                    <>ETA {meta?.eta || "—"} · start</>
+                                  ) : (
+                                    <>
+                                      {meta?.legDistanceKm != null ? `${meta.legDistanceKm} km` : "—"}
+                                      <span aria-hidden> · </span>
+                                      {formatRouteDuration(meta?.legDurationSec)}
+                                      <span aria-hidden> · </span>
+                                      ETA {meta?.eta || "—"}
+                                    </>
+                                  )}
+                                </span>
+                              )}
                             </div>
                             <div className="dispatch-stop-actions">
                               <button
@@ -2564,17 +2578,19 @@ export default function DispatchBoard() {
                               >
                                 POD
                               </button>
-                              <button
-                                type="button"
-                                className="btn-secondary dispatch-return-btn"
-                                disabled={
-                                  busy || selected.status === "done" || selected.status === "cancelled"
-                                }
-                                title="Remove from this job and return order to inbox"
-                                onClick={() => void handleReturnStop(stop.id, stop.name)}
-                              >
-                                To inbox
-                              </button>
+                              {stop.status !== "done" && stop.status !== "skipped" ? (
+                                <button
+                                  type="button"
+                                  className="btn-secondary dispatch-return-btn"
+                                  disabled={
+                                    busy || selected.status === "done" || selected.status === "cancelled"
+                                  }
+                                  title="Remove from this job and return order to inbox"
+                                  onClick={() => void handleReturnStop(stop.id, stop.name)}
+                                >
+                                  To inbox
+                                </button>
+                              ) : null}
                             </div>
                           </li>
                         );

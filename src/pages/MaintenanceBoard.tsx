@@ -287,7 +287,7 @@ export default function MaintenanceBoard() {
   }, []);
 
   useEffect(() => {
-    document.title = "Maintenance · FM Plus";
+    document.title = "Maintenance · ARMADA M.1";
   }, []);
 
   useEffect(() => {

@@ -107,6 +107,9 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
   const [stopNote, setStopNote] = useState("");
   const [photos, setPhotos] = useState<DispatchPhoto[]>([]);
   const [gpsWarn, setGpsWarn] = useState("");
+  const [showSkipPanel, setShowSkipPanel] = useState(false);
+  const [skipReason, setSkipReason] = useState("");
+  const [skipDate, setSkipDate] = useState(() => shiftServiceDate(todayServiceDate(), 1));
   const onErrorRef = useRef(onError);
   const onNoticeRef = useRef(onNotice);
   onErrorRef.current = onError;
@@ -242,6 +245,9 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
         onNoticeRef.current("Resumed order");
       }
       setActiveStopId(stop.id);
+      setShowSkipPanel(false);
+      setSkipReason("");
+      setSkipDate(shiftServiceDate(selected.serviceDate || planDate || todayServiceDate(), 1));
       setView("activeStop");
       onErrorRef.current("");
     } catch (err) {
@@ -270,11 +276,55 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
       });
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
       setActiveStopId(null);
+      setShowSkipPanel(false);
       setView("orders");
       onErrorRef.current("");
       onNoticeRef.current("Order completed");
     } catch (err) {
       onErrorRef.current(err instanceof Error ? err.message : "Finish failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function skipActiveStop() {
+    if (!selected || !activeStop) return;
+    const reason = skipReason.trim();
+    if (!reason) {
+      onErrorRef.current("Reason is required to skip / reschedule");
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(skipDate)) {
+      onErrorRef.current("Choose a valid reschedule date");
+      return;
+    }
+    const jobDate = selected.serviceDate || planDate;
+    if (skipDate < jobDate) {
+      onErrorRef.current("Reschedule date cannot be before the job date");
+      return;
+    }
+    setBusy(true);
+    setGpsWarn("");
+    try {
+      const phone = await readPhonePosition();
+      if (!phone) setGpsWarn("Phone GPS unavailable — Armada position will still be recorded if available.");
+      const { job } = await fieldPatchStop(selected.id, activeStop.id, {
+        status: "skipped",
+        notes: stopNote,
+        skipReason: reason,
+        rescheduleDate: skipDate,
+        phoneLat: phone?.lat ?? null,
+        phoneLon: phone?.lon ?? null,
+      });
+      setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
+      setActiveStopId(null);
+      setShowSkipPanel(false);
+      setSkipReason("");
+      setView("orders");
+      onErrorRef.current("");
+      onNoticeRef.current(`Skipped · order moved to ${skipDate}`);
+    } catch (err) {
+      onErrorRef.current(err instanceof Error ? err.message : "Skip failed");
     } finally {
       setBusy(false);
     }
@@ -519,7 +569,67 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
           >
             Finish
           </button>
+          <button
+            type="button"
+            className="field-order-btn field-order-btn-skip"
+            style={{ minWidth: 120, height: 40, fontSize: "0.85rem" }}
+            disabled={busy || locked}
+            onClick={() => {
+              setShowSkipPanel(true);
+              setSkipDate(shiftServiceDate(selected.serviceDate || planDate || todayServiceDate(), 1));
+              onErrorRef.current("");
+            }}
+          >
+            Skip / Reschedule
+          </button>
         </div>
+
+        {showSkipPanel ? (
+          <section className="field-panel field-skip-panel">
+            <header className="field-panel-head">
+              <h3>Skip / Reschedule</h3>
+              <p className="muted">Same order number moves to the inbox for the date you choose.</p>
+            </header>
+            <label className="field-label">
+              Reason (required)
+              <textarea
+                value={skipReason}
+                onChange={(e) => setSkipReason(e.target.value)}
+                rows={3}
+                disabled={busy || locked}
+                placeholder="e.g. Customer closed, road blocked…"
+              />
+            </label>
+            <label className="field-label">
+              Reschedule to
+              <input
+                type="date"
+                value={skipDate}
+                min={selected.serviceDate || planDate}
+                onChange={(e) => setSkipDate(e.target.value)}
+                disabled={busy || locked}
+              />
+            </label>
+            <div className="field-action-row">
+              <button
+                type="button"
+                className="field-order-btn field-order-btn-skip"
+                disabled={busy || locked}
+                onClick={() => void skipActiveStop()}
+              >
+                Confirm skip
+              </button>
+              <button
+                type="button"
+                className="field-order-btn field-order-btn-nav"
+                disabled={busy}
+                onClick={() => setShowSkipPanel(false)}
+              >
+                Back
+              </button>
+            </div>
+          </section>
+        ) : null}
       </div>
     );
   }
@@ -636,7 +746,9 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
           ) : (
             <ul className="field-dispatch-stops">
               {selected.stops.map((stop, i) => {
-                const done = stop.status === "done" || stop.status === "skipped";
+                const isSkipped = stop.status === "skipped";
+                const isDone = stop.status === "done";
+                const closed = isDone || isSkipped;
                 const inProgress = stop.status === "arrived";
                 const startCoords = primaryStopCoords(
                   stop.startPhoneLat,
@@ -653,14 +765,19 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                 return (
                   <li
                     key={stop.id}
-                    className={`field-dispatch-stop${done ? " is-done" : ""}${inProgress ? " is-active" : ""}`}
+                    className={`field-dispatch-stop${isDone ? " is-done" : ""}${
+                      isSkipped ? " is-skipped" : ""
+                    }${inProgress ? " is-active" : ""}`}
                   >
                     <div className="field-dispatch-stop-main">
                       <div className="field-dispatch-stop-top">
                         <span className="field-dispatch-stop-num">{i + 1}</span>
                         <strong className="field-dispatch-stop-title">{stop.name}</strong>
                         {stop.proofRequired ? <span className="field-order-chip">POD</span> : null}
-                        {done ? <span className="field-order-chip field-order-chip-done">Done</span> : null}
+                        {isDone ? <span className="field-order-chip field-order-chip-done">Done</span> : null}
+                        {isSkipped ? (
+                          <span className="field-order-chip field-order-chip-skipped">Skipped</span>
+                        ) : null}
                         {inProgress ? (
                           <span className="field-order-chip field-order-chip-active">Started</span>
                         ) : null}
@@ -675,7 +792,33 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                           .join(" · ") || "—"}
                       </p>
 
-                      {(done || inProgress) && (stop.arrivedAt || startCoords) ? (
+                      {isSkipped ? (
+                        <div className="field-dispatch-exec">
+                          {stop.skipReason ? (
+                            <p className="field-dispatch-skip-reason">{stop.skipReason}</p>
+                          ) : null}
+                          {stop.rescheduledTo ? (
+                            <p className="field-dispatch-stop-meta">
+                              Rescheduled → {formatServiceDateLabel(stop.rescheduledTo)}
+                            </p>
+                          ) : null}
+                          {(stop.completedAt || completeCoords) && (
+                            <div className="field-dispatch-exec-row">
+                              <span className="field-dispatch-exec-label">Skip</span>
+                              <span className="field-dispatch-exec-time">
+                                {formatFieldClock(stop.completedAt)}
+                              </span>
+                              <span className="field-dispatch-exec-coords">
+                                {completeCoords
+                                  ? `${formatFieldCoord(completeCoords.lat, completeCoords.lon)} · ${completeCoords.source}`
+                                  : "—"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
+
+                      {(isDone || inProgress) && (stop.arrivedAt || startCoords) ? (
                         <div className="field-dispatch-exec">
                           <div className="field-dispatch-exec-row">
                             <span className="field-dispatch-exec-label">Start</span>
@@ -686,7 +829,7 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                                 : "—"}
                             </span>
                           </div>
-                          {done ? (
+                          {isDone ? (
                             <div className="field-dispatch-exec-row">
                               <span className="field-dispatch-exec-label">Finish</span>
                               <span className="field-dispatch-exec-time">
@@ -714,11 +857,17 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                           Navigate
                         </a>
                       ) : null}
-                      {done ? (
+                      {isDone ? (
                         <span className="field-order-btn field-order-btn-done" aria-label="Completed">
                           Completed
                         </span>
-                      ) : !locked ? (
+                      ) : null}
+                      {isSkipped ? (
+                        <span className="field-order-btn field-order-btn-skipped" aria-label="Skipped">
+                          Skipped
+                        </span>
+                      ) : null}
+                      {!closed && !locked ? (
                         <button
                           type="button"
                           className="field-order-btn field-order-btn-start"

@@ -136,7 +136,7 @@ export default function ManagerMaintenance() {
   }, [managerMaintenance]);
 
   useEffect(() => {
-    document.title = "Manager · FM Plus";
+    document.title = "Manager · ARMADA M.1";
     void refreshMe();
   }, [refreshMe]);
 
@@ -467,7 +467,7 @@ export default function ManagerMaintenance() {
           <div className="field-brand">
             <BrandMark size={20} />
             <div>
-              <p className="field-kicker">FM Plus Manager</p>
+              <p className="field-kicker">ARMADA M.1</p>
               <h1>Maintenance</h1>
             </div>
           </div>

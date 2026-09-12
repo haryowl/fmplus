@@ -54,7 +54,7 @@ export default function RoutePlanPage() {
   const excelOk = entitlements.features.excel !== false;
 
   useEffect(() => {
-    document.title = "Route plan · FM Plus";
+    document.title = "Route plan · ARMADA M.1";
   }, []);
 
   useEffect(() => {
@@ -383,7 +383,7 @@ export default function RoutePlanPage() {
         ) : !osrmReachable ? (
           <div className="banner warn">
             `OSRM_BASE_URL` is set but OSRM is not reachable
-            {osrmError ? `: ${osrmError}` : ""}. Start the container (`scripts/setup-osrm.sh`) or FM Plus will use
+            {osrmError ? `: ${osrmError}` : ""}. Start the container (`scripts/setup-osrm.sh`) or ARMADA M.1 will use
             haversine.
           </div>
         ) : null}

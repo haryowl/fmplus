@@ -5048,6 +5048,41 @@ html.onesheet-root body {
   cursor: default;
 }
 
+.field-order-btn-skip {
+  background: #fff;
+  border-color: #c49a5a;
+  color: #7a4b12;
+}
+
+.field-order-btn-skipped {
+  background: #eeeae3;
+  border-color: #b7b0a4;
+  color: #5e584f;
+  cursor: default;
+}
+
+.field-order-chip-skipped {
+  background: #eeeae3;
+  border-color: #b7b0a4;
+  color: #5e584f;
+}
+
+.field-dispatch-stop.is-skipped {
+  border-color: #d5cfc4;
+  background: linear-gradient(180deg, #f7f5f1 0%, #fff 48%);
+}
+
+.field-dispatch-skip-reason {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.field-skip-panel {
+  margin-top: 8px;
+}
+
 .field-pill-done {
   background: #e8f5ec;
   color: #1e5c34;

@@ -322,6 +322,13 @@ function publicStop(row) {
     completePhoneLon: coordOrNull(row.complete_phone_lon),
     completeArmadaLat: coordOrNull(row.complete_armada_lat),
     completeArmadaLon: coordOrNull(row.complete_armada_lon),
+    skipReason: row.skip_reason || "",
+    rescheduledTo:
+      row.rescheduled_to instanceof Date
+        ? row.rescheduled_to.toISOString().slice(0, 10)
+        : row.rescheduled_to
+          ? String(row.rescheduled_to).slice(0, 10)
+          : null,
   };
 }
 
@@ -1758,6 +1765,10 @@ export async function handleDispatchRequest(req, res) {
       const stop = stopRow.rows[0];
       if (!stop) {
         json(res, 404, { error: "Stop not found" });
+        return true;
+      }
+      if (stop.status === "done" || stop.status === "skipped") {
+        json(res, 400, { error: "Completed stops cannot be returned to the inbox" });
         return true;
       }
       if (stop.order_id) {
