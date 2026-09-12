@@ -524,7 +524,7 @@ function FragmentGroup({
               <em className={`dispatch-live-pill tone-${tone}`}>{statusLabel(tone)}</em>
             </td>
             <td>{window}</td>
-            <td>{row.timeLabel || "—"}</td>
+            <td>{row.timeLabel || row.plannedEta || "—"}</td>
             <td>
               <em className={`dispatch-live-pod pod-${row.pod}`}>{podLabel(row.pod)}</em>
             </td>

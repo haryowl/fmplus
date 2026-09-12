@@ -14,6 +14,8 @@ export type TimelineStopInput = {
   arrivedAt?: string | null;
   completedAt?: string | null;
   timeLabel?: string;
+  /** Planned road ETA HH:MM (Jobs chain); used until actual arrive/complete. */
+  plannedEta?: string | null;
   role?: "stop" | "depot" | "return";
 };
 
@@ -29,6 +31,8 @@ export type TimelineDriverInput = {
   routeAnchorMode?: string | null;
   routeStart?: { label?: string; lat?: number | null; lon?: number | null } | null;
   routeEnd?: { label?: string; lat?: number | null; lon?: number | null } | null;
+  plannedDepotDepart?: string | null;
+  plannedReturnEta?: string | null;
   stops: TimelineStopInput[];
 };
 
@@ -45,7 +49,7 @@ export type TimelineNode = {
   windowEndMin: number | null;
   windowStartPct: number | null;
   windowEndPct: number | null;
-  timeSource: "actual" | "window" | "sequence";
+  timeSource: "actual" | "planned" | "window" | "sequence";
   timeLabel: string;
 };
 
@@ -186,6 +190,16 @@ function initialPlacement(stop: TimelineStopInput): RawPlacement {
       windowEndMin,
     };
   }
+  const planned = hmToMin(stop.plannedEta);
+  if (planned != null) {
+    return {
+      stop,
+      minute: planned,
+      timeSource: "planned",
+      windowStartMin,
+      windowEndMin,
+    };
+  }
   const win = windowMid(windowStartMin, windowEndMin);
   if (win != null) {
     return {
@@ -274,6 +288,7 @@ function expandStopsWithAnchors(driver: TimelineDriverInput): TimelineStopInput[
       status: departed || driver.jobStatus === "done" ? "delivered" : "pending",
       arrivedAt: driver.startedAt || null,
       completedAt: driver.startedAt || null,
+      plannedEta: driver.plannedDepotDepart || null,
       timeLabel: undefined,
       role: "depot",
     });
@@ -290,6 +305,7 @@ function expandStopsWithAnchors(driver: TimelineDriverInput): TimelineStopInput[
       status: driver.jobStatus === "done" ? "delivered" : "pending",
       arrivedAt: driver.completedAt || null,
       completedAt: driver.completedAt || null,
+      plannedEta: driver.plannedReturnEta || null,
       timeLabel: undefined,
       role: "return",
     });
@@ -338,7 +354,9 @@ export function buildTimelineRows(
       const timeLabel =
         timeSource === "actual" && p.stop.timeLabel
           ? p.stop.timeLabel
-          : minToHm(minute);
+          : timeSource === "planned" && p.stop.plannedEta
+            ? p.stop.plannedEta
+            : minToHm(minute);
       return {
         stopId: p.stop.stopId,
         jobId: p.stop.jobId || driver.jobId,

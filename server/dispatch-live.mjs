@@ -3,6 +3,10 @@
  */
 import { dbQuery } from "./db.mjs";
 import { fetchVehiclePositions } from "./vehicle-positions.mjs";
+import { buildRouteForPoints } from "./route-plan-api.mjs";
+import { buildStopRouteMeta } from "./stop-route-meta.mjs";
+
+const DEFAULT_SERVICE_MIN = 8;
 
 function todayYmdJakarta() {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -112,6 +116,77 @@ function formatTimeWib(iso) {
     minute: "2-digit",
     hour12: false,
   }).format(d);
+}
+
+/**
+ * Same planned ETA chain as Jobs sequence (road legs + depot anchors + service minutes).
+ * Mutates driver.stops / depot-return fields in place.
+ */
+async function attachPlannedEtaChain(driver) {
+  const hasStart = Boolean(
+    driver.routeStart &&
+      Number.isFinite(Number(driver.routeStart.lat)) &&
+      Number.isFinite(Number(driver.routeStart.lon)),
+  );
+  const hasEnd = Boolean(
+    driver.routeEnd &&
+      Number.isFinite(Number(driver.routeEnd.lat)) &&
+      Number.isFinite(Number(driver.routeEnd.lon)),
+  );
+
+  const customerPts = [];
+  for (const s of driver.stops) {
+    const lat = coordOrNull(s.plannedLat);
+    const lon = coordOrNull(s.plannedLon);
+    if (lat == null || lon == null) {
+      driver.plannedEtaReady = false;
+      return;
+    }
+    customerPts.push({ lat, lon });
+  }
+
+  const points = [
+    ...(hasStart
+      ? [{ lat: Number(driver.routeStart.lat), lon: Number(driver.routeStart.lon) }]
+      : []),
+    ...customerPts,
+    ...(hasEnd ? [{ lat: Number(driver.routeEnd.lat), lon: Number(driver.routeEnd.lon) }] : []),
+  ];
+  if (points.length < 2) {
+    driver.plannedEtaReady = false;
+    return;
+  }
+
+  try {
+    const route = await buildRouteForPoints(points);
+    const meta = buildStopRouteMeta(
+      driver.stops.map((s) => ({
+        windowStart: s.windowStart,
+        serviceMinutes: s.serviceMinutes,
+      })),
+      route.legs || [],
+      DEFAULT_SERVICE_MIN,
+      { hasRouteStart: hasStart, hasRouteEnd: hasEnd },
+    );
+
+    driver.plannedDepotDepart = meta.depotDepart;
+    driver.plannedDistanceKm = route.distanceKm ?? null;
+    driver.plannedDurationSec = route.durationSec ?? null;
+    driver.plannedReturnEta = meta.returnLeg?.eta || null;
+    driver.plannedReturnLegDistanceKm = meta.returnLeg?.legDistanceKm ?? null;
+    driver.plannedReturnLegDurationSec = meta.returnLeg?.legDurationSec ?? null;
+    driver.plannedEtaReady = true;
+
+    for (let i = 0; i < driver.stops.length; i++) {
+      const m = meta.stops[i];
+      if (!m) continue;
+      driver.stops[i].plannedEta = m.eta;
+      driver.stops[i].plannedLegDistanceKm = m.legDistanceKm;
+      driver.stops[i].plannedLegDurationSec = m.legDurationSec;
+    }
+  } catch {
+    driver.plannedEtaReady = false;
+  }
 }
 
 /**
@@ -245,6 +320,10 @@ export async function buildDispatchLiveSnapshot(opts) {
         delayed: delayedFlag,
         windowStart: s.window_start || "",
         windowEnd: s.window_end || "",
+        serviceMinutes:
+          s.service_minutes == null || s.service_minutes === ""
+            ? null
+            : Number(s.service_minutes),
         arrivedAt: s.arrived_at || null,
         completedAt: s.completed_at || null,
         timeLabel: formatTimeWib(timeIso),
@@ -252,6 +331,9 @@ export async function buildDispatchLiveSnapshot(opts) {
         lon: coords.lon,
         plannedLat: coordOrNull(s.lat),
         plannedLon: coordOrNull(s.lon),
+        plannedEta: null,
+        plannedLegDistanceKm: null,
+        plannedLegDurationSec: null,
         pod,
         photoCount: photos,
         proofRequired: s.proof_required === true,
@@ -348,18 +430,29 @@ export async function buildDispatchLiveSnapshot(opts) {
       routeAnchorMode,
       routeStart,
       routeEnd,
+      plannedEtaReady: false,
+      plannedDepotDepart: null,
+      plannedReturnEta: null,
+      plannedReturnLegDistanceKm: null,
+      plannedReturnLegDurationSec: null,
+      plannedDistanceKm: null,
+      plannedDurationSec: null,
       stops: stopsOut,
     };
     drivers.push(driver);
+  }
 
-    for (const s of stopsOut) {
+  await Promise.all(drivers.map((d) => attachPlannedEtaChain(d)));
+
+  for (const driver of drivers) {
+    for (const s of driver.stops) {
       manifest.push({
         ...s,
-        driverName,
+        driverName: driver.driverName,
         driverInitials: driver.driverInitials,
-        vehicleLabel,
-        jobTitle: job.title || "",
-        jobStatus: job.status,
+        vehicleLabel: driver.vehicleLabel,
+        jobTitle: driver.jobTitle || "",
+        jobStatus: driver.jobStatus,
       });
     }
   }

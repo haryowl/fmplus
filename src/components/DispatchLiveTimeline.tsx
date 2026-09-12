@@ -71,7 +71,7 @@ export function DispatchLiveTimeline({
       <div className="dispatch-pane-head">
         <h2>Progress</h2>
         <span className="dispatch-live-timeline-hint">
-          {minToHm(axis.startMin)}–{minToHm(axis.endMin)} WIB · node = stop time
+          {minToHm(axis.startMin)}–{minToHm(axis.endMin)} WIB · planned ETA until actual
         </span>
       </div>
 
@@ -206,6 +206,8 @@ function TimelineRowView({
 }
 
 function WindowBar({ node }: { node: TimelineNode }) {
+  // Planned/actual nodes already sit on the Jobs ETA chain — skip full-day window spans.
+  if (node.timeSource === "planned" || node.timeSource === "actual") return null;
   if (node.windowStartPct == null || node.windowEndPct == null) return null;
   const left = Math.min(node.windowStartPct, node.windowEndPct);
   const width = Math.abs(node.windowEndPct - node.windowStartPct);

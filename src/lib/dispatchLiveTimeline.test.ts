@@ -144,4 +144,52 @@ describe("buildTimelineRows", () => {
     expect(nodes[2]!.role).toBe("return");
     expect(nodes[2]!.minute).toBeGreaterThan(nodes[1]!.minute);
   });
+
+  it("prefers planned ETA over window midpoint when not started", () => {
+    const { rows } = buildTimelineRows([
+      {
+        jobId: "j3",
+        driverName: "Cat",
+        driverInitials: "CA",
+        vehicleLabel: "B 3",
+        pctComplete: 0,
+        jobStatus: "assigned",
+        routeAnchorMode: "sequence",
+        routeStart: { label: "Depot" },
+        routeEnd: { label: "Return" },
+        plannedDepotDepart: "08:00",
+        plannedReturnEta: "09:27",
+        stops: [
+          {
+            stopId: "s1",
+            jobId: "j3",
+            stopNumber: 1,
+            name: "A",
+            status: "pending",
+            windowStart: "08:00",
+            windowEnd: "17:00",
+            plannedEta: "08:03",
+          },
+          {
+            stopId: "s2",
+            jobId: "j3",
+            stopNumber: 2,
+            name: "B",
+            status: "pending",
+            windowStart: "08:00",
+            windowEnd: "17:00",
+            plannedEta: "08:14",
+          },
+        ],
+      },
+    ]);
+    const nodes = rows[0]!.nodes;
+    expect(nodes.map((n) => n.role)).toEqual(["depot", "stop", "stop", "return"]);
+    expect(nodes[0]!.timeSource).toBe("planned");
+    expect(nodes[0]!.minute).toBe(8 * 60);
+    expect(nodes[1]!.timeSource).toBe("planned");
+    expect(nodes[1]!.minute).toBe(8 * 60 + 3);
+    expect(nodes[2]!.minute).toBe(8 * 60 + 14);
+    expect(nodes[3]!.minute).toBe(9 * 60 + 27);
+  });
 });

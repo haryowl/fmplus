@@ -1083,6 +1083,7 @@ export type DispatchLiveStop = {
   delayed: boolean;
   windowStart: string;
   windowEnd: string;
+  serviceMinutes?: number | null;
   arrivedAt: string | null;
   completedAt: string | null;
   timeLabel: string;
@@ -1090,6 +1091,10 @@ export type DispatchLiveStop = {
   lon: number | null;
   plannedLat: number | null;
   plannedLon: number | null;
+  /** Planned road ETA (HH:MM), same chain as Jobs sequence. */
+  plannedEta?: string | null;
+  plannedLegDistanceKm?: number | null;
+  plannedLegDurationSec?: number | null;
   pod: DispatchLivePod;
   photoCount: number;
   proofRequired: boolean;
@@ -1125,6 +1130,13 @@ export type DispatchLiveDriver = {
   routeAnchorMode?: "map" | "sequence" | null;
   routeStart?: DispatchRouteAnchor | null;
   routeEnd?: DispatchRouteAnchor | null;
+  plannedEtaReady?: boolean;
+  plannedDepotDepart?: string | null;
+  plannedReturnEta?: string | null;
+  plannedReturnLegDistanceKm?: number | null;
+  plannedReturnLegDurationSec?: number | null;
+  plannedDistanceKm?: number | null;
+  plannedDurationSec?: number | null;
   stops: DispatchLiveStop[];
 };
 
