@@ -133,6 +133,7 @@ export default function DispatchBoard() {
   const [userId, setUserId] = useState(query.userId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [orderQuery, setOrderQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -259,6 +260,29 @@ export default function DispatchBoard() {
           ) / 10;
     return { openOrders, openJobs, avgUtil };
   }, [orders, jobs]);
+
+  const filteredOrders = useMemo(() => {
+    const q = orderQuery.trim().toLowerCase();
+    if (!q) return orders;
+    return orders.filter((o) => {
+      const hay = [
+        o.customerName,
+        o.externalRef,
+        o.address,
+        o.zone,
+        o.notes,
+        o.windowStart,
+        o.windowEnd,
+        o.volumeM3 != null ? String(o.volumeM3) : "",
+        o.weightKg != null ? String(o.weightKg) : "",
+        o.proofRequired ? "pod" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [orders, orderQuery]);
 
   useEffect(() => {
     document.title = "Dispatch · ARMADA M.1";
@@ -2408,15 +2432,38 @@ export default function DispatchBoard() {
               </div>
             ) : null}
 
+            <label className="dispatch-order-filter">
+              <span>Search orders</span>
+              <input
+                type="search"
+                value={orderQuery}
+                onChange={(e) => setOrderQuery(e.target.value)}
+                placeholder="Customer, ref, zone, address…"
+                autoComplete="off"
+              />
+            </label>
+            {orders.length > 0 ? (
+              <p className="dispatch-order-filter-meta">
+                {orderQuery.trim()
+                  ? `${filteredOrders.length} of ${orders.length} shown`
+                  : `${orders.length} pending`}
+              </p>
+            ) : null}
+
             <div className="dispatch-pool-list-wrap">
               {orders.length === 0 && !placing ? (
                 <div className="dispatch-empty">
                   <p>No pending orders</p>
                   <span>Search a place or pin the map to start a run.</span>
                 </div>
+              ) : filteredOrders.length === 0 ? (
+                <div className="dispatch-empty">
+                  <p>No matching orders</p>
+                  <span>Try another search, or clear the filter.</span>
+                </div>
               ) : (
                 <ul className="dispatch-order-list">
-                  {orders.map((o) => (
+                  {filteredOrders.map((o) => (
                     <li key={o.id}>
                       <div
                         className={`dispatch-order-card${selectedOrderIds.includes(o.id) ? " is-selected" : ""}${

@@ -3848,7 +3848,9 @@ html.onesheet-root body {
   grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.45fr) minmax(300px, 1fr);
   gap: 12px;
   align-items: stretch;
+  height: min(72vh, 760px);
   min-height: min(72vh, 760px);
+  max-height: min(72vh, 760px);
 }
 
 .dispatch-rail {
@@ -3858,12 +3860,13 @@ html.onesheet-root body {
   min-height: 0;
   min-width: 0;
   max-width: 100%;
+  height: 100%;
   padding: 16px;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 8px 24px rgba(23, 22, 20, 0.04);
-  overflow-x: hidden;
+  overflow: hidden;
   box-sizing: border-box;
 }
 
@@ -4356,15 +4359,51 @@ html.onesheet-root body {
 }
 
 .dispatch-pool-list-wrap {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .dispatch-rail.dispatch-pool {
-  overflow-x: hidden;
+  overflow: hidden;
   min-width: 0;
+}
+
+.dispatch-order-filter {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.dispatch-order-filter span {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.dispatch-order-filter input {
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 0.84rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dispatch-order-filter-meta {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--ink-faint);
 }
 
 .dispatch-order-list {
@@ -4491,6 +4530,7 @@ html.onesheet-root body {
   display: grid;
   gap: 8px;
   margin-top: auto;
+  flex: 0 0 auto;
 }
 
 .dispatch-inbox-actions .dispatch-assign-btn {
@@ -5570,7 +5610,17 @@ html.onesheet-root body {
 @media (max-width: 1100px) {
   .dispatch-board-3col {
     grid-template-columns: 1fr;
+    height: auto;
     min-height: 0;
+    max-height: none;
+  }
+
+  .dispatch-rail {
+    height: auto;
+  }
+
+  .dispatch-pool-list-wrap {
+    max-height: min(50vh, 420px);
   }
 
   .dispatch-map-frame,
