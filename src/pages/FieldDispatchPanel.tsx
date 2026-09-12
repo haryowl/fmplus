@@ -652,33 +652,32 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
         </button>
 
         <section className="field-panel field-dispatch-capacity">
-          <p className="field-kicker">CAPACITY TODAY</p>
-          <p className="field-dispatch-cap-main">
-            {selected.volumeUsed ?? 0} / {selected.volumeCapacityM3 ?? 12} m³ · {selected.utilizationPct ?? 0}%
-          </p>
-          <p className="muted">
-            {stopsLeft} order{stopsLeft === 1 ? "" : "s"} left · {dispatchVehicleLabel(selected)}
-          </p>
-        </section>
-
-        <section className="field-panel field-job-hero">
-          <div className="field-job-hero-top">
+          <div className="field-dispatch-cap-row">
+            <div>
+              <p className="field-kicker">CAPACITY TODAY</p>
+              <p className="field-dispatch-cap-main">
+                {selected.volumeUsed ?? 0} / {selected.volumeCapacityM3 ?? 12} m³ ·{" "}
+                {selected.utilizationPct ?? 0}%
+              </p>
+              <p className="muted">
+                {stopsLeft} order{stopsLeft === 1 ? "" : "s"} left · {dispatchVehicleLabel(selected)}
+              </p>
+            </div>
             <span className={`field-status dispatch-status-${selected.status}`}>
               {DISPATCH_STATUS_LABELS[selected.status as DispatchStatus]}
             </span>
           </div>
-          <h2>{selected.title}</h2>
-          {selected.serviceDate ? (
-            <p className="muted">{formatServiceDateLabel(selected.serviceDate)}</p>
-          ) : null}
-          {selected.notes ? <p className="muted">{selected.notes}</p> : null}
+          <div className="field-dispatch-job-title">
+            <h2>{selected.title}</h2>
+            {selected.serviceDate ? (
+              <p className="muted">{formatServiceDateLabel(selected.serviceDate)}</p>
+            ) : null}
+            {selected.notes ? <p className="muted">{selected.notes}</p> : null}
+          </div>
         </section>
 
         {!locked ? (
-          <section className="field-panel">
-            <header className="field-panel-head">
-              <h3>Job</h3>
-            </header>
+          <section className="field-panel field-dispatch-job-tools">
             <div className="field-action-row">
               {selected.status === "assigned" ? (
                 <button
@@ -718,7 +717,7 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
               <textarea
                 value={fieldNote}
                 onChange={(e) => setFieldNote(e.target.value)}
-                rows={2}
+                rows={1}
                 disabled={busy}
               />
             </label>
