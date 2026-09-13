@@ -288,9 +288,17 @@ function todayYmd() {
 }
 
 function formatServiceDate(rowVal) {
-  if (!rowVal) return "";
-  if (rowVal instanceof Date) return rowVal.toISOString().slice(0, 10);
-  return String(rowVal).slice(0, 10);
+  if (rowVal == null || rowVal === "") return "";
+  // node-pg returns DATE as a Date at local midnight — never use toISOString()
+  // (UTC+7 would shift the calendar day back by one).
+  if (rowVal instanceof Date) {
+    const y = rowVal.getFullYear();
+    const m = String(rowVal.getMonth() + 1).padStart(2, "0");
+    const d = String(rowVal.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(rowVal).trim());
+  return m ? m[1] : "";
 }
 
 function coordOrNull(v) {
@@ -328,12 +336,7 @@ function publicStop(row) {
     completeArmadaLat: coordOrNull(row.complete_armada_lat),
     completeArmadaLon: coordOrNull(row.complete_armada_lon),
     skipReason: row.skip_reason || "",
-    rescheduledTo:
-      row.rescheduled_to instanceof Date
-        ? row.rescheduled_to.toISOString().slice(0, 10)
-        : row.rescheduled_to
-          ? String(row.rescheduled_to).slice(0, 10)
-          : null,
+    rescheduledTo: formatServiceDate(row.rescheduled_to) || null,
   };
 }
 
@@ -1275,7 +1278,7 @@ export async function handleDispatchRequest(req, res) {
       const status = String(url.searchParams.get("status") || "pending").toLowerCase();
       const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
       const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 100));
-      const clauses = ["tenant_id = $1", "service_date = $2"];
+      const clauses = ["tenant_id = $1", "service_date = $2::date"];
       const params = [dbTenant.id, date];
       if (status === "open" || status === "pending") {
         clauses.push(`status = 'pending'`);
@@ -1710,7 +1713,7 @@ export async function handleDispatchRequest(req, res) {
       const status = String(url.searchParams.get("status") || "open").toLowerCase();
       const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
       const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 100));
-      const clauses = ["j.tenant_id = $1", "j.service_date = $2"];
+      const clauses = ["j.tenant_id = $1", "j.service_date = $2::date"];
       const params = [dbTenant.id, date];
       if (status === "open") {
         clauses.push(`j.status IN ('draft','assigned','en_route','arrived')`);
@@ -2303,6 +2306,15 @@ export async function handleDispatchRequest(req, res) {
       const apply = body.apply === true;
       const roundtrip = body.roundtrip === true;
       const onlyEmptyJobs = body.onlyEmptyJobs === true;
+      const selectedJobIds = Array.isArray(body.jobIds)
+        ? [
+            ...new Set(
+              body.jobIds
+                .map((id) => String(id || "").trim())
+                .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+            ),
+          ].slice(0, 50)
+        : [];
       let routing = parseRoutingOptions({
         routing: {
           ...(body.routing && typeof body.routing === "object" ? body.routing : {}),
@@ -2398,7 +2410,7 @@ export async function handleDispatchRequest(req, res) {
 
       const orderRows = await dbQuery(
         `SELECT * FROM dispatch_orders
-         WHERE tenant_id = $1 AND status = 'pending' AND service_date = $2
+         WHERE tenant_id = $1 AND status = 'pending' AND service_date = $2::date
          ORDER BY created_at ASC
          LIMIT 200`,
         [dbTenant.id, serviceDate],
@@ -2440,14 +2452,19 @@ export async function handleDispatchRequest(req, res) {
       const usedArmada = new Set();
 
       if (fleetMode === "jobs" || fleetMode === "both") {
-        const jobs = await dbQuery(
-          `SELECT * FROM dispatch_jobs
-           WHERE tenant_id = $1 AND service_date = $2
-             AND status NOT IN ('done', 'cancelled')
-           ORDER BY created_at ASC
-           LIMIT 50`,
-          [dbTenant.id, serviceDate],
-        );
+        const jobParams = [dbTenant.id, serviceDate];
+        let jobSql = `SELECT * FROM dispatch_jobs
+           WHERE tenant_id = $1 AND service_date = $2::date
+             AND status NOT IN ('done', 'cancelled')`;
+        if (selectedJobIds.length) {
+          jobParams.push(selectedJobIds);
+          jobSql += ` AND id = ANY($${jobParams.length}::uuid[])`;
+        } else {
+          // Default pool: plannable jobs not yet assigned to a field driver.
+          jobSql += ` AND assigned_field_user_id IS NULL`;
+        }
+        jobSql += ` ORDER BY created_at ASC LIMIT 50`;
+        const jobs = await dbQuery(jobSql, jobParams);
         const plateByArmada = new Map();
         {
           const caps = await dbQuery(
@@ -2868,6 +2885,7 @@ export async function handleDispatchRequest(req, res) {
         dayStartMin,
         maxStopsPerVehicle,
         onlyEmptyJobs,
+        jobIds: selectedJobIds,
         routing,
         routes: planRoutes,
         unassigned: planUnassigned,
@@ -2892,7 +2910,7 @@ export async function handleDispatchRequest(req, res) {
                tenant_id, status, title,
                armada_user_id, armada_username, user_display_name,
                volume_capacity_m3, weight_capacity_kg, service_date
-             ) VALUES ($1,'draft',$2,$3,$4,$5,$6,$7,$8)
+             ) VALUES ($1,'draft',$2,$3,$4,$5,$6,$7,$8::date)
              RETURNING id`,
             [
               dbTenant.id,
@@ -2909,13 +2927,23 @@ export async function handleDispatchRequest(req, res) {
         }
         if (!jobId) continue;
 
+        // Refuse to attach today's plan onto a job from another service date.
+        const jobOk = await dbQuery(
+          `SELECT id FROM dispatch_jobs
+           WHERE id = $1 AND tenant_id = $2 AND service_date = $3::date
+             AND status NOT IN ('done', 'cancelled')`,
+          [jobId, dbTenant.id, serviceDate],
+        );
+        if (!jobOk.rows[0]) continue;
+
         // Assign in route order
         let sortBase = (await loadStops(jobId)).length;
         for (const oid of route.orderIds) {
           const ord = await dbQuery(
             `SELECT * FROM dispatch_orders
-             WHERE id = $1 AND tenant_id = $2 AND status = 'pending'`,
-            [oid, dbTenant.id],
+             WHERE id = $1 AND tenant_id = $2 AND status = 'pending'
+               AND service_date = $3::date`,
+            [oid, dbTenant.id, serviceDate],
           );
           const o = ord.rows[0];
           if (!o) continue;

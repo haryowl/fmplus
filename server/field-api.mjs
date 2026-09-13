@@ -23,6 +23,19 @@ import { mergeEntitlements } from "./entitlements.mjs";
 import { tenantByKey } from "./tenants.mjs";
 import { fetchVehiclePositions } from "./vehicle-positions.mjs";
 
+/** Calendar YYYY-MM-DD from PG DATE / Date without UTC day-shift. */
+function fieldYmd(rowVal) {
+  if (rowVal == null || rowVal === "") return "";
+  if (rowVal instanceof Date) {
+    const y = rowVal.getFullYear();
+    const m = String(rowVal.getMonth() + 1).padStart(2, "0");
+    const d = String(rowVal.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(rowVal).trim());
+  return m ? m[1] : "";
+}
+
 const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
   lat, lon, notification_id, started_at, ended_at, odometer_km,
   service_point_id, service_point_name, service_point_lat, service_point_lon,
@@ -166,12 +179,7 @@ function publicDispatchStop(row) {
     completeArmadaLat: fieldCoordOrNull(row.complete_armada_lat),
     completeArmadaLon: fieldCoordOrNull(row.complete_armada_lon),
     skipReason: row.skip_reason || "",
-    rescheduledTo:
-      row.rescheduled_to instanceof Date
-        ? row.rescheduled_to.toISOString().slice(0, 10)
-        : row.rescheduled_to
-          ? String(row.rescheduled_to).slice(0, 10)
-          : null,
+    rescheduledTo: fieldYmd(row.rescheduled_to) || null,
   };
 }
 
@@ -223,10 +231,7 @@ function publicDispatchJob(row, stops = []) {
     arrivedAt: row.arrived_at || null,
     completedAt: row.completed_at || null,
     fieldNote: row.field_note || "",
-    serviceDate:
-      row.service_date instanceof Date
-        ? row.service_date.toISOString().slice(0, 10)
-        : String(row.service_date || "").slice(0, 10),
+    serviceDate: fieldYmd(row.service_date),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     routeAnchorMode: pathMode === "map" || pathMode === "sequence" ? pathMode : null,
@@ -573,10 +578,7 @@ export async function handleFieldRequest(req, res) {
           from: fromParam,
           to: toParam,
           days: rows.rows.map((r) => ({
-            date:
-              r.service_date instanceof Date
-                ? r.service_date.toISOString().slice(0, 10)
-                : String(r.service_date).slice(0, 10),
+            date: fieldYmd(r.service_date),
             jobCount: Number(r.job_count) || 0,
           })),
           summary: {
@@ -774,10 +776,7 @@ export async function handleFieldRequest(req, res) {
             json(res, 400, { error: "rescheduleDate is required (YYYY-MM-DD)" });
             return true;
           }
-          const jobDate =
-            job.service_date instanceof Date
-              ? job.service_date.toISOString().slice(0, 10)
-              : String(job.service_date || "").slice(0, 10);
+          const jobDate = fieldYmd(job.service_date);
           if (jobDate && rescheduleDate < jobDate) {
             json(res, 400, { error: "Reschedule date cannot be before the job service date" });
             return true;

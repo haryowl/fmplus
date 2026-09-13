@@ -456,6 +456,8 @@ export type DispatchPlanDayResult = {
   dayStartMin?: number;
   maxStopsPerVehicle?: number;
   onlyEmptyJobs?: boolean;
+  /** Explicit job ids used; empty means default unassigned-driver pool. */
+  jobIds?: string[];
   routing?: {
     avoidTolls?: boolean;
     avoidMotorways?: boolean;
@@ -572,6 +574,8 @@ export async function planDispatchDay(body: {
   depotLon?: number | null;
   persistDepot?: boolean;
   depotIds?: string[];
+  /** When empty/omitted: all jobs that day with no field-user assignee. */
+  jobIds?: string[];
   twMode?: DispatchTwMode;
   serviceMinutes?: number;
   dayStart?: string;

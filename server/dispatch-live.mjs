@@ -50,9 +50,16 @@ function coordOrNull(v) {
 }
 
 function formatServiceDate(rowVal) {
-  if (!rowVal) return "";
-  if (rowVal instanceof Date) return rowVal.toISOString().slice(0, 10);
-  return String(rowVal).slice(0, 10);
+  if (rowVal == null || rowVal === "") return "";
+  // node-pg DATE → local midnight Date; avoid toISOString() day shift in UTC+.
+  if (rowVal instanceof Date) {
+    const y = rowVal.getFullYear();
+    const m = String(rowVal.getMonth() + 1).padStart(2, "0");
+    const d = String(rowVal.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(rowVal).trim());
+  return m ? m[1] : "";
 }
 
 function initialsFromName(name) {

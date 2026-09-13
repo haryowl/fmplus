@@ -184,6 +184,8 @@ export default function DispatchBoard() {
   const [planDayStart, setPlanDayStart] = useState("08:00");
   const [planMaxStops, setPlanMaxStops] = useState("");
   const [planOnlyEmpty, setPlanOnlyEmpty] = useState(false);
+  /** Empty = default: all jobs that day with no field driver assigned. */
+  const [planJobIds, setPlanJobIds] = useState<string[]>([]);
   const [avoidTolls, setAvoidTolls] = useState(false);
   const [avoidMotorways, setAvoidMotorways] = useState(false);
   const [avoidFerries, setAvoidFerries] = useState(false);
@@ -251,6 +253,21 @@ export default function DispatchBoard() {
     [poiCatalog, depotPoiFilter],
   );
 
+  const planDayJobs = useMemo(
+    () =>
+      jobs.filter(
+        (j) =>
+          j.serviceDate === planDate &&
+          j.status !== "done" &&
+          j.status !== "cancelled",
+      ),
+    [jobs, planDate],
+  );
+  const planDayUnassignedJobs = useMemo(
+    () => planDayJobs.filter((j) => !j.assignedFieldUserId),
+    [planDayJobs],
+  );
+
   const routePathKey = useMemo(() => {
     if (!selected) return "";
     return selected.stops
@@ -306,6 +323,10 @@ export default function DispatchBoard() {
     }, 50);
     return () => window.clearTimeout(t);
   }, [placing, draftPin, editingOrderId]);
+
+  useEffect(() => {
+    setPlanJobIds([]);
+  }, [planDate]);
 
   useEffect(() => {
     document.title = "Dispatch · ARMADA M.1";
@@ -1149,6 +1170,7 @@ export default function DispatchBoard() {
         dayStart: planDayStart || "08:00",
         maxStopsPerVehicle: planMaxStops.trim() ? Number(planMaxStops) : 0,
         onlyEmptyJobs: planOnlyEmpty,
+        jobIds: planJobIds,
         routing: {
           avoidTolls,
           avoidMotorways,
@@ -1365,6 +1387,7 @@ export default function DispatchBoard() {
               onClick={() => {
                 setShowPlanDay((v) => !v);
                 setPlanPreview(null);
+                setPlanJobIds([]);
                 setPinningDepot(false);
                 setShowNewJob(false);
               }}
@@ -1507,6 +1530,78 @@ export default function DispatchBoard() {
                 />
                 Only use empty open jobs
               </label>
+              {(fleetMode === "jobs" || fleetMode === "both") && (
+                <div className="field dispatch-plan-jobs" style={{ gridColumn: "1 / -1" }}>
+                  <div className="dispatch-pane-head" style={{ marginBottom: 6 }}>
+                    <label>Jobs to include</label>
+                    <div className="dispatch-plan-job-actions">
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => setPlanJobIds(planDayUnassignedJobs.map((j) => j.id))}
+                      >
+                        All unassigned
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => setPlanJobIds(planDayJobs.map((j) => j.id))}
+                      >
+                        All open
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => setPlanJobIds([])}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <p className="dispatch-search-hint">
+                    {planJobIds.length
+                      ? `${planJobIds.length} job(s) selected`
+                      : `None selected → default: all ${planDayUnassignedJobs.length} job(s) not assigned to a driver`}
+                  </p>
+                  {planDayJobs.length === 0 ? (
+                    <p className="dispatch-search-hint">No open jobs on this date.</p>
+                  ) : (
+                    <ul className="dispatch-plan-job-list">
+                      {planDayJobs.map((j) => {
+                        const checked = planJobIds.includes(j.id);
+                        const assignee = dispatchAssigneeLabel(j);
+                        return (
+                          <li key={j.id}>
+                            <label className="dispatch-plan-check">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  setPlanJobIds((prev) =>
+                                    prev.includes(j.id)
+                                      ? prev.filter((id) => id !== j.id)
+                                      : [...prev, j.id],
+                                  );
+                                }}
+                              />
+                              <span>
+                                <strong>{j.title || dispatchVehicleLabel(j)}</strong>
+                                <em>
+                                  {DISPATCH_STATUS_LABELS[j.status] || j.status}
+                                  {j.assignedFieldUserId
+                                    ? ` · ${assignee}`
+                                    : " · no driver"}
+                                  {` · ${j.stops.length} stops`}
+                                </em>
+                              </span>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
               <div className="dispatch-routing-opts" style={{ gridColumn: "1 / -1" }}>
                 <label className="dispatch-plan-check">
                   <input
