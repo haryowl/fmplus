@@ -101,19 +101,22 @@ function buildAssignedMessage(job, tenantKey) {
 }
 
 /**
- * Recipients: assigned field user phone + tenant notify_whatsapp (same pattern as maintenance).
+ * Recipients for a personal job-assignment alert: the assigned field user only.
+ * Do not fan out to tenants.notify_whatsapp — that list is for ops due/overdue
+ * broadcasts and must not receive every driver’s assignment.
  */
 async function recipientsForJob(tenantId, job) {
   const tenant = await loadTenantNotify(tenantId);
-  const phones = new Set(parseRecipientList(tenant?.notify_whatsapp));
+  const phones = new Set();
   const assignedId = job.assignedFieldUserId || job.assigned_field_user_id;
   if (assignedId) {
     const fu = await dbQuery(
       `SELECT phone FROM field_users WHERE id = $1 AND tenant_id = $2 AND enabled = true`,
       [assignedId, tenantId],
     );
-    const p = parseRecipientList(fu.rows[0]?.phone || "")[0];
-    if (p) phones.add(p);
+    for (const p of parseRecipientList(fu.rows[0]?.phone || "")) {
+      if (p) phones.add(p);
+    }
   }
   return {
     tenant,

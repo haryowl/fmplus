@@ -79,18 +79,27 @@ async function wablasCreds(tenantRow) {
   return { baseUrl, token, secretKey };
 }
 
-async function recipientsForEvent(tenantId, event) {
+/**
+ * @param {string} tenantId
+ * @param {object} event
+ * @param {{ assigneeOnly?: boolean }} [opts]
+ *   assigneeOnly — personal alerts (e.g. kind=assigned): field user phone/email only.
+ *   Otherwise include tenants.notify_* for ops due/overdue broadcasts.
+ */
+async function recipientsForEvent(tenantId, event, opts = {}) {
+  const assigneeOnly = opts.assigneeOnly === true;
   const tenant = await loadTenantNotify(tenantId);
-  const phones = new Set(parseRecipientList(tenant?.notify_whatsapp));
-  const emails = new Set(parseEmails(tenant?.notify_emails));
+  const phones = new Set(assigneeOnly ? [] : parseRecipientList(tenant?.notify_whatsapp));
+  const emails = new Set(assigneeOnly ? [] : parseEmails(tenant?.notify_emails));
   const assignedId = event.assignedFieldUserId || event.assigned_field_user_id;
   if (assignedId) {
     const fu = await dbQuery(
       `SELECT phone, email FROM field_users WHERE id = $1 AND tenant_id = $2 AND enabled = true`,
       [assignedId, tenantId],
     );
-    const p = parseRecipientList(fu.rows[0]?.phone || "")[0];
-    if (p) phones.add(p);
+    for (const p of parseRecipientList(fu.rows[0]?.phone || "")) {
+      if (p) phones.add(p);
+    }
     for (const e of parseEmails(fu.rows[0]?.email || "")) emails.add(e);
   }
   return {
@@ -193,7 +202,9 @@ export async function fanOutEventReminder({
   payload = {},
 }) {
   const eventId = event.id;
-  const { phones, emails } = await recipientsForEvent(tenantId, event);
+  // Assignment is personal — never fan out to tenant notify_* broadcast lists.
+  const assigneeOnly = kind === "assigned";
+  const { phones, emails } = await recipientsForEvent(tenantId, event, { assigneeOnly });
   const results = [];
   results.push(
     await emitReminder({

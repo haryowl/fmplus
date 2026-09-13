@@ -692,6 +692,11 @@ export default function AdminConsole() {
                       onChange={(e) => setDraft({ ...draft, notifyWhatsapp: e.target.value })}
                       placeholder="62812…, 62813…"
                     />
+                    <p className="admin-section-hint muted">
+                      Ops alerts for maintenance due/overdue only. Job assignment WhatsApp/email
+                      (Dispatch and Maintenance) goes to the assigned field user’s phone/email, not
+                      this list.
+                    </p>
                   </label>
                   <label className="span-2">
                     Wablas API base URL
