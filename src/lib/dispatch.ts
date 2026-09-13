@@ -48,6 +48,8 @@ export type DispatchStop = {
   completeArmadaLon?: number | null;
   skipReason?: string;
   rescheduledTo?: string | null;
+  /** Planned arrival HH:MM snapshotted at plan/optimize */
+  plannedEta?: string;
 };
 
 export type DispatchJob = {
@@ -1152,7 +1154,59 @@ export type DispatchLiveDriver = {
   plannedReturnLegDurationSec?: number | null;
   plannedDistanceKm?: number | null;
   plannedDurationSec?: number | null;
+  remainingWork?: {
+    remainingCount: number;
+    remainingStopIds: string[];
+    currentStopId: string | null;
+    startFrom: { lat: number; lon: number; source?: string; label?: string } | null;
+  };
   stops: DispatchLiveStop[];
+};
+
+export type DispatchOpsExceptionKind = "window_at_risk" | "stuck" | "failed_skip";
+
+export type DispatchOpsException = {
+  id: string;
+  kind: DispatchOpsExceptionKind | string;
+  serviceDate: string;
+  jobId: string | null;
+  stopId: string | null;
+  orderId: string | null;
+  severity: "info" | "warn" | "critical" | string;
+  title: string;
+  detail: string;
+  payload: Record<string, unknown>;
+  fingerprint?: string;
+  createdAt: string | null;
+  updatedAt?: string | null;
+  resolvedAt?: string | null;
+  ackedAt: string | null;
+  ackedNote: string;
+};
+
+export type DispatchSlaScorecard = {
+  serviceDate: string;
+  otpPct: number | null;
+  onTime: number;
+  late: number;
+  withWindow: number;
+  delivered: number;
+  skipped: number;
+  atRiskCount: number;
+  stuckCount: number;
+  failedSkipCount: number;
+  delayedCount: number;
+  medianPlanLagMin: number | null;
+  byDriver: {
+    jobId: string;
+    driverName: string;
+    vehicleLabel?: string;
+    delivered: number;
+    late: number;
+    skipped: number;
+    onTime: number;
+    withWindow: number;
+  }[];
 };
 
 export type DispatchLiveSummary = {
@@ -1175,6 +1229,34 @@ export type DispatchLiveSnapshot = {
   summary: DispatchLiveSummary;
   drivers: DispatchLiveDriver[];
   manifest: DispatchLiveStop[];
+  exceptions?: DispatchOpsException[];
+  exceptionSummary?: {
+    total: number;
+    windowAtRisk: number;
+    stuck: number;
+    failedSkip: number;
+    unacked: number;
+  };
+  sla?: DispatchSlaScorecard;
+};
+
+export type DispatchReplanSuggestion = {
+  id: string;
+  type: "reorder_same_vehicle" | "return_stop" | "move_stop" | string;
+  safeAuto?: boolean;
+  jobId?: string;
+  fromJobId?: string;
+  toJobId?: string;
+  jobLabel?: string;
+  fromJobLabel?: string;
+  toJobLabel?: string;
+  stopId?: string;
+  stopName?: string;
+  orderId?: string | null;
+  fromStopIds?: string[];
+  toStopIds?: string[];
+  reason: string;
+  distanceKm?: number;
 };
 
 export async function fetchDispatchLive(
@@ -1189,4 +1271,94 @@ export async function fetchDispatchLive(
   const data = (await res.json().catch(() => ({}))) as DispatchLiveSnapshot & { error?: string };
   if (!res.ok) throw new Error(data.error || `Dispatch live ${res.status}`);
   return data;
+}
+
+export async function fetchDispatchSla(
+  serviceDate?: string,
+  signal?: AbortSignal,
+): Promise<{ sla: DispatchSlaScorecard; exceptionSummary: DispatchLiveSnapshot["exceptionSummary"] }> {
+  const date = serviceDate || todayServiceDate();
+  const res = await fetch(`/api/dispatch/sla?date=${encodeURIComponent(date)}`, {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    sla?: DispatchSlaScorecard;
+    exceptionSummary?: DispatchLiveSnapshot["exceptionSummary"];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Dispatch SLA ${res.status}`);
+  if (!data.sla) throw new Error("Missing SLA payload");
+  return { sla: data.sla, exceptionSummary: data.exceptionSummary };
+}
+
+export async function ackDispatchOpsException(
+  id: string,
+  note = "",
+): Promise<DispatchOpsException> {
+  const res = await fetch(`/api/dispatch/ops-exceptions/${encodeURIComponent(id)}/ack`, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      ...tenantHeaders(),
+    },
+    body: JSON.stringify({ note }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    exception?: DispatchOpsException;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Ack exception ${res.status}`);
+  if (!data.exception) throw new Error("Missing exception");
+  return data.exception;
+}
+
+export async function replanDispatchRemaining(body: {
+  serviceDate: string;
+  jobIds?: string[];
+  suggestionIds?: string[];
+  apply?: boolean;
+  autoSafe?: boolean;
+}): Promise<{
+  preview: { serviceDate: string; suggestions: DispatchReplanSuggestion[]; suggestionCount: number };
+  apply: boolean;
+  result?: {
+    applied: DispatchReplanSuggestion[];
+    skipped: { id: string; reason: string }[];
+    appliedCount: number;
+    actor: string;
+  };
+}> {
+  const res = await fetch("/api/dispatch/replan-remaining", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      ...tenantHeaders(),
+    },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    preview?: {
+      serviceDate: string;
+      suggestions: DispatchReplanSuggestion[];
+      suggestionCount: number;
+    };
+    apply?: boolean;
+    result?: {
+      applied: DispatchReplanSuggestion[];
+      skipped: { id: string; reason: string }[];
+      appliedCount: number;
+      actor: string;
+    };
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Replan remaining ${res.status}`);
+  if (!data.preview) throw new Error("Missing replan preview");
+  return {
+    preview: data.preview,
+    apply: data.apply === true,
+    result: data.result,
+  };
 }

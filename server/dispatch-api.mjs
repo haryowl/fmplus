@@ -17,6 +17,10 @@
  * GET/PUT /api/dispatch/depot
  * GET/POST /api/dispatch/depots · PATCH/DELETE /api/dispatch/depots/:id
  * POST /api/dispatch/plan-day — CVRP auto-plan (fleet + depot / multi-depot modes)
+ * POST /api/dispatch/replan-remaining — mid-day recovery preview / apply
+ * GET  /api/dispatch/ops-exceptions?date=
+ * POST /api/dispatch/ops-exceptions/:id/ack
+ * GET  /api/dispatch/sla?date=
  */
 import crypto from "node:crypto";
 import { databaseUrlConfigured, dbQuery } from "./db.mjs";
@@ -27,7 +31,6 @@ import {
   partitionOrdersByNearestDepot,
   planCvrp,
 } from "./cvrp-plan.mjs";
-import { optimizeOpenTour } from "./route-optimize.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
 import { parseRoutingOptions } from "./routing-options.mjs";
@@ -39,6 +42,15 @@ import { fetchVehiclePositions } from "./vehicle-positions.mjs";
 import { maybeNotifyDispatchJobAssigned } from "./dispatch-notify.mjs";
 import { csvBool, csvNum, parseCsv } from "./csv-parse.mjs";
 import { buildDispatchLiveSnapshot } from "./dispatch-live.mjs";
+import {
+  ackOpsException,
+  applyReplanSuggestions,
+  buildReplanRemainingPreview,
+  computeSlaFromSnapshot,
+  publicOpsException,
+  refreshAndPersistPlannedEtas,
+  reorderRemainingStops,
+} from "./dispatch-recovery.mjs";
 
 const STATUSES = ["draft", "assigned", "en_route", "arrived", "done", "cancelled"];
 const STOP_STATUSES = ["pending", "arrived", "done", "skipped"];
@@ -337,6 +349,7 @@ function publicStop(row) {
     completeArmadaLon: coordOrNull(row.complete_armada_lon),
     skipReason: row.skip_reason || "",
     rescheduledTo: formatServiceDate(row.rescheduled_to) || null,
+    plannedEta: row.planned_eta || "",
   };
 }
 
@@ -510,48 +523,14 @@ async function loadJob(tenantId, jobId) {
   return found.rows[0] || null;
 }
 
-/** Reorder stop sort_order using road/haversine matrix; optional depot as fixed start. */
+/** Reorder remaining stops only (done/skipped frozen); optional depot/GPS as fixed start. */
 async function reorderJobStopsRoad(jobId, depot = null, routing = null) {
-  const stops = await loadStops(jobId);
-  const withCoords = stops.filter(
-    (s) =>
-      s.lat != null &&
-      s.lon != null &&
-      Number.isFinite(Number(s.lat)) &&
-      Number.isFinite(Number(s.lon)),
-  );
-  if (withCoords.length === 0) return null;
-
-  const useDepot =
-    depot && Number.isFinite(Number(depot.lat)) && Number.isFinite(Number(depot.lon));
-
-  if (!useDepot && withCoords.length < 2) return null;
-
-  const customerPoints = withCoords.map((s) => ({
-    lat: Number(s.lat),
-    lon: Number(s.lon),
-  }));
-  const points = useDepot
-    ? [{ lat: Number(depot.lat), lon: Number(depot.lon) }, ...customerPoints]
-    : customerPoints;
-  const matrix = await getDistanceMatrix(points, routing);
-  const { order } = optimizeOpenTour(points, matrix.matrixKm);
-
-  const customerOrder = useDepot
-    ? order.filter((i) => i !== 0).map((i) => i - 1)
-    : order;
-
-  for (let i = 0; i < customerOrder.length; i++) {
-    const stop = withCoords[customerOrder[i]];
-    if (!stop) continue;
-    await dbQuery(`UPDATE dispatch_stops SET sort_order = $1 WHERE id = $2`, [i, stop.id]);
-  }
-  let tail = customerOrder.length;
-  for (const s of stops) {
-    if (withCoords.some((c) => c.id === s.id)) continue;
-    await dbQuery(`UPDATE dispatch_stops SET sort_order = $1 WHERE id = $2`, [tail++, s.id]);
-  }
-  return matrix;
+  const start =
+    depot && Number.isFinite(Number(depot.lat)) && Number.isFinite(Number(depot.lon))
+      ? { lat: Number(depot.lat), lon: Number(depot.lon) }
+      : null;
+  const result = await reorderRemainingStops(jobId, { start, routing });
+  return result.matrixEngine ? { engine: result.matrixEngine, warning: result.warning } : null;
 }
 
 async function requireDispatchModule(tenantId) {
@@ -1709,6 +1688,93 @@ export async function handleDispatchRequest(req, res) {
       return true;
     }
 
+    if (url.pathname === "/api/dispatch/sla" && req.method === "GET") {
+      const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
+      const vault = tenantFromRequest(req);
+      const snapshot = await buildDispatchLiveSnapshot({
+        tenantId: dbTenant.id,
+        serviceDate: date,
+        vaultTenant: vault,
+      });
+      json(res, 200, {
+        sla: snapshot.sla || computeSlaFromSnapshot(snapshot),
+        exceptionSummary: snapshot.exceptionSummary || null,
+      });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/ops-exceptions" && req.method === "GET") {
+      const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
+      const status = String(url.searchParams.get("status") || "open").toLowerCase();
+      let sql = `SELECT * FROM dispatch_ops_exceptions
+         WHERE tenant_id = $1 AND service_date = $2::date`;
+      if (status === "open") sql += ` AND resolved_at IS NULL`;
+      else if (status === "acked") sql += ` AND acked_at IS NOT NULL AND resolved_at IS NULL`;
+      else if (status === "resolved") sql += ` AND resolved_at IS NOT NULL`;
+      sql += ` ORDER BY created_at DESC LIMIT 200`;
+      const rows = await dbQuery(sql, [dbTenant.id, date]);
+      json(res, 200, {
+        serviceDate: date,
+        exceptions: rows.rows.map(publicOpsException),
+      });
+      return true;
+    }
+
+    const opsAck = /^\/api\/dispatch\/ops-exceptions\/([0-9a-f-]{36})\/ack$/i.exec(
+      url.pathname,
+    );
+    if (opsAck && req.method === "POST") {
+      const body = await readJson(req);
+      const row = await ackOpsException(dbTenant.id, opsAck[1], body.note || "");
+      if (!row) {
+        json(res, 404, { error: "Exception not found" });
+        return true;
+      }
+      json(res, 200, { exception: row });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/replan-remaining" && req.method === "POST") {
+      const body = await readJson(req);
+      const serviceDate = parseServiceDate(body.serviceDate || body.date) || todayYmd();
+      const apply = body.apply === true;
+      const autoSafe = body.autoSafe === true || body.autoSafeOnly === true;
+      const jobIds = Array.isArray(body.jobIds) ? body.jobIds : [];
+      const suggestionIds = Array.isArray(body.suggestionIds) ? body.suggestionIds : null;
+      let routing = parseRoutingOptions({
+        routing: body.routing && typeof body.routing === "object" ? body.routing : {},
+      });
+      const vault = tenantFromRequest(req);
+      let posMap = new Map();
+      try {
+        posMap = await fetchVehiclePositions(vault || {});
+      } catch {
+        posMap = new Map();
+      }
+      const preview = await buildReplanRemainingPreview(dbTenant.id, {
+        serviceDate,
+        jobIds,
+        posMap,
+        routing,
+      });
+      if (!apply) {
+        json(res, 200, { preview, apply: false });
+        return true;
+      }
+      const result = await applyReplanSuggestions(dbTenant.id, {
+        serviceDate,
+        preview,
+        suggestionIds: suggestionIds || undefined,
+        autoSafeOnly: autoSafe,
+        actor: autoSafe && !suggestionIds?.length ? "auto_safe" : "user",
+        posMap,
+        routing,
+        jobIds,
+      });
+      json(res, 200, { preview, apply: true, result });
+      return true;
+    }
+
     if (url.pathname === "/api/dispatch/jobs" && req.method === "GET") {
       const status = String(url.searchParams.get("status") || "open").toLowerCase();
       const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
@@ -1989,11 +2055,17 @@ export async function handleDispatchRequest(req, res) {
         }
       }
       const stops = await loadStops(job.id);
-      const withCoords = stops.filter(
+      const remaining = stops.filter((s) => {
+        const st = String(s.status || "").toLowerCase();
+        return st !== "done" && st !== "skipped";
+      });
+      const withCoords = remaining.filter(
         (s) => s.lat != null && s.lon != null && Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lon)),
       );
       if (withCoords.length < 2 && !(job.route_start_lat != null && withCoords.length >= 1)) {
-        json(res, 400, { error: "Need at least 2 stops with coordinates to optimize" });
+        json(res, 400, {
+          error: "Need at least 2 remaining stops with coordinates to optimize (done/skipped are frozen)",
+        });
         return true;
       }
       const startAnchor = routeAnchorFromRow(
@@ -2007,45 +2079,33 @@ export async function handleDispatchRequest(req, res) {
         job.route_end_label || "Return",
       );
       const pathMode = String(job.route_anchor_mode || "").toLowerCase();
-      const customerPoints = withCoords.map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) }));
       const useStart = Boolean(startAnchor);
-      const points = useStart
-        ? [{ lat: startAnchor.lat, lon: startAnchor.lon }, ...customerPoints]
-        : customerPoints;
-      if (points.length < 2) {
-        json(res, 400, { error: "Need at least 2 points to optimize" });
-        return true;
-      }
-      const matrix = await getDistanceMatrix(points, routing);
-      const { order } = optimizeOpenTour(points, matrix.matrixKm);
-      const customerOrder = useStart ? order.filter((i) => i > 0).map((i) => i - 1) : order;
-      for (let i = 0; i < customerOrder.length; i++) {
-        const stop = withCoords[customerOrder[i]];
-        await dbQuery(`UPDATE dispatch_stops SET sort_order = $1 WHERE id = $2`, [i, stop.id]);
-      }
-      // Keep stops without coords at the end
-      let tail = customerOrder.length;
-      for (const s of stops) {
-        if (withCoords.some((c) => c.id === s.id)) continue;
-        await dbQuery(`UPDATE dispatch_stops SET sort_order = $1 WHERE id = $2`, [tail++, s.id]);
-      }
-      await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [job.id]);
+      const optResult = await reorderRemainingStops(job.id, {
+        start: useStart ? { lat: startAnchor.lat, lon: startAnchor.lon } : null,
+        routing,
+      });
       const orderedStops = await loadStops(job.id);
+      await refreshAndPersistPlannedEtas(job, orderedStops, { persist: true });
+      const customerPoints = withCoords.map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) }));
       const geomPts = geometryPointsFromStopsAndAnchors(
         orderedStops,
         pathMode === "map" || pathMode === "sequence" ? startAnchor : null,
         pathMode === "map" || pathMode === "sequence" ? endAnchor : null,
         pathMode === "map" || pathMode === "sequence" ? pathMode : "calc",
       );
-      const route = await buildRouteForPoints(geomPts.length >= 2 ? geomPts : customerOrder.map((i) => customerPoints[i]), routing);
+      const route = await buildRouteForPoints(
+        geomPts.length >= 2 ? geomPts : customerPoints,
+        routing,
+      );
       const row = await loadJob(dbTenant.id, job.id);
       json(res, 200, {
         job: publicJob(row, orderedStops),
         engine: route.engine,
-        matrixEngine: matrix.engine,
+        matrixEngine: optResult.matrixEngine || null,
+        frozenStops: stops.length - remaining.length,
         routing,
         route,
-        warning: matrix.warning || route.warning || null,
+        warning: optResult.warning || route.warning || null,
       });
       return true;
     }
@@ -3013,6 +3073,7 @@ export async function handleDispatchRequest(req, res) {
         await reorderJobStopsRoad(jobId, routeDepot, routing);
         const row = await loadJob(dbTenant.id, jobId);
         const stops = await loadStops(jobId);
+        await refreshAndPersistPlannedEtas(row, stops, { persist: true });
         const geomPts = geometryPointsFromStopsAndAnchors(
           stops,
           depotPathMode === "calc" ? null : startAnchor,
@@ -3023,7 +3084,7 @@ export async function handleDispatchRequest(req, res) {
         applied.push({
           ...route,
           jobId,
-          job: publicJob(row, stops),
+          job: publicJob(row, await loadStops(jobId)),
           route: routeGeom,
         });
       }

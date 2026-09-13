@@ -6,6 +6,7 @@ import { fetchVehiclePositions } from "./vehicle-positions.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { buildStopRouteMeta } from "./stop-route-meta.mjs";
 import { haversineKm } from "./route-optimize.mjs";
+import { enrichLiveSnapshot } from "./dispatch-recovery.mjs";
 
 const DEFAULT_SERVICE_MIN = 8;
 
@@ -361,6 +362,7 @@ export async function buildDispatchLiveSnapshot(opts) {
         planToPhoneKm: distPlanKm(plannedLat, plannedLon, phoneLat, phoneLon),
         planToVehicleKm: distPlanKm(plannedLat, plannedLon, vehicleLat, vehicleLon),
         plannedEta: null,
+        storedPlannedEta: s.planned_eta || null,
         plannedLegDistanceKm: null,
         plannedLegDurationSec: null,
         pod,
@@ -475,6 +477,7 @@ export async function buildDispatchLiveSnapshot(opts) {
 
   for (const driver of drivers) {
     for (const s of driver.stops) {
+      if (!s.plannedEta && s.storedPlannedEta) s.plannedEta = s.storedPlannedEta;
       manifest.push({
         ...s,
         driverName: driver.driverName,
@@ -490,7 +493,7 @@ export async function buildDispatchLiveSnapshot(opts) {
     completionN > 0 ? Math.round((completionSum / completionN) * 10) / 10 : 0;
   const activeDrivers = drivers.filter((d) => d.jobStatus !== "done").length;
 
-  return {
+  const snapshot = {
     serviceDate,
     updatedAt: new Date().toISOString(),
     timezone: "Asia/Jakarta",
@@ -509,4 +512,6 @@ export async function buildDispatchLiveSnapshot(opts) {
     drivers,
     manifest,
   };
+
+  return enrichLiveSnapshot(opts.tenantId, snapshot, { persistEtas: true });
 }
