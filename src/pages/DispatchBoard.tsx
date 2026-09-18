@@ -3250,6 +3250,11 @@ export default function DispatchBoard() {
                       ) : null}
                       {dayStops.map((stop, i) => {
                         const meta = stopMetaById.get(stop.id);
+                        const dayOffset = Number(meta?.dayOffset) || 0;
+                        const etaDaySuffix =
+                          dayOffset > 0
+                            ? ` · +${dayOffset} day${dayOffset === 1 ? "" : "s"}`
+                            : "";
                         const showInbound =
                           meta &&
                           (meta.legDistanceKm != null ||
@@ -3287,16 +3292,12 @@ export default function DispatchBoard() {
                                       {formatRouteDuration(meta?.legDurationSec)}
                                       <span aria-hidden> · </span>
                                       ETA {meta?.eta || "—"}
-                                      {(meta?.dayOffset || 0) > 0
-                                        ? ` · +${meta.dayOffset} day${meta.dayOffset === 1 ? "" : "s"}`
-                                        : ""}
+                                      {etaDaySuffix}
                                     </>
                                   ) : (
                                     <>
                                       ETA {meta?.eta || "—"}
-                                      {(meta?.dayOffset || 0) > 0
-                                        ? ` · +${meta.dayOffset} day${meta.dayOffset === 1 ? "" : "s"}`
-                                        : ""}
+                                      {etaDaySuffix}
                                       {" · start"}
                                     </>
                                   )}
