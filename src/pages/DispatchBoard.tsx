@@ -245,6 +245,7 @@ export default function DispatchBoard() {
     return buildStopRouteMeta(selected.stops, jobRoute?.legs || [], Number(planServiceMin) || 8, {
       hasRouteStart,
       hasRouteEnd,
+      continuousAcrossDays: true,
     });
   }, [selected, jobRoute, planServiceMin]);
 
@@ -278,6 +279,69 @@ export default function DispatchBoard() {
     setPendingDayIndex(null);
     setMoveStopId(null);
   }, [selectedId]);
+
+  // When the continuous ETA chain lands after midnight, promote those stops onto
+  // the matching day of the tour so Day tabs appear without a manual move.
+  const autoDaySplitRef = useRef(false);
+  const overnightPromoKey = useMemo(() => {
+    if (!selected || !jobRoute?.legs?.length) return "";
+    return selected.stops
+      .map((stop) => {
+        const meta = stopMetaById.get(stop.id);
+        const offset = Number(meta?.dayOffset) || 0;
+        const cur = Number(stop.dayIndex) || 0;
+        return offset > cur ? `${stop.id}:${offset}` : "";
+      })
+      .filter(Boolean)
+      .join("|");
+  }, [selected, stopMetaById, jobRoute]);
+
+  useEffect(() => {
+    if (!selected || !overnightPromoKey) return;
+    if (selected.status === "done" || selected.status === "cancelled") return;
+    if (autoDaySplitRef.current) return;
+
+    const promotions: Array<{ stopId: string; dayIndex: number }> = [];
+    for (const stop of selected.stops) {
+      if (stop.status === "done" || stop.status === "skipped") continue;
+      const meta = stopMetaById.get(stop.id);
+      const offset = Number(meta?.dayOffset) || 0;
+      const cur = Number(stop.dayIndex) || 0;
+      if (offset > cur) promotions.push({ stopId: stop.id, dayIndex: offset });
+    }
+    if (!promotions.length) return;
+
+    autoDaySplitRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      setBusy(true);
+      try {
+        let latest = selected;
+        promotions.sort((a, b) => a.dayIndex - b.dayIndex);
+        for (const p of promotions) {
+          if (cancelled) return;
+          latest = await moveStopToDay(latest.id, p.stopId, p.dayIndex);
+        }
+        if (cancelled) return;
+        setJobs((prev) => prev.map((j) => (j.id === latest.id ? latest : j)));
+        setPendingDayIndex(null);
+        setActiveDayIndex(Math.max(...promotions.map((p) => p.dayIndex)));
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Could not auto-split multi-day tour");
+        }
+      } finally {
+        autoDaySplitRef.current = false;
+        if (!cancelled) setBusy(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // overnightPromoKey already encodes the stop/offset pairs that need promoting.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional narrow trigger
+  }, [overnightPromoKey, selectedId]);
 
   const poiOptions = useMemo(
     () => listPoiDropdownOptions(poiCatalog, poiFilter),
@@ -3197,7 +3261,7 @@ export default function DispatchBoard() {
                             <span className="dispatch-stop-idx">{i + 1}</span>
                             <div className="dispatch-stop-body">
                               <strong>{stop.name}</strong>
-                              <span>
+                              <span className="dispatch-stop-meta">
                                 {stop.status}
                                 {stop.zone ? ` · ${stop.zone}` : ""}
                                 {stop.volumeM3 != null ? ` · ${stop.volumeM3} m³` : ""}
@@ -3223,9 +3287,18 @@ export default function DispatchBoard() {
                                       {formatRouteDuration(meta?.legDurationSec)}
                                       <span aria-hidden> · </span>
                                       ETA {meta?.eta || "—"}
+                                      {(meta?.dayOffset || 0) > 0
+                                        ? ` · +${meta.dayOffset} day${meta.dayOffset === 1 ? "" : "s"}`
+                                        : ""}
                                     </>
                                   ) : (
-                                    <>ETA {meta?.eta || "—"} · start</>
+                                    <>
+                                      ETA {meta?.eta || "—"}
+                                      {(meta?.dayOffset || 0) > 0
+                                        ? ` · +${meta.dayOffset} day${meta.dayOffset === 1 ? "" : "s"}`
+                                        : ""}
+                                      {" · start"}
+                                    </>
                                   )}
                                 </span>
                               )}

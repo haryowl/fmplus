@@ -45,6 +45,24 @@ describe("buildStopRouteMeta per day", () => {
     expect(etas).toEqual(["08:00", "08:40", "07:00", "07:40"]);
   });
 
+  it("keeps a continuous overnight drive and tags the next-day arrival", () => {
+    const meta = buildStopRouteMeta(
+      [
+        { windowStart: "08:00", serviceMinutes: 0 },
+        { windowStart: "", serviceMinutes: 0 },
+        { windowStart: "", serviceMinutes: 0 },
+      ],
+      [
+        { distanceKm: 100, durationSec: 10 * 3600 },
+        { distanceKm: 100, durationSec: 10 * 3600 },
+      ],
+      0,
+      { continuousAcrossDays: true },
+    );
+    expect(meta.stops.map((s: { eta: string }) => s.eta)).toEqual(["08:00", "18:00", "04:00"]);
+    expect(meta.stops.map((s: { dayOffset: number }) => s.dayOffset)).toEqual([0, 0, 1]);
+  });
+
   it("reports no inbound leg for a day's first stop, since that gap is rest", () => {
     const meta = buildStopRouteMeta(
       [

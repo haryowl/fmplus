@@ -203,6 +203,11 @@ export type StopRouteMeta = {
   eta: string | null;
   /** Which day of a multi-day tour this belongs to; 0 for single-day jobs. */
   dayIndex?: number;
+  /**
+   * Calendar days past the tour's day-0 midnight implied by the continuous ETA
+   * chain. 1 means the arrival is after midnight (next service day).
+   */
+  dayOffset?: number;
 };
 
 export type SequenceRouteMeta = {
@@ -232,44 +237,55 @@ export function buildStopRouteMeta(
   stops: Array<{ windowStart?: string; serviceMinutes?: number | null; dayIndex?: number }>,
   legs: RouteLeg[],
   defaultServiceMinutes = 0,
-  opts?: { hasRouteStart?: boolean; hasRouteEnd?: boolean },
+  opts?: { hasRouteStart?: boolean; hasRouteEnd?: boolean; continuousAcrossDays?: boolean },
 ): SequenceRouteMeta {
   const hasRouteStart = Boolean(opts?.hasRouteStart);
   const hasRouteEnd = Boolean(opts?.hasRouteEnd);
+  // Board sequence uses a continuous drive clock so an arrival after midnight
+  // stays truthful (03:32) even when those stops are later filed on Day 2.
+  const continuousAcrossDays = Boolean(opts?.continuousAcrossDays);
   const startsByDay = dayStartMinutes(stops);
   const fallbackStart =
     stops.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ?? 8 * 60;
   const firstDay = stops.length ? Math.max(0, Math.trunc(Number(stops[0].dayIndex) || 0)) : 0;
   let currentDay = firstDay;
   let start = startsByDay.get(firstDay) ?? fallbackStart;
+  const tourStart = start;
   let elapsedMin = 0;
   const depotDepart = hasRouteStart ? formatClockMinutes(start) : null;
 
   const stopMetas: StopRouteMeta[] = stops.map((stop, i) => {
     const day = Math.max(0, Math.trunc(Number(stop.dayIndex) || 0));
-    // A new day is a fresh chain: the overnight gap is rest, not driving.
     const newDay = i > 0 && day !== currentDay;
     if (newDay) {
       currentDay = day;
-      start = startsByDay.get(day) ?? 8 * 60;
-      elapsedMin = 0;
+      if (!continuousAcrossDays) {
+        start = startsByDay.get(day) ?? 8 * 60;
+        elapsedMin = 0;
+      }
     }
     const inboundIdx = hasRouteStart ? i : i === 0 ? null : i - 1;
     let legDistanceKm: number | null = null;
     let legDurationSec: number | null = null;
-    if (inboundIdx != null && !newDay) {
+    // Rest overnight: skip the inter-day leg. Continuous drive: keep it.
+    if (inboundIdx != null && (continuousAcrossDays || !newDay)) {
       const leg = legs[inboundIdx];
       legDistanceKm = leg?.distanceKm ?? null;
       legDurationSec = leg?.durationSec ?? null;
       elapsedMin += (leg?.durationSec ?? 0) / 60;
     }
-    const eta = formatClockMinutes(start + elapsedMin);
+    const absArrival = (continuousAcrossDays ? tourStart : start) + elapsedMin;
+    const eta = formatClockMinutes(absArrival);
+    const dayOffset = Math.max(
+      0,
+      Math.floor(absArrival / (24 * 60)) - Math.floor((continuousAcrossDays ? tourStart : start) / (24 * 60)),
+    );
     const svc =
       stop.serviceMinutes != null && Number.isFinite(Number(stop.serviceMinutes))
         ? Math.max(0, Number(stop.serviceMinutes))
         : Math.max(0, defaultServiceMinutes);
     elapsedMin += svc;
-    return { legDistanceKm, legDurationSec, eta, dayIndex: day };
+    return { legDistanceKm, legDurationSec, eta, dayIndex: day, dayOffset };
   });
 
   let returnLeg: StopRouteMeta | null = null;
@@ -277,11 +293,17 @@ export function buildStopRouteMeta(
     const returnIdx = hasRouteStart ? stops.length : Math.max(0, stops.length - 1);
     const leg = legs[returnIdx];
     elapsedMin += (leg?.durationSec ?? 0) / 60;
+    const absArrival = (continuousAcrossDays ? tourStart : start) + elapsedMin;
     returnLeg = {
       legDistanceKm: leg?.distanceKm ?? null,
       legDurationSec: leg?.durationSec ?? null,
-      eta: formatClockMinutes(start + elapsedMin),
+      eta: formatClockMinutes(absArrival),
       dayIndex: currentDay,
+      dayOffset: Math.max(
+        0,
+        Math.floor(absArrival / (24 * 60)) -
+          Math.floor((continuousAcrossDays ? tourStart : start) / (24 * 60)),
+      ),
     };
   }
 

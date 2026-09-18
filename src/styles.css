@@ -5196,9 +5196,11 @@ html.onesheet-root body {
 
 .dispatch-stop-list li {
   display: grid;
-  grid-template-columns: 28px 1fr auto;
-  gap: 10px;
-  align-items: center;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  row-gap: 8px;
+  align-items: start;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -5215,6 +5217,7 @@ html.onesheet-root body {
 }
 
 .dispatch-stop-idx {
+  grid-row: 1 / span 2;
   width: 28px;
   height: 28px;
   display: grid;
@@ -5242,6 +5245,12 @@ html.onesheet-root body {
   color: var(--ink-soft);
 }
 
+.dispatch-stop-meta,
+.dispatch-stop-leg {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .dispatch-stop-leg {
   font-family: var(--mono);
   font-size: 0.72rem !important;
@@ -5259,10 +5268,11 @@ html.onesheet-root body {
 }
 
 .dispatch-stop-actions {
+  grid-column: 2;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .dispatch-proof-btn,

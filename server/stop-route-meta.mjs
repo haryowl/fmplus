@@ -52,11 +52,12 @@ function dayStartMinutes(list) {
  * @param {Array<{ windowStart?: string, serviceMinutes?: number | null, dayIndex?: number }>} stops
  * @param {Array<{ distanceKm?: number, durationSec?: number }>} legs
  * @param {number} [defaultServiceMinutes=8]
- * @param {{ hasRouteStart?: boolean, hasRouteEnd?: boolean }} [opts]
+ * @param {{ hasRouteStart?: boolean, hasRouteEnd?: boolean, continuousAcrossDays?: boolean }} [opts]
  */
 export function buildStopRouteMeta(stops, legs, defaultServiceMinutes = 8, opts = {}) {
   const hasRouteStart = Boolean(opts.hasRouteStart);
   const hasRouteEnd = Boolean(opts.hasRouteEnd);
+  const continuousAcrossDays = Boolean(opts.continuousAcrossDays);
   const list = Array.isArray(stops) ? stops : [];
   const legList = Array.isArray(legs) ? legs : [];
   const startsByDay = dayStartMinutes(list);
@@ -67,31 +68,37 @@ export function buildStopRouteMeta(stops, legs, defaultServiceMinutes = 8, opts 
 
   let currentDay = firstDay;
   let start = startsByDay.get(firstDay) ?? fallbackStart;
+  const tourStart = start;
   let elapsedMin = 0;
   const depotDepart = hasRouteStart ? formatClockMinutes(start) : null;
 
   const stopMetas = list.map((stop, i) => {
     const day = dayIndexOf(stop);
-    // A new day is a fresh chain: the overnight gap is rest, not driving.
     const newDay = i > 0 && day !== currentDay;
     if (newDay) {
       currentDay = day;
-      start = startsByDay.get(day) ?? DEFAULT_DAY_START_MIN;
-      elapsedMin = 0;
+      if (!continuousAcrossDays) {
+        start = startsByDay.get(day) ?? DEFAULT_DAY_START_MIN;
+        elapsedMin = 0;
+      }
     }
 
     const inboundIdx = hasRouteStart ? i : i === 0 ? null : i - 1;
     let legDistanceKm = null;
     let legDurationSec = null;
-    // The leg into a day's first stop spans the overnight rest, so it is reported
-    // as no leg at all rather than as same-day travel.
-    if (inboundIdx != null && !newDay) {
+    if (inboundIdx != null && (continuousAcrossDays || !newDay)) {
       const leg = legList[inboundIdx];
       legDistanceKm = leg?.distanceKm != null ? Number(leg.distanceKm) : null;
       legDurationSec = leg?.durationSec != null ? Number(leg.durationSec) : null;
       elapsedMin += (Number(leg?.durationSec) || 0) / 60;
     }
-    const eta = formatClockMinutes(start + elapsedMin);
+    const anchor = continuousAcrossDays ? tourStart : start;
+    const absArrival = anchor + elapsedMin;
+    const eta = formatClockMinutes(absArrival);
+    const dayOffset = Math.max(
+      0,
+      Math.floor(absArrival / (24 * 60)) - Math.floor(anchor / (24 * 60)),
+    );
     const svc =
       stop.serviceMinutes != null && Number.isFinite(Number(stop.serviceMinutes))
         ? Math.max(0, Number(stop.serviceMinutes))
@@ -102,6 +109,7 @@ export function buildStopRouteMeta(stops, legs, defaultServiceMinutes = 8, opts 
       legDurationSec: Number.isFinite(legDurationSec) ? legDurationSec : null,
       eta,
       dayIndex: day,
+      dayOffset,
     };
   });
 
@@ -110,6 +118,8 @@ export function buildStopRouteMeta(stops, legs, defaultServiceMinutes = 8, opts 
     const returnIdx = hasRouteStart ? list.length : Math.max(0, list.length - 1);
     const leg = legList[returnIdx];
     elapsedMin += (Number(leg?.durationSec) || 0) / 60;
+    const anchor = continuousAcrossDays ? tourStart : start;
+    const absArrival = anchor + elapsedMin;
     returnLeg = {
       legDistanceKm:
         leg?.distanceKm != null && Number.isFinite(Number(leg.distanceKm))
@@ -119,8 +129,12 @@ export function buildStopRouteMeta(stops, legs, defaultServiceMinutes = 8, opts 
         leg?.durationSec != null && Number.isFinite(Number(leg.durationSec))
           ? Number(leg.durationSec)
           : null,
-      eta: formatClockMinutes(start + elapsedMin),
+      eta: formatClockMinutes(absArrival),
       dayIndex: currentDay,
+      dayOffset: Math.max(
+        0,
+        Math.floor(absArrival / (24 * 60)) - Math.floor(anchor / (24 * 60)),
+      ),
     };
   }
 

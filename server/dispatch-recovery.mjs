@@ -200,7 +200,9 @@ export async function refreshAndPersistPlannedEtas(job, stops, { persist = true 
 
   try {
     const route = await buildRouteForPoints(points);
-    const meta = buildStopRouteMeta(
+    // Continuous clock so an arrival after midnight stays 03:32 and can promote
+    // that stop onto the next day of the tour automatically.
+    let meta = buildStopRouteMeta(
       stops.map((s) => ({
         windowStart: s.window_start || s.windowStart,
         serviceMinutes: s.service_minutes ?? s.serviceMinutes,
@@ -208,18 +210,54 @@ export async function refreshAndPersistPlannedEtas(job, stops, { persist = true 
       })),
       route.legs || [],
       DEFAULT_SERVICE_MIN,
-      { hasRouteStart: hasStart, hasRouteEnd: hasEnd },
+      { hasRouteStart: hasStart, hasRouteEnd: hasEnd, continuousAcrossDays: true },
     );
+
+    let spanChanged = false;
+    for (let i = 0; i < stops.length; i += 1) {
+      const stop = stops[i];
+      const st = String(stop.status || "").toLowerCase();
+      if (st === "done" || st === "skipped") continue;
+      const offset = Number(meta.stops[i]?.dayOffset) || 0;
+      const cur = Number(stop.day_index ?? stop.dayIndex) || 0;
+      // Only promote forward — never pull a manually assigned later day backward.
+      if (offset <= cur) continue;
+      await dbQuery(
+        `UPDATE dispatch_stops
+         SET day_index = $1, planned_eta = NULL
+         WHERE id = $2 AND job_id = $3`,
+        [offset, stop.id, job.id],
+      );
+      stop.day_index = offset;
+      spanChanged = true;
+    }
+    if (spanChanged) {
+      await recomputeJobSpan(job.id);
+      meta = buildStopRouteMeta(
+        stops.map((s) => ({
+          windowStart: s.window_start || s.windowStart,
+          serviceMinutes: s.service_minutes ?? s.serviceMinutes,
+          dayIndex: s.day_index ?? s.dayIndex ?? 0,
+        })),
+        route.legs || [],
+        DEFAULT_SERVICE_MIN,
+        { hasRouteStart: hasStart, hasRouteEnd: hasEnd, continuousAcrossDays: true },
+      );
+    }
+
     const stopEtas = stops.map((s, i) => ({
       stopId: s.id,
       plannedEta: meta.stops[i]?.eta || null,
       plannedLegDistanceKm: meta.stops[i]?.legDistanceKm ?? null,
       plannedLegDurationSec: meta.stops[i]?.legDurationSec ?? null,
+      dayIndex: Number(s.day_index ?? s.dayIndex) || 0,
+      dayOffset: Number(meta.stops[i]?.dayOffset) || 0,
     }));
     if (persist) await persistPlannedEtas(job.id, stopEtas);
     return {
       ready: true,
       stopEtas,
+      spanChanged,
       plannedReturnEta: meta.returnLeg?.eta || null,
       plannedDistanceKm: route.distanceKm ?? null,
       plannedDurationSec: route.durationSec ?? null,

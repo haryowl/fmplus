@@ -15,6 +15,7 @@ describe("buildStopRouteMeta", () => {
       legDurationSec: null,
       eta: "08:00",
       dayIndex: 0,
+      dayOffset: 0,
     });
     expect(meta.stops[1]?.eta).toBe("08:11"); // 8 min service + 3 min travel
     expect(meta.stops[1]?.legDistanceKm).toBe(1.5);
@@ -65,6 +66,24 @@ describe("buildStopRouteMeta", () => {
     // The leg spanning the overnight rest is rest, not reported travel.
     expect(meta.stops[2]?.legDurationSec).toBeNull();
     expect(meta.stops.map((s) => s.dayIndex)).toEqual([0, 0, 1, 1]);
+  });
+
+  it("flags arrivals after midnight with a dayOffset on a continuous drive", () => {
+    const meta = buildStopRouteMeta(
+      [
+        { windowStart: "08:00", serviceMinutes: 0 },
+        { serviceMinutes: 0 },
+        { serviceMinutes: 0 },
+      ],
+      [
+        { distanceKm: 100, durationSec: 10 * 3600 }, // → 18:00
+        { distanceKm: 100, durationSec: 10 * 3600 }, // → 04:00 next day
+      ],
+      0,
+      { continuousAcrossDays: true },
+    );
+    expect(meta.stops.map((s) => s.eta)).toEqual(["08:00", "18:00", "04:00"]);
+    expect(meta.stops.map((s) => s.dayOffset)).toEqual([0, 0, 1]);
   });
 
   it("counts depot→first without return", () => {
