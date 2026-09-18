@@ -123,6 +123,24 @@ function activeWindowPreset(start: string, end: string): string | null {
   return hit?.id || null;
 }
 
+/** Human label for Auto-plan day unassigned[].reason codes. */
+function planUnassignedReasonLabel(reason: string): string {
+  switch (String(reason || "").toLowerCase()) {
+    case "no_coords":
+      return "No coordinates";
+    case "no_vehicle_at_depot":
+      return "No vehicle at depot";
+    case "exceeds_all_vehicle_capacity":
+      return "Exceeds all vehicle capacity";
+    case "no_feasible_insertion":
+      return "No feasible insertion";
+    case "time_window_or_capacity":
+      return "Time window or capacity";
+    default:
+      return reason ? reason.replace(/_/g, " ") : "Unassigned";
+  }
+}
+
 export default function DispatchBoard() {
   const { ready, error: tenantError, query, allowedUserIds, allowedGroupIds, allowsUser, allowsGroup } =
     useEmbedTenant();
@@ -2149,16 +2167,33 @@ export default function DispatchBoard() {
                   ))}
                 </ul>
                 {planPreview.unassigned.length > 0 ? (
-                  <p className="dispatch-search-hint">
-                    Unassigned:{" "}
-                    {planPreview.unassigned
-                      .slice(0, 8)
-                      .map((u) => u.label || u.orderId)
-                      .join(", ")}
-                    {planPreview.unassigned.length > 8
-                      ? ` (+${planPreview.unassigned.length - 8} more)`
-                      : ""}
-                  </p>
+                  <div className="dispatch-plan-unassigned">
+                    <p className="dispatch-eyebrow">
+                      Unassigned · {planPreview.unassigned.length}
+                    </p>
+                    <ul>
+                      {planPreview.unassigned.slice(0, 12).map((u) => {
+                        const depotName =
+                          u.depotId && planPreview.depots
+                            ? planPreview.depots.find((d) => d.id === u.depotId)?.name
+                            : null;
+                        return (
+                          <li key={u.orderId}>
+                            <strong>{u.label || u.orderId}</strong>
+                            <span>
+                              {planUnassignedReasonLabel(u.reason)}
+                              {depotName ? ` · ${depotName}` : ""}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {planPreview.unassigned.length > 12 ? (
+                      <p className="dispatch-search-hint">
+                        +{planPreview.unassigned.length - 12} more
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             ) : null}

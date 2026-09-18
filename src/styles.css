@@ -5386,6 +5386,32 @@ html.onesheet-root body {
   color: var(--ink-soft);
 }
 
+.dispatch-plan-unassigned {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.dispatch-plan-unassigned ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.dispatch-plan-unassigned li {
+  display: grid;
+  gap: 1px;
+  font-size: 0.82rem;
+}
+
+.dispatch-plan-unassigned li span {
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+}
+
 .dispatch-plan-stop-etas .is-late {
   color: var(--danger);
   font-weight: 600;
