@@ -227,6 +227,18 @@ function numOrNull(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+/** HH:MM for delivery windows; empty/null clears the column. */
+function normalizeWindowClock(v) {
+  const m = String(v || "")
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min) || h > 23 || min > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
 /** Dwell minutes at stop; null = use plan default. Clamped 0–120. */
 function serviceMinutesOrNull(v) {
   if (v == null || v === "") return null;
@@ -1092,8 +1104,8 @@ export async function handleDispatchRequest(req, res) {
           String(body.zone || "").trim().slice(0, 80) || null,
           numOrNull(body.volumeM3),
           numOrNull(body.weightKg),
-          String(body.windowStart || "").trim().slice(0, 16) || null,
-          String(body.windowEnd || "").trim().slice(0, 16) || null,
+          normalizeWindowClock(body.windowStart),
+          normalizeWindowClock(body.windowEnd),
           serviceMinutesOrNull(body.serviceMinutes),
           body.proofRequired === true || body.proof_required === true,
           String(body.notes || "").trim().slice(0, 2000) || null,
@@ -1208,8 +1220,8 @@ export async function handleDispatchRequest(req, res) {
         address: ["address", (v) => String(v || "").trim().slice(0, 500) || null],
         zone: ["zone", (v) => String(v || "").trim().slice(0, 80) || null],
         notes: ["notes", (v) => String(v || "").trim().slice(0, 2000) || null],
-        windowStart: ["window_start", (v) => String(v || "").trim().slice(0, 16) || null],
-        windowEnd: ["window_end", (v) => String(v || "").trim().slice(0, 16) || null],
+        windowStart: ["window_start", (v) => normalizeWindowClock(v)],
+        windowEnd: ["window_end", (v) => normalizeWindowClock(v)],
       };
       for (const [key, [col, fn]] of Object.entries(map)) {
         if (key in body) {
@@ -1328,8 +1340,8 @@ export async function handleDispatchRequest(req, res) {
           String(body.zone || "").trim().slice(0, 80) || null,
           numOrNull(body.volumeM3),
           numOrNull(body.weightKg),
-          String(body.windowStart || "").trim().slice(0, 16) || null,
-          String(body.windowEnd || "").trim().slice(0, 16) || null,
+          normalizeWindowClock(body.windowStart),
+          normalizeWindowClock(body.windowEnd),
           String(body.notes || "").trim().slice(0, 2000) || null,
           serviceDate,
           serviceMinutesOrNull(body.serviceMinutes),
@@ -1520,8 +1532,8 @@ export async function handleDispatchRequest(req, res) {
         address: ["address", (v) => String(v || "").trim().slice(0, 500) || null],
         zone: ["zone", (v) => String(v || "").trim().slice(0, 80) || null],
         notes: ["notes", (v) => String(v || "").trim().slice(0, 2000) || null],
-        windowStart: ["window_start", (v) => String(v || "").trim().slice(0, 16) || null],
-        windowEnd: ["window_end", (v) => String(v || "").trim().slice(0, 16) || null],
+        windowStart: ["window_start", (v) => normalizeWindowClock(v)],
+        windowEnd: ["window_end", (v) => normalizeWindowClock(v)],
       };
       for (const [key, [col, fn]] of Object.entries(map)) {
         if (key in body) {

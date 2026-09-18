@@ -216,9 +216,21 @@ export function dispatchAssigneeLabel(job: DispatchJob): string {
   return job.assigneeDisplayName || job.assigneeUsername || "Unassigned";
 }
 
+/** Normalize a clock to HH:MM for `<input type="time">` and preset matching. */
+export function normalizeClockHm(value: string | null | undefined): string {
+  const m = String(value || "")
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!m) return "";
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min) || h > 23 || min > 59) return "";
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
 export function formatDispatchWindow(stop: { windowStart?: string; windowEnd?: string }): string {
-  const a = (stop.windowStart || "").trim();
-  const b = (stop.windowEnd || "").trim();
+  const a = normalizeClockHm(stop.windowStart);
+  const b = normalizeClockHm(stop.windowEnd);
   if (a && b) return `${a}–${b}`;
   return a || b || "";
 }

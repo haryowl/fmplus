@@ -40,6 +40,7 @@ import {
   generateDispatchOrdersFromTemplates,
   importDispatchOrders,
   moveStopToDay,
+  normalizeClockHm,
   optimizeJobStops,
   patchDispatchDepot,
   patchDispatchJob,
@@ -116,7 +117,9 @@ const WINDOW_PRESETS: { id: string; label: string; start: string; end: string }[
 ];
 
 function activeWindowPreset(start: string, end: string): string | null {
-  const hit = WINDOW_PRESETS.find((p) => p.start === start && p.end === end);
+  const a = normalizeClockHm(start);
+  const b = normalizeClockHm(end);
+  const hit = WINDOW_PRESETS.find((p) => p.start === a && p.end === b);
   return hit?.id || null;
 }
 
@@ -906,8 +909,8 @@ export default function DispatchBoard() {
       zone: o.zone || "",
       volumeM3: o.volumeM3 != null ? String(o.volumeM3) : "",
       weightKg: o.weightKg != null ? String(o.weightKg) : "",
-      windowStart: o.windowStart || "",
-      windowEnd: o.windowEnd || "",
+      windowStart: normalizeClockHm(o.windowStart),
+      windowEnd: normalizeClockHm(o.windowEnd),
       serviceMinutes: o.serviceMinutes != null ? String(o.serviceMinutes) : "",
       proofRequired: o.proofRequired === true,
       saveAsTemplate: false,
@@ -940,8 +943,10 @@ export default function DispatchBoard() {
       zone: orderForm.zone.trim() || undefined,
       volumeM3: orderForm.volumeM3 === "" ? null : Number(orderForm.volumeM3),
       weightKg: orderForm.weightKg === "" ? null : Number(orderForm.weightKg),
-      windowStart: orderForm.windowStart.trim() || undefined,
-      windowEnd: orderForm.windowEnd.trim() || undefined,
+      // null (not undefined) so "Any time" clears the DB columns; undefined is
+      // dropped by JSON.stringify and the PATCH would leave the old window.
+      windowStart: normalizeClockHm(orderForm.windowStart) || null,
+      windowEnd: normalizeClockHm(orderForm.windowEnd) || null,
       serviceMinutes:
         orderForm.serviceMinutes.trim() === ""
           ? null
@@ -2550,7 +2555,12 @@ export default function DispatchBoard() {
                         type="time"
                         step={300}
                         value={orderForm.windowStart}
-                        onChange={(e) => setOrderForm((f) => ({ ...f, windowStart: e.target.value }))}
+                        onChange={(e) =>
+                          setOrderForm((f) => ({
+                            ...f,
+                            windowStart: normalizeClockHm(e.target.value),
+                          }))
+                        }
                       />
                     </label>
                     <label className="field">
@@ -2559,13 +2569,18 @@ export default function DispatchBoard() {
                         type="time"
                         step={300}
                         value={orderForm.windowEnd}
-                        onChange={(e) => setOrderForm((f) => ({ ...f, windowEnd: e.target.value }))}
+                        onChange={(e) =>
+                          setOrderForm((f) => ({
+                            ...f,
+                            windowEnd: normalizeClockHm(e.target.value),
+                          }))
+                        }
                       />
                     </label>
                   </div>
-                  {orderForm.windowStart &&
-                  orderForm.windowEnd &&
-                  orderForm.windowStart >= orderForm.windowEnd ? (
+                  {normalizeClockHm(orderForm.windowStart) &&
+                  normalizeClockHm(orderForm.windowEnd) &&
+                  normalizeClockHm(orderForm.windowStart) >= normalizeClockHm(orderForm.windowEnd) ? (
                     <p className="dispatch-window-warn">End time should be after start time.</p>
                   ) : null}
                 </div>
