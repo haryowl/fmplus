@@ -740,8 +740,9 @@ export async function createDispatchOrder(body: {
   zone?: string;
   volumeM3?: number | null;
   weightKg?: number | null;
-  windowStart?: string;
-  windowEnd?: string;
+  /** null clears / means Any time — must not be omitted from the JSON body. */
+  windowStart?: string | null;
+  windowEnd?: string | null;
   serviceDate?: string;
   serviceMinutes?: number | null;
   proofRequired?: boolean;
