@@ -220,8 +220,9 @@ export async function refreshAndPersistPlannedEtas(job, stops, { persist = true 
       if (st === "done" || st === "skipped") continue;
       const offset = Number(meta.stops[i]?.dayOffset) || 0;
       const cur = Number(stop.day_index ?? stop.dayIndex) || 0;
-      // Only promote forward — never pull a manually assigned later day backward.
-      if (offset <= cur) continue;
+      // Days follow the continuous drive clock: promote after midnight and
+      // demote when a stop was parked on a later tab than the ETA warrants.
+      if (offset === cur) continue;
       await dbQuery(
         `UPDATE dispatch_stops
          SET day_index = $1, planned_eta = NULL

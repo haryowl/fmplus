@@ -283,17 +283,18 @@ export default function DispatchBoard() {
     setMoveStopId(null);
   }, [selectedId]);
 
-  // When the continuous ETA chain lands after midnight, promote those stops onto
-  // the matching day of the tour so Day tabs appear without a manual move.
+  // Keep day tabs aligned with the continuous ETA clock: promote after midnight
+  // and demote when a stop sits on a later tab than the arrival calendar day.
   const autoDaySplitRef = useRef(false);
   const overnightPromoKey = useMemo(() => {
     if (!selected || !jobRoute?.legs?.length) return "";
     return selected.stops
       .map((stop) => {
+        if (stop.status === "done" || stop.status === "skipped") return "";
         const meta = stopMetaById.get(stop.id);
         const offset = Number(meta?.dayOffset) || 0;
         const cur = Number(stop.dayIndex) || 0;
-        return offset > cur ? `${stop.id}:${offset}` : "";
+        return offset !== cur ? `${stop.id}:${offset}` : "";
       })
       .filter(Boolean)
       .join("|");
@@ -304,15 +305,15 @@ export default function DispatchBoard() {
     if (selected.status === "done" || selected.status === "cancelled") return;
     if (autoDaySplitRef.current) return;
 
-    const promotions: Array<{ stopId: string; dayIndex: number }> = [];
+    const moves: Array<{ stopId: string; dayIndex: number }> = [];
     for (const stop of selected.stops) {
       if (stop.status === "done" || stop.status === "skipped") continue;
       const meta = stopMetaById.get(stop.id);
       const offset = Number(meta?.dayOffset) || 0;
       const cur = Number(stop.dayIndex) || 0;
-      if (offset > cur) promotions.push({ stopId: stop.id, dayIndex: offset });
+      if (offset !== cur) moves.push({ stopId: stop.id, dayIndex: offset });
     }
-    if (!promotions.length) return;
+    if (!moves.length) return;
 
     autoDaySplitRef.current = true;
     let cancelled = false;
@@ -320,18 +321,48 @@ export default function DispatchBoard() {
       setBusy(true);
       try {
         let latest = selected;
-        promotions.sort((a, b) => a.dayIndex - b.dayIndex);
-        for (const p of promotions) {
+        // Demote first so max(day_index) shrinks, then promote without gaps.
+        const demotes = moves.filter((m) => {
+          const cur = Number(selected.stops.find((s) => s.id === m.stopId)?.dayIndex) || 0;
+          return m.dayIndex < cur;
+        });
+        const promotes = moves.filter((m) => {
+          const cur = Number(selected.stops.find((s) => s.id === m.stopId)?.dayIndex) || 0;
+          return m.dayIndex > cur;
+        });
+        demotes.sort((a, b) => a.dayIndex - b.dayIndex);
+        promotes.sort((a, b) => a.dayIndex - b.dayIndex);
+
+        async function moveToTarget(stopId: string, target: number) {
+          let cur = Number(latest.stops.find((s) => s.id === stopId)?.dayIndex) || 0;
+          if (cur === target) return;
+          if (target > cur) {
+            // Step one day at a time — the API rejects empty day gaps.
+            for (let d = cur + 1; d <= target; d += 1) {
+              if (cancelled) return;
+              latest = await moveStopToDay(latest.id, stopId, d);
+            }
+          } else {
+            latest = await moveStopToDay(latest.id, stopId, target);
+          }
+        }
+
+        for (const m of demotes) {
           if (cancelled) return;
-          latest = await moveStopToDay(latest.id, p.stopId, p.dayIndex);
+          await moveToTarget(m.stopId, m.dayIndex);
+        }
+        for (const m of promotes) {
+          if (cancelled) return;
+          await moveToTarget(m.stopId, m.dayIndex);
         }
         if (cancelled) return;
         setJobs((prev) => prev.map((j) => (j.id === latest.id ? latest : j)));
         setPendingDayIndex(null);
-        setActiveDayIndex(Math.max(...promotions.map((p) => p.dayIndex)));
+        const maxDay = Math.max(0, ...latest.stops.map((s) => Number(s.dayIndex) || 0));
+        setActiveDayIndex((d) => Math.min(d, maxDay));
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not auto-split multi-day tour");
+          setError(err instanceof Error ? err.message : "Could not sync stop days from ETA");
         }
       } finally {
         autoDaySplitRef.current = false;
@@ -342,7 +373,7 @@ export default function DispatchBoard() {
     return () => {
       cancelled = true;
     };
-    // overnightPromoKey already encodes the stop/offset pairs that need promoting.
+    // overnightPromoKey already encodes the stop/offset pairs that need syncing.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional narrow trigger
   }, [overnightPromoKey, selectedId]);
 
@@ -3265,10 +3296,10 @@ export default function DispatchBoard() {
                       ) : null}
                       {dayStops.map((stop, i) => {
                         const meta = stopMetaById.get(stop.id);
-                        const dayOffset = Number(meta?.dayOffset) || 0;
+                        const spillDays = Number(meta?.spillDays) || 0;
                         const etaDaySuffix =
-                          dayOffset > 0
-                            ? ` · +${dayOffset} day${dayOffset === 1 ? "" : "s"}`
+                          spillDays > 0
+                            ? ` · +${spillDays} day${spillDays === 1 ? "" : "s"}`
                             : "";
                         const showInbound =
                           meta &&

@@ -61,6 +61,7 @@ describe("buildStopRouteMeta per day", () => {
     );
     expect(meta.stops.map((s: { eta: string }) => s.eta)).toEqual(["08:00", "18:00", "04:00"]);
     expect(meta.stops.map((s: { dayOffset: number }) => s.dayOffset)).toEqual([0, 0, 1]);
+    expect(meta.stops.map((s: { spillDays: number }) => s.spillDays)).toEqual([0, 0, 1]);
   });
 
   it("reports no inbound leg for a day's first stop, since that gap is rest", () => {

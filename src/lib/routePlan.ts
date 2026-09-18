@@ -208,6 +208,11 @@ export type StopRouteMeta = {
    * chain. 1 means the arrival is after midnight (next service day).
    */
   dayOffset?: number;
+  /**
+   * How many days past this stop's assigned dayIndex the arrival lands.
+   * Only this should be shown as "+N day" — not the raw tour dayOffset.
+   */
+  spillDays?: number;
 };
 
 export type SequenceRouteMeta = {
@@ -285,7 +290,15 @@ export function buildStopRouteMeta(
         ? Math.max(0, Number(stop.serviceMinutes))
         : Math.max(0, defaultServiceMinutes);
     elapsedMin += svc;
-    return { legDistanceKm, legDurationSec, eta, dayIndex: day, dayOffset };
+    return {
+      legDistanceKm,
+      legDurationSec,
+      eta,
+      dayIndex: day,
+      dayOffset,
+      // "+N day" is relative to the stop's assigned day, not tour day 0.
+      spillDays: Math.max(0, dayOffset - day),
+    };
   });
 
   let returnLeg: StopRouteMeta | null = null;
@@ -303,6 +316,12 @@ export function buildStopRouteMeta(
         0,
         Math.floor(absArrival / (24 * 60)) -
           Math.floor((continuousAcrossDays ? tourStart : start) / (24 * 60)),
+      ),
+      spillDays: Math.max(
+        0,
+        Math.floor(absArrival / (24 * 60)) -
+          Math.floor((continuousAcrossDays ? tourStart : start) / (24 * 60)) -
+          currentDay,
       ),
     };
   }

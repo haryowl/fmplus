@@ -16,6 +16,7 @@ describe("buildStopRouteMeta", () => {
       eta: "08:00",
       dayIndex: 0,
       dayOffset: 0,
+      spillDays: 0,
     });
     expect(meta.stops[1]?.eta).toBe("08:11"); // 8 min service + 3 min travel
     expect(meta.stops[1]?.legDistanceKm).toBe(1.5);
@@ -84,6 +85,29 @@ describe("buildStopRouteMeta", () => {
     );
     expect(meta.stops.map((s) => s.eta)).toEqual(["08:00", "18:00", "04:00"]);
     expect(meta.stops.map((s) => s.dayOffset)).toEqual([0, 0, 1]);
+    expect(meta.stops.map((s) => s.spillDays)).toEqual([0, 0, 1]);
+  });
+
+  it("only spills past a stop's own assigned day, not tour day 0", () => {
+    const meta = buildStopRouteMeta(
+      [
+        { windowStart: "08:00", serviceMinutes: 0, dayIndex: 0 },
+        { serviceMinutes: 0, dayIndex: 1 },
+        { serviceMinutes: 0, dayIndex: 1 },
+      ],
+      [
+        { distanceKm: 100, durationSec: 10 * 3600 }, // → 18:00 day 0
+        { distanceKm: 100, durationSec: 10 * 3600 }, // → 04:00 day 1 calendar
+      ],
+      0,
+      { continuousAcrossDays: true },
+    );
+    // Second stop is already on Day 2 (dayIndex 1) and arrives still on day 0 clock.
+    expect(meta.stops[1]?.dayOffset).toBe(0);
+    expect(meta.stops[1]?.spillDays).toBe(0);
+    // Third stop lands on calendar day 1 while assigned to dayIndex 1 — no label.
+    expect(meta.stops[2]?.dayOffset).toBe(1);
+    expect(meta.stops[2]?.spillDays).toBe(0);
   });
 
   it("counts depot→first without return", () => {

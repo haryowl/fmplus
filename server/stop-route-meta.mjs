@@ -110,6 +110,7 @@ export function buildStopRouteMeta(stops, legs, defaultServiceMinutes = 8, opts 
       eta,
       dayIndex: day,
       dayOffset,
+      spillDays: Math.max(0, dayOffset - day),
     };
   });
 
@@ -120,6 +121,10 @@ export function buildStopRouteMeta(stops, legs, defaultServiceMinutes = 8, opts 
     elapsedMin += (Number(leg?.durationSec) || 0) / 60;
     const anchor = continuousAcrossDays ? tourStart : start;
     const absArrival = anchor + elapsedMin;
+    const dayOffset = Math.max(
+      0,
+      Math.floor(absArrival / (24 * 60)) - Math.floor(anchor / (24 * 60)),
+    );
     returnLeg = {
       legDistanceKm:
         leg?.distanceKm != null && Number.isFinite(Number(leg.distanceKm))
@@ -131,10 +136,8 @@ export function buildStopRouteMeta(stops, legs, defaultServiceMinutes = 8, opts 
           : null,
       eta: formatClockMinutes(absArrival),
       dayIndex: currentDay,
-      dayOffset: Math.max(
-        0,
-        Math.floor(absArrival / (24 * 60)) - Math.floor(anchor / (24 * 60)),
-      ),
+      dayOffset,
+      spillDays: Math.max(0, dayOffset - currentDay),
     };
   }
 
