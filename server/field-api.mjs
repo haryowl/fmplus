@@ -22,19 +22,19 @@ import { securityHeaders } from "./proxy-lt.mjs";
 import { mergeEntitlements } from "./entitlements.mjs";
 import { tenantByKey } from "./tenants.mjs";
 import { fetchVehiclePositions } from "./vehicle-positions.mjs";
-
-/** Calendar YYYY-MM-DD from PG DATE / Date without UTC day-shift. */
-function fieldYmd(rowVal) {
-  if (rowVal == null || rowVal === "") return "";
-  if (rowVal instanceof Date) {
-    const y = rowVal.getFullYear();
-    const m = String(rowVal.getMonth() + 1).padStart(2, "0");
-    const d = String(rowVal.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(rowVal).trim());
-  return m ? m[1] : "";
-}
+import {
+  formatServiceDate as fieldYmd,
+  parseServiceDate,
+  todayServiceDate,
+} from "./service-day.mjs";
+import { dateForDayIndex, dayIndexForDate, spanDayCount } from "./dispatch-span.mjs";
+import {
+  checkPingRateLimit,
+  insertDriverPings,
+  MAX_PINGS_PER_BATCH,
+  normalizePing,
+  PING_MAX_BODY_BYTES,
+} from "./driver-pings.mjs";
 
 const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
   lat, lon, notification_id, started_at, ended_at, odometer_km,
@@ -83,8 +83,8 @@ function readBody(req, limit = 20_000_000) {
   });
 }
 
-async function readJson(req) {
-  const raw = await readBody(req);
+async function readJson(req, limit) {
+  const raw = limit == null ? await readBody(req) : await readBody(req, limit);
   const text = raw.toString("utf8");
   if (!text.trim()) return {};
   return JSON.parse(text);
@@ -150,11 +150,14 @@ function cleanPhonePair(lat, lon) {
   return { lat: a, lon: b };
 }
 
-function publicDispatchStop(row) {
+function publicDispatchStop(row, jobServiceDate = "") {
+  const dayIndex = Number(row.day_index) || 0;
   return {
     id: row.id,
     orderId: row.order_id || null,
     sortOrder: Number(row.sort_order) || 0,
+    dayIndex,
+    serviceDate: jobServiceDate ? dateForDayIndex(jobServiceDate, dayIndex) : "",
     name: row.name || "",
     address: row.address || "",
     lat: row.lat == null ? null : Number(row.lat),
@@ -214,9 +217,39 @@ function fieldRouteAnchor(lat, lon, label) {
   return { lat: a, lon: b, label: String(label || "").trim() || "Start" };
 }
 
-function publicDispatchJob(row, stops = []) {
-  const cap = fieldCapacityFrom(row, stops);
+/** Per-day workload of a tour, so the driver can see the legs either side of today. */
+function dayLegsFromStops(allStops, serviceDate, endDate) {
+  const count = spanDayCount(serviceDate, endDate);
+  const legs = [];
+  for (let day = 0; day < count; day += 1) {
+    const rows = allStops.filter((s) => (Number(s.day_index) || 0) === day);
+    legs.push({
+      dayIndex: day,
+      dayNumber: day + 1,
+      serviceDate: dateForDayIndex(serviceDate, day),
+      stopCount: rows.length,
+      remaining: rows.filter((s) => s.status !== "done" && s.status !== "skipped").length,
+    });
+  }
+  return legs;
+}
+
+/**
+ * @param row dispatch_jobs row
+ * @param stops dispatch_stops rows for the whole tour; narrowed to one day here
+ * @param requestedDate the day the driver is looking at, for the "Day 2 of 3" label
+ */
+function publicDispatchJob(row, stops = [], requestedDate = "") {
   const pathMode = String(row.route_anchor_mode || "").toLowerCase();
+  const serviceDate = fieldYmd(row.service_date);
+  const endDate = fieldYmd(row.end_date) || serviceDate;
+  const dayCount = spanDayCount(serviceDate, endDate);
+  const dayIndex = requestedDate
+    ? (dayIndexForDate(serviceDate, endDate, requestedDate) ?? 0)
+    : 0;
+  // A driver works one leg at a time; single-day jobs are entirely day 0.
+  const dayStops = stops.filter((s) => (Number(s.day_index) || 0) === dayIndex);
+  const cap = fieldCapacityFrom(row, dayStops);
   return {
     id: row.id,
     status: row.status,
@@ -231,7 +264,12 @@ function publicDispatchJob(row, stops = []) {
     arrivedAt: row.arrived_at || null,
     completedAt: row.completed_at || null,
     fieldNote: row.field_note || "",
-    serviceDate: fieldYmd(row.service_date),
+    serviceDate,
+    endDate,
+    dayCount,
+    dayNumber: dayIndex + 1,
+    dayIndex,
+    dayLegs: dayCount > 1 ? dayLegsFromStops(stops, serviceDate, endDate) : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     routeAnchorMode: pathMode === "map" || pathMode === "sequence" ? pathMode : null,
@@ -246,7 +284,7 @@ function publicDispatchJob(row, stops = []) {
       row.route_end_label || "Return",
     ),
     ...cap,
-    stops: stops.map(publicDispatchStop),
+    stops: dayStops.map((s) => publicDispatchStop(s, serviceDate)),
   };
 }
 
@@ -259,12 +297,13 @@ async function loadAssignedDispatchJob(tenantId, jobId, fieldUserId) {
   return found.rows[0] || null;
 }
 
+/** Every stop of a tour; publicDispatchJob narrows to the day being worked. */
 async function loadDispatchStops(jobId) {
-  const rows = await dbQuery(
+  const all = await dbQuery(
     `SELECT * FROM dispatch_stops WHERE job_id = $1 ORDER BY sort_order ASC, created_at ASC`,
     [jobId],
   );
-  return rows.rows;
+  return all.rows;
 }
 
 async function resolveArmadaCoords(user, armadaUserId) {
@@ -359,6 +398,59 @@ export async function handleFieldRequest(req, res) {
         mobileMaintenance: flags.mobileMaintenance,
         managerMaintenance: flags.managerMaintenance,
         mobileDispatch: flags.mobileDispatch,
+      });
+      return true;
+    }
+
+    if (url.pathname === "/api/field/location" && req.method === "POST") {
+      const user = await fieldFromRequest(req);
+      if (!user) {
+        json(res, 401, { error: "Not logged in" });
+        return true;
+      }
+      if (!(await tenantMobileDispatchEnabled(user.tenantId))) {
+        json(res, 403, { error: "Mobile Dispatch is not enabled for this tenant" });
+        return true;
+      }
+      const limit = checkPingRateLimit(user.id);
+      if (!limit.ok) {
+        json(
+          res,
+          429,
+          { error: "Too many location updates — slow down", retryAfterSec: limit.retryAfterSec },
+          { "Retry-After": String(limit.retryAfterSec) },
+        );
+        return true;
+      }
+      const body = await readJson(req, PING_MAX_BODY_BYTES);
+      const raw = Array.isArray(body.pings)
+        ? body.pings
+        : body.lat != null || body.latitude != null
+          ? [body]
+          : [];
+      if (!raw.length) {
+        json(res, 400, { error: "pings[] is required" });
+        return true;
+      }
+      if (raw.length > MAX_PINGS_PER_BATCH) {
+        json(res, 400, { error: `At most ${MAX_PINGS_PER_BATCH} pings per request` });
+        return true;
+      }
+      const valid = [];
+      const rejected = [];
+      for (let i = 0; i < raw.length; i++) {
+        const check = normalizePing(raw[i]);
+        if (check.ok) valid.push(check.ping);
+        else rejected.push({ index: i, reason: check.reason });
+      }
+      const accepted = valid.length
+        ? await insertDriverPings(user.tenantId, user.id, valid)
+        : 0;
+      json(res, 200, {
+        accepted,
+        duplicates: valid.length - accepted,
+        rejected,
+        serverTime: new Date().toISOString(),
       });
       return true;
     }
@@ -548,16 +640,23 @@ export async function handleFieldRequest(req, res) {
           json(res, 400, { error: "from and to are required as YYYY-MM-DD" });
           return true;
         }
+        // A multi-day tour is marked on every day it covers, so the driver's month
+        // view does not go blank on days 2..N of a job.
         const rows = await dbQuery(
-          `SELECT service_date::text AS service_date, COUNT(*)::int AS job_count
-           FROM dispatch_jobs
-           WHERE tenant_id = $1
-             AND assigned_field_user_id = $2
-             AND service_date >= $3::date
-             AND service_date <= $4::date
-             AND status IN ('assigned', 'en_route', 'arrived', 'done')
-           GROUP BY service_date
-           ORDER BY service_date ASC`,
+          `SELECT d::text AS service_date, COUNT(*)::int AS job_count
+           FROM dispatch_jobs j
+           CROSS JOIN LATERAL generate_series(
+             GREATEST(j.service_date, $3::date),
+             LEAST(COALESCE(j.end_date, j.service_date), $4::date),
+             interval '1 day'
+           ) AS d
+           WHERE j.tenant_id = $1
+             AND j.assigned_field_user_id = $2
+             AND j.service_date <= $4::date
+             AND COALESCE(j.end_date, j.service_date) >= $3::date
+             AND j.status IN ('assigned', 'en_route', 'arrived', 'done')
+           GROUP BY d
+           ORDER BY d ASC`,
           [user.tenantId, user.id, fromParam, toParam],
         );
         const summaryRows = await dbQuery(
@@ -568,8 +667,8 @@ export async function handleFieldRequest(req, res) {
            FROM dispatch_jobs
            WHERE tenant_id = $1
              AND assigned_field_user_id = $2
-             AND service_date >= $3::date
              AND service_date <= $4::date
+             AND COALESCE(end_date, service_date) >= $3::date
              AND status IN ('assigned', 'en_route', 'arrived', 'done')`,
           [user.tenantId, user.id, fromParam, toParam],
         );
@@ -592,17 +691,12 @@ export async function handleFieldRequest(req, res) {
 
       if (url.pathname === "/api/field/dispatch/jobs" && req.method === "GET") {
         const dateParam = String(url.searchParams.get("date") || "").trim().slice(0, 10);
-        const serviceDate = /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
-          ? dateParam
-          : (() => {
-              const d = new Date();
-              return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-            })();
+        const serviceDate = parseServiceDate(dateParam) || todayServiceDate();
         const rows = await dbQuery(
           `SELECT * FROM dispatch_jobs
            WHERE tenant_id = $1
              AND assigned_field_user_id = $2
-             AND service_date = $3::date
+             AND $3::date BETWEEN service_date AND COALESCE(end_date, service_date)
              AND (
                status IN ('assigned', 'en_route', 'arrived')
                OR (
@@ -623,7 +717,8 @@ export async function handleFieldRequest(req, res) {
         );
         const jobs = [];
         for (const row of rows.rows) {
-          jobs.push(publicDispatchJob(row, await loadDispatchStops(row.id)));
+          // publicDispatchJob narrows to the leg being worked and summarises the rest.
+          jobs.push(publicDispatchJob(row, await loadDispatchStops(row.id), serviceDate));
         }
         json(res, 200, { jobs, serviceDate });
         return true;
@@ -636,7 +731,7 @@ export async function handleFieldRequest(req, res) {
           json(res, 404, { error: "Job not found or not assigned to you" });
           return true;
         }
-        json(res, 200, { job: publicDispatchJob(row, await loadDispatchStops(row.id)) });
+        json(res, 200, { job: publicDispatchJob(row, await loadDispatchStops(row.id), todayServiceDate()) });
         return true;
       }
 
@@ -683,7 +778,7 @@ export async function handleFieldRequest(req, res) {
           params,
         );
         const row = await loadAssignedDispatchJob(user.tenantId, existing.id, user.id);
-        json(res, 200, { job: publicDispatchJob(row, await loadDispatchStops(row.id)) });
+        json(res, 200, { job: publicDispatchJob(row, await loadDispatchStops(row.id), todayServiceDate()) });
         return true;
       }
 
@@ -712,7 +807,6 @@ export async function handleFieldRequest(req, res) {
         }
 
         const phone = cleanPhonePair(body.phoneLat ?? body.lat, body.phoneLon ?? body.lon ?? body.lng);
-        const armada = await resolveArmadaCoords(user, job.armada_user_id);
 
         // Notes-only update while in progress (no status change)
         if (!("status" in body) && "notes" in body) {
@@ -729,8 +823,8 @@ export async function handleFieldRequest(req, res) {
           );
           const row = await loadAssignedDispatchJob(user.tenantId, job.id, user.id);
           json(res, 200, {
-            stop: publicDispatchStop(updated.rows[0]),
-            job: publicDispatchJob(row, await loadDispatchStops(row.id)),
+            stop: publicDispatchStop(updated.rows[0], fieldYmd(job.service_date)),
+            job: publicDispatchJob(row, await loadDispatchStops(row.id), todayServiceDate()),
           });
           return true;
         }
@@ -740,6 +834,10 @@ export async function handleFieldRequest(req, res) {
           json(res, 400, { error: "Stop status must be arrived, done, or skipped" });
           return true;
         }
+
+        // Only a real status change needs vehicle evidence; resolving this
+        // costs a full Armada usersstatus round-trip per call.
+        const armada = await resolveArmadaCoords(user, job.armada_user_id);
 
         if (stopRow.status === "done") {
           json(res, 400, { error: "Completed stops cannot be changed" });
@@ -783,8 +881,22 @@ export async function handleFieldRequest(req, res) {
           }
         }
 
+        // A reschedule that lands on a later day of this same tour is just a move
+        // between legs: the stop and its order stay put, so no detach round-trip.
+        let carryToDayIndex = null;
+        if (status === "skipped") {
+          const jobDate = fieldYmd(job.service_date);
+          const jobEnd = fieldYmd(job.end_date) || jobDate;
+          const target = dayIndexForDate(jobDate, jobEnd, rescheduleDate);
+          if (target != null && target > (Number(stopRow.day_index) || 0)) {
+            carryToDayIndex = target;
+          }
+        }
+
+        // Moved-within-tour stops come back as open work on their new day.
+        const nextStatus = carryToDayIndex != null ? "pending" : status;
         const sets = [`status = $1`];
-        const params = [status];
+        const params = [nextStatus];
         if (status === "arrived") {
           sets.push(`arrived_at = COALESCE(arrived_at, now())`);
           if (phone) {
@@ -817,6 +929,18 @@ export async function handleFieldRequest(req, res) {
           sets.push(`skip_reason = $${params.length}`);
           params.push(rescheduleDate);
           sets.push(`rescheduled_to = $${params.length}::date`);
+          if (carryToDayIndex != null) {
+            const tail = await dbQuery(
+              `SELECT COALESCE(MAX(sort_order), -1)::int AS m
+               FROM dispatch_stops WHERE job_id = $1 AND day_index = $2 AND id <> $3`,
+              [job.id, carryToDayIndex, stopId],
+            );
+            params.push(carryToDayIndex);
+            sets.push(`day_index = $${params.length}`);
+            params.push((tail.rows[0]?.m ?? -1) + 1);
+            sets.push(`sort_order = $${params.length}`);
+            sets.push(`planned_eta = NULL`, `arrived_at = NULL`);
+          }
         }
         if ("notes" in body) {
           params.push(String(body.notes || "").trim().slice(0, 2000) || null);
@@ -836,7 +960,7 @@ export async function handleFieldRequest(req, res) {
         }
 
         // Reuse same order: detach and move to reschedule date (order number unchanged)
-        if (status === "skipped" && stopRow.order_id) {
+        if (status === "skipped" && carryToDayIndex == null && stopRow.order_id) {
           await dbQuery(
             `UPDATE dispatch_orders
              SET status = 'pending',
@@ -844,6 +968,16 @@ export async function handleFieldRequest(req, res) {
                  stop_id = NULL,
                  service_date = $1::date,
                  updated_at = now()
+             WHERE id = $2 AND tenant_id = $3`,
+            [rescheduleDate, stopRow.order_id, user.tenantId],
+          );
+        }
+
+        // Carried inside the tour: the order keeps its job but follows the new day.
+        if (carryToDayIndex != null && stopRow.order_id) {
+          await dbQuery(
+            `UPDATE dispatch_orders
+             SET service_date = $1::date, updated_at = now()
              WHERE id = $2 AND tenant_id = $3`,
             [rescheduleDate, stopRow.order_id, user.tenantId],
           );
@@ -863,8 +997,8 @@ export async function handleFieldRequest(req, res) {
         }
         const row = await loadAssignedDispatchJob(user.tenantId, job.id, user.id);
         json(res, 200, {
-          stop: publicDispatchStop(updated.rows[0]),
-          job: publicDispatchJob(row, await loadDispatchStops(row.id)),
+          stop: publicDispatchStop(updated.rows[0], fieldYmd(job.service_date)),
+          job: publicDispatchJob(row, await loadDispatchStops(row.id), todayServiceDate()),
           gps: {
             phone: phone || null,
             armada: armada || null,

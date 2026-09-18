@@ -14,6 +14,7 @@ describe("buildStopRouteMeta", () => {
       legDistanceKm: null,
       legDurationSec: null,
       eta: "08:00",
+      dayIndex: 0,
     });
     expect(meta.stops[1]?.eta).toBe("08:11"); // 8 min service + 3 min travel
     expect(meta.stops[1]?.legDistanceKm).toBe(1.5);
@@ -43,6 +44,27 @@ describe("buildStopRouteMeta", () => {
     expect(meta.stops[2]?.eta).toBe("08:43"); // 08:31 + 8 + 4
     expect(meta.returnLeg?.legDistanceKm).toBe(12);
     expect(meta.returnLeg?.eta).toBe("09:16"); // 08:43 + 8 + 25
+  });
+
+  it("restarts the chain on each day of a multi-day tour", () => {
+    const meta = buildStopRouteMeta(
+      [
+        { windowStart: "08:00", serviceMinutes: 10, dayIndex: 0 },
+        { serviceMinutes: 10, dayIndex: 0 },
+        { windowStart: "07:00", serviceMinutes: 10, dayIndex: 1 },
+        { serviceMinutes: 10, dayIndex: 1 },
+      ],
+      [
+        { distanceKm: 10, durationSec: 1800 }, // 1→2 = 30 min
+        { distanceKm: 300, durationSec: 6 * 3600 }, // overnight repositioning
+        { distanceKm: 12, durationSec: 1800 }, // 3→4 = 30 min
+      ],
+      0,
+    );
+    expect(meta.stops.map((s) => s.eta)).toEqual(["08:00", "08:40", "07:00", "07:40"]);
+    // The leg spanning the overnight rest is rest, not reported travel.
+    expect(meta.stops[2]?.legDurationSec).toBeNull();
+    expect(meta.stops.map((s) => s.dayIndex)).toEqual([0, 0, 1, 1]);
   });
 
   it("counts depot→first without return", () => {

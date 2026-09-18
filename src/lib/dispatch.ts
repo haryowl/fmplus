@@ -1,3 +1,4 @@
+import { todayServiceDate } from "./serviceDay";
 import { currentTenantKey, tenantHeaders } from "./tenant";
 
 export type DispatchStatus =
@@ -22,6 +23,10 @@ export type DispatchStop = {
   id: string;
   orderId?: string | null;
   sortOrder: number;
+  /** Day within a multi-day tour; 0 is the job's service date. */
+  dayIndex?: number;
+  /** Calendar date this stop falls on, resolved from the job span. */
+  serviceDate?: string;
   name: string;
   address: string;
   lat: number | null;
@@ -52,6 +57,15 @@ export type DispatchStop = {
   plannedEta?: string;
 };
 
+/** One calendar day of a multi-day tour, as seen from the driver's day view. */
+export type DispatchJobDayLeg = {
+  dayIndex: number;
+  dayNumber: number;
+  serviceDate: string;
+  stopCount: number;
+  remaining: number;
+};
+
 export type DispatchJob = {
   id: string;
   status: DispatchStatus;
@@ -68,8 +82,20 @@ export type DispatchJob = {
   arrivedAt: string | null;
   completedAt: string | null;
   fieldNote: string;
-  /** Plan / service day YYYY-MM-DD */
+  /** Plan / service day YYYY-MM-DD — day 1 of the tour. */
   serviceDate: string;
+  /** Last day of the tour; equals serviceDate for a single-day job. */
+  endDate?: string;
+  /** Calendar days the tour spans; 1 for a single-day job. */
+  dayCount?: number;
+  /** Which day of the span was requested, 1-based. Null when out of span. */
+  dayNumber?: number | null;
+  /** 0-based index of the requested day. */
+  dayIndex?: number;
+  /** Read-only workload per day of the tour; empty for a single-day job. */
+  dayLegs?: DispatchJobDayLeg[];
+  /** The date this payload was built for. */
+  requestedDate?: string;
   createdAt: string;
   updatedAt: string;
   routeAnchorMode?: "map" | "sequence" | null;
@@ -219,36 +245,17 @@ export function utilizationTone(pct: number | undefined): "ok" | "warn" | "over"
   return "ok";
 }
 
-/** Local calendar day as YYYY-MM-DD. */
-export function todayServiceDate(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-export function shiftServiceDate(ymd: string, deltaDays: number): string {
-  const [y, m, d] = ymd.split("-").map(Number);
-  const dt = new Date(y, m - 1, d);
-  dt.setDate(dt.getDate() + deltaDays);
-  const yy = dt.getFullYear();
-  const mm = String(dt.getMonth() + 1).padStart(2, "0");
-  const dd = String(dt.getDate()).padStart(2, "0");
-  return `${yy}-${mm}-${dd}`;
-}
-
-export function formatServiceDateLabel(ymd: string): string {
-  const [y, m, d] = ymd.split("-").map(Number);
-  if (!y || !m || !d) return ymd;
-  const dt = new Date(y, m - 1, d);
-  return dt.toLocaleDateString(undefined, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
+export {
+  dayDiff,
+  formatClockAt,
+  formatServiceDateLabel,
+  hmToMin,
+  minutesSinceServiceMidnight,
+  parseServiceDate,
+  serviceDateAt,
+  shiftServiceDate,
+  todayServiceDate,
+} from "./serviceDay";
 
 export async function fetchDispatchJobs(
   status: "open" | "all" | DispatchStatus = "open",
@@ -346,6 +353,31 @@ export async function assignOrdersToJob(
   return data.job;
 }
 
+/**
+ * Move a stop to another day of the same tour.
+ *
+ * Targeting the day after the current last one extends the tour, which is how a
+ * multi-day job is composed — there is no separate "add day" call.
+ */
+export async function moveStopToDay(
+  jobId: string,
+  stopId: string,
+  dayIndex: number,
+): Promise<DispatchJob> {
+  const res = await fetch(
+    `/api/dispatch/jobs/${encodeURIComponent(jobId)}/stops/${encodeURIComponent(stopId)}/day`,
+    {
+      method: "PATCH",
+      headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+      body: JSON.stringify({ dayIndex }),
+    },
+  );
+  const data = (await res.json().catch(() => ({}))) as { job?: DispatchJob; error?: string };
+  if (!res.ok) throw new Error(data.error || `Move stop ${res.status}`);
+  if (!data.job) throw new Error("Move stop failed");
+  return data.job;
+}
+
 /** Remove a stop from a job; linked order returns to the pending inbox. */
 export async function returnStopToInbox(jobId: string, stopId: string): Promise<DispatchJob> {
   const res = await fetch(
@@ -365,6 +397,7 @@ export async function returnStopToInbox(jobId: string, stopId: string): Promise<
 export async function optimizeJobStops(
   jobId: string,
   routing?: import("./routePlan").RoutingOptions | null,
+  dayIndex?: number | null,
 ): Promise<{
   job: DispatchJob;
   route: import("./routePlan").RouteGeometryResult | null;
@@ -373,6 +406,7 @@ export async function optimizeJobStops(
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify({
+      ...(dayIndex != null ? { dayIndex } : {}),
       routing: {
         avoidTolls: Boolean(routing?.avoidTolls),
         avoidMotorways: Boolean(routing?.avoidMotorways),
@@ -1081,6 +1115,8 @@ export type DispatchLiveStop = {
   jobId: string;
   orderId: string | null;
   externalRef: string;
+  dayIndex?: number;
+  serviceDate?: string;
   stopNumber: number;
   name: string;
   address: string;
@@ -1124,11 +1160,52 @@ export type DispatchLiveStop = {
   jobStatus?: string;
 };
 
+/** Where a driver's live position came from, and how much to trust it. */
+export type DispatchLivePosition = {
+  lat: number;
+  lon: number;
+  /** "phone" is the driver PWA; "armada" is the vehicle tracker. */
+  source: "phone" | "armada";
+  /** Only the phone stream carries a timestamp. */
+  recordedAt: string | null;
+  ageSec: number | null;
+  accuracyM: number | null;
+  /** Distance between phone and vehicle when both report. */
+  phoneSeparationKm: number | null;
+};
+
+/** One queued fix from the driver PWA. */
+export type DriverPingInput = {
+  lat: number;
+  lon: number;
+  accuracyM?: number | null;
+  speedMps?: number | null;
+  headingDeg?: number | null;
+  recordedAt: string;
+  jobId?: string | null;
+};
+
 export type DispatchLiveDriver = {
   jobId: string;
   jobTitle: string;
   jobStatus: string;
   serviceDate: string;
+  endDate?: string;
+  dayCount?: number;
+  /** 1-based day of the tour being viewed. */
+  dayNumber?: number;
+  dayIndex?: number;
+  /** Stops still open on an earlier leg of a multi-day tour. */
+  carryoverStopIds?: string[];
+  carryoverStops?: Array<{
+    stopId: string;
+    orderId: string | null;
+    name: string;
+    externalRef: string;
+    dayIndex: number;
+    serviceDate: string;
+    stopStatus: string;
+  }>;
   assignedFieldUserId: string | null;
   driverName: string;
   driverInitials: string;
@@ -1136,6 +1213,10 @@ export type DispatchLiveDriver = {
   armadaUserId: number | null;
   liveLat: number | null;
   liveLon: number | null;
+  /** Resolved live position with its provenance; null when nothing is reporting. */
+  livePosition?: DispatchLivePosition | null;
+  /** Minutes parked in one spot, from the phone trail. Null when unknown. */
+  dwellMin?: number | null;
   pctComplete: number;
   doneCount: number;
   stopCount: number;
@@ -1158,7 +1239,13 @@ export type DispatchLiveDriver = {
     remainingCount: number;
     remainingStopIds: string[];
     currentStopId: string | null;
-    startFrom: { lat: number; lon: number; source?: string; label?: string } | null;
+    startFrom: {
+      lat: number;
+      lon: number;
+      source?: "phone" | "armada" | "gps" | "depot" | string;
+      label?: string;
+      ageSec?: number | null;
+    } | null;
   };
   stops: DispatchLiveStop[];
 };

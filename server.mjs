@@ -67,10 +67,15 @@ const mime = {
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".map": "application/json",
+  ".png": "image/png",
   ".svg": "image/svg+xml",
   ".txt": "text/plain; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".woff2": "font/woff2",
 };
+
+/** Files that must never be cached long: unhashed names the browser re-checks. */
+const NO_STORE_FILES = new Set(["sw.js", "manifest.webmanifest"]);
 
 function send(res, status, headers, body) {
   res.writeHead(status, securityHeaders(headers));
@@ -97,7 +102,8 @@ function serveStatic(req, res) {
     return;
   }
   const ext = path.extname(target);
-  const immutable = target !== index && ext !== ".html";
+  const immutable =
+    target !== index && ext !== ".html" && !NO_STORE_FILES.has(path.basename(target));
   send(res, 200, {
     "Content-Type": mime[ext] || "application/octet-stream",
     "Cache-Control": immutable ? "public, max-age=31536000, immutable" : "no-store",
@@ -172,6 +178,19 @@ async function boot() {
       })
       .catch((err) => console.error("[maintenance-remind]", err instanceof Error ? err.message : err));
   }, remindMs).unref?.();
+
+  const pingPruneMs = Math.max(
+    60 * 60_000,
+    Number(process.env.DRIVER_PING_PRUNE_INTERVAL_MS) || 6 * 60 * 60_000,
+  );
+  setInterval(() => {
+    void import("./server/driver-pings.mjs")
+      .then((m) => m.pruneDriverPings())
+      .then((deleted) => {
+        if (deleted > 0) console.log(`[driver-pings] pruned=${deleted}`);
+      })
+      .catch((err) => console.error("[driver-pings]", err instanceof Error ? err.message : err));
+  }, pingPruneMs).unref?.();
 }
 
 void boot();

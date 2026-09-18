@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { DutyLocationCard } from "../components/DutyLocationCard";
 import { FieldDispatchMonthChart } from "../components/FieldDispatchMonthChart";
+import {
+  readLocationConsent,
+  registerDriverServiceWorker,
+  startDutyTracking,
+  stopDutyTracking,
+  writeLocationConsent,
+} from "../lib/driverLocation";
 import { prepareImageDataUrl } from "../lib/imageUpload";
 import {
   DISPATCH_STATUS_LABELS,
@@ -110,6 +118,7 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
   const [showSkipPanel, setShowSkipPanel] = useState(false);
   const [skipReason, setSkipReason] = useState("");
   const [skipDate, setSkipDate] = useState(() => shiftServiceDate(todayServiceDate(), 1));
+  const [locationConsent, setLocationConsent] = useState(readLocationConsent);
   const onErrorRef = useRef(onError);
   const onNoticeRef = useRef(onNotice);
   onErrorRef.current = onError;
@@ -138,6 +147,25 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
     if (!selected) return 0;
     return selected.stops.filter((s) => s.status !== "done" && s.status !== "skipped").length;
   }, [selected]);
+
+  const selectedDayCount = Math.max(1, Number(selected?.dayCount) || 1);
+  // The driver only ever works the leg the server handed back for this date.
+  const selectedDayDate = selected
+    ? (selected.dayLegs || []).find((l) => l.dayIndex === (selected.dayIndex ?? 0))?.serviceDate ||
+      selected.serviceDate
+    : "";
+  // Rescheduling inside a tour's own span is a move between days, not a detach.
+  const skipStaysInTour = Boolean(
+    selected &&
+      selectedDayCount > 1 &&
+      skipDate >= selected.serviceDate &&
+      skipDate <= (selected.endDate || selected.serviceDate),
+  );
+  // A tour is only finished when every day is, not just the leg on screen.
+  const tourStopsLeft =
+    selectedDayCount > 1
+      ? (selected?.dayLegs || []).reduce((n, leg) => n + leg.remaining, 0)
+      : stopsLeft;
 
   const loadJobs = useCallback(async () => {
     setLoading(true);
@@ -206,6 +234,25 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
       cancelled = true;
     };
   }, [selected?.id, activeStop?.id, activeStop?.notes]);
+
+  // A job the driver has actually started is what puts them "on duty".
+  const dutyJob = useMemo(
+    () => jobs.find((j) => j.status === "en_route" || j.status === "arrived") || null,
+    [jobs],
+  );
+  const dutyJobId = dutyJob?.id || null;
+
+  useEffect(() => {
+    if (locationConsent) void registerDriverServiceWorker();
+  }, [locationConsent]);
+
+  useEffect(() => {
+    if (locationConsent && dutyJobId) void startDutyTracking(dutyJobId);
+    else void stopDutyTracking();
+  }, [locationConsent, dutyJobId]);
+
+  // Leaving the driver app must not leave a watch running.
+  useEffect(() => () => void stopDutyTracking(), []);
 
   async function patchJob(id: string, body: Record<string, unknown>) {
     setBusy(true);
@@ -588,7 +635,11 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
           <section className="field-panel field-skip-panel">
             <header className="field-panel-head">
               <h3>Skip / Reschedule</h3>
-              <p className="muted">Same order number moves to the inbox for the date you choose.</p>
+              <p className="muted">
+                {skipStaysInTour
+                  ? "That date is part of this tour, so the order stays on this job and moves to that day."
+                  : "Same order number moves to the inbox for the date you choose."}
+              </p>
             </header>
             <label className="field-label">
               Reason (required)
@@ -660,7 +711,8 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                 {selected.utilizationPct ?? 0}%
               </p>
               <p className="muted">
-                {stopsLeft} order{stopsLeft === 1 ? "" : "s"} left · {dispatchVehicleLabel(selected)}
+                {stopsLeft} order{stopsLeft === 1 ? "" : "s"} left
+                {selectedDayCount > 1 ? " today" : ""} · {dispatchVehicleLabel(selected)}
               </p>
             </div>
             <span className={`field-status dispatch-status-${selected.status}`}>
@@ -669,11 +721,34 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
           </div>
           <div className="field-dispatch-job-title">
             <h2>{selected.title}</h2>
-            {selected.serviceDate ? (
+            {selectedDayCount > 1 ? (
+              <p className="field-day-badge">
+                Day {selected.dayNumber || 1} of {selectedDayCount}
+                {selectedDayDate ? ` · ${formatServiceDateLabel(selectedDayDate)}` : ""}
+              </p>
+            ) : selected.serviceDate ? (
               <p className="muted">{formatServiceDateLabel(selected.serviceDate)}</p>
             ) : null}
             {selected.notes ? <p className="muted">{selected.notes}</p> : null}
           </div>
+          {selectedDayCount > 1 ? (
+            <ul className="field-day-legs">
+              {(selected.dayLegs || []).map((leg) => (
+                <li
+                  key={leg.dayIndex}
+                  className={`field-day-leg${leg.dayIndex === (selected.dayIndex ?? 0) ? " is-active" : ""}`}
+                >
+                  <span>Day {leg.dayNumber}</span>
+                  <span className="muted">{formatServiceDateLabel(leg.serviceDate)}</span>
+                  <span className="muted">
+                    {leg.remaining > 0
+                      ? `${leg.remaining} of ${leg.stopCount} left`
+                      : `${leg.stopCount} done`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </section>
 
         {!locked ? (
@@ -697,7 +772,12 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                 <button
                   type="button"
                   className="btn"
-                  disabled={busy || stopsLeft > 0}
+                  disabled={busy || tourStopsLeft > 0}
+                  title={
+                    tourStopsLeft > 0 && selectedDayCount > 1
+                      ? "Later days of this tour still have open stops"
+                      : undefined
+                  }
                   onClick={() =>
                     void patchJob(selected.id, { status: "done", fieldNote }).then((j) => {
                       if (!j) return;
@@ -734,6 +814,17 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
               Save job note
             </button>
           </section>
+        ) : null}
+
+        {!locked ? (
+          <DutyLocationCard
+            consent={locationConsent}
+            onConsentChange={(on) => {
+              writeLocationConsent(on);
+              setLocationConsent(on);
+            }}
+            onDuty={dutyJobId === selected.id}
+          />
         ) : null}
 
         <section className="field-panel field-orders-panel">
@@ -919,6 +1010,15 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
       <p className="muted" style={{ margin: "0 0 8px" }}>
         {openJobs.length} open · {closedJobs.length} recent closed
       </p>
+
+      <DutyLocationCard
+        consent={locationConsent}
+        onConsentChange={(on) => {
+          writeLocationConsent(on);
+          setLocationConsent(on);
+        }}
+        onDuty={Boolean(dutyJobId)}
+      />
 
       {loading && jobs.length === 0 ? <p className="muted field-loading">Loading dispatch…</p> : null}
 

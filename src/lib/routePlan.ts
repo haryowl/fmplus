@@ -201,6 +201,8 @@ export type StopRouteMeta = {
   legDistanceKm: number | null;
   legDurationSec: number | null;
   eta: string | null;
+  /** Which day of a multi-day tour this belongs to; 0 for single-day jobs. */
+  dayIndex?: number;
 };
 
 export type SequenceRouteMeta = {
@@ -211,24 +213,51 @@ export type SequenceRouteMeta = {
   returnLeg: StopRouteMeta | null;
 };
 
+/** Earliest declared window start per day index; days with none fall back to 08:00. */
+function dayStartMinutes(
+  stops: Array<{ windowStart?: string; dayIndex?: number }>,
+): Map<number, number> {
+  const byDay = new Map<number, number>();
+  for (const stop of stops) {
+    const day = Math.max(0, Math.trunc(Number(stop.dayIndex) || 0));
+    const win = parseClockToMinutes(stop.windowStart);
+    if (win == null) continue;
+    const current = byDay.get(day);
+    if (current == null || win < current) byDay.set(day, win);
+  }
+  return byDay;
+}
+
 export function buildStopRouteMeta(
-  stops: Array<{ windowStart?: string; serviceMinutes?: number | null }>,
+  stops: Array<{ windowStart?: string; serviceMinutes?: number | null; dayIndex?: number }>,
   legs: RouteLeg[],
   defaultServiceMinutes = 0,
   opts?: { hasRouteStart?: boolean; hasRouteEnd?: boolean },
 ): SequenceRouteMeta {
   const hasRouteStart = Boolean(opts?.hasRouteStart);
   const hasRouteEnd = Boolean(opts?.hasRouteEnd);
-  const start =
+  const startsByDay = dayStartMinutes(stops);
+  const fallbackStart =
     stops.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ?? 8 * 60;
+  const firstDay = stops.length ? Math.max(0, Math.trunc(Number(stops[0].dayIndex) || 0)) : 0;
+  let currentDay = firstDay;
+  let start = startsByDay.get(firstDay) ?? fallbackStart;
   let elapsedMin = 0;
   const depotDepart = hasRouteStart ? formatClockMinutes(start) : null;
 
   const stopMetas: StopRouteMeta[] = stops.map((stop, i) => {
+    const day = Math.max(0, Math.trunc(Number(stop.dayIndex) || 0));
+    // A new day is a fresh chain: the overnight gap is rest, not driving.
+    const newDay = i > 0 && day !== currentDay;
+    if (newDay) {
+      currentDay = day;
+      start = startsByDay.get(day) ?? 8 * 60;
+      elapsedMin = 0;
+    }
     const inboundIdx = hasRouteStart ? i : i === 0 ? null : i - 1;
     let legDistanceKm: number | null = null;
     let legDurationSec: number | null = null;
-    if (inboundIdx != null) {
+    if (inboundIdx != null && !newDay) {
       const leg = legs[inboundIdx];
       legDistanceKm = leg?.distanceKm ?? null;
       legDurationSec = leg?.durationSec ?? null;
@@ -240,7 +269,7 @@ export function buildStopRouteMeta(
         ? Math.max(0, Number(stop.serviceMinutes))
         : Math.max(0, defaultServiceMinutes);
     elapsedMin += svc;
-    return { legDistanceKm, legDurationSec, eta };
+    return { legDistanceKm, legDurationSec, eta, dayIndex: day };
   });
 
   let returnLeg: StopRouteMeta | null = null;
@@ -252,6 +281,7 @@ export function buildStopRouteMeta(
       legDistanceKm: leg?.distanceKm ?? null,
       legDurationSec: leg?.durationSec ?? null,
       eta: formatClockMinutes(start + elapsedMin),
+      dayIndex: currentDay,
     };
   }
 

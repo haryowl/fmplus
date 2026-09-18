@@ -7,60 +7,24 @@ import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { buildStopRouteMeta } from "./stop-route-meta.mjs";
 import { haversineKm } from "./route-optimize.mjs";
 import { enrichLiveSnapshot } from "./dispatch-recovery.mjs";
+import { latestPingsByFieldUser } from "./driver-pings.mjs";
+import { dateForDayIndex, dayIndexForDate, spanDayCount } from "./dispatch-span.mjs";
+import {
+  formatClockAt as formatTimeWib,
+  formatServiceDate,
+  hmToMin,
+  nowClockHm as nowHmJakarta,
+  todayServiceDate as todayYmdJakarta,
+} from "./service-day.mjs";
 
 const DEFAULT_SERVICE_MIN = 8;
-
-function todayYmdJakarta() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const y = parts.find((p) => p.type === "year")?.value;
-  const m = parts.find((p) => p.type === "month")?.value;
-  const d = parts.find((p) => p.type === "day")?.value;
-  return `${y}-${m}-${d}`;
-}
-
-function nowHmJakarta() {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jakarta",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
-  const h = parts.find((p) => p.type === "hour")?.value || "00";
-  const m = parts.find((p) => p.type === "minute")?.value || "00";
-  return `${h}:${m}`;
-}
-
-function hmToMin(hm) {
-  const m = String(hm || "").trim().match(/^(\d{1,2}):(\d{2})/);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
-  return h * 60 + min;
-}
+/** Phone fixes newer than this win over the Armada vehicle position. */
+const PHONE_FIX_FRESH_SEC = 5 * 60;
 
 function coordOrNull(v) {
   if (v == null || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
-}
-
-function formatServiceDate(rowVal) {
-  if (rowVal == null || rowVal === "") return "";
-  // node-pg DATE → local midnight Date; avoid toISOString() day shift in UTC+.
-  if (rowVal instanceof Date) {
-    const y = rowVal.getFullYear();
-    const m = String(rowVal.getMonth() + 1).padStart(2, "0");
-    const d = String(rowVal.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(rowVal).trim());
-  return m ? m[1] : "";
 }
 
 function initialsFromName(name) {
@@ -115,22 +79,73 @@ function pickCompleteCoords(stop) {
   return { lat: null, lon: null, source: null };
 }
 
+/**
+ * Choose the position Live should trust.
+ *
+ * The driver handset wins while it is fresh: it reports the person doing the
+ * work, and it exists for jobs with no Armada vehicle at all. Armada has no
+ * timestamp in `usersstatus`, so it cannot be aged — it is the fallback once the
+ * phone has gone quiet, and `phoneSeparationKm` exposes any disagreement.
+ *
+ * @returns {{ lat: number, lon: number, source: "phone"|"armada", recordedAt: string|null,
+ *   ageSec: number|null, accuracyM: number|null, phoneSeparationKm: number|null } | null}
+ */
+export function pickLivePosition(phonePos, vehiclePos, freshSec = PHONE_FIX_FRESH_SEC) {
+  const phoneFresh =
+    phonePos &&
+    phonePos.lat != null &&
+    phonePos.lon != null &&
+    (phonePos.ageSec == null || phonePos.ageSec <= freshSec);
+
+  const separationKm =
+    phonePos && vehiclePos && phonePos.lat != null && vehiclePos.lat != null
+      ? Math.round(
+          haversineKm(phonePos.lat, phonePos.lon, vehiclePos.lat, vehiclePos.lon) * 100,
+        ) / 100
+      : null;
+
+  if (phoneFresh) {
+    return {
+      lat: phonePos.lat,
+      lon: phonePos.lon,
+      source: "phone",
+      recordedAt: phonePos.recordedAt || null,
+      ageSec: phonePos.ageSec ?? null,
+      accuracyM: phonePos.accuracyM ?? null,
+      phoneSeparationKm: separationKm,
+    };
+  }
+  if (vehiclePos && vehiclePos.lat != null && vehiclePos.lon != null) {
+    return {
+      lat: vehiclePos.lat,
+      lon: vehiclePos.lon,
+      source: "armada",
+      recordedAt: null,
+      ageSec: null,
+      accuracyM: null,
+      phoneSeparationKm: separationKm,
+    };
+  }
+  // A stale phone still beats nothing — the age tells the dispatcher how much to
+  // trust it, and stuck detection reads the same age.
+  if (phonePos && phonePos.lat != null && phonePos.lon != null) {
+    return {
+      lat: phonePos.lat,
+      lon: phonePos.lon,
+      source: "phone",
+      recordedAt: phonePos.recordedAt || null,
+      ageSec: phonePos.ageSec ?? null,
+      accuracyM: phonePos.accuracyM ?? null,
+      phoneSeparationKm: separationKm,
+    };
+  }
+  return null;
+}
+
 function distPlanKm(plannedLat, plannedLon, lat, lon) {
   if (plannedLat == null || plannedLon == null || lat == null || lon == null) return null;
   const km = haversineKm(plannedLat, plannedLon, lat, lon);
   return Number.isFinite(km) ? Math.round(km * 1000) / 1000 : null;
-}
-
-function formatTimeWib(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jakarta",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(d);
 }
 
 /**
@@ -178,6 +193,7 @@ async function attachPlannedEtaChain(driver) {
       driver.stops.map((s) => ({
         windowStart: s.windowStart,
         serviceMinutes: s.serviceMinutes,
+        dayIndex: s.dayIndex ?? 0,
       })),
       route.legs || [],
       DEFAULT_SERVICE_MIN,
@@ -223,7 +239,7 @@ export async function buildDispatchLiveSnapshot(opts) {
      FROM dispatch_jobs j
      LEFT JOIN field_users u ON u.id = j.assigned_field_user_id
      WHERE j.tenant_id = $1
-       AND j.service_date = $2::date
+       AND $2::date BETWEEN j.service_date AND COALESCE(j.end_date, j.service_date)
        AND j.status IN ('assigned', 'en_route', 'arrived', 'done')
      ORDER BY
        CASE j.status
@@ -283,6 +299,18 @@ export async function buildDispatchLiveSnapshot(opts) {
     posMap = new Map();
   }
 
+  // Driver phones are the primary source: a job with no Armada vehicle link is
+  // still fully trackable, and the handset is usually fresher than telematics.
+  let pingMap = new Map();
+  try {
+    pingMap = await latestPingsByFieldUser(
+      opts.tenantId,
+      jobsRes.rows.map((j) => j.assigned_field_user_id).filter(Boolean),
+    );
+  } catch {
+    pingMap = new Map();
+  }
+
   /** @type {any[]} */
   const drivers = [];
   /** @type {any[]} */
@@ -298,7 +326,24 @@ export async function buildDispatchLiveSnapshot(opts) {
   let completionN = 0;
 
   for (const job of jobsRes.rows) {
-    const rawStops = stopsByJob.get(job.id) || [];
+    const allStops = stopsByJob.get(job.id) || [];
+    const jobServiceDate = formatServiceDate(job.service_date) || serviceDate;
+    const jobEndDate = formatServiceDate(job.end_date) || jobServiceDate;
+    const dayCount = spanDayCount(jobServiceDate, jobEndDate);
+    // Which leg of the tour the dispatcher is looking at. Single-day jobs are
+    // always day 0, so nothing below changes for them.
+    const dayIndex = dayIndexForDate(jobServiceDate, jobEndDate, serviceDate) ?? 0;
+
+    // Live shows one day at a time; work left over from an earlier leg is surfaced
+    // separately rather than silently disappearing off the board.
+    const rawStops = allStops.filter((s) => (Number(s.day_index) || 0) === dayIndex);
+    const carryover = allStops.filter(
+      (s) =>
+        (Number(s.day_index) || 0) < dayIndex &&
+        s.status !== "done" &&
+        s.status !== "skipped",
+    );
+
     const currentIdx = rawStops.findIndex(
       (s) => s.status !== "done" && s.status !== "skipped",
     );
@@ -333,6 +378,8 @@ export async function buildDispatchLiveSnapshot(opts) {
         jobId: job.id,
         orderId: s.order_id || null,
         externalRef,
+        dayIndex: Number(s.day_index) || 0,
+        serviceDate: dateForDayIndex(jobServiceDate, s.day_index),
         stopNumber: idx + 1,
         name: label,
         address: s.address || "",
@@ -402,7 +449,12 @@ export async function buildDispatchLiveSnapshot(opts) {
       (job.armada_user_id ? `#${job.armada_user_id}` : "—");
 
     const uid = job.armada_user_id != null ? Number(job.armada_user_id) : null;
-    const livePos = uid != null && Number.isFinite(uid) ? posMap.get(uid) : null;
+    const vehiclePos = uid != null && Number.isFinite(uid) ? posMap.get(uid) : null;
+    const phonePos = job.assigned_field_user_id
+      ? pingMap.get(String(job.assigned_field_user_id))
+      : null;
+    const livePosition = pickLivePosition(phonePos, vehiclePos);
+    const livePos = livePosition;
     const currentStop = currentIdx >= 0 ? stopsOut[currentIdx] : null;
 
     const lastDone = [...stopsOut].reverse().find((s) => s.completedAt || s.arrivedAt);
@@ -442,14 +494,32 @@ export async function buildDispatchLiveSnapshot(opts) {
       jobId: job.id,
       jobTitle: job.title || "",
       jobStatus: job.status,
-      serviceDate: formatServiceDate(job.service_date) || serviceDate,
+      serviceDate: jobServiceDate,
+      endDate: jobEndDate,
+      dayCount,
+      dayNumber: dayIndex + 1,
+      dayIndex,
+      // Stop ids still open on an earlier leg of a multi-day tour.
+      carryoverStopIds: carryover.map((s) => s.id),
+      // Enough about each to raise an exception without reloading the tour.
+      carryoverStops: carryover.map((s) => ({
+        stopId: s.id,
+        orderId: s.order_id || null,
+        name: s.name || s.order_customer_name || orderRefByStop.get(s.id) || "stop",
+        externalRef: orderRefByStop.get(s.id) || s.order_external_ref || "",
+        dayIndex: Number(s.day_index) || 0,
+        serviceDate: dateForDayIndex(jobServiceDate, s.day_index),
+        stopStatus: s.status || "pending",
+      })),
       assignedFieldUserId: job.assigned_field_user_id || null,
       driverName,
       driverInitials: initialsFromName(driverName),
       vehicleLabel,
       armadaUserId: uid,
+      // Kept for existing callers (timeline, map markers) that read the flat pair.
       liveLat: livePos?.lat ?? null,
       liveLon: livePos?.lon ?? null,
+      livePosition,
       pctComplete,
       doneCount,
       stopCount: stopsOut.length,

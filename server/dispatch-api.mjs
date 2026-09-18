@@ -43,6 +43,20 @@ import { maybeNotifyDispatchJobAssigned } from "./dispatch-notify.mjs";
 import { csvBool, csvNum, parseCsv } from "./csv-parse.mjs";
 import { buildDispatchLiveSnapshot } from "./dispatch-live.mjs";
 import {
+  addDays,
+  dayDiff,
+  formatServiceDate,
+  parseServiceDate,
+  todayServiceDate as todayYmd,
+} from "./service-day.mjs";
+import {
+  clampDayIndex,
+  dayIndexForDate,
+  MAX_DAY_INDEX,
+  recomputeJobSpan,
+  spanDayCount,
+} from "./dispatch-span.mjs";
+import {
   ackOpsException,
   applyReplanSuggestions,
   buildReplanRemainingPreview,
@@ -283,47 +297,25 @@ async function listDepotsForTenant(tenantId) {
 }
 
 /** YYYY-MM-DD or null. */
-function parseServiceDate(v) {
-  const s = String(v || "").trim().slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-  const t = Date.parse(`${s}T12:00:00Z`);
-  if (!Number.isFinite(t)) return null;
-  return s;
-}
-
-function todayYmd() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function formatServiceDate(rowVal) {
-  if (rowVal == null || rowVal === "") return "";
-  // node-pg returns DATE as a Date at local midnight — never use toISOString()
-  // (UTC+7 would shift the calendar day back by one).
-  if (rowVal instanceof Date) {
-    const y = rowVal.getFullYear();
-    const m = String(rowVal.getMonth() + 1).padStart(2, "0");
-    const d = String(rowVal.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(rowVal).trim());
-  return m ? m[1] : "";
-}
-
 function coordOrNull(v) {
   if (v == null || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
 
-function publicStop(row) {
+/**
+ * @param row dispatch_stops row
+ * @param jobServiceDate the job's day 0, used to resolve the stop's calendar date
+ */
+function publicStop(row, jobServiceDate = "") {
+  const dayIndex = Number.isFinite(Number(row.day_index)) ? Number(row.day_index) : 0;
   return {
     id: row.id,
     orderId: row.order_id || null,
     sortOrder: Number(row.sort_order) || 0,
+    dayIndex,
+    // Resolved so clients never have to redo the offset arithmetic.
+    serviceDate: jobServiceDate ? addDays(jobServiceDate, dayIndex) : "",
     name: row.name || "",
     address: row.address || "",
     lat: row.lat == null ? null : Number(row.lat),
@@ -391,6 +383,10 @@ function publicJob(row, stops = []) {
     row.route_end_label || "Return",
   );
   const pathMode = String(row.route_anchor_mode || "").toLowerCase();
+  const serviceDate = formatServiceDate(row.service_date) || todayYmd();
+  // A NULL end_date is the single-day case, which is every pre-existing job.
+  const endDate = formatServiceDate(row.end_date) || serviceDate;
+  const dayCount = spanDayCount(serviceDate, endDate);
   return {
     id: row.id,
     status: row.status,
@@ -407,16 +403,38 @@ function publicJob(row, stops = []) {
     arrivedAt: row.arrived_at || null,
     completedAt: row.completed_at || null,
     fieldNote: row.field_note || "",
-    serviceDate: formatServiceDate(row.service_date) || todayYmd(),
+    serviceDate,
+    endDate,
+    dayCount,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     routeAnchorMode: pathMode === "map" || pathMode === "sequence" ? pathMode : null,
     routeStart,
     routeEnd,
     ...cap,
-    stops: stops.map(publicStop),
+    stops: stops.map((s) => publicStop(s, serviceDate)),
   };
 }
+
+/**
+ * Annotate a public job with which day of its span was asked for, so a client can
+ * say "Day 2 of 3" without recomputing the offset.
+ */
+function withRequestedDay(job, requestedDate) {
+  const offset = dayDiff(job.serviceDate, requestedDate);
+  const dayNumber =
+    offset != null && offset >= 0 && offset < job.dayCount ? offset + 1 : null;
+  return { ...job, requestedDate: requestedDate || job.serviceDate, dayNumber };
+}
+
+/** Only the stops belonging to one day of the tour. */
+function stopsForDay(stops, dayIndex) {
+  return (stops || []).filter((s) => {
+    const d = Number.isFinite(Number(s.day_index)) ? Number(s.day_index) : 0;
+    return d === dayIndex;
+  });
+}
+
 
 function publicOrder(row) {
   return {
@@ -562,6 +580,7 @@ function normalizeStops(raw) {
       proofRequired: s.proofRequired === true || s.proof_required === true,
       orderId: s.orderId || s.order_id || null,
       sortOrder: Number.isInteger(Number(s.sortOrder)) ? Number(s.sortOrder) : i,
+      dayIndex: clampDayIndex(s.dayIndex ?? s.day_index),
     });
   }
   return out;
@@ -591,8 +610,9 @@ async function replaceStops(jobId, stops) {
     const inserted = await dbQuery(
       `INSERT INTO dispatch_stops (
          job_id, sort_order, name, address, lat, lon, notes,
-         zone, volume_m3, weight_kg, window_start, window_end, service_minutes, proof_required, order_id
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         zone, volume_m3, weight_kg, window_start, window_end, service_minutes, proof_required, order_id,
+         day_index
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        RETURNING id`,
       [
         jobId,
@@ -610,6 +630,7 @@ async function replaceStops(jobId, stops) {
         s.serviceMinutes,
         s.proofRequired === true,
         s.orderId,
+        s.dayIndex ?? 0,
       ],
     );
     if (s.orderId) {
@@ -621,6 +642,7 @@ async function replaceStops(jobId, stops) {
       );
     }
   }
+  await recomputeJobSpan(jobId);
 }
 
 export async function saveDispatchStopPhoto(stopId, tenantId, { buffer, contentType, caption, fieldUserId }) {
@@ -1434,11 +1456,7 @@ export async function handleDispatchRequest(req, res) {
       const body = await readJson(req);
       const fromDate = parseServiceDate(body.fromDate || body.serviceDate) || todayYmd();
       let toDate = parseServiceDate(body.toDate);
-      if (!toDate) {
-        const d = new Date(`${fromDate}T12:00:00`);
-        d.setDate(d.getDate() + 1);
-        toDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      }
+      if (!toDate) toDate = addDays(fromDate, 1);
       if (toDate < fromDate) {
         json(res, 400, { error: "toDate cannot be before fromDate" });
         return true;
@@ -1779,7 +1797,11 @@ export async function handleDispatchRequest(req, res) {
       const status = String(url.searchParams.get("status") || "open").toLowerCase();
       const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
       const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 100));
-      const clauses = ["j.tenant_id = $1", "j.service_date = $2::date"];
+      // Span overlap, not equality: a 3-day tour must show on all three of its days.
+      const clauses = [
+        "j.tenant_id = $1",
+        "$2::date BETWEEN j.service_date AND COALESCE(j.end_date, j.service_date)",
+      ];
       const params = [dbTenant.id, date];
       if (status === "open") {
         clauses.push(`j.status IN ('draft','assigned','en_route','arrived')`);
@@ -1805,7 +1827,7 @@ export async function handleDispatchRequest(req, res) {
       const jobs = [];
       for (const row of rows.rows) {
         const stops = await loadStops(row.id);
-        jobs.push(publicJob(row, stops));
+        jobs.push(withRequestedDay(publicJob(row, stops), date));
       }
       json(res, 200, { jobs, serviceDate: date });
       return true;
@@ -1962,13 +1984,22 @@ export async function handleDispatchRequest(req, res) {
         const o = ord.rows[0];
         if (!o) continue;
         const jobDate = formatServiceDate(job.service_date);
+        const jobEndDate = formatServiceDate(job.end_date) || jobDate;
         const orderDate = formatServiceDate(o.service_date);
-        if (jobDate && orderDate && jobDate !== orderDate) continue;
+        // An order may join any day the tour covers, landing on that day's index.
+        // Single-day jobs behave exactly as before: only an exact date match.
+        let dayIndex = 0;
+        if (jobDate && orderDate) {
+          const offset = dayIndexForDate(jobDate, jobEndDate, orderDate);
+          if (offset == null) continue;
+          dayIndex = offset;
+        }
         const inserted = await dbQuery(
           `INSERT INTO dispatch_stops (
              job_id, sort_order, name, address, lat, lon, notes,
-             zone, volume_m3, weight_kg, window_start, window_end, service_minutes, proof_required, order_id
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+             zone, volume_m3, weight_kg, window_start, window_end, service_minutes, proof_required, order_id,
+             day_index
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
            RETURNING id`,
           [
             job.id,
@@ -1986,6 +2017,7 @@ export async function handleDispatchRequest(req, res) {
             o.service_minutes,
             o.proof_required === true,
             o.id,
+            dayIndex,
           ],
         );
         await dbQuery(
@@ -2004,6 +2036,7 @@ export async function handleDispatchRequest(req, res) {
       } else {
         await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [job.id]);
       }
+      await recomputeJobSpan(job.id);
       const row = await loadJob(dbTenant.id, job.id);
       json(res, 200, { job: publicJob(row, await loadStops(job.id)) });
       return true;
@@ -2054,7 +2087,16 @@ export async function handleDispatchRequest(req, res) {
           }
         }
       }
-      const stops = await loadStops(job.id);
+      // Each day of a multi-day tour optimizes on its own; day 1 stays put while
+      // day 2 is resequenced. Defaults to day 1, which is every single-day job.
+      const jobServiceDate = formatServiceDate(job.service_date);
+      const jobEndDate = formatServiceDate(job.end_date) || jobServiceDate;
+      const requestedDay =
+        body.dayIndex != null || body.day_index != null
+          ? clampDayIndex(body.dayIndex ?? body.day_index)
+          : (dayIndexForDate(jobServiceDate, jobEndDate, parseServiceDate(body.date)) ?? 0);
+      const allStops = await loadStops(job.id);
+      const stops = allStops.filter((s) => (Number(s.day_index) || 0) === requestedDay);
       const remaining = stops.filter((s) => {
         const st = String(s.status || "").toLowerCase();
         return st !== "done" && st !== "skipped";
@@ -2068,6 +2110,7 @@ export async function handleDispatchRequest(req, res) {
         });
         return true;
       }
+      const spanDays = spanDayCount(jobServiceDate, jobEndDate);
       const startAnchor = routeAnchorFromRow(
         job.route_start_lat,
         job.route_start_lon,
@@ -2083,6 +2126,7 @@ export async function handleDispatchRequest(req, res) {
       const optResult = await reorderRemainingStops(job.id, {
         start: useStart ? { lat: startAnchor.lat, lon: startAnchor.lon } : null,
         routing,
+        dayIndex: spanDays > 1 ? requestedDay : null,
       });
       const orderedStops = await loadStops(job.id);
       await refreshAndPersistPlannedEtas(job, orderedStops, { persist: true });
@@ -2212,6 +2256,8 @@ export async function handleDispatchRequest(req, res) {
             [existing.id],
           );
           await dbQuery(`DELETE FROM dispatch_stops WHERE job_id = $1`, [existing.id]);
+          // No stops left, so the tour collapses back to a single day.
+          await recomputeJobSpan(existing.id);
         }
       }
       if ("fieldNote" in body) {
@@ -2298,8 +2344,73 @@ export async function handleDispatchRequest(req, res) {
         return true;
       }
       json(res, 200, {
-        stop: publicStop(updated.rows[0]),
+        stop: publicStop(updated.rows[0], formatServiceDate(job.service_date)),
         job: publicJob(await loadJob(dbTenant.id, job.id), await loadStops(job.id)),
+      });
+      return true;
+    }
+
+    // Move a stop to another day of the same tour. Assigning a stop to the day
+    // after the current last one is how a tour grows: recomputeJobSpan extends
+    // end_date, so there is no separate "add day" write.
+    const stopDay =
+      /^\/api\/dispatch\/jobs\/([0-9a-f-]{36})\/stops\/([0-9a-f-]{36})\/day$/i.exec(url.pathname);
+    if (stopDay && req.method === "PATCH") {
+      const job = await loadJob(dbTenant.id, stopDay[1]);
+      if (!job) {
+        json(res, 404, { error: "Job not found" });
+        return true;
+      }
+      if (job.status === "done" || job.status === "cancelled") {
+        json(res, 400, { error: "Cannot change stops on a closed job" });
+        return true;
+      }
+      const body = await readJson(req);
+      const raw = Number(body.dayIndex ?? body.day_index);
+      if (!Number.isInteger(raw) || raw < 0 || raw > MAX_DAY_INDEX) {
+        json(res, 400, { error: `dayIndex must be an integer between 0 and ${MAX_DAY_INDEX}` });
+        return true;
+      }
+      const existing = await dbQuery(
+        `SELECT * FROM dispatch_stops WHERE id = $1 AND job_id = $2`,
+        [stopDay[2], job.id],
+      );
+      const stopRow = existing.rows[0];
+      if (!stopRow) {
+        json(res, 404, { error: "Stop not found" });
+        return true;
+      }
+      if (stopRow.status === "done" || stopRow.status === "skipped") {
+        json(res, 400, { error: "Completed stops cannot be moved to another day" });
+        return true;
+      }
+      const dayIndex = clampDayIndex(raw);
+      // A gap would leave an empty day in the middle of the tour.
+      const maxDay = await dbQuery(
+        `SELECT COALESCE(MAX(day_index), 0)::int AS m FROM dispatch_stops WHERE job_id = $1`,
+        [job.id],
+      );
+      if (dayIndex > (maxDay.rows[0]?.m ?? 0) + 1) {
+        json(res, 400, { error: "Days must be added one at a time — no empty day in between" });
+        return true;
+      }
+      const nextSort = await dbQuery(
+        `SELECT COALESCE(MAX(sort_order), -1)::int AS m
+         FROM dispatch_stops WHERE job_id = $1 AND day_index = $2 AND id <> $3`,
+        [job.id, dayIndex, stopRow.id],
+      );
+      const updated = await dbQuery(
+        `UPDATE dispatch_stops
+         SET day_index = $1, sort_order = $2, planned_eta = NULL
+         WHERE id = $3 AND job_id = $4
+         RETURNING *`,
+        [dayIndex, (nextSort.rows[0]?.m ?? -1) + 1, stopRow.id, job.id],
+      );
+      await recomputeJobSpan(job.id);
+      const row = await loadJob(dbTenant.id, job.id);
+      json(res, 200, {
+        stop: publicStop(updated.rows[0], formatServiceDate(row.service_date)),
+        job: publicJob(row, await loadStops(job.id)),
       });
       return true;
     }
@@ -2340,6 +2451,8 @@ export async function handleDispatchRequest(req, res) {
       }
       await dbQuery(`DELETE FROM dispatch_stops WHERE id = $1 AND job_id = $2`, [stop.id, job.id]);
       await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [job.id]);
+      // Returning the last stop of the final day shortens the tour.
+      await recomputeJobSpan(job.id);
       const row = await loadJob(dbTenant.id, job.id);
       json(res, 200, {
         job: publicJob(row, await loadStops(job.id)),
@@ -3039,6 +3152,8 @@ export async function handleDispatchRequest(req, res) {
           );
         }
         await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [jobId]);
+        // Auto-plan is single-day, so this normally collapses end_date to NULL.
+        await recomputeJobSpan(jobId);
         const startAnchor =
           route.routeStart ||
           (route.meta?.depot &&

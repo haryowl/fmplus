@@ -1,6 +1,12 @@
 /**
  * Dispatch Live progress timeline (Layer C) — pure layout helpers.
+ *
+ * Minutes on this timeline are measured from midnight of the anchor service day,
+ * not from midnight of whatever day a timestamp happens to fall in. That lets a
+ * stop finished at 00:20 the next morning plot to the right of its own day
+ * (minute 1460) and read as late rather than as 23 hours early.
  */
+import { dayDiff, minutesSinceServiceMidnight, todayServiceDate } from "./serviceDay";
 
 export type TimelineStopInput = {
   stopId: string;
@@ -16,6 +22,11 @@ export type TimelineStopInput = {
   timeLabel?: string;
   /** Planned road ETA HH:MM (Jobs chain); used until actual arrive/complete. */
   plannedEta?: string | null;
+  /**
+   * Calendar day this stop belongs to. On a multi-day tour it positions the stop's
+   * clock times relative to the anchor day; omit it for single-day work.
+   */
+  serviceDate?: string;
   role?: "stop" | "depot" | "return";
 };
 
@@ -96,28 +107,33 @@ export function hmToMin(hm: string | null | undefined): number | null {
   return h * 60 + min;
 }
 
+/**
+ * Wall clock for a timeline minute. Minutes past 1440 belong to the following
+ * calendar day, so they wrap for display: 1460 reads "00:20".
+ */
 export function minToHm(minute: number): string {
-  const m = Math.max(0, Math.min(24 * 60 - 1, Math.round(minute)));
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
+  const wrapped = ((Math.round(minute) % DAY_MIN) + DAY_MIN) % DAY_MIN;
+  const h = Math.floor(wrapped / 60);
+  const mm = wrapped % 60;
   return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
-/** Minutes of day in Asia/Jakarta for an ISO timestamp. */
-export function isoToJakartaMin(iso: string | null | undefined): number | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jakarta",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(d);
-  const h = Number(parts.find((p) => p.type === "hour")?.value);
-  const m = Number(parts.find((p) => p.type === "minute")?.value);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-  return h * 60 + m;
+/** Minutes in a day. Timeline minutes may exceed this for overnight work. */
+export const DAY_MIN = 24 * 60;
+
+/**
+ * Timeline position of an ISO timestamp.
+ *
+ * With an `anchorYmd` this returns minutes since midnight of that service day,
+ * which may exceed 1440. Without it, only the clock reading — which is what
+ * plotted a 00:20 completion at the far left of the day and reported it as ~1000
+ * minutes *ahead* of plan.
+ */
+export function isoToJakartaMin(
+  iso: string | null | undefined,
+  anchorYmd?: string | null,
+): number | null {
+  return minutesSinceServiceMidnight(iso, anchorYmd ?? null);
 }
 
 export function clampPct(n: number): number {
@@ -134,8 +150,12 @@ function padFloorHour(min: number): number {
   return Math.max(0, Math.floor(min / 60) * 60);
 }
 
+/**
+ * No 24-hour cap: a multi-day tour, or a day that ran past midnight, legitimately
+ * needs minutes beyond 1440.
+ */
 function padCeilHour(min: number): number {
-  return Math.min(24 * 60, Math.ceil(min / 60) * 60);
+  return Math.ceil(min / 60) * 60;
 }
 
 /**
@@ -188,10 +208,27 @@ function windowMid(start: number | null, end: number | null): number | null {
   return start ?? end;
 }
 
-function initialPlacement(stop: TimelineStopInput): RawPlacement {
-  const windowStartMin = hmToMin(stop.windowStart);
-  const windowEndMin = hmToMin(stop.windowEnd);
-  const actual = isoToJakartaMin(stop.completedAt) ?? isoToJakartaMin(stop.arrivedAt);
+/** Whole days between the anchor day and the stop's own day. */
+function dayOffsetOf(stop: TimelineStopInput, anchorYmd?: string | null): number {
+  if (!anchorYmd || !stop.serviceDate) return 0;
+  return dayDiff(anchorYmd, stop.serviceDate) ?? 0;
+}
+
+/** A clock reading on the stop's own day, expressed in anchored timeline minutes. */
+function onDay(
+  clockMin: number | null,
+  stop: TimelineStopInput,
+  anchorYmd?: string | null,
+): number | null {
+  if (clockMin == null) return null;
+  return clockMin + dayOffsetOf(stop, anchorYmd) * DAY_MIN;
+}
+
+function initialPlacement(stop: TimelineStopInput, anchorYmd?: string | null): RawPlacement {
+  const windowStartMin = onDay(hmToMin(stop.windowStart), stop, anchorYmd);
+  const windowEndMin = onDay(hmToMin(stop.windowEnd), stop, anchorYmd);
+  const actual =
+    isoToJakartaMin(stop.completedAt, anchorYmd) ?? isoToJakartaMin(stop.arrivedAt, anchorYmd);
   if (actual != null) {
     return {
       stop,
@@ -201,7 +238,7 @@ function initialPlacement(stop: TimelineStopInput): RawPlacement {
       windowEndMin,
     };
   }
-  const planned = hmToMin(stop.plannedEta);
+  const planned = onDay(hmToMin(stop.plannedEta), stop, anchorYmd);
   if (planned != null) {
     return {
       stop,
@@ -327,10 +364,11 @@ function expandStopsWithAnchors(driver: TimelineDriverInput): TimelineStopInput[
 
 export function buildTimelineRows(
   drivers: TimelineDriverInput[],
-  opts?: { nowMin?: number | null },
+  opts?: { nowMin?: number | null; anchorYmd?: string | null },
 ): { axis: TimelineAxis; rows: TimelineRow[] } {
+  const anchorYmd = opts?.anchorYmd ?? null;
   const rawRows = drivers.map((d) => {
-    const placements = expandStopsWithAnchors(d).map(initialPlacement);
+    const placements = expandStopsWithAnchors(d).map((s) => initialPlacement(s, anchorYmd));
     return { driver: d, placements };
   });
 
@@ -338,14 +376,16 @@ export function buildTimelineRows(
   for (const row of rawRows) {
     for (const p of row.placements) {
       if (p.minute != null) seedMinutes.push(p.minute);
-      const planned = hmToMin(p.stop.plannedEta);
+      const planned = onDay(hmToMin(p.stop.plannedEta), p.stop, anchorYmd);
       if (planned != null) seedMinutes.push(planned);
-      const actual = isoToJakartaMin(p.stop.completedAt) ?? isoToJakartaMin(p.stop.arrivedAt);
+      const actual =
+        isoToJakartaMin(p.stop.completedAt, anchorYmd) ??
+        isoToJakartaMin(p.stop.arrivedAt, anchorYmd);
       if (actual != null) seedMinutes.push(actual);
       if (p.windowStartMin != null) seedMinutes.push(p.windowStartMin);
       if (p.windowEndMin != null) seedMinutes.push(p.windowEndMin);
     }
-    const started = isoToJakartaMin(row.driver.startedAt);
+    const started = isoToJakartaMin(row.driver.startedAt, anchorYmd);
     if (started != null) seedMinutes.push(started);
   }
 
@@ -366,9 +406,10 @@ export function buildTimelineRows(
         role === "depot" || role === "return"
           ? p.stop.name
           : p.stop.externalRef || p.stop.name || `Stop ${p.stop.stopNumber}`;
-      const plannedMinute = hmToMin(p.stop.plannedEta);
+      const plannedMinute = onDay(hmToMin(p.stop.plannedEta), p.stop, anchorYmd);
       const actualMinute =
-        isoToJakartaMin(p.stop.completedAt) ?? isoToJakartaMin(p.stop.arrivedAt);
+        isoToJakartaMin(p.stop.completedAt, anchorYmd) ??
+        isoToJakartaMin(p.stop.arrivedAt, anchorYmd);
       const plannedTimeLabel = plannedMinute != null ? p.stop.plannedEta || minToHm(plannedMinute) : null;
       const actualTimeLabel =
         actualMinute != null
@@ -446,23 +487,15 @@ export function buildTimelineRows(
   return { axis, rows };
 }
 
-export function nowJakartaMin(): number {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jakarta",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
-  const h = Number(parts.find((p) => p.type === "hour")?.value);
-  const m = Number(parts.find((p) => p.type === "minute")?.value);
-  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+/**
+ * The now-marker, on the same anchored scale as the nodes. Viewing yesterday's
+ * board at 09:00 today puts the marker at 1980, correctly off the right edge
+ * rather than in the middle of yesterday's morning.
+ */
+export function nowJakartaMin(anchorYmd?: string | null): number {
+  return minutesSinceServiceMidnight(new Date(), anchorYmd ?? null) ?? 0;
 }
 
 export function todayJakartaYmd(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  return todayServiceDate();
 }

@@ -41,8 +41,11 @@ export function DispatchLiveTimeline({
   onSelectJob,
 }: Props) {
   const showNow = serviceDate === todayJakartaYmd();
+  // Everything is measured from midnight of the day being viewed, so work that
+  // spilled past midnight lands to the right of the day instead of wrapping.
   const { axis, rows } = buildTimelineRows(drivers, {
-    nowMin: showNow ? nowJakartaMin() : null,
+    nowMin: showNow ? nowJakartaMin(serviceDate) : null,
+    anchorYmd: serviceDate,
   });
   const visible = focusJobId ? rows.filter((r) => r.jobId === focusJobId) : rows;
   const scrollerRef = useRef<HTMLDivElement>(null);

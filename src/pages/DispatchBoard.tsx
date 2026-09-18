@@ -39,6 +39,7 @@ import {
   formatServiceDateLabel,
   generateDispatchOrdersFromTemplates,
   importDispatchOrders,
+  moveStopToDay,
   optimizeJobStops,
   patchDispatchDepot,
   patchDispatchJob,
@@ -142,6 +143,9 @@ export default function DispatchBoard() {
   const [planDate, setPlanDate] = useState(todayServiceDate);
   const [showNewJob, setShowNewJob] = useState(false);
   const [proofStopId, setProofStopId] = useState<string | null>(null);
+  const [activeDayIndex, setActiveDayIndex] = useState(0);
+  const [pendingDayIndex, setPendingDayIndex] = useState<number | null>(null);
+  const [moveStopId, setMoveStopId] = useState<string | null>(null);
   const [proofPhotos, setProofPhotos] = useState<DispatchPhoto[]>([]);
 
   const [orderForm, setOrderForm] = useState(emptyOrderForm);
@@ -243,6 +247,37 @@ export default function DispatchBoard() {
       hasRouteEnd,
     });
   }, [selected, jobRoute, planServiceMin]);
+
+  const jobDayCount = Math.max(1, Number(selected?.dayCount) || 1);
+  // "Add day" opens an empty tab one past the span; the day only becomes real once
+  // a stop lands on it and the server extends end_date.
+  const visibleDayCount = Math.max(jobDayCount, pendingDayIndex != null ? pendingDayIndex + 1 : 1);
+  // Board plans one day of a tour at a time; single-day jobs only ever see day 0.
+  const activeDay = Math.min(activeDayIndex, visibleDayCount - 1);
+  const dayStops = useMemo(
+    () =>
+      (selected?.stops || []).filter((s) => (Number(s.dayIndex) || 0) === activeDay),
+    [selected, activeDay],
+  );
+  const stopMetaById = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof buildStopRouteMeta>["stops"][number]>();
+    (selected?.stops || []).forEach((stop, i) => {
+      const meta = stopRouteMeta.stops[i];
+      if (meta) map.set(stop.id, meta);
+    });
+    return map;
+  }, [selected, stopRouteMeta]);
+  const activeDayDate = useMemo(
+    () => (selected ? shiftServiceDate(selected.serviceDate, activeDay) : ""),
+    [selected, activeDay],
+  );
+
+  // Switching jobs starts over on Day 1 and forgets any unused extra day.
+  useEffect(() => {
+    setActiveDayIndex(0);
+    setPendingDayIndex(null);
+    setMoveStopId(null);
+  }, [selectedId]);
 
   const poiOptions = useMemo(
     () => listPoiDropdownOptions(poiCatalog, poiFilter),
@@ -1197,21 +1232,26 @@ export default function DispatchBoard() {
     setBusy(true);
     setError("");
     try {
-      const { job, route } = await optimizeJobStops(selected.id, {
-        avoidTolls,
-        avoidMotorways,
-        avoidFerries,
-        respectGanjilGenap,
-        plateParity:
-          plateParity !== "unknown"
-            ? plateParity
-            : (vehicleCaps.find((c) => c.armadaUserId === selected.armadaUserId)?.plateParity as
-                | "odd"
-                | "even"
-                | "unknown"
-                | "exempt"
-                | undefined) || "unknown",
-      });
+      const { job, route } = await optimizeJobStops(
+        selected.id,
+        {
+          avoidTolls,
+          avoidMotorways,
+          avoidFerries,
+          respectGanjilGenap,
+          plateParity:
+            plateParity !== "unknown"
+              ? plateParity
+              : (vehicleCaps.find((c) => c.armadaUserId === selected.armadaUserId)?.plateParity as
+                  | "odd"
+                  | "even"
+                  | "unknown"
+                  | "exempt"
+                  | undefined) || "unknown",
+        },
+        // Each day of a tour resequences on its own; day 1 is the single-day case.
+        jobDayCount > 1 ? activeDay : null,
+      );
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
       if (route && route.distanceKm && route.distanceKm > 0) {
         setJobRoute(route);
@@ -1223,6 +1263,23 @@ export default function DispatchBoard() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Optimize failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleMoveStopToDay(stopId: string, dayIndex: number) {
+    if (!selected) return;
+    setBusy(true);
+    setError("");
+    try {
+      const job = await moveStopToDay(selected.id, stopId, dayIndex);
+      setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
+      setMoveStopId(null);
+      setPendingDayIndex(null);
+      setActiveDayIndex(dayIndex);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not move stop to that day");
     } finally {
       setBusy(false);
     }
@@ -2797,6 +2854,15 @@ export default function DispatchBoard() {
                   <span>{dispatchAssigneeLabel(selected)}</span>
                   <span aria-hidden>·</span>
                   <span>{dispatchVehicleLabel(selected)}</span>
+                  {jobDayCount > 1 ? (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span>
+                        {jobDayCount}-day tour · {formatServiceDateLabel(selected.serviceDate)} →{" "}
+                        {formatServiceDateLabel(selected.endDate || selected.serviceDate)}
+                      </span>
+                    </>
+                  ) : null}
                 </p>
 
                 <div
@@ -3037,19 +3103,71 @@ export default function DispatchBoard() {
                   </div>
                 ) : null}
                 <button type="button" className="btn-secondary dispatch-opt-btn" disabled={busy} onClick={() => void handleOptimize()}>
-                  Optimize stop order
+                  {visibleDayCount > 1 ? `Optimize day ${activeDay + 1} order` : "Optimize stop order"}
                 </button>
 
                 <div className="dispatch-sequence">
                   <div className="dispatch-sequence-head">
                     <p className="dispatch-eyebrow">Sequence</p>
                     <span>
-                      {selected.stops.length} stops
+                      {visibleDayCount > 1
+                        ? `${dayStops.length} of ${selected.stops.length} stops`
+                        : `${selected.stops.length} stops`}
                       {jobRoute?.distanceKm != null ? ` · ${jobRoute.distanceKm} km` : ""}
                     </span>
                   </div>
-                  {selected.stops.length === 0 && !selected.routeStart ? (
-                    <p className="dispatch-search-hint">Assign orders from the pool.</p>
+                  <div className="dispatch-day-tabs">
+                    {Array.from({ length: visibleDayCount }, (_, d) => {
+                      const count = selected.stops.filter(
+                        (s) => (Number(s.dayIndex) || 0) === d,
+                      ).length;
+                      return (
+                        <button
+                          key={d}
+                          type="button"
+                          className={`dispatch-day-tab${d === activeDay ? " is-active" : ""}`}
+                          onClick={() => setActiveDayIndex(d)}
+                          title={formatServiceDateLabel(shiftServiceDate(selected.serviceDate, d))}
+                        >
+                          Day {d + 1}
+                          <span className="dispatch-day-tab-count">{count}</span>
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className="btn-secondary dispatch-day-add"
+                      disabled={
+                        busy ||
+                        selected.status === "done" ||
+                        selected.status === "cancelled" ||
+                        pendingDayIndex != null ||
+                        selected.stops.length === 0
+                      }
+                      title="Open an empty next day, then move a stop onto it"
+                      onClick={() => {
+                        setPendingDayIndex(jobDayCount);
+                        setActiveDayIndex(jobDayCount);
+                      }}
+                    >
+                      + Add day
+                    </button>
+                  </div>
+                  {visibleDayCount > 1 ? (
+                    <p className="dispatch-day-hint">
+                      Day {activeDay + 1} of {visibleDayCount} ·{" "}
+                      {formatServiceDateLabel(activeDayDate)}
+                      {pendingDayIndex != null && activeDay === pendingDayIndex
+                        ? " · empty until a stop moves here"
+                        : ""}
+                    </p>
+                  ) : null}
+                  {dayStops.length === 0 && !selected.routeStart ? (
+                    <p className="dispatch-search-hint">
+                      {selected.stops.length === 0
+                        ? "Assign orders from the pool."
+                        : "No stops on this day yet — move one here from another day."}
+                    </p>
                   ) : (
                     <ol className="dispatch-stop-list">
                       {selected.routeAnchorMode === "sequence" && selected.routeStart ? (
@@ -3066,8 +3184,8 @@ export default function DispatchBoard() {
                           </div>
                         </li>
                       ) : null}
-                      {selected.stops.map((stop, i) => {
-                        const meta = stopRouteMeta.stops[i];
+                      {dayStops.map((stop, i) => {
+                        const meta = stopMetaById.get(stop.id);
                         const showInbound =
                           meta &&
                           (meta.legDistanceKm != null ||
@@ -3121,17 +3239,60 @@ export default function DispatchBoard() {
                                 POD
                               </button>
                               {stop.status !== "done" && stop.status !== "skipped" ? (
-                                <button
-                                  type="button"
-                                  className="btn-secondary dispatch-return-btn"
-                                  disabled={
-                                    busy || selected.status === "done" || selected.status === "cancelled"
-                                  }
-                                  title="Remove from this job and return order to inbox"
-                                  onClick={() => void handleReturnStop(stop.id, stop.name)}
-                                >
-                                  To inbox
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn-secondary dispatch-return-btn"
+                                    disabled={
+                                      busy ||
+                                      selected.status === "done" ||
+                                      selected.status === "cancelled"
+                                    }
+                                    title="Remove from this job and return order to inbox"
+                                    onClick={() => void handleReturnStop(stop.id, stop.name)}
+                                  >
+                                    To inbox
+                                  </button>
+                                  {moveStopId === stop.id ? (
+                                    <select
+                                      className="dispatch-day-move"
+                                      aria-label="Move stop to day"
+                                      value={activeDay}
+                                      disabled={busy}
+                                      onChange={(e) => {
+                                        const next = Number(e.target.value);
+                                        if (!Number.isInteger(next) || next === activeDay) {
+                                          setMoveStopId(null);
+                                          return;
+                                        }
+                                        void handleMoveStopToDay(stop.id, next);
+                                      }}
+                                    >
+                                      {Array.from(
+                                        { length: Math.max(visibleDayCount, jobDayCount + 1) },
+                                        (_, d) => (
+                                          <option key={d} value={d}>
+                                            Day {d + 1}
+                                          </option>
+                                        ),
+                                      )}
+                                    </select>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="btn-secondary dispatch-day-btn"
+                                      disabled={
+                                        busy ||
+                                        selected.status === "done" ||
+                                        selected.status === "cancelled"
+                                      }
+                                      title="Move this stop to another day of the tour"
+                                      onClick={() => setMoveStopId(stop.id)}
+                                    >
+                                      Day…
+                                    </button>
+                                  )}
+                                </>
                               ) : null}
                             </div>
                           </li>

@@ -7,11 +7,23 @@ import { optimizeOpenTour, haversineKm } from "./route-optimize.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { buildStopRouteMeta } from "./stop-route-meta.mjs";
+import { recentPingTrail } from "./driver-pings.mjs";
+import { dayIndexForDate, recomputeJobSpan } from "./dispatch-span.mjs";
+import {
+  formatClockAt as formatTimeWib,
+  hmToMin,
+  minutesSinceServiceMidnight,
+  nowClockHm as nowHmJakarta,
+  todayServiceDate as todayYmdJakarta,
+} from "./service-day.mjs";
 
 const DEFAULT_SERVICE_MIN = 8;
 const AT_RISK_BUFFER_MIN = 15;
 const STUCK_GPS_STALE_MIN = 20;
 const STUCK_NO_PROGRESS_MIN = 45;
+/** Same-place dwell that counts as stuck once a driver is en route. */
+const STUCK_DWELL_MIN = 45;
+const STUCK_DWELL_RADIUS_KM = 0.15;
 
 export function isFrozenStopStatus(status) {
   const st = String(status || "").toLowerCase();
@@ -21,52 +33,6 @@ export function isFrozenStopStatus(status) {
 export function isRemainingStopStatus(status) {
   const st = String(status || "").toLowerCase();
   return st === "pending" || st === "arrived";
-}
-
-function hmToMin(hm) {
-  const m = String(hm || "").trim().match(/^(\d{1,2}):(\d{2})/);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
-  return h * 60 + min;
-}
-
-function todayYmdJakarta() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const y = parts.find((p) => p.type === "year")?.value;
-  const m = parts.find((p) => p.type === "month")?.value;
-  const d = parts.find((p) => p.type === "day")?.value;
-  return `${y}-${m}-${d}`;
-}
-
-function nowHmJakarta() {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jakarta",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
-  const h = parts.find((p) => p.type === "hour")?.value || "00";
-  const m = parts.find((p) => p.type === "minute")?.value || "00";
-  return `${h}:${m}`;
-}
-
-function formatTimeWib(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jakarta",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(d);
 }
 
 function minutesSince(iso) {
@@ -85,13 +51,28 @@ function coordOrNull(v) {
 /**
  * Reorder only remaining (pending/arrived) stops with coords.
  * Frozen stops keep relative prefix order and lower sort_order indices.
+ *
+ * Scoped to a single `dayIndex` when given: resequencing day 2 must not touch
+ * day 1, and a day's sort_order values are only meaningful within that day.
  * @returns {{ changed: boolean, orderIds: string[], matrixEngine?: string }}
  */
 export async function reorderRemainingStops(jobId, opts = {}) {
-  const stopsRes = await dbQuery(
-    `SELECT * FROM dispatch_stops WHERE job_id = $1 ORDER BY sort_order ASC, created_at ASC`,
-    [jobId],
-  );
+  const dayIndex =
+    opts.dayIndex == null || !Number.isFinite(Number(opts.dayIndex))
+      ? null
+      : Math.max(0, Math.trunc(Number(opts.dayIndex)));
+  const stopsRes =
+    dayIndex == null
+      ? await dbQuery(
+          `SELECT * FROM dispatch_stops WHERE job_id = $1
+           ORDER BY day_index ASC, sort_order ASC, created_at ASC`,
+          [jobId],
+        )
+      : await dbQuery(
+          `SELECT * FROM dispatch_stops WHERE job_id = $1 AND day_index = $2
+           ORDER BY sort_order ASC, created_at ASC`,
+          [jobId, dayIndex],
+        );
   const stops = stopsRes.rows;
   const frozen = stops.filter((s) => isFrozenStopStatus(s.status));
   const remaining = stops.filter((s) => !isFrozenStopStatus(s.status));
@@ -223,6 +204,7 @@ export async function refreshAndPersistPlannedEtas(job, stops, { persist = true 
       stops.map((s) => ({
         windowStart: s.window_start || s.windowStart,
         serviceMinutes: s.service_minutes ?? s.serviceMinutes,
+        dayIndex: s.day_index ?? s.dayIndex ?? 0,
       })),
       route.legs || [],
       DEFAULT_SERVICE_MIN,
@@ -251,16 +233,58 @@ function remainingWorkFromDriver(driver) {
   const remaining = (driver.stops || []).filter(
     (s) => s.stopStatus === "pending" || s.stopStatus === "arrived",
   );
+  // Replanning starts from wherever the driver actually is. The phone stream
+  // means this now works for jobs with no Armada vehicle at all; the depot is
+  // only the fallback when there is no position of any kind.
+  const live = driver.livePosition || null;
+  const startFrom = live
+    ? {
+        lat: live.lat,
+        lon: live.lon,
+        source: live.source === "phone" ? "phone" : "armada",
+        ageSec: live.ageSec ?? null,
+      }
+    : driver.liveLat != null && driver.liveLon != null
+      ? { lat: driver.liveLat, lon: driver.liveLon, source: "gps" }
+      : driver.routeStart
+        ? { ...driver.routeStart, source: "depot" }
+        : null;
   return {
     remainingCount: remaining.length,
     remainingStopIds: remaining.map((s) => s.stopId),
     currentStopId: remaining[0]?.stopId || null,
-    startFrom: driver.liveLat != null && driver.liveLon != null
-      ? { lat: driver.liveLat, lon: driver.liveLon, source: "gps" }
-      : driver.routeStart
-        ? { ...driver.routeStart, source: "depot" }
-        : null,
+    startFrom,
   };
+}
+
+/**
+ * Minutes the driver has been sitting within `radiusKm` of their newest fix.
+ *
+ * Walks back from the newest fix and stops at the first one outside the radius,
+ * so a driver who parked, drove off, and parked again only reports the current
+ * stay. Returns null when the trail is too short to say anything.
+ *
+ * @param {Array<{ lat: number, lon: number, recordedAt: string }>} trail oldest first
+ */
+export function computeDwellMinutes(trail, radiusKm = STUCK_DWELL_RADIUS_KM) {
+  const fixes = (trail || []).filter(
+    (p) => p && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lon)),
+  );
+  if (fixes.length < 2) return null;
+  const newest = fixes[fixes.length - 1];
+  const newestAt = new Date(newest.recordedAt).getTime();
+  if (Number.isNaN(newestAt)) return null;
+  let oldestAt = newestAt;
+  for (let i = fixes.length - 2; i >= 0; i--) {
+    const p = fixes[i];
+    const km = haversineKm(Number(newest.lat), Number(newest.lon), Number(p.lat), Number(p.lon));
+    if (!Number.isFinite(km) || km > radiusKm) break;
+    const t = new Date(p.recordedAt).getTime();
+    if (Number.isNaN(t)) break;
+    oldestAt = t;
+  }
+  const min = (newestAt - oldestAt) / 60_000;
+  return min > 0 ? Math.round(min * 10) / 10 : 0;
 }
 
 /**
@@ -279,13 +303,58 @@ export function detectExceptionsFromSnapshot(snapshot) {
       String(driver.jobStatus || ""),
     );
 
-    // stuck: stale GPS or long no progress
+    // stuck: judged on the real position stream rather than time-since-start.
+    // One exception per driver, most specific reason first, so a genuinely stalled
+    // van does not produce four rows saying the same thing.
     if (jobActive && driver.jobStatus !== "assigned") {
       const minsSinceStart = minutesSince(driver.startedAt);
       const hasProgress = (driver.doneCount || 0) > 0;
-      const liveOk = driver.liveLat != null && driver.liveLon != null;
-      // Without live age, treat missing GPS on en_route as stuck after threshold from start
-      if (
+      const live = driver.livePosition || null;
+      const nextStopId =
+        driver.stops?.find((s) => s.stopStatus === "pending" || s.stopStatus === "arrived")
+          ?.stopId || null;
+      // Only the phone stream carries an age; Armada usersstatus has no timestamp.
+      const pingAgeMin =
+        live?.source === "phone" && live.ageSec != null ? live.ageSec / 60 : null;
+      const dwellMin = driver.dwellMin == null ? null : Number(driver.dwellMin);
+
+      if (pingAgeMin != null && pingAgeMin >= STUCK_GPS_STALE_MIN) {
+        out.push({
+          kind: "stuck",
+          severity: "warn",
+          jobId: driver.jobId,
+          stopId: nextStopId,
+          orderId: null,
+          title: `${driver.driverName} — phone went quiet`,
+          detail: `Last position from the driver phone was ${Math.round(pingAgeMin)} min ago`,
+          fingerprint: `stuck:stalegps:${driver.jobId}:${serviceDate}`,
+          payload: { minutes: Math.round(pingAgeMin), reason: "stale_gps", source: "phone" },
+        });
+      } else if (!live && minsSinceStart != null && minsSinceStart >= STUCK_GPS_STALE_MIN) {
+        out.push({
+          kind: "stuck",
+          severity: "info",
+          jobId: driver.jobId,
+          stopId: null,
+          orderId: null,
+          title: `${driver.driverName} — no GPS`,
+          detail: `No position from the driver phone or vehicle for ${Math.round(minsSinceStart)} min`,
+          fingerprint: `stuck:nogps:${driver.jobId}:${serviceDate}`,
+          payload: { minutes: Math.round(minsSinceStart), reason: "no_gps" },
+        });
+      } else if (dwellMin != null && dwellMin >= STUCK_DWELL_MIN) {
+        out.push({
+          kind: "stuck",
+          severity: "warn",
+          jobId: driver.jobId,
+          stopId: nextStopId,
+          orderId: null,
+          title: `${driver.driverName} — not moving`,
+          detail: `Parked within ${Math.round(STUCK_DWELL_RADIUS_KM * 1000)} m for ${Math.round(dwellMin)} min`,
+          fingerprint: `stuck:dwell:${driver.jobId}:${serviceDate}`,
+          payload: { minutes: Math.round(dwellMin), reason: "dwell" },
+        });
+      } else if (
         !hasProgress &&
         minsSinceStart != null &&
         minsSinceStart >= STUCK_NO_PROGRESS_MIN
@@ -294,34 +363,39 @@ export function detectExceptionsFromSnapshot(snapshot) {
           kind: "stuck",
           severity: "warn",
           jobId: driver.jobId,
-          stopId: driver.stops?.find((s) => s.stopStatus === "pending" || s.stopStatus === "arrived")
-            ?.stopId || null,
+          stopId: nextStopId,
           orderId: null,
           title: `${driver.driverName} — no progress`,
           detail: `En route ${Math.round(minsSinceStart)} min with no completed stops`,
           fingerprint: `stuck:noprogress:${driver.jobId}:${serviceDate}`,
           payload: { minutes: Math.round(minsSinceStart), reason: "no_progress" },
         });
-      } else if (
-        !liveOk &&
-        minsSinceStart != null &&
-        minsSinceStart >= STUCK_GPS_STALE_MIN
-      ) {
-        out.push({
-          kind: "stuck",
-          severity: "info",
-          jobId: driver.jobId,
-          stopId: null,
-          orderId: null,
-          title: `${driver.driverName} — no GPS`,
-          detail: `No live vehicle position for ${Math.round(minsSinceStart)} min`,
-          fingerprint: `stuck:nogps:${driver.jobId}:${serviceDate}`,
-          payload: { minutes: Math.round(minsSinceStart), reason: "no_gps" },
-        });
       }
     }
 
+    // Work left open on an earlier leg of a multi-day tour is off today's board,
+    // so it is raised here rather than quietly disappearing until the tour ends.
+    for (const carry of driver.carryoverStops || []) {
+      const carryDay = carry.serviceDate || serviceDate;
+      out.push({
+        kind: "window_at_risk",
+        severity: "critical",
+        jobId: driver.jobId,
+        stopId: carry.stopId,
+        orderId: carry.orderId || null,
+        title: `Carried over: ${carry.name || carry.externalRef || "stop"}`,
+        detail: `Still open from day ${(carry.dayIndex || 0) + 1} of this tour (${carryDay})`,
+        fingerprint: `window_at_risk:carryover:${carry.stopId}:${carryDay}`,
+        payload: { reason: "carryover", fromDayIndex: carry.dayIndex || 0, fromDate: carryDay },
+      });
+    }
+
     for (const stop of driver.stops || []) {
+      // A stop-level exception is fingerprinted on the stop's *own* day, not the
+      // day being viewed, so a stop carried over from an earlier leg of a tour
+      // cannot open a second exception for the same problem.
+      const stopDay = stop.serviceDate || serviceDate;
+
       if (stop.stopStatus === "skipped") {
         out.push({
           kind: "failed_skip",
@@ -333,7 +407,7 @@ export function detectExceptionsFromSnapshot(snapshot) {
           detail: stop.skipReason
             ? `Skip reason: ${stop.skipReason}`
             : "Stop skipped — needs same-day recovery",
-          fingerprint: `failed_skip:${stop.stopId}:${serviceDate}`,
+          fingerprint: `failed_skip:${stop.stopId}:${stopDay}`,
           payload: { skipReason: stop.skipReason || "" },
         });
         continue;
@@ -383,7 +457,7 @@ export function detectExceptionsFromSnapshot(snapshot) {
               : reason === "past_window"
                 ? `Past window end ${stop.windowEnd || "(day)"}`
                 : `Window ends ${stop.windowEnd} — within ${AT_RISK_BUFFER_MIN} min`,
-          fingerprint: `window_at_risk:${stop.stopId}:${serviceDate}`,
+          fingerprint: `window_at_risk:${stop.stopId}:${stopDay}`,
           payload: {
             reason,
             windowEnd: stop.windowEnd || "",
@@ -544,7 +618,7 @@ export async function buildReplanRemainingPreview(tenantId, opts = {}) {
      FROM dispatch_jobs j
      LEFT JOIN field_users u ON u.id = j.assigned_field_user_id
      WHERE j.tenant_id = $1
-       AND j.service_date = $2::date
+       AND $2::date BETWEEN j.service_date AND COALESCE(j.end_date, j.service_date)
        AND j.status IN ('assigned', 'en_route', 'arrived')
        ${jobFilter.length ? `AND j.id = ANY($3::uuid[])` : ""}
      ORDER BY j.updated_at DESC
@@ -778,9 +852,20 @@ export async function applyReplanSuggestions(tenantId, opts = {}) {
           skipped.push({ id: s.id, reason: "not_safe_auto" });
           continue;
         }
+        const jobBefore = (
+          await dbQuery(`SELECT * FROM dispatch_jobs WHERE id = $1 AND tenant_id = $2`, [
+            s.jobId,
+            tenantId,
+          ])
+        ).rows[0];
+        // Recovery only resequences the day in trouble; earlier legs are history.
+        const recoverDay = jobBefore
+          ? dayIndexForDate(jobBefore.service_date, jobBefore.end_date, serviceDate)
+          : null;
         const result = await reorderRemainingStops(s.jobId, {
           start: s.startFrom,
           routing: opts.routing,
+          dayIndex: recoverDay,
         });
         const jobRow = (
           await dbQuery(`SELECT * FROM dispatch_jobs WHERE id = $1 AND tenant_id = $2`, [
@@ -791,7 +876,8 @@ export async function applyReplanSuggestions(tenantId, opts = {}) {
         if (jobRow) {
           const stops = (
             await dbQuery(
-              `SELECT * FROM dispatch_stops WHERE job_id = $1 ORDER BY sort_order ASC`,
+              `SELECT * FROM dispatch_stops WHERE job_id = $1
+               ORDER BY day_index ASC, sort_order ASC`,
               [s.jobId],
             )
           ).rows;
@@ -830,6 +916,7 @@ export async function applyReplanSuggestions(tenantId, opts = {}) {
           );
         }
         await dbQuery(`DELETE FROM dispatch_stops WHERE id = $1`, [stop.id]);
+        await recomputeJobSpan(s.jobId);
         await writeReplanAudit(tenantId, serviceDate, {
           actor,
           action: "return_stop",
@@ -865,16 +952,21 @@ export async function applyReplanSuggestions(tenantId, opts = {}) {
           skipped.push({ id: s.id, reason: "frozen_stop" });
           continue;
         }
+        // The stop lands on whichever leg of the destination tour covers the day
+        // being recovered, and takes the last sequence slot within that day.
+        const toDayIndex =
+          dayIndexForDate(toJob.service_date, toJob.end_date, serviceDate) ?? 0;
         const maxSort = await dbQuery(
-          `SELECT COALESCE(MAX(sort_order), -1)::int AS m FROM dispatch_stops WHERE job_id = $1`,
-          [toJob.id],
+          `SELECT COALESCE(MAX(sort_order), -1)::int AS m
+           FROM dispatch_stops WHERE job_id = $1 AND day_index = $2`,
+          [toJob.id, toDayIndex],
         );
         const nextSort = (maxSort.rows[0]?.m ?? -1) + 1;
         await dbQuery(
           `UPDATE dispatch_stops
-           SET job_id = $1, sort_order = $2, status = 'pending', arrived_at = NULL
-           WHERE id = $3`,
-          [toJob.id, nextSort, stop.id],
+           SET job_id = $1, sort_order = $2, day_index = $3, status = 'pending', arrived_at = NULL
+           WHERE id = $4`,
+          [toJob.id, nextSort, toDayIndex, stop.id],
         );
         if (stop.order_id) {
           await dbQuery(
@@ -882,15 +974,17 @@ export async function applyReplanSuggestions(tenantId, opts = {}) {
             [toJob.id, stop.id, stop.order_id],
           );
         }
+        await Promise.all([recomputeJobSpan(s.fromJobId), recomputeJobSpan(toJob.id)]);
         await writeReplanAudit(tenantId, serviceDate, {
           actor,
           action: "move_stop",
-          jobId: toJob.id,
           stopId: stop.id,
+          jobId: toJob.id,
           payload: {
             suggestionId: s.id,
             fromJobId: s.fromJobId,
             toJobId: s.toJobId,
+            toDayIndex,
           },
         });
         applied.push(s);
@@ -953,9 +1047,12 @@ export function computeSlaFromSnapshot(snapshot) {
     if (s.status === "delivered" || s.stopStatus === "done") {
       delivered += 1;
       b.delivered += 1;
+      // Scored against the stop's own day, not the clock alone. Finishing at
+      // 00:20 the next morning is 1460 minutes into that stop's day, so a 17:00
+      // window reads as hours late instead of being credited as very early.
+      const stopDay = s.serviceDate || snapshot.serviceDate;
       const winEnd = hmToMin(s.windowEnd);
-      const actualHm = formatTimeWib(s.completedAt || s.arrivedAt);
-      const actual = hmToMin(actualHm);
+      const actual = minutesSinceServiceMidnight(s.completedAt || s.arrivedAt, stopDay);
       const planned = hmToMin(s.plannedEta);
       if (winEnd != null && actual != null) {
         withWindow += 1;
@@ -1021,6 +1118,26 @@ export async function enrichLiveSnapshot(tenantId, snapshot, { persistEtas = tru
       if (!s.plannedEta && s.storedPlannedEta) s.plannedEta = s.storedPlannedEta;
     }
   }
+
+  // Dwell needs the ping trail, so it is resolved here and read back by the
+  // synchronous detector. Only drivers actually working are worth a query.
+  await Promise.all(
+    (snapshot.drivers || [])
+      .filter(
+        (d) =>
+          d.assignedFieldUserId &&
+          (d.jobStatus === "en_route" || d.jobStatus === "arrived") &&
+          d.livePosition?.source === "phone",
+      )
+      .map(async (d) => {
+        try {
+          const trail = await recentPingTrail(tenantId, d.assignedFieldUserId, 120);
+          d.dwellMin = computeDwellMinutes(trail);
+        } catch {
+          d.dwellMin = null;
+        }
+      }),
+  );
 
   if (persistEtas) {
     for (const driver of snapshot.drivers || []) {
