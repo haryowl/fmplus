@@ -4566,6 +4566,70 @@ html.onesheet-root body {
   color: var(--ink-faint);
 }
 
+.dispatch-zone-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0 0;
+}
+
+.dispatch-zone-chip {
+  appearance: none;
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.dispatch-zone-chip:hover {
+  border-color: var(--ink-faint);
+  color: var(--ink);
+}
+
+.dispatch-zone-chip.is-active {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+}
+
+.dispatch-zone-map-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.dispatch-zone-map-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 1.2fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.dispatch-zone-map-label {
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dispatch-zone-map-list select {
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0 8px;
+  width: 100%;
+}
+
 .dispatch-order-list {
   list-style: none;
   margin: 0;

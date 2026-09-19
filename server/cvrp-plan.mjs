@@ -1,9 +1,16 @@
 /**
  * Capacitated VRP (dual volume + weight) — greedy cheapest insertion,
  * soft time-window preference, inter-route balance relocate, open-tour 2-opt.
- * Multi-depot: partition orders to nearest depot, then planCvrp per cluster.
+ * Multi-depot: partition orders to nearest depot (optional zone→depot), then planCvrp per cluster.
+ * Optional soft same-zone preference on insertion (default off).
  */
 import { haversineKm, optimizeOpenTour, pathCost } from "./route-optimize.mjs";
+import {
+  normalizeZoneKey,
+  partitionOrdersToDepots,
+  routeDominantZone,
+  zoneMixPenalty,
+} from "./dispatch-zone.mjs";
 
 const SPEED_KMH = 35;
 const TW_LATE_PENALTY_KM = 40;
@@ -278,6 +285,7 @@ function balanceRelocate(
   const dayStartMin = opts.dayStartMin ?? DEFAULT_DAY_START_MIN;
   const serviceMinutes = opts.serviceMinutes ?? DEFAULT_SERVICE_MIN;
   const maxStops = opts.maxStopsPerVehicle || 0;
+  const preferSameZone = Boolean(opts.preferSameZone);
   let moves = 0;
   for (let pass = 0; pass < 24; pass++) {
     const active = vehicleStates.filter((v) => v.orderIndexes.length > 0);
@@ -298,6 +306,12 @@ function balanceRelocate(
         for (const to of vehicleStates) {
           if (to.key === from.key) continue;
           if (maxStops > 0 && to.orderIndexes.length >= maxStops) continue;
+          // Soft same-zone: do not relocate into a route whose dominant zone differs.
+          if (preferSameZone) {
+            const cand = normalizeZoneKey(orders[oi]?.zone);
+            const toDom = routeDominantZone(to.orderIndexes, orders);
+            if (cand && toDom && cand !== toDom) continue;
+          }
           const toUsed = usedDemand(to, orders);
           if (
             !fits(
@@ -364,30 +378,14 @@ function balanceRelocate(
 }
 
 /**
- * Assign each order index to the nearest depot (haversine).
- * @param {{ lat: number, lon: number }[]} orders
+ * Assign each order index to a depot (nearest haversine; optional zone→depot prefer).
+ * @param {{ lat: number, lon: number, zone?: string }[]} orders
  * @param {{ id: string, lat: number, lon: number }[]} depots
+ * @param {{ preferZoneDepot?: boolean, zoneDepotMap?: Record<string, string> }} [opts]
  * @returns {Map<string, number[]>} depotId → order indexes
  */
-export function partitionOrdersByNearestDepot(orders, depots) {
-  /** @type {Map<string, number[]>} */
-  const clusters = new Map();
-  for (const d of depots) clusters.set(String(d.id), []);
-  if (!depots.length) return clusters;
-  for (let i = 0; i < orders.length; i++) {
-    const o = orders[i];
-    let bestId = String(depots[0].id);
-    let bestKm = Infinity;
-    for (const d of depots) {
-      const km = haversineKm(o.lat, o.lon, d.lat, d.lon);
-      if (km < bestKm) {
-        bestKm = km;
-        bestId = String(d.id);
-      }
-    }
-    clusters.get(bestId).push(i);
-  }
-  return clusters;
+export function partitionOrdersByNearestDepot(orders, depots, opts) {
+  return partitionOrdersToDepots(orders, depots, opts, haversineKm);
 }
 
 /**
@@ -457,6 +455,7 @@ export function assignVehiclesToDepots(vehicles, depots, demandByDepot) {
  * @param {number} [input.serviceMinutes]
  * @param {number} [input.dayStartMin]
  * @param {number} [input.maxStopsPerVehicle]
+ * @param {boolean} [input.preferSameZone]
  */
 export function planCvrp({
   orders,
@@ -469,11 +468,13 @@ export function planCvrp({
   serviceMinutes = DEFAULT_SERVICE_MIN,
   dayStartMin = DEFAULT_DAY_START_MIN,
   maxStopsPerVehicle = 0,
+  preferSameZone = false,
 }) {
   const mode = ["off", "soft", "hard"].includes(twMode) ? twMode : "soft";
   const svcMin = Math.max(0, Math.min(120, Number(serviceMinutes) || DEFAULT_SERVICE_MIN));
   const startMin = Number.isFinite(Number(dayStartMin)) ? Number(dayStartMin) : DEFAULT_DAY_START_MIN;
   const maxStops = Math.max(0, Math.floor(Number(maxStopsPerVehicle) || 0));
+  const sameZone = Boolean(preferSameZone);
 
   const orderMatrixIndex = (orderPos) => (depotIndex != null ? orderPos + 1 : orderPos);
   const unassigned = new Set(orders.map((_, i) => i));
@@ -524,7 +525,10 @@ export function planCvrp({
           serviceMinutes: svcMin,
         });
         if (!tw.feasible) continue;
-        const score = ins.cost + (mode === "off" ? 0 : tw.penalty);
+        const score =
+          ins.cost +
+          (mode === "off" ? 0 : tw.penalty) +
+          zoneMixPenalty(sameZone, vs.orderIndexes, orders, oi);
         if (!best || score < best.score - 1e-9) {
           best = { vs, oi, nodeIdx, pos: ins.pos, score, demand };
         }
@@ -545,7 +549,13 @@ export function planCvrp({
     depotIndex,
     roundtrip,
     orderMatrixIndex,
-    { twMode: mode, dayStartMin: startMin, serviceMinutes: svcMin, maxStopsPerVehicle: maxStops },
+    {
+      twMode: mode,
+      dayStartMin: startMin,
+      serviceMinutes: svcMin,
+      maxStopsPerVehicle: maxStops,
+      preferSameZone: sameZone,
+    },
   );
 
   const ordersByMatrixIdx = new Map();

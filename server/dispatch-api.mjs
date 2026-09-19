@@ -16,6 +16,7 @@
  * PUT /api/dispatch/vehicle-capacities/:armadaUserId
  * GET/PUT /api/dispatch/depot
  * GET/POST /api/dispatch/depots · PATCH/DELETE /api/dispatch/depots/:id
+ * GET/PUT /api/dispatch/zone-depot-map — optional zone → depot preferences
  * POST /api/dispatch/plan-day — CVRP auto-plan (fleet + depot / multi-depot modes)
  * POST /api/dispatch/replan-remaining — mid-day recovery preview / apply
  * GET  /api/dispatch/ops-exceptions?date=
@@ -31,6 +32,7 @@ import {
   partitionOrdersByNearestDepot,
   planCvrp,
 } from "./cvrp-plan.mjs";
+import { normalizeZoneKey } from "./dispatch-zone.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
 import { parseRoutingOptions } from "./routing-options.mjs";
@@ -306,6 +308,37 @@ async function listDepotsForTenant(tenantId) {
     [tenantId],
   );
   return rows.rows.map(publicDepot);
+}
+
+function publicZoneDepotMapping(row) {
+  return {
+    zone: row.zone_label || row.zone_key || "",
+    zoneKey: row.zone_key || "",
+    depotId: String(row.depot_id),
+    depotName: row.depot_name || "",
+  };
+}
+
+async function listZoneDepotMap(tenantId) {
+  const rows = await dbQuery(
+    `SELECT m.zone_key, m.zone_label, m.depot_id, d.name AS depot_name
+     FROM dispatch_zone_depot_map m
+     JOIN dispatch_depots d ON d.id = m.depot_id AND d.tenant_id = m.tenant_id
+     WHERE m.tenant_id = $1
+     ORDER BY m.zone_label ASC, m.zone_key ASC
+     LIMIT 200`,
+    [tenantId],
+  );
+  return rows.rows.map(publicZoneDepotMapping);
+}
+
+/** @returns {Promise<Record<string, string>>} */
+async function zoneDepotMapRecord(tenantId) {
+  const list = await listZoneDepotMap(tenantId);
+  /** @type {Record<string, string>} */
+  const out = {};
+  for (const m of list) out[m.zoneKey] = m.depotId;
+  return out;
 }
 
 /** YYYY-MM-DD or null. */
@@ -1047,6 +1080,42 @@ export async function handleDispatchRequest(req, res) {
         }
       }
       json(res, 200, { ok: true });
+      return true;
+    }
+
+    // —— Optional zone → depot map ——
+    if (url.pathname === "/api/dispatch/zone-depot-map" && req.method === "GET") {
+      const mappings = await listZoneDepotMap(dbTenant.id);
+      json(res, 200, { mappings });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/zone-depot-map" && req.method === "PUT") {
+      const body = await readJson(req);
+      const raw = Array.isArray(body.mappings) ? body.mappings : [];
+      const depots = await listDepotsForTenant(dbTenant.id);
+      const depotIds = new Set(depots.map((d) => String(d.id)));
+      /** @type {{ zoneKey: string, zoneLabel: string, depotId: string }[]} */
+      const cleaned = [];
+      const seen = new Set();
+      for (const item of raw.slice(0, 200)) {
+        const zoneLabel = String(item?.zone || item?.zoneLabel || "").trim().slice(0, 80);
+        const zoneKey = normalizeZoneKey(item?.zoneKey || zoneLabel);
+        const depotId = String(item?.depotId || "").trim();
+        if (!zoneKey || !depotIds.has(depotId) || seen.has(zoneKey)) continue;
+        seen.add(zoneKey);
+        cleaned.push({ zoneKey, zoneLabel: zoneLabel || zoneKey, depotId });
+      }
+      await dbQuery(`DELETE FROM dispatch_zone_depot_map WHERE tenant_id = $1`, [dbTenant.id]);
+      for (const m of cleaned) {
+        await dbQuery(
+          `INSERT INTO dispatch_zone_depot_map (tenant_id, zone_key, zone_label, depot_id)
+           VALUES ($1, $2, $3, $4)`,
+          [dbTenant.id, m.zoneKey, m.zoneLabel, m.depotId],
+        );
+      }
+      const mappings = await listZoneDepotMap(dbTenant.id);
+      json(res, 200, { mappings });
       return true;
     }
 
@@ -2521,6 +2590,8 @@ export async function handleDispatchRequest(req, res) {
         Math.min(120, Number(body.serviceMinutes) || 8),
       );
       const maxStopsPerVehicle = Math.max(0, Math.floor(Number(body.maxStopsPerVehicle) || 0));
+      const preferZoneDepot = body.preferZoneDepot === true;
+      const preferSameZone = body.preferSameZone === true;
       let dayStartMin = 8 * 60;
       if (body.dayStart) {
         const parsed = String(body.dayStart).trim();
@@ -2616,6 +2687,7 @@ export async function handleDispatchRequest(req, res) {
           volumeM3: o.volume_m3 == null ? 0 : Number(o.volume_m3) || 0,
           weightKg: o.weight_kg == null ? 0 : Number(o.weight_kg) || 0,
           label: o.customer_name || o.external_ref || o.id,
+          zone: o.zone || "",
           windowStart: o.window_start || "",
           windowEnd: o.window_end || "",
           serviceMinutes:
@@ -2794,6 +2866,7 @@ export async function handleDispatchRequest(req, res) {
         serviceMinutes,
         dayStartMin,
         maxStopsPerVehicle,
+        preferSameZone,
       };
 
       /** @type {any[]} */
@@ -2810,7 +2883,20 @@ export async function handleDispatchRequest(req, res) {
       let previewDepots = null;
 
       if (depotMode === "multi") {
-        const orderClusters = partitionOrdersByNearestDepot(orders, multiDepots);
+        /** @type {Record<string, string>} */
+        let zoneMap = {};
+        if (preferZoneDepot) {
+          try {
+            zoneMap = await zoneDepotMapRecord(dbTenant.id);
+          } catch {
+            /* table may not exist yet mid-migrate */
+            zoneMap = {};
+          }
+        }
+        const orderClusters = partitionOrdersByNearestDepot(orders, multiDepots, {
+          preferZoneDepot,
+          zoneDepotMap: zoneMap,
+        });
         /** @type {Map<string, { vol: number, wt: number, orderCount: number }>} */
         const demandByDepot = new Map();
         for (const d of multiDepots) {
@@ -3070,6 +3156,8 @@ export async function handleDispatchRequest(req, res) {
         dayStartMin,
         maxStopsPerVehicle,
         onlyEmptyJobs,
+        preferZoneDepot: depotMode === "multi" ? preferZoneDepot : false,
+        preferSameZone,
         jobIds: selectedJobIds,
         routing,
         routes: planRoutes,

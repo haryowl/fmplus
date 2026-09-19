@@ -26,6 +26,7 @@ import {
   DISPATCH_STATUS_LABELS,
   dispatchAssigneeLabel,
   dispatchVehicleLabel,
+  fetchDispatchDepot,
   fetchDispatchDepots,
   fetchDispatchFieldUsers,
   fetchDispatchJobs,
@@ -33,7 +34,7 @@ import {
   fetchDispatchOrderTemplates,
   fetchStopPhotos,
   fetchVehicleCapacities,
-  fetchDispatchDepot,
+  fetchZoneDepotMap,
   formatDispatchWindow,
   formatDispatchServiceMinutes,
   formatServiceDateLabel,
@@ -49,6 +50,7 @@ import {
   planDispatchDay,
   returnStopToInbox,
   saveDispatchDepot,
+  saveZoneDepotMap,
   shiftServiceDate,
   todayServiceDate,
   upsertVehicleCapacity,
@@ -68,8 +70,10 @@ import {
   type DispatchPhoto,
   type DispatchPlanDayResult,
   type DispatchStatus,
+  type DispatchZoneDepotMapping,
   type VehicleCapacity,
 } from "../lib/dispatch";
+import { normalizeZoneKey, ZONE_FILTER_NONE } from "../lib/dispatchZone";
 import {
   listPoiDropdownOptions,
   loadDispatchPoiCatalog,
@@ -211,6 +215,10 @@ export default function DispatchBoard() {
   const [planOnlyEmpty, setPlanOnlyEmpty] = useState(false);
   /** Empty = default: all jobs that day with no field driver assigned. */
   const [planJobIds, setPlanJobIds] = useState<string[]>([]);
+  const [preferZoneDepot, setPreferZoneDepot] = useState(false);
+  const [preferSameZone, setPreferSameZone] = useState(false);
+  const [zoneDepotMappings, setZoneDepotMappings] = useState<DispatchZoneDepotMapping[]>([]);
+  const [orderZoneFilter, setOrderZoneFilter] = useState("");
   const [avoidTolls, setAvoidTolls] = useState(false);
   const [avoidMotorways, setAvoidMotorways] = useState(false);
   const [avoidFerries, setAvoidFerries] = useState(false);
@@ -442,10 +450,36 @@ export default function DispatchBoard() {
     return { openOrders, openJobs, avgUtil };
   }, [orders, jobs]);
 
+  const zoneCounts = useMemo(() => {
+    const byKey = new Map<string, { label: string; count: number }>();
+    let none = 0;
+    for (const o of orders) {
+      const label = String(o.zone || "").trim();
+      if (!label) {
+        none += 1;
+        continue;
+      }
+      const key = normalizeZoneKey(label);
+      const cur = byKey.get(key);
+      if (cur) cur.count += 1;
+      else byKey.set(key, { label, count: 1 });
+    }
+    const zones = [...byKey.entries()]
+      .map(([key, v]) => ({ key, label: v.label, count: v.count }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+    return { none, zones };
+  }, [orders]);
+
   const filteredOrders = useMemo(() => {
+    let list = orders;
+    if (orderZoneFilter === ZONE_FILTER_NONE) {
+      list = list.filter((o) => !String(o.zone || "").trim());
+    } else if (orderZoneFilter) {
+      list = list.filter((o) => normalizeZoneKey(o.zone) === orderZoneFilter);
+    }
     const q = orderQuery.trim().toLowerCase();
-    if (!q) return orders;
-    return orders.filter((o) => {
+    if (!q) return list;
+    return list.filter((o) => {
       const hay = [
         o.customerName,
         o.externalRef,
@@ -463,7 +497,23 @@ export default function DispatchBoard() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [orders, orderQuery]);
+  }, [orders, orderQuery, orderZoneFilter]);
+
+  const inboxZoneOptions = useMemo(() => {
+    const fromOrders = zoneCounts.zones.map((z) => ({
+      key: z.key,
+      label: z.label,
+      count: z.count,
+    }));
+    const known = new Set(fromOrders.map((z) => z.key));
+    for (const m of zoneDepotMappings) {
+      if (!known.has(m.zoneKey)) {
+        fromOrders.push({ key: m.zoneKey, label: m.zone || m.zoneKey, count: 0 });
+        known.add(m.zoneKey);
+      }
+    }
+    return fromOrders.sort((a, b) => a.label.localeCompare(b.label));
+  }, [zoneCounts, zoneDepotMappings]);
 
   useEffect(() => {
     if (!(placing || draftPin || editingOrderId)) return;
@@ -827,6 +877,21 @@ export default function DispatchBoard() {
       cancelled = true;
     };
   }, [ready, query.tenantKey]);
+
+  useEffect(() => {
+    if (!ready || !query.tenantKey) return;
+    let cancelled = false;
+    fetchZoneDepotMap()
+      .then((list) => {
+        if (!cancelled) setZoneDepotMappings(list);
+      })
+      .catch(() => {
+        /* migration may not be applied yet */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, query.tenantKey, reload]);
 
   function persistDepot(lat: number, lon: number) {
     setDepotLat(String(lat));
@@ -1323,6 +1388,8 @@ export default function DispatchBoard() {
         dayStart: planDayStart || "08:00",
         maxStopsPerVehicle: planMaxStops.trim() ? Number(planMaxStops) : 0,
         onlyEmptyJobs: planOnlyEmpty,
+        preferZoneDepot: depotMode === "multi" ? preferZoneDepot : false,
+        preferSameZone,
         jobIds: planJobIds,
         routing: {
           avoidTolls,
@@ -1705,6 +1772,14 @@ export default function DispatchBoard() {
                 />
                 Only use empty open jobs
               </label>
+              <label className="dispatch-plan-check">
+                <input
+                  type="checkbox"
+                  checked={preferSameZone}
+                  onChange={(e) => setPreferSameZone(e.target.checked)}
+                />
+                Prefer same zone on a route
+              </label>
               {(fleetMode === "jobs" || fleetMode === "both") && (
                 <div className="field dispatch-plan-jobs" style={{ gridColumn: "1 / -1" }}>
                   <div className="dispatch-pane-head" style={{ marginBottom: 6 }}>
@@ -2076,10 +2151,78 @@ export default function DispatchBoard() {
                     />
                     Return to depot (roundtrip)
                   </label>
+                  <label className="dispatch-plan-check">
+                    <input
+                      type="checkbox"
+                      checked={preferZoneDepot}
+                      onChange={(e) => setPreferZoneDepot(e.target.checked)}
+                    />
+                    Prefer zone → depot map
+                  </label>
+                  {preferZoneDepot ? (
+                    <div className="dispatch-zone-map" style={{ gridColumn: "1 / -1" }}>
+                      <div className="dispatch-pane-head" style={{ marginBottom: 6 }}>
+                        <label>Zone → depot</label>
+                      </div>
+                      {inboxZoneOptions.length === 0 ? (
+                        <p className="dispatch-search-hint">
+                          No zones on pending orders yet. Set a zone on an order, then map it here.
+                        </p>
+                      ) : (
+                        <ul className="dispatch-zone-map-list">
+                          {inboxZoneOptions.map((z) => {
+                            const mapped =
+                              zoneDepotMappings.find((m) => m.zoneKey === z.key)?.depotId || "";
+                            return (
+                              <li key={z.key}>
+                                <span className="dispatch-zone-map-label">
+                                  {z.label}
+                                  {z.count > 0 ? ` (${z.count})` : ""}
+                                </span>
+                                <select
+                                  value={mapped}
+                                  disabled={busy || depots.length === 0}
+                                  onChange={(e) => {
+                                    const depotId = e.target.value;
+                                    const next = zoneDepotMappings.filter((m) => m.zoneKey !== z.key);
+                                    if (depotId) {
+                                      next.push({
+                                        zone: z.label,
+                                        zoneKey: z.key,
+                                        depotId,
+                                        depotName: depots.find((d) => d.id === depotId)?.name || "",
+                                      });
+                                    }
+                                    setZoneDepotMappings(next);
+                                    void saveZoneDepotMap(
+                                      next.map((m) => ({ zone: m.zone, depotId: m.depotId })),
+                                    )
+                                      .then((list) => setZoneDepotMappings(list))
+                                      .catch((err) =>
+                                        setError(
+                                          err instanceof Error ? err.message : "Save zone map failed",
+                                        ),
+                                      );
+                                  }}
+                                >
+                                  <option value="">Nearest depot</option>
+                                  {depots.map((d) => (
+                                    <option key={d.id} value={d.id}>
+                                      {d.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  ) : null}
                   <p className="dispatch-search-hint" style={{ gridColumn: "1 / -1" }}>
                     Create or move a depot from an Armada POI, or pin on the map. Orders go to the nearest
-                    depot. Vehicles use their capacity depot when set; otherwise they are balanced across
-                    depots by demand. {depots.length} depot(s) saved.
+                    depot (or zone map when enabled). Vehicles use their capacity depot when set; otherwise
+                    they are balanced across depots by demand. {depots.length} depot(s) saved.
                   </p>
                 </>
               ) : null}
@@ -2760,9 +2903,47 @@ export default function DispatchBoard() {
                 autoComplete="off"
               />
             </label>
+            {orders.length > 0 && (zoneCounts.zones.length > 0 || zoneCounts.none > 0) ? (
+              <div className="dispatch-zone-chips" role="group" aria-label="Filter by zone">
+                <button
+                  type="button"
+                  className={`dispatch-zone-chip${!orderZoneFilter ? " is-active" : ""}`}
+                  onClick={() => setOrderZoneFilter("")}
+                >
+                  All · {orders.length}
+                </button>
+                {zoneCounts.zones.map((z) => (
+                  <button
+                    key={z.key}
+                    type="button"
+                    className={`dispatch-zone-chip${orderZoneFilter === z.key ? " is-active" : ""}`}
+                    onClick={() =>
+                      setOrderZoneFilter((prev) => (prev === z.key ? "" : z.key))
+                    }
+                  >
+                    {z.label} · {z.count}
+                  </button>
+                ))}
+                {zoneCounts.none > 0 ? (
+                  <button
+                    type="button"
+                    className={`dispatch-zone-chip${
+                      orderZoneFilter === ZONE_FILTER_NONE ? " is-active" : ""
+                    }`}
+                    onClick={() =>
+                      setOrderZoneFilter((prev) =>
+                        prev === ZONE_FILTER_NONE ? "" : ZONE_FILTER_NONE,
+                      )
+                    }
+                  >
+                    No zone · {zoneCounts.none}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             {orders.length > 0 ? (
               <p className="dispatch-order-filter-meta">
-                {orderQuery.trim()
+                {orderQuery.trim() || orderZoneFilter
                   ? `${filteredOrders.length} of ${orders.length} shown`
                   : `${orders.length} pending`}
               </p>

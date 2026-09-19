@@ -504,6 +504,8 @@ export type DispatchPlanDayResult = {
   dayStartMin?: number;
   maxStopsPerVehicle?: number;
   onlyEmptyJobs?: boolean;
+  preferZoneDepot?: boolean;
+  preferSameZone?: boolean;
   /** Explicit job ids used; empty means default unassigned-driver pool. */
   jobIds?: string[];
   routing?: {
@@ -610,6 +612,42 @@ export async function deleteDispatchDepot(id: string): Promise<void> {
   if (!res.ok) throw new Error(data.error || `Delete depot ${res.status}`);
 }
 
+export type DispatchZoneDepotMapping = {
+  zone: string;
+  zoneKey: string;
+  depotId: string;
+  depotName?: string;
+};
+
+export async function fetchZoneDepotMap(signal?: AbortSignal): Promise<DispatchZoneDepotMapping[]> {
+  const res = await fetch("/api/dispatch/zone-depot-map", {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    mappings?: DispatchZoneDepotMapping[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Zone depot map ${res.status}`);
+  return data.mappings || [];
+}
+
+export async function saveZoneDepotMap(
+  mappings: { zone: string; depotId: string }[],
+): Promise<DispatchZoneDepotMapping[]> {
+  const res = await fetch("/api/dispatch/zone-depot-map", {
+    method: "PUT",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify({ mappings }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    mappings?: DispatchZoneDepotMapping[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Save zone depot map ${res.status}`);
+  return data.mappings || [];
+}
+
 export async function planDispatchDay(body: {
   serviceDate: string;
   fleetMode: DispatchFleetMode;
@@ -629,6 +667,10 @@ export async function planDispatchDay(body: {
   dayStart?: string;
   maxStopsPerVehicle?: number;
   onlyEmptyJobs?: boolean;
+  /** Multi-depot: prefer zone→depot map over nearest (default off). */
+  preferZoneDepot?: boolean;
+  /** Soft same-zone packing preference in CVRP (default off). */
+  preferSameZone?: boolean;
   routing?: {
     avoidTolls?: boolean;
     avoidMotorways?: boolean;
