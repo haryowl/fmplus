@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickLivePosition } from "../../server/dispatch-live.mjs";
+import { pickLivePosition, downsampleLatLon } from "../../server/dispatch-live.mjs";
 import { computeDwellMinutes, detectExceptionsFromSnapshot } from "../../server/dispatch-recovery.mjs";
 
 const PHONE = { lat: -6.2, lon: 106.8, ageSec: 12, recordedAt: "2026-09-17T10:00:00Z", accuracyM: 8 };
@@ -43,6 +43,22 @@ describe("pickLivePosition", () => {
 
   it("returns null when nothing is reporting", () => {
     expect(pickLivePosition(null, null)).toBeNull();
+  });
+});
+
+describe("downsampleLatLon", () => {
+  it("keeps short polylines intact", () => {
+    const pts = [
+      [0, 0],
+      [1, 1],
+      [2, 2],
+    ];
+    expect(downsampleLatLon(pts, 400)).toEqual(pts);
+  });
+
+  it("thins long polylines to the cap", () => {
+    const pts = Array.from({ length: 1000 }, (_, i) => [i, i]);
+    expect(downsampleLatLon(pts, 100)).toHaveLength(100);
   });
 });
 

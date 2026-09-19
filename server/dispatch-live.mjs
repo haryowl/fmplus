@@ -7,7 +7,7 @@ import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { buildStopRouteMeta } from "./stop-route-meta.mjs";
 import { haversineKm } from "./route-optimize.mjs";
 import { enrichLiveSnapshot } from "./dispatch-recovery.mjs";
-import { latestPingsByFieldUser } from "./driver-pings.mjs";
+import { latestPingsByFieldUser, pingTrailForServiceDate } from "./driver-pings.mjs";
 import { dateForDayIndex, dayIndexForDate, spanDayCount } from "./dispatch-span.mjs";
 import {
   formatClockAt as formatTimeWib,
@@ -142,6 +142,27 @@ export function pickLivePosition(phonePos, vehiclePos, freshSec = PHONE_FIX_FRES
   return null;
 }
 
+/** Thin a lat/lon polyline for map payloads. */
+export function downsampleLatLon(points, maxPoints = 400) {
+  if (!Array.isArray(points) || points.length <= maxPoints) return points || [];
+  if (maxPoints < 2) return points.slice(0, 1);
+  const step = (points.length - 1) / (maxPoints - 1);
+  const out = [];
+  for (let i = 0; i < maxPoints; i++) {
+    const p = points[Math.round(i * step)];
+    if (p) out.push(p);
+  }
+  return out;
+}
+
+function asMapPoint(lat, lon) {
+  const a = Number(lat);
+  const b = Number(lon);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  if (Math.abs(a) > 90 || Math.abs(b) > 180) return null;
+  return [a, b];
+}
+
 function distPlanKm(plannedLat, plannedLon, lat, lon) {
   if (plannedLat == null || plannedLon == null || lat == null || lon == null) return null;
   const km = haversineKm(plannedLat, plannedLon, lat, lon);
@@ -170,6 +191,7 @@ async function attachPlannedEtaChain(driver) {
     const lon = coordOrNull(s.plannedLon);
     if (lat == null || lon == null) {
       driver.plannedEtaReady = false;
+      driver.plannedGeometry = [];
       return;
     }
     customerPts.push({ lat, lon });
@@ -184,8 +206,15 @@ async function attachPlannedEtaChain(driver) {
   ];
   if (points.length < 2) {
     driver.plannedEtaReady = false;
+    driver.plannedGeometry = [];
     return;
   }
+
+  // Fallback plan line (stop chain) until OSRM geometry is available.
+  driver.plannedGeometry = downsampleLatLon(
+    points.map((p) => [p.lat, p.lon]),
+    400,
+  );
 
   try {
     const route = await buildRouteForPoints(points);
@@ -207,6 +236,12 @@ async function attachPlannedEtaChain(driver) {
     driver.plannedReturnLegDistanceKm = meta.returnLeg?.legDistanceKm ?? null;
     driver.plannedReturnLegDurationSec = meta.returnLeg?.legDurationSec ?? null;
     driver.plannedEtaReady = true;
+    const geom = [];
+    for (const p of route.geometry || []) {
+      const pt = Array.isArray(p) ? asMapPoint(p[0], p[1]) : asMapPoint(p?.lat, p?.lon);
+      if (pt) geom.push(pt);
+    }
+    driver.plannedGeometry = downsampleLatLon(geom, 400);
 
     for (let i = 0; i < driver.stops.length; i++) {
       const m = meta.stops[i];
@@ -217,6 +252,7 @@ async function attachPlannedEtaChain(driver) {
     }
   } catch {
     driver.plannedEtaReady = false;
+    driver.plannedGeometry = driver.plannedGeometry || [];
   }
 }
 
@@ -372,6 +408,10 @@ export async function buildDispatchLiveSnapshot(opts) {
       const phoneLon = coordOrNull(s.complete_phone_lon);
       const vehicleLat = coordOrNull(s.complete_armada_lat);
       const vehicleLon = coordOrNull(s.complete_armada_lon);
+      const startPhoneLat = coordOrNull(s.start_phone_lat);
+      const startPhoneLon = coordOrNull(s.start_phone_lon);
+      const startVehicleLat = coordOrNull(s.start_armada_lat);
+      const startVehicleLon = coordOrNull(s.start_armada_lon);
 
       const row = {
         stopId: s.id,
@@ -406,6 +446,10 @@ export async function buildDispatchLiveSnapshot(opts) {
         phoneLon,
         vehicleLat,
         vehicleLon,
+        startPhoneLat,
+        startPhoneLon,
+        startVehicleLat,
+        startVehicleLon,
         planToPhoneKm: distPlanKm(plannedLat, plannedLon, phoneLat, phoneLon),
         planToVehicleKm: distPlanKm(plannedLat, plannedLon, vehicleLat, vehicleLon),
         plannedEta: null,
@@ -520,6 +564,27 @@ export async function buildDispatchLiveSnapshot(opts) {
       liveLat: livePos?.lat ?? null,
       liveLon: livePos?.lon ?? null,
       livePosition,
+      phonePos:
+        phonePos && phonePos.lat != null && phonePos.lon != null
+          ? {
+              lat: phonePos.lat,
+              lon: phonePos.lon,
+              recordedAt: phonePos.recordedAt || null,
+              ageSec: phonePos.ageSec ?? null,
+              accuracyM: phonePos.accuracyM ?? null,
+            }
+          : null,
+      vehiclePos:
+        vehiclePos && vehiclePos.lat != null && vehiclePos.lon != null
+          ? {
+              lat: vehiclePos.lat,
+              lon: vehiclePos.lon,
+              label: vehiclePos.label || "",
+            }
+          : null,
+      plannedGeometry: [],
+      phoneTrail: [],
+      armadaTrack: [],
       pctComplete,
       doneCount,
       stopCount: stopsOut.length,
@@ -544,6 +609,30 @@ export async function buildDispatchLiveSnapshot(opts) {
   }
 
   await Promise.all(drivers.map((d) => attachPlannedEtaChain(d)));
+
+  await Promise.all(
+    drivers.map(async (d) => {
+      if (!d.assignedFieldUserId) {
+        d.phoneTrail = [];
+        return;
+      }
+      try {
+        const trail = await pingTrailForServiceDate(
+          opts.tenantId,
+          d.assignedFieldUserId,
+          serviceDate,
+        );
+        d.phoneTrail = downsampleLatLon(
+          trail
+            .map((p) => asMapPoint(p.lat, p.lon))
+            .filter(Boolean),
+          400,
+        );
+      } catch {
+        d.phoneTrail = [];
+      }
+    }),
+  );
 
   for (const driver of drivers) {
     for (const s of driver.stops) {

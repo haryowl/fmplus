@@ -8,6 +8,7 @@
  * GET/POST /api/dispatch/orders
  * POST /api/dispatch/orders/import
  * GET /api/dispatch/live?date=YYYY-MM-DD
+ * GET /api/dispatch/phone-trail?fieldUserId=&date= — phone GPS polyline for Live/Board maps
  * PATCH/DELETE /api/dispatch/orders/:id
  * GET /api/dispatch/stops/:stopId/photos
  * GET /api/dispatch/photos/:id
@@ -44,6 +45,7 @@ import { fetchVehiclePositions } from "./vehicle-positions.mjs";
 import { maybeNotifyDispatchJobAssigned } from "./dispatch-notify.mjs";
 import { csvBool, csvNum, parseCsv } from "./csv-parse.mjs";
 import { buildDispatchLiveSnapshot } from "./dispatch-live.mjs";
+import { pingTrailForServiceDate } from "./driver-pings.mjs";
 import {
   addDays,
   dayDiff,
@@ -1784,6 +1786,41 @@ export async function handleDispatchRequest(req, res) {
         vaultTenant: vault,
       });
       json(res, 200, snapshot);
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/phone-trail" && req.method === "GET") {
+      const fieldUserId = String(url.searchParams.get("fieldUserId") || "").trim();
+      const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
+      if (!/^[0-9a-f-]{36}$/i.test(fieldUserId)) {
+        json(res, 400, { error: "fieldUserId required" });
+        return true;
+      }
+      const owned = await dbQuery(
+        `SELECT id FROM field_users WHERE id = $1 AND tenant_id = $2`,
+        [fieldUserId, dbTenant.id],
+      );
+      if (!owned.rows[0]) {
+        json(res, 404, { error: "Field user not found" });
+        return true;
+      }
+      const trailRaw = await pingTrailForServiceDate(dbTenant.id, fieldUserId, date);
+      const trail = [];
+      for (const p of trailRaw) {
+        const lat = Number(p.lat);
+        const lon = Number(p.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+        trail.push([lat, lon]);
+      }
+      // Cap for map payload
+      const max = 400;
+      let slim = trail;
+      if (trail.length > max) {
+        const step = (trail.length - 1) / (max - 1);
+        slim = [];
+        for (let i = 0; i < max; i++) slim.push(trail[Math.round(i * step)]);
+      }
+      json(res, 200, { trail: slim, date, fieldUserId });
       return true;
     }
 

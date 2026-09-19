@@ -32,6 +32,8 @@ import {
   fetchDispatchJobs,
   fetchDispatchOrders,
   fetchDispatchOrderTemplates,
+  fetchArmadaDayTracks,
+  fetchPhoneTrailForDate,
   fetchStopPhotos,
   fetchVehicleCapacities,
   fetchZoneDepotMap,
@@ -74,6 +76,7 @@ import {
   type VehicleCapacity,
 } from "../lib/dispatch";
 import { normalizeZoneKey, ZONE_FILTER_NONE } from "../lib/dispatchZone";
+import { clipTimedTrackToWindow } from "../lib/dispatchTrackClip";
 import {
   listPoiDropdownOptions,
   loadDispatchPoiCatalog,
@@ -231,6 +234,9 @@ export default function DispatchBoard() {
   const [pinningDepot, setPinningDepot] = useState(false);
   const [jobRoute, setJobRoute] = useState<RouteGeometryResult | null>(null);
   const [routeBusy, setRouteBusy] = useState(false);
+  const [jobPhoneTrail, setJobPhoneTrail] = useState<[number, number][]>([]);
+  const [jobArmadaTrack, setJobArmadaTrack] = useState<[number, number][]>([]);
+  const [jobTrackStatus, setJobTrackStatus] = useState("");
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
   const selectedUser = users.find((u) => String(u.id) === userId);
@@ -259,7 +265,7 @@ export default function DispatchBoard() {
         : depotPin
       : draftPin;
   const fitKey = selected
-    ? `${selected.id}-${selected.stops.map((s) => s.id).join(",")}-${mapDraftPin ? "pin" : ""}-${jobRoute?.geometry?.length || 0}`
+    ? `${selected.id}-${selected.stops.map((s) => s.id).join(",")}-${mapDraftPin ? "pin" : ""}-${jobRoute?.geometry?.length || 0}-${jobPhoneTrail.length}-${jobArmadaTrack.length}`
     : `empty-${mapDraftPin ? `${mapDraftPin.lat},${mapDraftPin.lon}` : ""}`;
 
   const stopRouteMeta = useMemo(() => {
@@ -720,6 +726,69 @@ export default function DispatchBoard() {
       .finally(() => setRouteBusy(false));
     return () => ac.abort();
   }, [selected, routePathKey, avoidTolls, avoidMotorways, avoidFerries, respectGanjilGenap, plateParity]);
+
+  // Phone + Armada actual tracks for the selected job (Board map parity with Live).
+  useEffect(() => {
+    if (!selected) {
+      setJobPhoneTrail([]);
+      setJobArmadaTrack([]);
+      setJobTrackStatus("");
+      return;
+    }
+    const date = activeDayDate || selected.serviceDate;
+    const ac = new AbortController();
+    let cancelled = false;
+    const tasks: Promise<void>[] = [];
+    setJobTrackStatus("Loading tracks…");
+
+    if (selected.assignedFieldUserId) {
+      tasks.push(
+        fetchPhoneTrailForDate(selected.assignedFieldUserId, date, ac.signal)
+          .then((trail) => {
+            if (!cancelled) setJobPhoneTrail(trail);
+          })
+          .catch(() => {
+            if (!cancelled) setJobPhoneTrail([]);
+          }),
+      );
+    } else {
+      setJobPhoneTrail([]);
+    }
+
+    if (selected.armadaUserId != null) {
+      tasks.push(
+        fetchArmadaDayTracks([{ userId: selected.armadaUserId, date }], ac.signal)
+          .then((map) => {
+            if (cancelled) return;
+            const timed = map.get(`${selected.armadaUserId}|${date}`) || [];
+            setJobArmadaTrack(
+              clipTimedTrackToWindow(timed, selected.startedAt, selected.completedAt),
+            );
+          })
+          .catch(() => {
+            if (!cancelled) setJobArmadaTrack([]);
+          }),
+      );
+    } else {
+      setJobArmadaTrack([]);
+    }
+
+    void Promise.all(tasks).finally(() => {
+      if (!cancelled) setJobTrackStatus("");
+    });
+
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [
+    selected?.id,
+    selected?.assignedFieldUserId,
+    selected?.armadaUserId,
+    selected?.startedAt,
+    selected?.completedAt,
+    activeDayDate,
+  ]);
 
   useEffect(() => {
     if (!ready || !query.tenantKey) return;
@@ -3165,6 +3234,10 @@ export default function DispatchBoard() {
                 fitKey={fitKey}
                 draftPin={mapDraftPin}
                 routeGeometry={jobRoute?.geometry || []}
+                phoneTrail={jobPhoneTrail}
+                armadaTrack={jobArmadaTrack}
+                hasVehicle={selected?.armadaUserId != null}
+                trackStatus={jobTrackStatus}
                 routeStart={
                   selected?.routeAnchorMode === "map" || selected?.routeAnchorMode === "sequence"
                     ? selected.routeStart

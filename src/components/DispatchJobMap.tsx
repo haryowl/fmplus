@@ -3,6 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { STREET_TILE, streetTileOptions } from "../lib/mapTiles";
 import type { DispatchStop } from "../lib/dispatch";
+import { LIVE_MAP_COLORS } from "./DispatchLiveMap";
 
 type DraftPin = { lat: number; lon: number };
 
@@ -17,6 +18,14 @@ type Props = {
   routeGeometry?: [number, number][];
   routeStart?: { lat: number; lon: number; label?: string } | null;
   routeEnd?: { lat: number; lon: number; label?: string } | null;
+  /** Optional GPS overlays (Board parity with Live map). */
+  phoneTrail?: [number, number][];
+  armadaTrack?: [number, number][];
+  phoneLive?: { lat: number; lon: number } | null;
+  vehicleLive?: { lat: number; lon: number } | null;
+  /** When true, draw Armada track / start / complete / live. */
+  hasVehicle?: boolean;
+  trackStatus?: string;
 };
 
 function asCoord(lat: unknown, lon: unknown): [number, number] | null {
@@ -25,6 +34,34 @@ function asCoord(lat: unknown, lon: unknown): [number, number] | null {
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   if (Math.abs(a) > 90 || Math.abs(b) > 180) return null;
   return [a, b];
+}
+
+function cleanLine(raw: [number, number][] | undefined): [number, number][] {
+  if (!raw?.length) return [];
+  const out: [number, number][] = [];
+  for (const p of raw) {
+    const c = asCoord(p[0], p[1]);
+    if (c) out.push(c);
+  }
+  return out;
+}
+
+function eventIcon(color: string, kind: string): L.DivIcon {
+  return L.divIcon({
+    className: "dispatch-live-map-marker",
+    html: `<span class="dispatch-live-map-event" style="--dot:${color}">${kind}</span>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+}
+
+function liveIcon(color: string): L.DivIcon {
+  return L.divIcon({
+    className: "dispatch-live-map-marker",
+    html: `<span class="dispatch-live-map-live" style="--dot:${color};width:12px;height:12px"></span>`,
+    iconSize: [12, 12],
+    iconAnchor: [6, 6],
+  });
 }
 
 export function DispatchJobMap({
@@ -36,6 +73,12 @@ export function DispatchJobMap({
   routeGeometry = [],
   routeStart = null,
   routeEnd = null,
+  phoneTrail = [],
+  armadaTrack = [],
+  phoneLive = null,
+  vehicleLive = null,
+  hasVehicle = false,
+  trackStatus = "",
 }: Props) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -65,10 +108,13 @@ export function DispatchJobMap({
       const c = asCoord(p[0], p[1]);
       if (c) cleaned.push(c);
     }
-    // Prefer road geometry only when it has real shape (more than stop-to-stop)
     if (cleaned.length >= 2) return cleaned;
     return [];
   }, [routeGeometry]);
+
+  const phoneLine = useMemo(() => cleanLine(phoneTrail), [phoneTrail]);
+  const armadaLine = useMemo(() => cleanLine(armadaTrack), [armadaTrack]);
+  const showGps = phoneLine.length >= 2 || armadaLine.length >= 2 || phoneLive || vehicleLive;
 
   useEffect(() => {
     const el = elRef.current;
@@ -94,8 +140,10 @@ export function DispatchJobMap({
     layer.clearLayers();
     const bounds: L.LatLngExpression[] = [];
 
-    // Always draw stop connectors so the sequence is visible even if OSRM fails.
-    if (stopLine.length >= 2) {
+    const planColor = showGps ? LIVE_MAP_COLORS.plan : "#0b6b62";
+    const planDash = showGps ? "8 10" : undefined;
+
+    if (stopLine.length >= 2 && !roadLine.length) {
       L.polyline(stopLine, {
         color: "#94a3b8",
         weight: 3,
@@ -108,13 +156,34 @@ export function DispatchJobMap({
     const lineCoords = roadLine.length >= 2 ? roadLine : stopLine;
     if (lineCoords.length >= 2) {
       L.polyline(lineCoords, {
-        color: "#0b6b62",
-        weight: 5,
-        opacity: 0.92,
+        color: planColor,
+        weight: showGps ? 4 : 5,
+        opacity: showGps ? 0.85 : 0.92,
+        dashArray: planDash,
         lineJoin: "round",
         lineCap: "round",
       }).addTo(layer);
       for (const p of lineCoords) bounds.push(p);
+    }
+
+    if (phoneLine.length >= 2) {
+      L.polyline(phoneLine, {
+        color: LIVE_MAP_COLORS.phone,
+        weight: 4,
+        opacity: 0.92,
+        lineJoin: "round",
+      }).addTo(layer);
+      for (const p of phoneLine) bounds.push(p);
+    }
+
+    if (hasVehicle && armadaLine.length >= 2) {
+      L.polyline(armadaLine, {
+        color: LIVE_MAP_COLORS.armada,
+        weight: 4,
+        opacity: 0.92,
+        lineJoin: "round",
+      }).addTo(layer);
+      for (const p of armadaLine) bounds.push(p);
     }
 
     withCoords.forEach((stop, i) => {
@@ -129,6 +198,37 @@ export function DispatchJobMap({
       const m = L.marker([stop.lat, stop.lon], { icon }).addTo(layer);
       m.bindPopup(`${stop.name}${stop.zone ? ` · ${stop.zone}` : ""}`);
       bounds.push([stop.lat, stop.lon]);
+
+      if (showGps) {
+        const sp = asCoord(stop.startPhoneLat, stop.startPhoneLon);
+        if (sp) {
+          L.marker(sp, { icon: eventIcon(LIVE_MAP_COLORS.phone, "S") })
+            .bindPopup("Phone start")
+            .addTo(layer);
+          bounds.push(sp);
+        }
+        const sa = asCoord(stop.startArmadaLat, stop.startArmadaLon);
+        if (sa && hasVehicle) {
+          L.marker(sa, { icon: eventIcon(LIVE_MAP_COLORS.armada, "S") })
+            .bindPopup("Vehicle start")
+            .addTo(layer);
+          bounds.push(sa);
+        }
+        const cp = asCoord(stop.completePhoneLat, stop.completePhoneLon);
+        if (cp) {
+          L.marker(cp, { icon: eventIcon(LIVE_MAP_COLORS.phone, "C") })
+            .bindPopup("Phone complete")
+            .addTo(layer);
+          bounds.push(cp);
+        }
+        const ca = asCoord(stop.completeArmadaLat, stop.completeArmadaLon);
+        if (ca && hasVehicle) {
+          L.marker(ca, { icon: eventIcon(LIVE_MAP_COLORS.armada, "C") })
+            .bindPopup("Vehicle complete")
+            .addTo(layer);
+          bounds.push(ca);
+        }
+      }
     });
 
     const addAnchor = (
@@ -151,6 +251,23 @@ export function DispatchJobMap({
     addAnchor(routeStart, "D", "#9a4a2e");
     addAnchor(routeEnd, "R", "#9a4a2e");
 
+    const pl = asCoord(phoneLive?.lat, phoneLive?.lon);
+    if (pl) {
+      L.marker(pl, { icon: liveIcon(LIVE_MAP_COLORS.phone), zIndexOffset: 400 })
+        .bindPopup("Phone live")
+        .addTo(layer);
+      bounds.push(pl);
+    }
+    if (hasVehicle) {
+      const vl = asCoord(vehicleLive?.lat, vehicleLive?.lon);
+      if (vl) {
+        L.marker(vl, { icon: liveIcon(LIVE_MAP_COLORS.armada), zIndexOffset: 420 })
+          .bindPopup("Armada live")
+          .addTo(layer);
+        bounds.push(vl);
+      }
+    }
+
     if (draftPin && Number.isFinite(draftPin.lat) && Number.isFinite(draftPin.lon)) {
       const icon = L.divIcon({
         className: "route-plan-marker",
@@ -171,7 +288,43 @@ export function DispatchJobMap({
       /* keep Bandung default */
     }
     setTimeout(() => map.invalidateSize(), 50);
-  }, [stops, fitKey, draftPin, interactiveEmpty, withCoords, stopLine, roadLine, routeStart, routeEnd]);
+  }, [
+    stops,
+    fitKey,
+    draftPin,
+    interactiveEmpty,
+    withCoords,
+    stopLine,
+    roadLine,
+    routeStart,
+    routeEnd,
+    phoneLine,
+    armadaLine,
+    phoneLive,
+    vehicleLive,
+    hasVehicle,
+    showGps,
+  ]);
 
-  return <div ref={elRef} className="dispatch-job-map" role="img" aria-label="Job stops map" />;
+  return (
+    <div className="dispatch-job-map-wrap">
+      <div ref={elRef} className="dispatch-job-map" role="img" aria-label="Job stops map" />
+      {showGps || trackStatus ? (
+        <ul className="dispatch-live-map-legend" aria-label="Map legend">
+          <li>
+            <i style={{ background: LIVE_MAP_COLORS.plan }} /> Plan
+          </li>
+          <li>
+            <i style={{ background: LIVE_MAP_COLORS.phone }} /> Phone
+          </li>
+          {hasVehicle ? (
+            <li>
+              <i style={{ background: LIVE_MAP_COLORS.armada }} /> Armada
+            </li>
+          ) : null}
+          {trackStatus ? <li>{trackStatus}</li> : null}
+        </ul>
+      ) : null}
+    </div>
+  );
 }

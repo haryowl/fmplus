@@ -1,5 +1,16 @@
-import { todayServiceDate } from "./serviceDay";
+import {
+  dayDiff,
+  formatClockAt,
+  formatServiceDateLabel,
+  hmToMin,
+  minutesSinceServiceMidnight,
+  parseServiceDate,
+  serviceDateAt,
+  shiftServiceDate,
+  todayServiceDate,
+} from "./serviceDay";
 import { currentTenantKey, tenantHeaders } from "./tenant";
+import { downsampleTimedTrack, type TimedMapPoint } from "./dispatchTrackClip";
 
 export type DispatchStatus =
   | "draft"
@@ -267,7 +278,7 @@ export {
   serviceDateAt,
   shiftServiceDate,
   todayServiceDate,
-} from "./serviceDay";
+};
 
 export async function fetchDispatchJobs(
   status: "open" | "all" | DispatchStatus = "open",
@@ -1197,6 +1208,12 @@ export type DispatchLiveStop = {
   phoneLon?: number | null;
   vehicleLat?: number | null;
   vehicleLon?: number | null;
+  /** Phone GPS when the stop was started (ARRIVE). */
+  startPhoneLat?: number | null;
+  startPhoneLon?: number | null;
+  /** Armada vehicle GPS when the stop was started. */
+  startVehicleLat?: number | null;
+  startVehicleLon?: number | null;
   /** Straight-line km from plan → phone COMPLETE fix. */
   planToPhoneKm?: number | null;
   /** Straight-line km from plan → Armada vehicle COMPLETE fix. */
@@ -1272,6 +1289,25 @@ export type DispatchLiveDriver = {
   liveLon: number | null;
   /** Resolved live position with its provenance; null when nothing is reporting. */
   livePosition?: DispatchLivePosition | null;
+  /** Raw phone fix (may differ from livePosition when Armada is trusted). */
+  phonePos?: {
+    lat: number;
+    lon: number;
+    recordedAt: string | null;
+    ageSec: number | null;
+    accuracyM: number | null;
+  } | null;
+  /** Raw Armada vehicle last position. */
+  vehiclePos?: { lat: number; lon: number; label?: string } | null;
+  /** Planned road (or stop-chain) polyline [lat, lon][]. */
+  plannedGeometry?: [number, number][];
+  /** Phone ping trail for the service date [lat, lon][]. */
+  phoneTrail?: [number, number][];
+  /**
+   * Armada vehicle day track [lat, lon][]. Filled client-side from
+   * /api/user-day-tracks when the job has an armadaUserId.
+   */
+  armadaTrack?: [number, number][];
   /** Minutes parked in one spot, from the phone trail. Null when unknown. */
   dwellMin?: number | null;
   pctComplete: number;
@@ -1415,6 +1451,180 @@ export async function fetchDispatchLive(
   const data = (await res.json().catch(() => ({}))) as DispatchLiveSnapshot & { error?: string };
   if (!res.ok) throw new Error(data.error || `Dispatch live ${res.status}`);
   return data;
+}
+
+/** Max points kept for an Armada day polyline on the Live map. */
+const ARMADA_MAP_MAX_POINTS = 400;
+/** Soft TTL for today's Armada track cache (ms). Past days keep longer. */
+const ARMADA_CACHE_TODAY_MS = 5 * 60 * 1000;
+const ARMADA_CACHE_PAST_MS = 24 * 60 * 60 * 1000;
+
+type ArmadaCacheEntry = { at: number; points: TimedMapPoint[] };
+const armadaDayCache = new Map<string, ArmadaCacheEntry>();
+
+function downsampleMapLine(points: [number, number][], maxPoints = ARMADA_MAP_MAX_POINTS): [number, number][] {
+  if (points.length <= maxPoints) return points;
+  if (maxPoints < 2) return points.slice(0, 1);
+  const step = (points.length - 1) / (maxPoints - 1);
+  const out: [number, number][] = [];
+  for (let i = 0; i < maxPoints; i++) {
+    const p = points[Math.round(i * step)];
+    if (p) out.push(p);
+  }
+  return out;
+}
+
+function timedPointFromTrack(raw: unknown): TimedMapPoint | null {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw as {
+    position?: { latitude?: unknown; longitude?: unknown };
+    utc?: unknown;
+    uTC?: unknown;
+    UTC?: unknown;
+  };
+  const lat = Number(item.position?.latitude);
+  const lon = Number(item.position?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  const utc = String(item.utc ?? item.uTC ?? item.UTC ?? "").trim();
+  if (!utc) return null;
+  const ms = Date.parse(utc);
+  if (!Number.isFinite(ms)) return null;
+  return { lat, lon, recordedAt: new Date(ms).toISOString() };
+}
+
+function cacheTtlMs(date: string): number {
+  return date === todayServiceDate() ? ARMADA_CACHE_TODAY_MS : ARMADA_CACHE_PAST_MS;
+}
+
+/**
+ * Load Armada vehicle day tracks for Live/Board maps (one request for many vehicles).
+ * Returns timed points so callers can clip to each job's start→end window.
+ * Soft-caches by `${userId}|${date}`.
+ */
+export async function fetchArmadaDayTracks(
+  days: { userId: number; date: string }[],
+  signal?: AbortSignal,
+): Promise<Map<string, TimedMapPoint[]>> {
+  const unique = new Map<string, { userId: number; date: string }>();
+  for (const d of days) {
+    if (!Number.isInteger(d.userId) || d.userId < 1 || !d.date) continue;
+    unique.set(`${d.userId}|${d.date}`, d);
+  }
+  const list = [...unique.values()].slice(0, 40);
+  const out = new Map<string, TimedMapPoint[]>();
+  if (!list.length) return out;
+
+  const now = Date.now();
+  const needFetch: { userId: number; date: string }[] = [];
+  for (const d of list) {
+    const key = `${d.userId}|${d.date}`;
+    const hit = armadaDayCache.get(key);
+    if (hit && now - hit.at < cacheTtlMs(d.date)) {
+      out.set(key, hit.points);
+    } else {
+      needFetch.push(d);
+    }
+  }
+  if (!needFetch.length) return out;
+
+  const res = await fetch("/api/user-day-tracks", {
+    method: "POST",
+    headers: {
+      accept: "application/x-ndjson, application/json",
+      "content-type": "application/json",
+      ...tenantHeaders(),
+    },
+    body: JSON.stringify({
+      days: needFetch.map((d) => ({ userId: d.userId, date: d.date })),
+    }),
+    signal,
+  });
+  if (!res.ok) return out;
+
+  const take = (key: string, points: unknown) => {
+    const arr = Array.isArray(points)
+      ? points
+      : points && typeof points === "object" && Array.isArray((points as { items?: unknown[] }).items)
+        ? (points as { items: unknown[] }).items
+        : [];
+    const timed: TimedMapPoint[] = [];
+    for (const p of arr) {
+      const tp = timedPointFromTrack(p);
+      if (tp) timed.push(tp);
+    }
+    const slim = downsampleTimedTrack(timed, ARMADA_MAP_MAX_POINTS);
+    armadaDayCache.set(key, { at: Date.now(), points: slim });
+    out.set(key, slim);
+  };
+
+  const type = res.headers.get("content-type") || "";
+  if (type.includes("ndjson") && res.body) {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (value) buf += decoder.decode(value, { stream: true });
+      let nl = buf.indexOf("\n");
+      while (nl >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (line) {
+          try {
+            const row = JSON.parse(line) as { key?: string; points?: unknown; failed?: boolean };
+            if (typeof row.key === "string" && !row.failed) take(row.key, row.points);
+          } catch {
+            /* skip */
+          }
+        }
+        nl = buf.indexOf("\n");
+      }
+      if (done) break;
+    }
+    return out;
+  }
+
+  const data = (await res.json().catch(() => ({}))) as {
+    byKey?: Record<string, unknown>;
+  };
+  if (data.byKey) {
+    for (const [key, points] of Object.entries(data.byKey)) take(key, points);
+  }
+  return out;
+}
+
+/** @deprecated Prefer fetchArmadaDayTracks + clipTimedTrackToWindow. */
+export async function fetchArmadaDayPolylines(
+  days: { userId: number; date: string }[],
+  signal?: AbortSignal,
+): Promise<Map<string, [number, number][]>> {
+  const timed = await fetchArmadaDayTracks(days, signal);
+  const out = new Map<string, [number, number][]>();
+  for (const [key, pts] of timed) {
+    out.set(
+      key,
+      downsampleMapLine(pts.map((p) => [p.lat, p.lon] as [number, number])),
+    );
+  }
+  return out;
+}
+
+export async function fetchPhoneTrailForDate(
+  fieldUserId: string,
+  serviceDate: string,
+  signal?: AbortSignal,
+): Promise<[number, number][]> {
+  const res = await fetch(
+    `/api/dispatch/phone-trail?fieldUserId=${encodeURIComponent(fieldUserId)}&date=${encodeURIComponent(serviceDate)}`,
+    { headers: { accept: "application/json", ...tenantHeaders() }, signal },
+  );
+  const data = (await res.json().catch(() => ({}))) as {
+    trail?: [number, number][];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Phone trail ${res.status}`);
+  return data.trail || [];
 }
 
 export async function fetchDispatchSla(

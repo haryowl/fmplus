@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { BrandMark } from "../components/BrandMark";
+import { DispatchLiveMap } from "../components/DispatchLiveMap";
 import { DispatchLiveTimeline } from "../components/DispatchLiveTimeline";
 import { ViewNav } from "../components/ViewNav";
 import {
   ackDispatchOpsException,
+  fetchArmadaDayTracks,
   fetchDispatchLive,
   fetchDispatchSla,
   formatServiceDateLabel,
@@ -18,6 +20,7 @@ import {
   type DispatchReplanSuggestion,
   type DispatchSlaScorecard,
 } from "../lib/dispatch";
+import { clipTimedTrackToWindow, type TimedMapPoint } from "../lib/dispatchTrackClip";
 import { writeLocationSearch } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 
@@ -151,6 +154,9 @@ export default function DispatchLive() {
   const [recoverPreview, setRecoverPreview] = useState<DispatchReplanSuggestion[] | null>(null);
   const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([]);
   const [actionNote, setActionNote] = useState("");
+  /** Armada day polylines keyed by `${userId}|${date}` — loaded separately from the 20s live poll. */
+  const [armadaTracks, setArmadaTracks] = useState<Map<string, TimedMapPoint[]>>(new Map());
+  const [armadaTracksLoading, setArmadaTracksLoading] = useState(false);
 
   useEffect(() => {
     document.title = "Dispatch Live · ARMADA M.1";
@@ -161,10 +167,10 @@ export default function DispatchLive() {
   }, [serviceDate]);
 
   useEffect(() => {
-    if (!ready || tab !== "live") return;
+    if (!ready || (tab !== "live" && tab !== "history")) return;
     const ac = new AbortController();
     let cancelled = false;
-    setLoading(true);
+    if (tab === "live") setLoading(true);
     fetchDispatchLive(serviceDate, ac.signal)
       .then((data) => {
         if (cancelled) return;
@@ -176,13 +182,55 @@ export default function DispatchLive() {
         setFetchError(err.message || "Failed to load live dispatch");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && tab === "live") setLoading(false);
       });
     return () => {
       cancelled = true;
       ac.abort();
     };
   }, [ready, serviceDate, tab, tick]);
+
+  // Armada vehicle day tracks: once per date / vehicle set (not every live poll).
+  const armadaTrackJobsKey = useMemo(() => {
+    if (!snapshot?.drivers?.length) return "";
+    return snapshot.drivers
+      .filter((d) => d.armadaUserId != null)
+      .map((d) => `${d.armadaUserId}`)
+      .sort()
+      .join(",");
+  }, [snapshot?.drivers]);
+
+  useEffect(() => {
+    if (!ready || (tab !== "live" && tab !== "history") || !armadaTrackJobsKey) return;
+    const days = armadaTrackJobsKey
+      .split(",")
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0)
+      .map((userId) => ({ userId, date: serviceDate }));
+    if (!days.length) return;
+    const ac = new AbortController();
+    let cancelled = false;
+    setArmadaTracksLoading(true);
+    fetchArmadaDayTracks(days, ac.signal)
+      .then((map) => {
+        if (!cancelled) setArmadaTracks(map);
+      })
+      .catch(() => {
+        /* keep prior tracks if a refetch fails */
+      })
+      .finally(() => {
+        if (!cancelled) setArmadaTracksLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [ready, tab, serviceDate, armadaTrackJobsKey]);
+
+  useEffect(() => {
+    setArmadaTracks(new Map());
+    setArmadaTracksLoading(false);
+  }, [serviceDate]);
 
   useEffect(() => {
     if (!ready || tab !== "live") return;
@@ -223,7 +271,21 @@ export default function DispatchLive() {
   }, [focusStopId, snapshot?.manifest]);
 
   const summary = snapshot?.summary;
-  const drivers = snapshot?.drivers || [];
+  const drivers = useMemo(() => {
+    const list = snapshot?.drivers || [];
+    if (!armadaTracks.size) return list;
+    const now = Date.now();
+    return list.map((d) => {
+      if (d.armadaUserId == null) return d;
+      const key = `${d.armadaUserId}|${serviceDate}`;
+      const timed = armadaTracks.get(key);
+      if (!timed?.length) return d;
+      const track = clipTimedTrackToWindow(timed, d.startedAt, d.completedAt, now);
+      if (!track.length) return d;
+      return { ...d, armadaTrack: track };
+    });
+  }, [snapshot?.drivers, armadaTracks, serviceDate]);
+  const mapFitKey = `${serviceDate}:${focusJobId || "all"}:${drivers.length}:${armadaTracks.size}`;
   const exceptions = snapshot?.exceptions || [];
   const exceptionSummary = snapshot?.exceptionSummary;
   const sla = snapshot?.sla;
@@ -464,27 +526,50 @@ export default function DispatchLive() {
         {bootError ? <div className="dispatch-alert">{bootError}</div> : null}
 
         {tab === "history" ? (
-          <section className="dispatch-live-history panel" aria-label="History scorecard">
-            <div className="dispatch-pane-head">
-              <h2>Day scorecard</h2>
-              <button
-                type="button"
-                className="btn-ghost"
-                disabled={historyLoading}
-                onClick={() => setTick((n) => n + 1)}
-              >
-                Refresh
-              </button>
-            </div>
-            {historyError ? <div className="dispatch-alert">{historyError}</div> : null}
-            {historyLoading && !historySla ? (
-              <p className="dispatch-live-empty">Loading scorecard…</p>
-            ) : historySla ? (
-              <SlaPanel sla={historySla} detailed />
-            ) : (
-              <p className="dispatch-live-empty">No scorecard for this date.</p>
-            )}
-          </section>
+          <>
+            <section className="dispatch-live-history panel" aria-label="History scorecard">
+              <div className="dispatch-pane-head">
+                <h2>Day scorecard</h2>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={historyLoading}
+                  onClick={() => setTick((n) => n + 1)}
+                >
+                  Refresh
+                </button>
+              </div>
+              {historyError ? <div className="dispatch-alert">{historyError}</div> : null}
+              {historyLoading && !historySla ? (
+                <p className="dispatch-live-empty">Loading scorecard…</p>
+              ) : historySla ? (
+                <SlaPanel sla={historySla} detailed />
+              ) : (
+                <p className="dispatch-live-empty">No scorecard for this date.</p>
+              )}
+            </section>
+            <section className="dispatch-live-map-panel panel" aria-label="History map">
+              <div className="dispatch-pane-head">
+                <h2>Map</h2>
+                <span className="dispatch-live-timeline-hint">
+                  {armadaTracksLoading
+                    ? "Loading vehicle tracks…"
+                    : "Plan · phone · Armada for this day (Armada clipped to each job)"}
+                </span>
+              </div>
+              {fetchError ? <div className="dispatch-alert">{fetchError}</div> : null}
+              {drivers.length === 0 ? (
+                <p className="dispatch-live-empty">No routes to plot for this date.</p>
+              ) : (
+                <DispatchLiveMap
+                  drivers={drivers}
+                  focusJobId={focusJobId}
+                  fitKey={`hist:${mapFitKey}`}
+                  onSelectJob={selectJob}
+                />
+              )}
+            </section>
+          </>
         ) : (
           <>
             {fetchError ? <div className="dispatch-alert">{fetchError}</div> : null}
@@ -759,6 +844,31 @@ export default function DispatchLive() {
                 </div>
               )}
             </section>
+
+            {!loading || snapshot ? (
+              <section className="dispatch-live-map-panel panel" aria-label="Live map">
+                <div className="dispatch-pane-head">
+                  <h2>Map</h2>
+                  <span className="dispatch-live-timeline-hint">
+                    {armadaTracksLoading
+                      ? "Loading vehicle tracks…"
+                      : focusJobId
+                        ? "Focused job · click a driver card or Clear to show all"
+                        : "All jobs · plan · phone · Armada (clipped to job window)"}
+                  </span>
+                </div>
+                {drivers.length === 0 ? (
+                  <p className="dispatch-live-empty">No routes to plot for this date.</p>
+                ) : (
+                  <DispatchLiveMap
+                    drivers={drivers}
+                    focusJobId={focusJobId}
+                    fitKey={mapFitKey}
+                    onSelectJob={selectJob}
+                  />
+                )}
+              </section>
+            ) : null}
 
             {!loading || snapshot ? (
               <DispatchLiveTimeline

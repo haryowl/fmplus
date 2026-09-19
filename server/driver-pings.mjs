@@ -176,6 +176,30 @@ export async function latestPingsByFieldUser(tenantId, fieldUserIds) {
 }
 
 /**
+ * Trail for one driver on a calendar service date (Asia/Jakarta day bounds).
+ * Oldest first. Used for Live map phone actual track.
+ */
+export async function pingTrailForServiceDate(tenantId, fieldUserId, serviceDate) {
+  if (!fieldUserId || !serviceDate) return [];
+  const rows = await dbQuery(
+    `SELECT lat, lon, recorded_at
+     FROM driver_pings
+     WHERE tenant_id = $1 AND field_user_id = $2
+       AND recorded_at >= ($3::date AT TIME ZONE 'Asia/Jakarta')
+       AND recorded_at < (($3::date + 1) AT TIME ZONE 'Asia/Jakarta')
+     ORDER BY recorded_at ASC
+     LIMIT 2000`,
+    [tenantId, fieldUserId, serviceDate],
+  );
+  return rows.rows.map((r) => ({
+    lat: Number(r.lat),
+    lon: Number(r.lon),
+    recordedAt:
+      r.recorded_at instanceof Date ? r.recorded_at.toISOString() : String(r.recorded_at),
+  }));
+}
+
+/**
  * Recent trail for one driver, oldest first — used for dwell detection.
  */
 export async function recentPingTrail(tenantId, fieldUserId, sinceMinutes = 60) {
