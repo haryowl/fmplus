@@ -215,6 +215,8 @@ export default function DispatchBoard() {
   const [planOnlyEmpty, setPlanOnlyEmpty] = useState(false);
   /** Empty = default: all jobs that day with no field driver assigned. */
   const [planJobIds, setPlanJobIds] = useState<string[]>([]);
+  /** Empty = use all saved depots (previous multi-depot default). */
+  const [planDepotIds, setPlanDepotIds] = useState<string[]>([]);
   const [preferZoneDepot, setPreferZoneDepot] = useState(false);
   const [preferSameZone, setPreferSameZone] = useState(false);
   const [zoneDepotMappings, setZoneDepotMappings] = useState<DispatchZoneDepotMapping[]>([]);
@@ -528,6 +530,10 @@ export default function DispatchBoard() {
   useEffect(() => {
     setPlanJobIds([]);
   }, [planDate]);
+
+  useEffect(() => {
+    setPlanDepotIds((prev) => prev.filter((id) => depots.some((d) => d.id === id)));
+  }, [depots]);
 
   useEffect(() => {
     document.title = "Dispatch · ARMADA M.1";
@@ -1388,9 +1394,10 @@ export default function DispatchBoard() {
         dayStart: planDayStart || "08:00",
         maxStopsPerVehicle: planMaxStops.trim() ? Number(planMaxStops) : 0,
         onlyEmptyJobs: planOnlyEmpty,
-        preferZoneDepot: depotMode === "multi" ? preferZoneDepot : false,
+        preferZoneDepot,
         preferSameZone,
         jobIds: planJobIds,
+        depotIds: depotMode === "multi" ? planDepotIds : undefined,
         routing: {
           avoidTolls,
           avoidMotorways,
@@ -1994,8 +2001,67 @@ export default function DispatchBoard() {
               ) : null}
               {depotMode === "multi" ? (
                 <>
+                  <div className="field dispatch-plan-jobs" style={{ gridColumn: "1 / -1" }}>
+                    <div className="dispatch-pane-head" style={{ marginBottom: 6 }}>
+                      <label>Depots to include</label>
+                      <div className="dispatch-plan-job-actions">
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => setPlanDepotIds(depots.map((d) => d.id))}
+                        >
+                          All
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => setPlanDepotIds([])}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    <p className="dispatch-search-hint">
+                      {planDepotIds.length
+                        ? `${planDepotIds.length} of ${depots.length} depot(s) selected`
+                        : `None selected → default: all ${depots.length} saved depot(s)`}
+                    </p>
+                    {depots.length === 0 ? (
+                      <p className="dispatch-search-hint">No depots saved yet.</p>
+                    ) : (
+                      <ul className="dispatch-plan-job-list">
+                        {depots.map((d) => {
+                          const checked = planDepotIds.includes(d.id);
+                          return (
+                            <li key={d.id}>
+                              <label className="dispatch-plan-check">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    setPlanDepotIds((prev) =>
+                                      prev.includes(d.id)
+                                        ? prev.filter((id) => id !== d.id)
+                                        : [...prev, d.id],
+                                    );
+                                  }}
+                                />
+                                <span>
+                                  <strong>{d.name}</strong>
+                                  <em>
+                                    {d.isDefault ? "default · " : ""}
+                                    {d.lat.toFixed(4)}, {d.lon.toFixed(4)}
+                                  </em>
+                                </span>
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
                   <div className="field" style={{ gridColumn: "1 / -1" }}>
-                    <label htmlFor="dispatch-depot-pick">Active depot</label>
+                    <label htmlFor="dispatch-depot-pick">Edit depot</label>
                     <select
                       id="dispatch-depot-pick"
                       value={selectedDepotId}
@@ -2220,9 +2286,10 @@ export default function DispatchBoard() {
                     </div>
                   ) : null}
                   <p className="dispatch-search-hint" style={{ gridColumn: "1 / -1" }}>
-                    Create or move a depot from an Armada POI, or pin on the map. Orders go to the nearest
-                    depot (or zone map when enabled). Vehicles use their capacity depot when set; otherwise
-                    they are balanced across depots by demand. {depots.length} depot(s) saved.
+                    Create or move a depot from an Armada POI, or pin on the map. Plan uses selected depots
+                    above (or all when none selected). Orders go to the nearest chosen depot (or zone map
+                    when enabled). Vehicles use their capacity depot when set; otherwise they are balanced
+                    by demand. {depots.length} depot(s) saved.
                   </p>
                 </>
               ) : null}

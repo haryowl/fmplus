@@ -2627,17 +2627,28 @@ export async function handleDispatchRequest(req, res) {
 
       /** @type {{ id: string, name: string, lat: number, lon: number, isDefault?: boolean }[]} */
       let multiDepots = [];
+      /** Explicit depot filter; empty means all saved depots. */
+      let selectedPlanDepotIds = [];
       if (depotMode === "multi") {
         const all = await listDepotsForTenant(dbTenant.id);
-        const filterIds = Array.isArray(body.depotIds)
-          ? new Set(body.depotIds.map((x) => String(x)))
-          : null;
-        multiDepots = filterIds
-          ? all.filter((d) => filterIds.has(String(d.id)))
+        selectedPlanDepotIds = Array.isArray(body.depotIds)
+          ? [
+              ...new Set(
+                body.depotIds
+                  .map((id) => String(id || "").trim())
+                  .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+              ),
+            ].slice(0, 50)
+          : [];
+        // Empty / omitted → all saved depots (previous default).
+        multiDepots = selectedPlanDepotIds.length
+          ? all.filter((d) => selectedPlanDepotIds.includes(String(d.id)))
           : all;
         if (!multiDepots.length) {
           json(res, 400, {
-            error: "depotMode=multi requires at least one saved depot (add depots first)",
+            error: selectedPlanDepotIds.length
+              ? "No matching depots for the selected depotIds"
+              : "depotMode=multi requires at least one saved depot (add depots first)",
           });
           return true;
         }
@@ -3159,6 +3170,7 @@ export async function handleDispatchRequest(req, res) {
         preferZoneDepot: depotMode === "multi" ? preferZoneDepot : false,
         preferSameZone,
         jobIds: selectedJobIds,
+        depotIds: selectedPlanDepotIds,
         routing,
         routes: planRoutes,
         unassigned: planUnassigned,

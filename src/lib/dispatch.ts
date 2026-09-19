@@ -508,6 +508,8 @@ export type DispatchPlanDayResult = {
   preferSameZone?: boolean;
   /** Explicit job ids used; empty means default unassigned-driver pool. */
   jobIds?: string[];
+  /** Explicit depot ids for multi; empty means all saved depots. */
+  depotIds?: string[];
   routing?: {
     avoidTolls?: boolean;
     avoidMotorways?: boolean;
