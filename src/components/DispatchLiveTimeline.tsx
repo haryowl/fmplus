@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import {
   buildTimelineRows,
   minToHm,
@@ -17,6 +17,9 @@ type Props = {
   focusStopId: string | null;
   onSelectStop: (jobId: string, stopId: string) => void;
   onSelectJob: (jobId: string) => void;
+  /** When true, skip outer panel chrome (parent FoldPanel owns it). */
+  embedded?: boolean;
+  headerAside?: ReactNode;
 };
 
 function nodeGlyph(node: TimelineNode): string {
@@ -39,6 +42,7 @@ export function DispatchLiveTimeline({
   focusStopId,
   onSelectStop,
   onSelectJob,
+  embedded = false,
 }: Props) {
   const showNow = serviceDate === todayJakartaYmd();
   // Everything is measured from midnight of the day being viewed, so work that
@@ -58,26 +62,10 @@ export function DispatchLiveTimeline({
     }
   }, [focusStopId, focusJobId, visible.length]);
 
-  if (!drivers.length) {
-    return (
-      <section className="dispatch-live-timeline panel" aria-label="Progress timeline">
-        <div className="dispatch-pane-head">
-          <h2>Progress</h2>
-        </div>
-        <p className="dispatch-live-empty">No routes to plot for this date.</p>
-      </section>
-    );
-  }
-
-  return (
-    <section className="dispatch-live-timeline panel" aria-label="Progress timeline">
-      <div className="dispatch-pane-head">
-        <h2>Progress</h2>
-        <span className="dispatch-live-timeline-hint">
-          {minToHm(axis.startMin)}–{minToHm(axis.endMin)} WIB · faded plan · green actual
-        </span>
-      </div>
-
+  const body =
+    !drivers.length ? (
+      <p className="dispatch-live-empty">No routes to plot for this date.</p>
+    ) : (
       <div className="dispatch-live-gantt" ref={scrollerRef}>
         <div className="dispatch-live-gantt-hours" style={{ gridTemplateColumns: `160px 1fr` }}>
           <div className="dispatch-live-gantt-corner" aria-hidden />
@@ -108,6 +96,21 @@ export function DispatchLiveTimeline({
           ))}
         </ul>
       </div>
+    );
+
+  if (embedded) return body;
+
+  return (
+    <section className="dispatch-live-timeline panel" aria-label="Progress timeline">
+      <div className="dispatch-pane-head">
+        <h2>Progress</h2>
+        <span className="dispatch-live-timeline-hint">
+          {drivers.length
+            ? `${minToHm(axis.startMin)}–${minToHm(axis.endMin)} WIB · faded plan · green actual`
+            : null}
+        </span>
+      </div>
+      {body}
     </section>
   );
 }

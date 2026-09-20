@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { DispatchLiveMap } from "../components/DispatchLiveMap";
 import { DispatchLiveTimeline } from "../components/DispatchLiveTimeline";
+import { FoldPanel } from "../components/FoldPanel";
 import { ViewNav } from "../components/ViewNav";
 import {
   ackDispatchOpsException,
@@ -25,8 +26,31 @@ import { writeLocationSearch } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 
 const POLL_MS = 20_000;
+const FOLD_STORAGE_KEY = "fmplus.dispatchLive.folded";
 
 type TabId = "live" | "history";
+type FoldId =
+  | "sla"
+  | "exceptions"
+  | "drivers"
+  | "map"
+  | "progress"
+  | "manifest"
+  | "historySla"
+  | "historyMap";
+
+type FoldState = Partial<Record<FoldId, boolean>>;
+
+function loadFoldState(): FoldState {
+  try {
+    const raw = localStorage.getItem(FOLD_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as FoldState;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 
 function statusLabel(status: string): string {
   if (status === "delivered") return "Delivered";
@@ -148,7 +172,6 @@ export default function DispatchLive() {
   const [historySla, setHistorySla] = useState<DispatchSlaScorecard | null>(null);
   const [historyError, setHistoryError] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [showExceptions, setShowExceptions] = useState(true);
   const [recoverBusy, setRecoverBusy] = useState(false);
   const [recoverError, setRecoverError] = useState("");
   const [recoverPreview, setRecoverPreview] = useState<DispatchReplanSuggestion[] | null>(null);
@@ -157,6 +180,19 @@ export default function DispatchLive() {
   /** Armada day polylines keyed by `${userId}|${date}` — loaded separately from the 20s live poll. */
   const [armadaTracks, setArmadaTracks] = useState<Map<string, TimedMapPoint[]>>(new Map());
   const [armadaTracksLoading, setArmadaTracksLoading] = useState(false);
+  const [folded, setFolded] = useState<FoldState>(() => loadFoldState());
+
+  function toggleFold(id: FoldId) {
+    setFolded((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem(FOLD_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     document.title = "Dispatch Live · ARMADA M.1";
@@ -527,36 +563,46 @@ export default function DispatchLive() {
 
         {tab === "history" ? (
           <>
-            <section className="dispatch-live-history panel" aria-label="History scorecard">
-              <div className="dispatch-pane-head">
-                <h2>Day scorecard</h2>
+            <FoldPanel
+              id="historySla"
+              title="Day scorecard"
+              folded={Boolean(folded.historySla)}
+              onToggle={() => toggleFold("historySla")}
+              hint={
                 <button
                   type="button"
                   className="btn-ghost"
                   disabled={historyLoading}
-                  onClick={() => setTick((n) => n + 1)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTick((n) => n + 1);
+                  }}
                 >
                   Refresh
                 </button>
-              </div>
+              }
+            >
               {historyError ? <div className="dispatch-alert">{historyError}</div> : null}
               {historyLoading && !historySla ? (
                 <p className="dispatch-live-empty">Loading scorecard…</p>
               ) : historySla ? (
-                <SlaPanel sla={historySla} detailed />
+                <SlaPanel sla={historySla} detailed bare />
               ) : (
                 <p className="dispatch-live-empty">No scorecard for this date.</p>
               )}
-            </section>
-            <section className="dispatch-live-map-panel panel" aria-label="History map">
-              <div className="dispatch-pane-head">
-                <h2>Map</h2>
-                <span className="dispatch-live-timeline-hint">
-                  {armadaTracksLoading
-                    ? "Loading vehicle tracks…"
-                    : "Plan · phone · Armada for this day (actuals clipped to each job)"}
-                </span>
-              </div>
+            </FoldPanel>
+            <FoldPanel
+              id="historyMap"
+              className="dispatch-live-map-panel"
+              title="Map"
+              folded={Boolean(folded.historyMap)}
+              onToggle={() => toggleFold("historyMap")}
+              hint={
+                armadaTracksLoading
+                  ? "Loading vehicle tracks…"
+                  : "Plan · phone · Armada (clipped to each job)"
+              }
+            >
               {fetchError ? <div className="dispatch-alert">{fetchError}</div> : null}
               {drivers.length === 0 ? (
                 <p className="dispatch-live-empty">No routes to plot for this date.</p>
@@ -568,7 +614,7 @@ export default function DispatchLive() {
                   onSelectJob={selectJob}
                 />
               )}
-            </section>
+            </FoldPanel>
           </>
         ) : (
           <>
@@ -629,67 +675,73 @@ export default function DispatchLive() {
               </article>
             </section>
 
-            {sla ? <SlaPanel sla={sla} /> : null}
+            {sla ? (
+              <FoldPanel
+                id="sla"
+                title="SLA today"
+                folded={Boolean(folded.sla)}
+                onToggle={() => toggleFold("sla")}
+              >
+                <SlaPanel sla={sla} bare />
+              </FoldPanel>
+            ) : null}
 
-            <section className="dispatch-live-exceptions panel" aria-label="Dispatch exceptions">
-              <div className="dispatch-pane-head">
-                <h2>
-                  Exceptions
-                  {exceptionSummary?.unacked ? (
-                    <em className="dispatch-live-pill tone-delayed"> {exceptionSummary.unacked} open</em>
-                  ) : null}
-                </h2>
-                <button type="button" className="btn-ghost" onClick={() => setShowExceptions((v) => !v)}>
-                  {showExceptions ? "Hide" : "Show"}
-                </button>
-              </div>
-              {showExceptions ? (
-                exceptions.length === 0 ? (
-                  <p className="dispatch-live-empty">No open exceptions for this date.</p>
-                ) : (
-                  <ul className="dispatch-live-exception-list">
-                    {exceptions.map((ex) => (
-                      <li key={ex.id} className={`sev-${ex.severity}`}>
-                        <div>
-                          <strong>
-                            <em className="dispatch-live-pill tone-delayed">
-                              {exceptionKindLabel(ex.kind)}
-                            </em>{" "}
-                            {ex.title}
-                          </strong>
-                          <span>{ex.detail}</span>
-                        </div>
-                        <div className="dispatch-live-exception-actions">
-                          {ex.jobId ? (
-                            <button
-                              type="button"
-                              className="btn-ghost"
-                              onClick={() => {
-                                selectJob(ex.jobId!);
-                                if (ex.stopId) selectStop(ex.jobId!, ex.stopId);
-                              }}
-                            >
-                              Focus
-                            </button>
-                          ) : null}
-                          {!ex.ackedAt ? (
-                            <button
-                              type="button"
-                              className="btn-ghost"
-                              onClick={() => void ackException(ex)}
-                            >
-                              Ack
-                            </button>
-                          ) : (
-                            <span className="dispatch-live-sub">Acked</span>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )
-              ) : null}
-            </section>
+            <FoldPanel
+              id="exceptions"
+              title="Exceptions"
+              folded={Boolean(folded.exceptions)}
+              onToggle={() => toggleFold("exceptions")}
+              hint={
+                exceptionSummary?.unacked ? (
+                  <em className="dispatch-live-pill tone-delayed">{exceptionSummary.unacked} open</em>
+                ) : null
+              }
+            >
+              {exceptions.length === 0 ? (
+                <p className="dispatch-live-empty">No open exceptions for this date.</p>
+              ) : (
+                <ul className="dispatch-live-exception-list">
+                  {exceptions.map((ex) => (
+                    <li key={ex.id} className={`sev-${ex.severity}`}>
+                      <div>
+                        <strong>
+                          <em className="dispatch-live-pill tone-delayed">
+                            {exceptionKindLabel(ex.kind)}
+                          </em>{" "}
+                          {ex.title}
+                        </strong>
+                        <span>{ex.detail}</span>
+                      </div>
+                      <div className="dispatch-live-exception-actions">
+                        {ex.jobId ? (
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            onClick={() => {
+                              selectJob(ex.jobId!);
+                              if (ex.stopId) selectStop(ex.jobId!, ex.stopId);
+                            }}
+                          >
+                            Focus
+                          </button>
+                        ) : null}
+                        {!ex.ackedAt ? (
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            onClick={() => void ackException(ex)}
+                          >
+                            Ack
+                          </button>
+                        ) : (
+                          <span className="dispatch-live-sub">Acked</span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </FoldPanel>
 
             {recoverPreview ? (
               <section className="dispatch-live-recover panel" aria-label="Recovery preview">
@@ -756,15 +808,20 @@ export default function DispatchLive() {
               </section>
             ) : null}
 
-            <section className="dispatch-live-drivers" aria-label="Drivers">
-              <div className="dispatch-pane-head">
-                <h2>Drivers</h2>
-                {focusJobId ? (
+            <FoldPanel
+              id="drivers"
+              className="dispatch-live-drivers"
+              title="Drivers"
+              folded={Boolean(folded.drivers)}
+              onToggle={() => toggleFold("drivers")}
+              hint={
+                focusJobId ? (
                   <button type="button" className="btn-ghost" onClick={clearFocus}>
                     Clear focus
                   </button>
-                ) : null}
-              </div>
+                ) : null
+              }
+            >
               {!loading && drivers.length === 0 ? (
                 <p className="dispatch-live-empty">No assigned jobs for this date.</p>
               ) : (
@@ -843,20 +900,23 @@ export default function DispatchLive() {
                   })}
                 </div>
               )}
-            </section>
+            </FoldPanel>
 
             {!loading || snapshot ? (
-              <section className="dispatch-live-map-panel panel" aria-label="Live map">
-                <div className="dispatch-pane-head">
-                  <h2>Map</h2>
-                  <span className="dispatch-live-timeline-hint">
-                    {armadaTracksLoading
-                      ? "Loading vehicle tracks…"
-                      : focusJobId
-                        ? "Focused job · click a driver card or Clear to show all"
-                        : "All jobs · plan · phone · Armada (both actuals clipped to job window)"}
-                  </span>
-                </div>
+              <FoldPanel
+                id="map"
+                className="dispatch-live-map-panel"
+                title="Map"
+                folded={Boolean(folded.map)}
+                onToggle={() => toggleFold("map")}
+                hint={
+                  armadaTracksLoading
+                    ? "Loading vehicle tracks…"
+                    : focusJobId
+                      ? "Focused job"
+                      : "Plan · phone · Armada"
+                }
+              >
                 {drivers.length === 0 ? (
                   <p className="dispatch-live-empty">No routes to plot for this date.</p>
                 ) : (
@@ -867,23 +927,37 @@ export default function DispatchLive() {
                     onSelectJob={selectJob}
                   />
                 )}
-              </section>
+              </FoldPanel>
             ) : null}
 
             {!loading || snapshot ? (
-              <DispatchLiveTimeline
-                drivers={drivers}
-                serviceDate={serviceDate}
-                focusJobId={focusJobId}
-                focusStopId={focusStopId}
-                onSelectJob={selectJob}
-                onSelectStop={selectStop}
-              />
+              <FoldPanel
+                id="progress"
+                className="dispatch-live-timeline"
+                title="Progress"
+                folded={Boolean(folded.progress)}
+                onToggle={() => toggleFold("progress")}
+                hint="faded plan · green actual"
+              >
+                <DispatchLiveTimeline
+                  drivers={drivers}
+                  serviceDate={serviceDate}
+                  focusJobId={focusJobId}
+                  focusStopId={focusStopId}
+                  onSelectJob={selectJob}
+                  onSelectStop={selectStop}
+                  embedded
+                />
+              </FoldPanel>
             ) : null}
 
-            <section className="dispatch-live-manifest panel" aria-label="Manifest">
-              <div className="dispatch-pane-head">
-                <h2>Manifest</h2>
+            <FoldPanel
+              id="manifest"
+              className="dispatch-live-manifest"
+              title="Manifest"
+              folded={Boolean(folded.manifest)}
+              onToggle={() => toggleFold("manifest")}
+              hint={
                 <label className="dispatch-live-search">
                   <span className="visually-hidden">Search manifest</span>
                   <input
@@ -891,10 +965,11 @@ export default function DispatchLive() {
                     placeholder="Order, driver, vehicle, lat/lon…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
                   />
                 </label>
-              </div>
-
+              }
+            >
               {loading && !snapshot ? (
                 <p className="dispatch-live-empty">Loading manifest…</p>
               ) : groupedManifest.length === 0 ? (
@@ -929,7 +1004,7 @@ export default function DispatchLive() {
                   </table>
                 </div>
               )}
-            </section>
+            </FoldPanel>
           </>
         )}
       </main>
@@ -937,41 +1012,88 @@ export default function DispatchLive() {
   );
 }
 
-function SlaPanel({ sla, detailed = false }: { sla: DispatchSlaScorecard; detailed?: boolean }) {
+function SlaPanel({
+  sla,
+  detailed = false,
+  bare = false,
+}: {
+  sla: DispatchSlaScorecard;
+  detailed?: boolean;
+  bare?: boolean;
+}) {
+  const body = (
+    <div className="dispatch-live-kpis dispatch-live-sla-kpis">
+      <article className="dispatch-live-kpi tone-ok">
+        <span>OTP</span>
+        <strong>{sla.otpPct != null ? `${sla.otpPct}%` : "—"}</strong>
+        <em>{sla.withWindow ? `${sla.onTime}/${sla.withWindow} on window` : "no window stops"}</em>
+      </article>
+      <article className={`dispatch-live-kpi${sla.late > 0 ? " tone-warn" : ""}`}>
+        <span>Late</span>
+        <strong>{sla.late}</strong>
+      </article>
+      <article className={`dispatch-live-kpi${sla.atRiskCount > 0 ? " tone-warn" : ""}`}>
+        <span>At risk</span>
+        <strong>{sla.atRiskCount}</strong>
+      </article>
+      <article className="dispatch-live-kpi">
+        <span>Skipped</span>
+        <strong>{sla.skipped}</strong>
+        <em>{sla.stuckCount ? `${sla.stuckCount} stuck` : ""}</em>
+      </article>
+      <article className="dispatch-live-kpi">
+        <span>Plan lag</span>
+        <strong>
+          {sla.medianPlanLagMin != null
+            ? `${sla.medianPlanLagMin >= 0 ? "+" : ""}${sla.medianPlanLagMin}m`
+            : "—"}
+        </strong>
+        <em>median</em>
+      </article>
+    </div>
+  );
+  if (bare) {
+    return (
+      <>
+        {body}
+        {detailed && sla.byDriver.length > 0 ? (
+          <div className="dispatch-live-table-wrap">
+            <table className="dispatch-live-table">
+              <thead>
+                <tr>
+                  <th>Driver</th>
+                  <th>Delivered</th>
+                  <th>On time</th>
+                  <th>Late</th>
+                  <th>Skipped</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sla.byDriver.map((d) => (
+                  <tr key={d.jobId}>
+                    <td>
+                      <strong>{d.driverName}</strong>
+                      {d.vehicleLabel ? <span className="dispatch-live-sub">{d.vehicleLabel}</span> : null}
+                    </td>
+                    <td>{d.delivered}</td>
+                    <td>{d.onTime}</td>
+                    <td>{d.late}</td>
+                    <td>{d.skipped}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </>
+    );
+  }
   return (
     <section className="dispatch-live-sla panel" aria-label="SLA scorecard">
       <div className="dispatch-pane-head">
         <h2>{detailed ? `SLA · ${sla.serviceDate}` : "SLA today"}</h2>
       </div>
-      <div className="dispatch-live-kpis dispatch-live-sla-kpis">
-        <article className="dispatch-live-kpi tone-ok">
-          <span>OTP</span>
-          <strong>{sla.otpPct != null ? `${sla.otpPct}%` : "—"}</strong>
-          <em>{sla.withWindow ? `${sla.onTime}/${sla.withWindow} on window` : "no window stops"}</em>
-        </article>
-        <article className={`dispatch-live-kpi${sla.late > 0 ? " tone-warn" : ""}`}>
-          <span>Late</span>
-          <strong>{sla.late}</strong>
-        </article>
-        <article className={`dispatch-live-kpi${sla.atRiskCount > 0 ? " tone-warn" : ""}`}>
-          <span>At risk</span>
-          <strong>{sla.atRiskCount}</strong>
-        </article>
-        <article className="dispatch-live-kpi">
-          <span>Skipped</span>
-          <strong>{sla.skipped}</strong>
-          <em>{sla.stuckCount ? `${sla.stuckCount} stuck` : ""}</em>
-        </article>
-        <article className="dispatch-live-kpi">
-          <span>Plan lag</span>
-          <strong>
-            {sla.medianPlanLagMin != null
-              ? `${sla.medianPlanLagMin >= 0 ? "+" : ""}${sla.medianPlanLagMin}m`
-              : "—"}
-          </strong>
-          <em>median</em>
-        </article>
-      </div>
+      {body}
       {detailed && sla.byDriver.length > 0 ? (
         <div className="dispatch-live-table-wrap">
           <table className="dispatch-live-table">
