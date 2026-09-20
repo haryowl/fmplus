@@ -1,4 +1,5 @@
-﻿:root {
+﻿:root,
+[data-theme="warm"] {
   --bg: #efece6;
   --bg-deep: #e4dfd5;
   --surface: #fbf9f4;
@@ -11,6 +12,9 @@
   --nav: #141311;
   --nav-text: #f4efe6;
   --nav-muted: #b7b0a4;
+  --nav-chip: #1c1b18;
+  --nav-chip-line: #2c2a27;
+  --nav-chip-hover: #4a463e;
   --accent: #0b6b62;
   --accent-hover: #09574f;
   --accent-soft: #d9efe9;
@@ -27,6 +31,36 @@
   --font: "Plus Jakarta Sans", "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --space: 8px;
+}
+
+/* Black & white alternative — grayscale UI with restrained status hues. */
+[data-theme="mono"] {
+  --bg: #f4f4f5;
+  --bg-deep: #e4e4e7;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --ink: #0a0a0a;
+  --ink-soft: #52525b;
+  --ink-faint: #71717a;
+  --line: #e4e4e7;
+  --line-strong: #d4d4d8;
+  --nav: #0a0a0a;
+  --nav-text: #fafafa;
+  --nav-muted: #a1a1aa;
+  --nav-chip: #18181b;
+  --nav-chip-line: #3f3f46;
+  --nav-chip-hover: #52525b;
+  --accent: #18181b;
+  --accent-hover: #000000;
+  --accent-soft: #e4e4e7;
+  --gps: #3f3f46;
+  --ign: #52525b;
+  --odo: #71717a;
+  --hrs: #0a0a0a;
+  --refill: #3f3f46;
+  --danger: #7f1d1d;
+  --danger-soft: #f4e8e8;
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
 }
 
 * {
@@ -92,7 +126,7 @@ button {
 }
 
 .dispatch-toolbar {
-  background: rgba(251, 249, 244, 0.97);
+  background: color-mix(in srgb, var(--bg) 97%, transparent);
   backdrop-filter: blur(8px);
 }
 
@@ -160,13 +194,66 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.theme-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--nav-text) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--nav-text) 14%, transparent);
+}
+
+.theme-picker-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--nav-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.theme-picker-btn:hover {
+  color: var(--nav-text);
+}
+
+.theme-picker-btn.is-active {
+  background: color-mix(in srgb, var(--nav-text) 14%, transparent);
+  color: var(--nav-text);
+}
+
+.theme-picker-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--nav-text) 35%, transparent);
+  flex-shrink: 0;
+}
+
+.theme-picker-swatch-warm {
+  background: linear-gradient(135deg, #efece6 45%, #0b6b62 45%);
+}
+
+.theme-picker-swatch-mono {
+  background: linear-gradient(135deg, #ffffff 45%, #0a0a0a 45%);
 }
 
 .btn-ghost {
   height: 34px;
-  background: #1c1b18;
+  background: var(--nav-chip);
   color: var(--nav-text);
-  border: 1px solid #2c2a27;
+  border: 1px solid var(--nav-chip-line);
   border-radius: 999px;
   padding: 0 14px;
   font-size: 12px;
@@ -174,7 +261,7 @@ button {
 }
 
 .btn-ghost:hover:not(:disabled) {
-  border-color: #4a463e;
+  border-color: var(--nav-chip-hover);
 }
 
 .btn-ghost:disabled {
@@ -196,8 +283,8 @@ span.btn-ghost {
 }
 
 .btn-ghost.active {
-  background: #2a2925;
-  border-color: #5a564c;
+  background: color-mix(in srgb, var(--nav-text) 16%, var(--nav-chip));
+  border-color: var(--nav-chip-hover);
 }
 
 .view-nav {
@@ -453,7 +540,7 @@ span.btn-ghost {
 
 .btn-primary {
   background: var(--accent);
-  color: #f6fffc;
+  color: var(--nav-text);
   min-width: 148px;
 }
 
@@ -1623,7 +1710,7 @@ html.onesheet-root body {
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
-    background: #efece6 !important;
+    background: var(--bg) !important;
   }
 
   .view-nav,

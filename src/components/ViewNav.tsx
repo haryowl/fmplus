@@ -17,6 +17,7 @@ import {
 } from "../lib/routing";
 import { moduleKeyForView } from "../lib/entitlements";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
+import { ThemePicker } from "./ThemePicker";
 
 const LINKS: { view: AppView; label: string; href: (search: string) => string }[] = [
   { view: "full", label: "Full", href: fullHref },
@@ -46,27 +47,37 @@ export function ViewNav({ current }: Props) {
     : LINKS;
 
   return (
-    <nav className="view-nav" aria-label="Dashboard views">
-      {links.map((link) =>
-        link.view === current ? (
-          <span key={link.view} className="btn-ghost active">
-            {link.label}
-          </span>
-        ) : (
-          <a
-            key={link.view}
-            className="btn-ghost"
-            href={link.href(search)}
-            onClick={(event) => {
-              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-              event.preventDefault();
-              navigateView(link.href(search));
-            }}
-          >
-            {link.label}
-          </a>
-        ),
-      )}
-    </nav>
+    <>
+      <nav className="view-nav" aria-label="Dashboard views">
+        {links.map((link) =>
+          link.view === current ? (
+            <span key={link.view} className="btn-ghost active">
+              {link.label}
+            </span>
+          ) : (
+            <a
+              key={link.view}
+              className="btn-ghost"
+              href={link.href(search)}
+              onClick={(event) => {
+                if (
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                )
+                  return;
+                event.preventDefault();
+                navigateView(link.href(search));
+              }}
+            >
+              {link.label}
+            </a>
+          ),
+        )}
+      </nav>
+      <ThemePicker />
+    </>
   );
 }

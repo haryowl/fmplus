@@ -19,8 +19,10 @@ import FieldLogin from "./pages/FieldLogin";
 import ManagerMaintenance from "./pages/ManagerMaintenance";
 import { VIEW_CHANGE, viewFromPath, type AppView } from "./lib/routing";
 import { bootTenantFromSearch } from "./lib/tenant";
+import { bootTheme } from "./lib/theme";
 import "./styles.css";
 
+bootTheme();
 bootTenantFromSearch(window.location.search);
 
 function pageFor(view: AppView) {
