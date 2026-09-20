@@ -1805,22 +1805,21 @@ export async function handleDispatchRequest(req, res) {
         return true;
       }
       const trailRaw = await pingTrailForServiceDate(dbTenant.id, fieldUserId, date);
-      const trail = [];
-      for (const p of trailRaw) {
-        const lat = Number(p.lat);
-        const lon = Number(p.lon);
-        if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-        trail.push([lat, lon]);
+      const timed = trailRaw.map((p) => ({
+        lat: Number(p.lat),
+        lon: Number(p.lon),
+        recordedAt: p.recordedAt,
+      })).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && p.recordedAt);
+      // Cap timed payload for map clients that clip to job windows.
+      const max = 800;
+      let slimTimed = timed;
+      if (timed.length > max) {
+        const step = (timed.length - 1) / (max - 1);
+        slimTimed = [];
+        for (let i = 0; i < max; i++) slimTimed.push(timed[Math.round(i * step)]);
       }
-      // Cap for map payload
-      const max = 400;
-      let slim = trail;
-      if (trail.length > max) {
-        const step = (trail.length - 1) / (max - 1);
-        slim = [];
-        for (let i = 0; i < max; i++) slim.push(trail[Math.round(i * step)]);
-      }
-      json(res, 200, { trail: slim, date, fieldUserId });
+      const trail = slimTimed.map((p) => [p.lat, p.lon]);
+      json(res, 200, { trail, points: slimTimed, date, fieldUserId });
       return true;
     }
 

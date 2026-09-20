@@ -1614,17 +1614,32 @@ export async function fetchPhoneTrailForDate(
   fieldUserId: string,
   serviceDate: string,
   signal?: AbortSignal,
-): Promise<[number, number][]> {
+): Promise<TimedMapPoint[]> {
   const res = await fetch(
     `/api/dispatch/phone-trail?fieldUserId=${encodeURIComponent(fieldUserId)}&date=${encodeURIComponent(serviceDate)}`,
     { headers: { accept: "application/json", ...tenantHeaders() }, signal },
   );
   const data = (await res.json().catch(() => ({}))) as {
+    points?: TimedMapPoint[];
     trail?: [number, number][];
     error?: string;
   };
   if (!res.ok) throw new Error(data.error || `Phone trail ${res.status}`);
-  return data.trail || [];
+  if (Array.isArray(data.points) && data.points.length) {
+    return data.points.filter(
+      (p) =>
+        p &&
+        Number.isFinite(Number(p.lat)) &&
+        Number.isFinite(Number(p.lon)) &&
+        typeof p.recordedAt === "string",
+    );
+  }
+  // Legacy lat/lon-only payload — no timestamps to clip with.
+  return (data.trail || []).map((ll, i) => ({
+    lat: ll[0],
+    lon: ll[1],
+    recordedAt: new Date(i).toISOString(),
+  }));
 }
 
 export async function fetchDispatchSla(

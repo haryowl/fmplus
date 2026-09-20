@@ -33,6 +33,7 @@ import {
   fetchDispatchOrders,
   fetchDispatchOrderTemplates,
   fetchArmadaDayTracks,
+  fetchDispatchLive,
   fetchPhoneTrailForDate,
   fetchStopPhotos,
   fetchVehicleCapacities,
@@ -237,6 +238,8 @@ export default function DispatchBoard() {
   const [jobPhoneTrail, setJobPhoneTrail] = useState<[number, number][]>([]);
   const [jobArmadaTrack, setJobArmadaTrack] = useState<[number, number][]>([]);
   const [jobTrackStatus, setJobTrackStatus] = useState("");
+  const [jobPhoneLive, setJobPhoneLive] = useState<{ lat: number; lon: number } | null>(null);
+  const [jobVehicleLive, setJobVehicleLive] = useState<{ lat: number; lon: number } | null>(null);
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
   const selectedUser = users.find((u) => String(u.id) === userId);
@@ -727,11 +730,13 @@ export default function DispatchBoard() {
     return () => ac.abort();
   }, [selected, routePathKey, avoidTolls, avoidMotorways, avoidFerries, respectGanjilGenap, plateParity]);
 
-  // Phone + Armada actual tracks for the selected job (Board map parity with Live).
+  // Phone + Armada actual tracks + live dots for the selected job.
   useEffect(() => {
     if (!selected) {
       setJobPhoneTrail([]);
       setJobArmadaTrack([]);
+      setJobPhoneLive(null);
+      setJobVehicleLive(null);
       setJobTrackStatus("");
       return;
     }
@@ -744,8 +749,11 @@ export default function DispatchBoard() {
     if (selected.assignedFieldUserId) {
       tasks.push(
         fetchPhoneTrailForDate(selected.assignedFieldUserId, date, ac.signal)
-          .then((trail) => {
-            if (!cancelled) setJobPhoneTrail(trail);
+          .then((timed) => {
+            if (cancelled) return;
+            setJobPhoneTrail(
+              clipTimedTrackToWindow(timed, selected.startedAt, selected.completedAt),
+            );
           })
           .catch(() => {
             if (!cancelled) setJobPhoneTrail([]);
@@ -772,6 +780,31 @@ export default function DispatchBoard() {
     } else {
       setJobArmadaTrack([]);
     }
+
+    // Live dots from the same Live snapshot (phone + Armada when present).
+    tasks.push(
+      fetchDispatchLive(date, ac.signal)
+        .then((snap) => {
+          if (cancelled) return;
+          const driver = snap.drivers.find((d) => d.jobId === selected.id);
+          setJobPhoneLive(
+            driver?.phonePos
+              ? { lat: driver.phonePos.lat, lon: driver.phonePos.lon }
+              : null,
+          );
+          setJobVehicleLive(
+            driver?.vehiclePos
+              ? { lat: driver.vehiclePos.lat, lon: driver.vehiclePos.lon }
+              : null,
+          );
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setJobPhoneLive(null);
+            setJobVehicleLive(null);
+          }
+        }),
+    );
 
     void Promise.all(tasks).finally(() => {
       if (!cancelled) setJobTrackStatus("");
@@ -3236,6 +3269,8 @@ export default function DispatchBoard() {
                 routeGeometry={jobRoute?.geometry || []}
                 phoneTrail={jobPhoneTrail}
                 armadaTrack={jobArmadaTrack}
+                phoneLive={jobPhoneLive}
+                vehicleLive={jobVehicleLive}
                 hasVehicle={selected?.armadaUserId != null}
                 trackStatus={jobTrackStatus}
                 routeStart={

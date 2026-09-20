@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickLivePosition, downsampleLatLon } from "../../server/dispatch-live.mjs";
+import { pickLivePosition, downsampleLatLon, clipTimedTrailToWindow } from "../../server/dispatch-live.mjs";
 import { computeDwellMinutes, detectExceptionsFromSnapshot } from "../../server/dispatch-recovery.mjs";
 
 const PHONE = { lat: -6.2, lon: 106.8, ageSec: 12, recordedAt: "2026-09-17T10:00:00Z", accuracyM: 8 };
@@ -59,6 +59,20 @@ describe("downsampleLatLon", () => {
   it("thins long polylines to the cap", () => {
     const pts = Array.from({ length: 1000 }, (_, i) => [i, i]);
     expect(downsampleLatLon(pts, 100)).toHaveLength(100);
+  });
+});
+
+describe("clipTimedTrailToWindow", () => {
+  const pts = [
+    { lat: 0, lon: 0, recordedAt: "2026-09-19T01:00:00.000Z" },
+    { lat: 1, lon: 1, recordedAt: "2026-09-19T03:00:00.000Z" },
+    { lat: 2, lon: 2, recordedAt: "2026-09-19T05:00:00.000Z" },
+  ];
+
+  it("clips phone samples to the job window", () => {
+    expect(
+      clipTimedTrailToWindow(pts, "2026-09-19T02:00:00.000Z", "2026-09-19T04:00:00.000Z"),
+    ).toEqual([[1, 1]]);
   });
 });
 

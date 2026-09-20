@@ -554,7 +554,7 @@ export default function DispatchLive() {
                 <span className="dispatch-live-timeline-hint">
                   {armadaTracksLoading
                     ? "Loading vehicle tracks…"
-                    : "Plan · phone · Armada for this day (Armada clipped to each job)"}
+                    : "Plan · phone · Armada for this day (actuals clipped to each job)"}
                 </span>
               </div>
               {fetchError ? <div className="dispatch-alert">{fetchError}</div> : null}
@@ -854,7 +854,7 @@ export default function DispatchLive() {
                       ? "Loading vehicle tracks…"
                       : focusJobId
                         ? "Focused job · click a driver card or Clear to show all"
-                        : "All jobs · plan · phone · Armada (clipped to job window)"}
+                        : "All jobs · plan · phone · Armada (both actuals clipped to job window)"}
                   </span>
                 </div>
                 {drivers.length === 0 ? (

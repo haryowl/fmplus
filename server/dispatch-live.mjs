@@ -155,6 +155,31 @@ export function downsampleLatLon(points, maxPoints = 400) {
   return out;
 }
 
+/**
+ * Clip timed {lat,lon,recordedAt} samples to [startIso, endIso] (end defaults to now).
+ * Mirrors src/lib/dispatchTrackClip.ts for server-side phone trails.
+ */
+export function clipTimedTrailToWindow(points, startIso, endIso, nowMs = Date.now()) {
+  if (!Array.isArray(points) || !points.length) return [];
+  const startMs = startIso ? Date.parse(startIso) : NaN;
+  const endMs = endIso ? Date.parse(endIso) : NaN;
+  const from = Number.isFinite(startMs) ? startMs : -Infinity;
+  const to = Number.isFinite(endMs) ? endMs : nowMs;
+  const out = [];
+  for (const p of points) {
+    const t = Date.parse(p.recordedAt);
+    if (!Number.isFinite(t)) continue;
+    if (t < from || t > to) continue;
+    const pt = asMapPoint(p.lat, p.lon);
+    if (pt) out.push(pt);
+  }
+  if (out.length >= 1) return out;
+  if (!Number.isFinite(startMs) && !Number.isFinite(endMs)) {
+    return points.map((p) => asMapPoint(p.lat, p.lon)).filter(Boolean);
+  }
+  return out;
+}
+
 function asMapPoint(lat, lon) {
   const a = Number(lat);
   const b = Number(lon);
@@ -622,12 +647,12 @@ export async function buildDispatchLiveSnapshot(opts) {
           d.assignedFieldUserId,
           serviceDate,
         );
-        d.phoneTrail = downsampleLatLon(
-          trail
-            .map((p) => asMapPoint(p.lat, p.lon))
-            .filter(Boolean),
-          400,
+        const clipped = clipTimedTrailToWindow(
+          trail,
+          d.startedAt,
+          d.completedAt,
         );
+        d.phoneTrail = downsampleLatLon(clipped, 400);
       } catch {
         d.phoneTrail = [];
       }
