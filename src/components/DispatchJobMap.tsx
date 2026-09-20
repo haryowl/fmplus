@@ -126,7 +126,21 @@ export function DispatchJobMap({
       clickRef.current?.(e.latlng.lat, e.latlng.lng);
     });
     mapRef.current = map;
+
+    const syncSize = () => {
+      map.invalidateSize({ animate: false });
+    };
+    const ro =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            syncSize();
+          })
+        : null;
+    ro?.observe(el);
+    requestAnimationFrame(syncSize);
+
     return () => {
+      ro?.disconnect();
       map.remove();
       mapRef.current = null;
       layerRef.current = null;
