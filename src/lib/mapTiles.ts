@@ -8,7 +8,9 @@
  *   carto | positron | light  → Positron (default)
  *   voyager                   → CARTO Voyager
  *   esri                      → Esri World Street Map
- * Or set VITE_MAP_TILE_URL (+ optional VITE_CARTO_API_KEY / VITE_MAP_TILE_ATTR).
+ *
+ * CARTO keys go in .env.local as VITE_CARTO_API_KEY and are appended as ?key=
+ * (CARTO’s documented query param — not apikey).
  */
 export type MapTileSpec = {
   url: string;
@@ -31,13 +33,13 @@ function cartoTile(
   style: "light_all" | "rastertiles/voyager",
   apiKey: string | undefined,
 ): MapTileSpec {
-  const key = (apiKey || "").trim();
-  const qs = key ? `?apikey=${encodeURIComponent(key)}` : "";
+  const key = (apiKey || "").trim().replace(/^["']|["']$/g, "");
+  // CARTO docs: .../{z}/{x}/{y}.png?key=YOUR_KEY (not apikey)
+  const qs = key ? `?key=${encodeURIComponent(key)}` : "";
   return {
-    url: `https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png${qs}`,
+    url: `https://basemaps.cartocdn.com/${style}/{z}/{x}/{y}.png${qs}`,
     maxZoom: 20,
     attribution: CARTO_ATTR,
-    subdomains: "abcd",
   };
 }
 
