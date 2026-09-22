@@ -451,6 +451,8 @@ export async function optimizeJobStops(
 
 export type DispatchFleetMode = "jobs" | "presets" | "both";
 export type DispatchDepotMode = "open" | "depot" | "multi";
+/** After finishing a trip, return to depot and plan another load. */
+export type DispatchMultiTripMode = "off" | "max2" | "unlimited";
 /** How depot/start appears on the road after plan. */
 export type DispatchDepotPathMode = "calc" | "map" | "sequence";
 /** Open-tour start point. */
@@ -513,10 +515,13 @@ export type DispatchPlanDayResult = {
   twMode?: DispatchTwMode;
   serviceMinutes?: number;
   dayStartMin?: number;
+  dayEndMin?: number;
   maxStopsPerVehicle?: number;
   onlyEmptyJobs?: boolean;
   preferZoneDepot?: boolean;
   preferSameZone?: boolean;
+  multiTripMode?: DispatchMultiTripMode;
+  reloadMinutes?: number;
   /** Explicit job ids used; empty means default unassigned-driver pool. */
   jobIds?: string[];
   /** Explicit depot ids for multi; empty means all saved depots. */
@@ -678,12 +683,17 @@ export async function planDispatchDay(body: {
   twMode?: DispatchTwMode;
   serviceMinutes?: number;
   dayStart?: string;
+  dayEnd?: string;
   maxStopsPerVehicle?: number;
   onlyEmptyJobs?: boolean;
   /** Multi-depot: prefer zone→depot map over nearest (default off). */
   preferZoneDepot?: boolean;
   /** Soft same-zone packing preference in CVRP (default off). */
   preferSameZone?: boolean;
+  /** After return to depot, plan further trips for leftover pending (depot/multi only). */
+  multiTripMode?: DispatchMultiTripMode;
+  /** Minutes at depot between trips when multi-trip is on. */
+  reloadMinutes?: number;
   routing?: {
     avoidTolls?: boolean;
     avoidMotorways?: boolean;

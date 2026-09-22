@@ -16,7 +16,9 @@ const SPEED_KMH = 35;
 const TW_LATE_PENALTY_KM = 40;
 const TW_EARLY_PENALTY_KM = 2;
 const DEFAULT_DAY_START_MIN = 8 * 60; // 08:00
+const DEFAULT_DAY_END_MIN = 18 * 60; // 18:00
 const DEFAULT_SERVICE_MIN = 8;
+const DEFAULT_RELOAD_MIN = 15;
 
 function num(v, fallback = 0) {
   const n = Number(v);
@@ -335,7 +337,8 @@ function balanceRelocate(
             depotIdx,
             orderMatrixIndex,
             twMode,
-            dayStartMin,
+            dayStartMin:
+              opts.perVehicleDayStart && to.dayStartMin != null ? to.dayStartMin : dayStartMin,
             serviceMinutes,
           });
           if (!tw.feasible) continue;
@@ -454,8 +457,11 @@ export function assignVehiclesToDepots(vehicles, depots, demandByDepot) {
  * @param {"off"|"soft"|"hard"} [input.twMode]
  * @param {number} [input.serviceMinutes]
  * @param {number} [input.dayStartMin]
+ * @param {number} [input.dayEndMin] — shift end for multi-trip (default 18:00)
  * @param {number} [input.maxStopsPerVehicle]
  * @param {boolean} [input.preferSameZone]
+ * @param {"off"|"max2"|"unlimited"} [input.multiTripMode]
+ * @param {number} [input.reloadMinutes] — depot dwell between trips
  */
 export function planCvrp({
   orders,
@@ -467,95 +473,58 @@ export function planCvrp({
   twMode = "soft",
   serviceMinutes = DEFAULT_SERVICE_MIN,
   dayStartMin = DEFAULT_DAY_START_MIN,
+  dayEndMin = DEFAULT_DAY_END_MIN,
   maxStopsPerVehicle = 0,
   preferSameZone = false,
+  multiTripMode = "off",
+  reloadMinutes = DEFAULT_RELOAD_MIN,
 }) {
   const mode = ["off", "soft", "hard"].includes(twMode) ? twMode : "soft";
   const svcMin = Math.max(0, Math.min(120, Number(serviceMinutes) || DEFAULT_SERVICE_MIN));
   const startMin = Number.isFinite(Number(dayStartMin)) ? Number(dayStartMin) : DEFAULT_DAY_START_MIN;
+  const endMin = Number.isFinite(Number(dayEndMin)) ? Number(dayEndMin) : DEFAULT_DAY_END_MIN;
+  const reloadMin = Math.max(0, Math.min(120, Number(reloadMinutes) || DEFAULT_RELOAD_MIN));
   const maxStops = Math.max(0, Math.floor(Number(maxStopsPerVehicle) || 0));
   const sameZone = Boolean(preferSameZone);
+  const tripMode = ["off", "max2", "unlimited"].includes(multiTripMode) ? multiTripMode : "off";
+  // Multi-trip needs a depot (return → unload → go again). Open tours stay single-trip.
+  const maxTrips =
+    tripMode === "off" || depotIndex == null
+      ? 1
+      : tripMode === "max2"
+        ? 2
+        : 12;
+  // Time budget for a second trip assumes a return to depot.
+  const forceRoundtrip = Boolean(roundtrip && depotIndex != null) || maxTrips > 1;
 
   const orderMatrixIndex = (orderPos) => (depotIndex != null ? orderPos + 1 : orderPos);
   const unassigned = new Set(orders.map((_, i) => i));
 
-  const vehicleStates = vehicles.map((v) => ({
-    key: v.key,
-    label: v.label || v.key,
-    volumeCapacityM3: num(v.volumeCapacityM3, 12),
-    weightCapacityKg: num(v.weightCapacityKg, 1500),
-    meta: v.meta || {},
-    residualVol: num(v.volumeCapacityM3, 12),
-    residualWt: num(v.weightCapacityKg, 1500),
-    route: [],
-    orderIndexes: [],
-  }));
+  const vehicleStates = vehicles.map((v) => {
+    const fullVol = num(v.meta?.fullVolumeCapacityM3, num(v.volumeCapacityM3, 12));
+    const fullWt = num(v.meta?.fullWeightCapacityKg, num(v.weightCapacityKg, 1500));
+    return {
+      key: v.key,
+      label: v.label || v.key,
+      volumeCapacityM3: num(v.volumeCapacityM3, 12),
+      weightCapacityKg: num(v.weightCapacityKg, 1500),
+      fullVol,
+      fullWt,
+      meta: v.meta || {},
+      residualVol: num(v.volumeCapacityM3, 12),
+      residualWt: num(v.weightCapacityKg, 1500),
+      route: [],
+      orderIndexes: [],
+      dayStartMin: startMin,
+      locked: false,
+    };
+  });
 
   vehicleStates.sort(
     (a, b) =>
       (Number(a.meta?.existingStops) || 0) - (Number(b.meta?.existingStops) || 0) ||
-      b.volumeCapacityM3 * b.weightCapacityKg - a.volumeCapacityM3 * a.weightCapacityKg ||
-      b.volumeCapacityM3 - a.volumeCapacityM3,
-  );
-
-  let guard = 0;
-  const maxIter = orders.length * Math.max(1, vehicles.length) * 4 + 50;
-  while (unassigned.size > 0 && guard++ < maxIter) {
-    let best = null;
-    for (const vs of vehicleStates) {
-      if (maxStops > 0 && vs.orderIndexes.length >= maxStops) continue;
-      for (const oi of unassigned) {
-        const demand = {
-          vol: Math.max(0, num(orders[oi].volumeM3, 0)),
-          wt: Math.max(0, num(orders[oi].weightKg, 0)),
-        };
-        if (!fits({ vol: vs.residualVol, wt: vs.residualWt }, demand)) continue;
-        const nodeIdx = orderMatrixIndex(oi);
-        const ins = bestInsertion(vs.route, nodeIdx, matrixKm, depotIndex);
-        const tw = evaluateTwInsertion({
-          route: vs.route,
-          pos: ins.pos,
-          oi,
-          orders,
-          matrix: matrixKm,
-          depotIdx: depotIndex,
-          orderMatrixIndex,
-          twMode: mode,
-          dayStartMin: startMin,
-          serviceMinutes: svcMin,
-        });
-        if (!tw.feasible) continue;
-        const score =
-          ins.cost +
-          (mode === "off" ? 0 : tw.penalty) +
-          zoneMixPenalty(sameZone, vs.orderIndexes, orders, oi);
-        if (!best || score < best.score - 1e-9) {
-          best = { vs, oi, nodeIdx, pos: ins.pos, score, demand };
-        }
-      }
-    }
-    if (!best) break;
-    best.vs.route.splice(best.pos, 0, best.nodeIdx);
-    best.vs.orderIndexes.splice(best.pos, 0, best.oi);
-    best.vs.residualVol -= best.demand.vol;
-    best.vs.residualWt -= best.demand.wt;
-    unassigned.delete(best.oi);
-  }
-
-  const balanceMoves = balanceRelocate(
-    vehicleStates,
-    orders,
-    matrixKm,
-    depotIndex,
-    roundtrip,
-    orderMatrixIndex,
-    {
-      twMode: mode,
-      dayStartMin: startMin,
-      serviceMinutes: svcMin,
-      maxStopsPerVehicle: maxStops,
-      preferSameZone: sameZone,
-    },
+      b.fullVol * b.fullWt - a.fullVol * a.fullWt ||
+      b.fullVol - a.fullVol,
   );
 
   const ordersByMatrixIdx = new Map();
@@ -563,40 +532,147 @@ export function planCvrp({
     ordersByMatrixIdx.set(orderMatrixIndex(i), orders[i]);
   }
 
-  for (const vs of vehicleStates) {
-    if (vs.route.length < 2) {
-      vs.distanceKm = vs.route.length ? pathKm(vs.route, matrixKm, depotIndex, roundtrip) : 0;
-    } else {
-      const improved = routeDistance(vs.route, matrixKm, depotIndex, roundtrip);
-      vs.route = improved.order;
-      const byMatrix = new Map();
-      for (let i = 0; i < orders.length; i++) {
-        byMatrix.set(orderMatrixIndex(i), i);
-      }
-      vs.orderIndexes = vs.route.map((mi) => byMatrix.get(mi)).filter((x) => x != null);
-      vs.distanceKm = Math.round(improved.distanceKm * 100) / 100;
-    }
-    vs.schedule = simulateRouteSchedule({
-      route: vs.route,
-      ordersByMatrixIdx,
-      matrix: matrixKm,
-      depotIdx: depotIndex,
-      dayStartMin: startMin,
-      serviceMinutes: svcMin,
-    });
-  }
+  /** @type {any[]} */
+  const collectedRoutes = [];
+  let balanceMoves = 0;
 
-  const routes = vehicleStates
-    .filter((vs) => vs.orderIndexes.length > 0)
-    .map((vs) => {
+  for (let trip = 1; trip <= maxTrips; trip++) {
+    if (unassigned.size === 0) break;
+    const eligible = vehicleStates.filter((vs) => !vs.locked);
+    if (!eligible.length) break;
+
+    // Reset this trip's load (trip 1 keeps residual; trip 2+ uses full capacity after depot unload).
+    for (const vs of eligible) {
+      if (trip > 1) {
+        vs.volumeCapacityM3 = vs.fullVol;
+        vs.weightCapacityKg = vs.fullWt;
+        vs.residualVol = vs.fullVol;
+        vs.residualWt = vs.fullWt;
+      }
+      vs.route = [];
+      vs.orderIndexes = [];
+    }
+
+    let guard = 0;
+    const maxIter = unassigned.size * Math.max(1, eligible.length) * 4 + 50;
+    while (unassigned.size > 0 && guard++ < maxIter) {
+      let best = null;
+      for (const vs of eligible) {
+        if (maxStops > 0 && vs.orderIndexes.length >= maxStops) continue;
+        for (const oi of unassigned) {
+          const demand = {
+            vol: Math.max(0, num(orders[oi].volumeM3, 0)),
+            wt: Math.max(0, num(orders[oi].weightKg, 0)),
+          };
+          if (!fits({ vol: vs.residualVol, wt: vs.residualWt }, demand)) continue;
+          const nodeIdx = orderMatrixIndex(oi);
+          const ins = bestInsertion(vs.route, nodeIdx, matrixKm, depotIndex);
+          const tw = evaluateTwInsertion({
+            route: vs.route,
+            pos: ins.pos,
+            oi,
+            orders,
+            matrix: matrixKm,
+            depotIdx: depotIndex,
+            orderMatrixIndex,
+            twMode: mode,
+            dayStartMin: vs.dayStartMin,
+            serviceMinutes: svcMin,
+          });
+          if (!tw.feasible) continue;
+          // Soft check: after inserting, trip must still return before day end when multi-trip.
+          if (maxTrips > 1 && depotIndex != null) {
+            const tentative = vs.route.slice();
+            tentative.splice(ins.pos, 0, nodeIdx);
+            const ret = estimateReturnMin({
+              route: tentative,
+              ordersByMatrixIdx,
+              matrix: matrixKm,
+              depotIdx: depotIndex,
+              dayStartMin: vs.dayStartMin,
+              serviceMinutes: svcMin,
+            });
+            if (ret != null && ret > endMin) continue;
+          }
+          const score =
+            ins.cost +
+            (mode === "off" ? 0 : tw.penalty) +
+            zoneMixPenalty(sameZone, vs.orderIndexes, orders, oi);
+          if (!best || score < best.score - 1e-9) {
+            best = { vs, oi, nodeIdx, pos: ins.pos, score, demand };
+          }
+        }
+      }
+      if (!best) break;
+      best.vs.route.splice(best.pos, 0, best.nodeIdx);
+      best.vs.orderIndexes.splice(best.pos, 0, best.oi);
+      best.vs.residualVol -= best.demand.vol;
+      best.vs.residualWt -= best.demand.wt;
+      unassigned.delete(best.oi);
+    }
+
+    // Balance only within this trip (shared start times roughly similar).
+    balanceMoves += balanceRelocate(
+      eligible,
+      orders,
+      matrixKm,
+      depotIndex,
+      forceRoundtrip,
+      orderMatrixIndex,
+      {
+        twMode: mode,
+        dayStartMin: startMin,
+        serviceMinutes: svcMin,
+        maxStopsPerVehicle: maxStops,
+        preferSameZone: sameZone,
+        perVehicleDayStart: true,
+      },
+    );
+
+    let anyTripBuilt = false;
+    for (const vs of eligible) {
+      if (!vs.orderIndexes.length) continue;
+      anyTripBuilt = true;
+
+      if (vs.route.length < 2) {
+        vs.distanceKm = vs.route.length
+          ? pathKm(vs.route, matrixKm, depotIndex, forceRoundtrip)
+          : 0;
+      } else {
+        const improved = routeDistance(vs.route, matrixKm, depotIndex, forceRoundtrip);
+        vs.route = improved.order;
+        const byMatrix = new Map();
+        for (let i = 0; i < orders.length; i++) {
+          byMatrix.set(orderMatrixIndex(i), i);
+        }
+        vs.orderIndexes = vs.route.map((mi) => byMatrix.get(mi)).filter((x) => x != null);
+        vs.distanceKm = Math.round(improved.distanceKm * 100) / 100;
+      }
+
+      vs.schedule = simulateRouteSchedule({
+        route: vs.route,
+        ordersByMatrixIdx,
+        matrix: matrixKm,
+        depotIdx: depotIndex,
+        dayStartMin: vs.dayStartMin,
+        serviceMinutes: svcMin,
+      });
+
       const { vol: volUsed, wt: wtUsed } = usedDemand(vs, orders);
       const lateCount = (vs.schedule || []).filter((s) => s.late).length;
-      return {
-        key: vs.key,
-        label: vs.label,
-        meta: vs.meta,
+      const tripKey = trip === 1 ? vs.key : `${vs.key}:trip${trip}`;
+      const tripLabel = trip === 1 ? vs.label : `${vs.label} · trip ${trip}`;
+      collectedRoutes.push({
+        key: tripKey,
+        label: tripLabel,
+        meta: {
+          ...vs.meta,
+          tripIndex: trip,
+          parentKey: vs.key,
+          tripStartMin: vs.dayStartMin,
+        },
         orderIds: vs.orderIndexes.map((i) => orders[i].id),
-        orderIndexes: vs.orderIndexes,
+        orderIndexes: vs.orderIndexes.slice(),
         volumeUsed: Math.round(volUsed * 1000) / 1000,
         weightUsed: Math.round(wtUsed * 10) / 10,
         volumeCapacityM3: vs.volumeCapacityM3,
@@ -615,8 +691,34 @@ export function planCvrp({
           late: s.late,
           early: s.early,
         })),
-      };
-    });
+      });
+
+      // Prepare next trip window: return to depot + reload.
+      if (trip < maxTrips && depotIndex != null) {
+        const ret = estimateReturnMin({
+          route: vs.route,
+          ordersByMatrixIdx,
+          matrix: matrixKm,
+          depotIdx: depotIndex,
+          dayStartMin: vs.dayStartMin,
+          serviceMinutes: svcMin,
+        });
+        const nextStart = (ret ?? vs.dayStartMin) + reloadMin;
+        // Need room for at least a short next hop before day end.
+        if (nextStart + 30 >= endMin) {
+          vs.locked = true;
+        } else {
+          vs.dayStartMin = nextStart;
+        }
+      } else if (trip >= maxTrips) {
+        vs.locked = true;
+      }
+    }
+
+    if (!anyTripBuilt) break;
+    if (unassigned.size === 0) break;
+    if (trip < maxTrips && vehicleStates.every((vs) => vs.locked)) break;
+  }
 
   const unassignedList = [...unassigned].map((i) => {
     const o = orders[i];
@@ -625,11 +727,14 @@ export function planCvrp({
       wt: Math.max(0, num(o.weightKg, 0)),
     };
     const anyFit = vehicleStates.some((vs) =>
-      fits({ vol: vs.volumeCapacityM3, wt: vs.weightCapacityKg }, demand),
+      fits({ vol: vs.fullVol, wt: vs.fullWt }, demand),
     );
     let reason = anyFit ? "no_feasible_insertion" : "exceeds_all_vehicle_capacity";
     if (anyFit && mode === "hard" && (o.windowStart || o.windowEnd)) {
       reason = "time_window_or_capacity";
+    }
+    if (anyFit && maxTrips > 1 && vehicleStates.every((vs) => vs.locked)) {
+      reason = "no_shift_time_for_next_trip";
     }
     return {
       orderId: o.id,
@@ -639,15 +744,43 @@ export function planCvrp({
   });
 
   return {
-    routes,
+    routes: collectedRoutes,
     unassigned: unassignedList,
     pointCount: points.length,
     depotIndex,
-    roundtrip: Boolean(roundtrip && depotIndex != null),
+    roundtrip: forceRoundtrip,
     balanceMoves,
     twMode: mode,
     serviceMinutes: svcMin,
     dayStartMin: startMin,
+    dayEndMin: endMin,
     maxStopsPerVehicle: maxStops,
+    multiTripMode: maxTrips > 1 ? tripMode : "off",
+    reloadMinutes: reloadMin,
+    maxTrips,
   };
+}
+
+/** Last-stop depart + drive back to depot (or last depart if open). */
+function estimateReturnMin({
+  route,
+  ordersByMatrixIdx,
+  matrix,
+  depotIdx,
+  dayStartMin,
+  serviceMinutes,
+}) {
+  if (!route.length) return dayStartMin;
+  const schedule = simulateRouteSchedule({
+    route,
+    ordersByMatrixIdx,
+    matrix,
+    depotIdx,
+    dayStartMin,
+    serviceMinutes,
+  });
+  const last = schedule[schedule.length - 1];
+  if (!last) return dayStartMin;
+  if (depotIdx == null) return last.departMin;
+  return last.departMin + travelMinutes(matrix, route[route.length - 1], depotIdx);
 }

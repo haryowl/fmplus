@@ -144,6 +144,8 @@ function planUnassignedReasonLabel(reason: string): string {
       return "No feasible insertion";
     case "time_window_or_capacity":
       return "Time window or capacity";
+    case "no_shift_time_for_next_trip":
+      return "No shift time for next trip";
     default:
       return reason ? reason.replace(/_/g, " ") : "Unassigned";
   }
@@ -215,8 +217,12 @@ export default function DispatchBoard() {
   const [planTwMode, setPlanTwMode] = useState<DispatchTwMode>("soft");
   const [planServiceMin, setPlanServiceMin] = useState("8");
   const [planDayStart, setPlanDayStart] = useState("08:00");
+  const [planDayEnd, setPlanDayEnd] = useState("18:00");
   const [planMaxStops, setPlanMaxStops] = useState("");
   const [planOnlyEmpty, setPlanOnlyEmpty] = useState(true);
+  /** off | max2 | unlimited — second+ trips after return to depot. */
+  const [multiTripMode, setMultiTripMode] = useState<"off" | "max2" | "unlimited">("off");
+  const [planReloadMin, setPlanReloadMin] = useState("15");
   /** Empty = default: draft jobs that day with no field driver assigned. */
   const [planJobIds, setPlanJobIds] = useState<string[]>([]);
   /** Empty = use all saved depots (previous multi-depot default). */
@@ -1505,10 +1511,13 @@ export default function DispatchBoard() {
         twMode: planTwMode,
         serviceMinutes: Number(planServiceMin) || 8,
         dayStart: planDayStart || "08:00",
+        dayEnd: planDayEnd || "18:00",
         maxStopsPerVehicle: planMaxStops.trim() ? Number(planMaxStops) : 0,
         onlyEmptyJobs: planOnlyEmpty,
         preferZoneDepot,
         preferSameZone,
+        multiTripMode: depotMode === "open" ? "off" : multiTripMode,
+        reloadMinutes: Number(planReloadMin) || 15,
         jobIds: planJobIds,
         depotIds: depotMode === "multi" ? planDepotIds : undefined,
         routing: {
@@ -1881,6 +1890,54 @@ export default function DispatchBoard() {
                   onChange={(e) => setPlanDayStart(e.target.value)}
                 />
               </div>
+              <div className="field">
+                <label htmlFor="dispatch-day-end">Day end</label>
+                <input
+                  id="dispatch-day-end"
+                  type="time"
+                  value={planDayEnd}
+                  onChange={(e) => setPlanDayEnd(e.target.value)}
+                  disabled={depotMode === "open" || multiTripMode === "off"}
+                  title={
+                    depotMode === "open"
+                      ? "Multi-trip needs a depot so vehicles can return and reload"
+                      : multiTripMode === "off"
+                        ? "Used when multi-trip is enabled"
+                        : "Shift end — no new trip starts after this"
+                  }
+                />
+              </div>
+              {(depotMode === "depot" || depotMode === "multi") && (
+                <>
+                  <div className="field">
+                    <label htmlFor="dispatch-multi-trip">Multi-trip</label>
+                    <select
+                      id="dispatch-multi-trip"
+                      value={multiTripMode}
+                      onChange={(e) =>
+                        setMultiTripMode(e.target.value as "off" | "max2" | "unlimited")
+                      }
+                    >
+                      <option value="off">Off (one trip per vehicle)</option>
+                      <option value="max2">Max 2 trips (return → reload → go again)</option>
+                      <option value="unlimited">Until day end (as many trips as fit)</option>
+                    </select>
+                  </div>
+                  {multiTripMode !== "off" ? (
+                    <div className="field">
+                      <label htmlFor="dispatch-reload-min">Reload at depot (min)</label>
+                      <input
+                        id="dispatch-reload-min"
+                        type="number"
+                        min={0}
+                        max={120}
+                        value={planReloadMin}
+                        onChange={(e) => setPlanReloadMin(e.target.value)}
+                      />
+                    </div>
+                  ) : null}
+                </>
+              )}
               <div className="field">
                 <label htmlFor="dispatch-service-min">Service min / stop (default)</label>
                 <input
@@ -2479,12 +2536,20 @@ export default function DispatchBoard() {
                   {planPreview.depots?.length
                     ? ` · ${planPreview.depots.length} depot(s)`
                     : ""}
+                  {planPreview.multiTripMode && planPreview.multiTripMode !== "off"
+                    ? ` · multi-trip ${planPreview.multiTripMode}`
+                    : ""}
                 </p>
                 <ul className="dispatch-plan-routes">
-                  {planPreview.routes.map((r) => (
+                  {planPreview.routes.map((r) => {
+                    const tripIndex = Number(r.meta?.tripIndex) || 1;
+                    return (
                     <li key={r.key}>
                       <strong>
                         {r.label}
+                        {tripIndex > 1 ? (
+                          <em className="dispatch-live-pill tone-in_transit"> trip {tripIndex}</em>
+                        ) : null}
                         {r.depotName ? ` · ${r.depotName}` : ""}
                       </strong>
                       <span>
@@ -2513,7 +2578,8 @@ export default function DispatchBoard() {
                         </ol>
                       ) : null}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
                 {planPreview.unassigned.length > 0 ? (
                   <div className="dispatch-plan-unassigned">

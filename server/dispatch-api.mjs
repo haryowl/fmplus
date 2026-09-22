@@ -2628,6 +2628,11 @@ export async function handleDispatchRequest(req, res) {
       const maxStopsPerVehicle = Math.max(0, Math.floor(Number(body.maxStopsPerVehicle) || 0));
       const preferZoneDepot = body.preferZoneDepot === true;
       const preferSameZone = body.preferSameZone === true;
+      let multiTripMode = String(body.multiTripMode || "off").toLowerCase();
+      if (!["off", "max2", "unlimited"].includes(multiTripMode)) multiTripMode = "off";
+      // Multi-trip only for depot / multi (needs return-to-reload).
+      if (depotMode === "open") multiTripMode = "off";
+      const reloadMinutes = Math.max(0, Math.min(120, Number(body.reloadMinutes) || 15));
       let dayStartMin = 8 * 60;
       if (body.dayStart) {
         const parsed = String(body.dayStart).trim();
@@ -2636,6 +2641,15 @@ export async function handleDispatchRequest(req, res) {
       } else if (body.dayStartMin != null && Number.isFinite(Number(body.dayStartMin))) {
         dayStartMin = Number(body.dayStartMin);
       }
+      let dayEndMin = 18 * 60;
+      if (body.dayEnd) {
+        const parsed = String(body.dayEnd).trim();
+        const m = /^(\d{1,2}):(\d{2})$/.exec(parsed);
+        if (m) dayEndMin = Number(m[1]) * 60 + Number(m[2]);
+      } else if (body.dayEndMin != null && Number.isFinite(Number(body.dayEndMin))) {
+        dayEndMin = Number(body.dayEndMin);
+      }
+      if (dayEndMin <= dayStartMin) dayEndMin = dayStartMin + 8 * 60;
       let depotLat = numOrNull(body.depotLat ?? body.depot?.lat);
       let depotLon = numOrNull(body.depotLon ?? body.depot?.lon);
       if (depotMode === "depot" && (depotLat == null || depotLon == null)) {
@@ -2918,8 +2932,11 @@ export async function handleDispatchRequest(req, res) {
         twMode,
         serviceMinutes,
         dayStartMin,
+        dayEndMin,
         maxStopsPerVehicle,
         preferSameZone,
+        multiTripMode,
+        reloadMinutes,
       };
 
       /** @type {any[]} */
@@ -3207,10 +3224,13 @@ export async function handleDispatchRequest(req, res) {
         twMode,
         serviceMinutes,
         dayStartMin,
+        dayEndMin,
         maxStopsPerVehicle,
         onlyEmptyJobs,
         preferZoneDepot: depotMode === "multi" ? preferZoneDepot : false,
         preferSameZone,
+        multiTripMode,
+        reloadMinutes,
         jobIds: selectedJobIds,
         depotIds: selectedPlanDepotIds,
         routing,
@@ -3225,13 +3245,21 @@ export async function handleDispatchRequest(req, res) {
         return true;
       }
 
-      // Apply: create jobs for presets, assign orders in planned order, set sort_order
+      // Apply: create jobs for presets / trip 2+, assign orders in planned order
       const applied = [];
       for (const route of planRoutes) {
+        const tripIndex = Math.max(1, Math.floor(Number(route.meta?.tripIndex) || 1));
         let jobId = route.meta?.jobId || null;
-        if (!jobId && route.meta?.kind === "preset") {
-          const uid = route.meta.armadaUserId;
-          const title = String(route.label || `Auto · #${uid}`).slice(0, 200);
+        // Trip 2+ always gets its own draft job (same vehicle, fresh load after depot return).
+        if (tripIndex > 1) {
+          jobId = null;
+        }
+        if (!jobId && (route.meta?.kind === "preset" || tripIndex > 1)) {
+          const uid = route.meta?.armadaUserId ?? null;
+          const baseLabel = String(route.meta?.parentKey
+            ? route.label.replace(/\s·\s*trip\s+\d+$/i, "")
+            : route.label || (uid != null ? `Auto · #${uid}` : "Auto plan")).slice(0, 160);
+          const title = (tripIndex > 1 ? `${baseLabel} · trip ${tripIndex}` : baseLabel).slice(0, 200);
           const inserted = await dbQuery(
             `INSERT INTO dispatch_jobs (
                tenant_id, status, title,
@@ -3243,10 +3271,10 @@ export async function handleDispatchRequest(req, res) {
               dbTenant.id,
               title,
               uid,
-              null,
-              route.meta.userDisplayName || title,
-              route.meta.fullVolumeCapacityM3 || route.volumeCapacityM3,
-              route.meta.fullWeightCapacityKg || route.weightCapacityKg,
+              route.meta?.armadaUsername || null,
+              route.meta?.userDisplayName || baseLabel,
+              route.meta?.fullVolumeCapacityM3 || route.volumeCapacityM3,
+              route.meta?.fullWeightCapacityKg || route.weightCapacityKg,
               serviceDate,
             ],
           );
