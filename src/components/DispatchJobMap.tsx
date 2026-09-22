@@ -151,7 +151,7 @@ export function DispatchJobMap({
     layer.clearLayers();
     const bounds: L.LatLngExpression[] = [];
 
-    const planColor = showGps ? LIVE_MAP_COLORS.plan : "#0b6b62";
+    const planColor = LIVE_MAP_COLORS.plan;
     const planDash = showGps ? "8 10" : undefined;
 
     if (stopLine.length >= 2 && !roadLine.length) {
@@ -168,8 +168,8 @@ export function DispatchJobMap({
     if (lineCoords.length >= 2) {
       L.polyline(lineCoords, {
         color: planColor,
-        weight: showGps ? 4 : 5,
-        opacity: showGps ? 0.85 : 0.92,
+        weight: showGps ? 5 : 6,
+        opacity: showGps ? 0.9 : 0.95,
         dashArray: planDash,
         lineJoin: "round",
         lineCap: "round",

@@ -5,9 +5,10 @@ import { STREET_TILE, streetTileOptions } from "../lib/mapTiles";
 import { asMapCoord } from "../lib/mapCoords";
 import type { DispatchLiveDriver } from "../lib/dispatch";
 
-/** Plan / phone / Armada — fixed palette for the Live map legend. */
+/** Plan / phone / Armada — high-contrast palette on light basemaps. */
 export const LIVE_MAP_COLORS = {
-  plan: "#64748b",
+  /** Vivid blue — readable on CARTO Positron / light street tiles. */
+  plan: "#1d4ed8",
   phone: "#16a34a",
   armada: "#ea580c",
 } as const;
@@ -107,16 +108,17 @@ export function DispatchLiveMap({ drivers, focusJobId, fitKey, onSelectJob }: Pr
     for (const d of drawDrivers) {
       const focused = !focusJobId || d.jobId === focusJobId;
       const opacity = focused ? 0.95 : 0.28;
-      const weight = focused ? 5 : 3;
+      const weight = focused ? 6 : 3;
 
       const plan = cleanLine(d.plannedGeometry);
       if (plan.length >= 2) {
         L.polyline(plan, {
           color: LIVE_MAP_COLORS.plan,
           weight,
-          opacity: opacity * 0.85,
+          opacity: opacity * 0.92,
           dashArray: "8 10",
           lineJoin: "round",
+          lineCap: "round",
         }).addTo(layer);
         if (focused) for (const p of plan) bounds.push(p);
       }

@@ -3,8 +3,12 @@
  * Do not use tile.openstreetmap.org — OSMF blocks apps that hit their
  * volunteer tile CDN (403 “Blocked” / usage policy).
  *
- * Default: Esri World Street Map (no API key).
- * Optional: VITE_MAP_TILE_PROVIDER=carto (+ VITE_CARTO_API_KEY), or full VITE_MAP_TILE_URL.
+ * Default: CARTO Positron (light, muted streets) — best contrast for coloured
+ * plan / phone / Armada tracks. Optional providers via VITE_MAP_TILE_PROVIDER:
+ *   carto | positron | light  → Positron (default)
+ *   voyager                   → CARTO Voyager
+ *   esri                      → Esri World Street Map
+ * Or set VITE_MAP_TILE_URL (+ optional VITE_CARTO_API_KEY / VITE_MAP_TILE_ATTR).
  */
 export type MapTileSpec = {
   url: string;
@@ -23,11 +27,14 @@ const ESRI_STREET: MapTileSpec = {
 const CARTO_ATTR =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
-function cartoStreet(apiKey: string | undefined): MapTileSpec {
+function cartoTile(
+  style: "light_all" | "rastertiles/voyager",
+  apiKey: string | undefined,
+): MapTileSpec {
   const key = (apiKey || "").trim();
   const qs = key ? `?apikey=${encodeURIComponent(key)}` : "";
   return {
-    url: `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png${qs}`,
+    url: `https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png${qs}`,
     maxZoom: 20,
     attribution: CARTO_ATTR,
     subdomains: "abcd",
@@ -38,31 +45,33 @@ function resolveStreetTile(): MapTileSpec {
   const customUrl = (import.meta.env.VITE_MAP_TILE_URL as string | undefined)?.trim();
   const customAttr = (import.meta.env.VITE_MAP_TILE_ATTR as string | undefined)?.trim();
   const maxZoomEnv = Number(import.meta.env.VITE_MAP_TILE_MAX_ZOOM);
-  const provider = String(import.meta.env.VITE_MAP_TILE_PROVIDER || "esri")
+  const provider = String(import.meta.env.VITE_MAP_TILE_PROVIDER || "carto")
     .toLowerCase()
     .trim();
+  const apiKey = import.meta.env.VITE_CARTO_API_KEY as string | undefined;
 
   if (customUrl) {
     return {
       url: customUrl,
       maxZoom: Number.isFinite(maxZoomEnv) && maxZoomEnv > 0 ? maxZoomEnv : 19,
-      attribution: customAttr || ESRI_STREET.attribution,
+      attribution: customAttr || CARTO_ATTR,
       subdomains: customUrl.includes("{s}") ? "abcd" : undefined,
     };
   }
 
-  if (provider === "carto") {
-    const tile = cartoStreet(import.meta.env.VITE_CARTO_API_KEY as string | undefined);
-    if (Number.isFinite(maxZoomEnv) && maxZoomEnv > 0) tile.maxZoom = maxZoomEnv;
-    if (customAttr) tile.attribution = customAttr;
-    return tile;
+  let tile: MapTileSpec;
+  if (provider === "esri") {
+    tile = { ...ESRI_STREET };
+  } else if (provider === "voyager") {
+    tile = cartoTile("rastertiles/voyager", apiKey);
+  } else {
+    // carto | positron | light | default — muted light canvas for route overlays
+    tile = cartoTile("light_all", apiKey);
   }
 
-  return {
-    ...ESRI_STREET,
-    maxZoom: Number.isFinite(maxZoomEnv) && maxZoomEnv > 0 ? maxZoomEnv : ESRI_STREET.maxZoom,
-    attribution: customAttr || ESRI_STREET.attribution,
-  };
+  if (Number.isFinite(maxZoomEnv) && maxZoomEnv > 0) tile.maxZoom = maxZoomEnv;
+  if (customAttr) tile.attribution = customAttr;
+  return tile;
 }
 
 export const STREET_TILE: MapTileSpec = resolveStreetTile();
