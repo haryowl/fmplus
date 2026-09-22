@@ -6,7 +6,7 @@
  * stop finished at 00:20 the next morning plot to the right of its own day
  * (minute 1460) and read as late rather than as 23 hours early.
  */
-import { dayDiff, minutesSinceServiceMidnight, todayServiceDate } from "./serviceDay";
+import { dayDiff, minutesSinceServiceMidnight, parseServiceDate, shiftServiceDate, todayServiceDate } from "./serviceDay";
 
 export type TimelineStopInput = {
   stopId: string;
@@ -89,6 +89,8 @@ export type TimelineAxis = {
   startMin: number;
   endMin: number;
   ticks: number[];
+  /** Display labels parallel to `ticks` (may include dates when multi-day). */
+  tickLabels: string[];
   nowPct: number | null;
 };
 
@@ -121,14 +123,44 @@ export function minToHm(minute: number): string {
 /** Minutes in a day. Timeline minutes may exceed this for overnight work. */
 export const DAY_MIN = 24 * 60;
 
+/** Short calendar label for an anchored timeline minute (e.g. "22 Sep"). */
+export function shortDateForTimelineMin(
+  minute: number,
+  anchorYmd: string | null | undefined,
+): string {
+  const anchor = parseServiceDate(anchorYmd);
+  if (!anchor) {
+    const dayOff = Math.floor(Math.round(minute) / DAY_MIN);
+    if (dayOff === 0) return "Day";
+    return dayOff > 0 ? `+${dayOff}d` : `${dayOff}d`;
+  }
+  const dayOff = Math.floor(Math.round(minute) / DAY_MIN);
+  const ymd = shiftServiceDate(anchor, dayOff);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!m) return ymd;
+  const dt = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return dt.toLocaleDateString(undefined, { timeZone: "UTC", day: "numeric", month: "short" });
+}
+
 /**
- * Timeline position of an ISO timestamp.
- *
- * With an `anchorYmd` this returns minutes since midnight of that service day,
- * which may exceed 1440. Without it, only the clock reading — which is what
- * plotted a 00:20 completion at the far left of the day and reported it as ~1000
- * minutes *ahead* of plan.
+ * Axis tick label. Same-day windows stay as HH:MM; multi-day / overnight
+ * windows include the calendar date so the scale stays readable.
  */
+export function formatTimelineTick(
+  minute: number,
+  opts?: { anchorYmd?: string | null; multiDay?: boolean },
+): string {
+  const hm = minToHm(minute);
+  const dayOff = Math.floor(Math.round(minute) / DAY_MIN);
+  const clockMin = ((Math.round(minute) % DAY_MIN) + DAY_MIN) % DAY_MIN;
+  const multiDay = Boolean(opts?.multiDay) || dayOff !== 0;
+  if (!multiDay) return hm;
+  const date = shortDateForTimelineMin(minute, opts?.anchorYmd);
+  // Midnight ticks: date alone is enough and avoids clutter.
+  if (clockMin === 0) return date;
+  return `${date} ${hm}`;
+}
+
 export function isoToJakartaMin(
   iso: string | null | undefined,
   anchorYmd?: string | null,
@@ -147,7 +179,7 @@ export function minuteToPct(minute: number, startMin: number, endMin: number): n
 }
 
 function padFloorHour(min: number): number {
-  return Math.max(0, Math.floor(min / 60) * 60);
+  return Math.floor(min / 60) * 60;
 }
 
 /**
@@ -158,41 +190,107 @@ function padCeilHour(min: number): number {
   return Math.ceil(min / 60) * 60;
 }
 
+/** Tick step so labels stay readable as the window grows. */
+export function timelineTickStep(spanMin: number): number {
+  if (spanMin <= 12 * 60) return 60;
+  if (spanMin <= 24 * 60) return 120;
+  if (spanMin <= 36 * 60) return 180;
+  if (spanMin <= 3 * DAY_MIN) return 360;
+  return DAY_MIN;
+}
+
+/**
+ * Drop extreme outliers that would force an unreadable multi-week axis.
+ * Prefer times near the service day (with overnight spill); otherwise a ±1 day
+ * band around the median.
+ */
+export function coreMinutesForAxis(minutes: number[]): number[] {
+  const vals = minutes.filter((m) => Number.isFinite(m)).sort((a, b) => a - b);
+  if (vals.length <= 1) return vals;
+  const span = vals[vals.length - 1]! - vals[0]!;
+  if (span <= 2 * DAY_MIN) return vals;
+
+  const nearServiceDay = vals.filter((m) => m >= -6 * 60 && m <= 2 * DAY_MIN);
+  if (nearServiceDay.length >= Math.max(2, Math.ceil(vals.length * 0.5))) {
+    return nearServiceDay;
+  }
+
+  const mid = vals[Math.floor(vals.length / 2)]!;
+  const windowed = vals.filter((m) => m >= mid - DAY_MIN && m <= mid + DAY_MIN);
+  return windowed.length >= 2 ? windowed : vals.slice(-8);
+}
+
 /**
  * Axis from observed times, defaulting to 07:00–18:00 and expanding as needed.
+ * Soft-clips wild outliers and spaces ticks by span; multi-day labels use dates.
  */
 export function buildTimelineAxis(
   minutes: number[],
-  opts?: { nowMin?: number | null; defaultStart?: number; defaultEnd?: number },
+  opts?: {
+    nowMin?: number | null;
+    defaultStart?: number;
+    defaultEnd?: number;
+    anchorYmd?: string | null;
+  },
 ): TimelineAxis {
   const defStart = opts?.defaultStart ?? DEFAULT_TIMELINE_START_MIN;
   const defEnd = opts?.defaultEnd ?? DEFAULT_TIMELINE_END_MIN;
+  const core = coreMinutesForAxis(minutes);
   let startMin = defStart;
   let endMin = defEnd;
 
-  for (const m of minutes) {
-    if (!Number.isFinite(m)) continue;
+  for (const m of core) {
     startMin = Math.min(startMin, m);
     endMin = Math.max(endMin, m);
   }
   if (opts?.nowMin != null && Number.isFinite(opts.nowMin)) {
-    startMin = Math.min(startMin, opts.nowMin);
-    endMin = Math.max(endMin, opts.nowMin);
+    // Keep "now" in view only when it sits near the working window.
+    const near =
+      opts.nowMin >= startMin - DAY_MIN && opts.nowMin <= endMin + DAY_MIN;
+    if (near) {
+      startMin = Math.min(startMin, opts.nowMin);
+      endMin = Math.max(endMin, opts.nowMin);
+    }
   }
 
   startMin = padFloorHour(startMin - 30);
   endMin = padCeilHour(endMin + 30);
   if (endMin - startMin < 60) endMin = startMin + 60 * 4;
 
+  const span = endMin - startMin;
+  const step = timelineTickStep(span);
+  const multiDay = span > DAY_MIN || startMin < 0 || endMin > DAY_MIN;
+
+  // Align first tick to the step grid.
+  let tickStart = Math.floor(startMin / step) * step;
+  if (tickStart < startMin - step / 2) tickStart += step;
   const ticks: number[] = [];
-  for (let t = startMin; t <= endMin; t += 60) ticks.push(t);
+  for (let t = tickStart; t <= endMin + 0.5; t += step) {
+    ticks.push(t);
+  }
+  if (!ticks.length || ticks[0]! > startMin) ticks.unshift(startMin);
+  if (ticks[ticks.length - 1]! < endMin) ticks.push(endMin);
+
+  // Deduplicate after forcing endpoints.
+  const uniq: number[] = [];
+  for (const t of ticks) {
+    if (!uniq.length || Math.abs(uniq[uniq.length - 1]! - t) >= step * 0.45) {
+      uniq.push(t);
+    } else {
+      uniq[uniq.length - 1] = t;
+    }
+  }
+
+  const tickLabels = uniq.map((t) =>
+    formatTimelineTick(t, { anchorYmd: opts?.anchorYmd, multiDay }),
+  );
 
   const nowPct =
     opts?.nowMin != null && Number.isFinite(opts.nowMin)
       ? minuteToPct(opts.nowMin, startMin, endMin)
       : null;
 
-  return { startMin, endMin, ticks, nowPct };
+  return { startMin, endMin, ticks: uniq, tickLabels, nowPct };
 }
 
 type RawPlacement = {
@@ -389,7 +487,10 @@ export function buildTimelineRows(
     if (started != null) seedMinutes.push(started);
   }
 
-  const draftAxis = buildTimelineAxis(seedMinutes, { nowMin: opts?.nowMin ?? null });
+  const draftAxis = buildTimelineAxis(seedMinutes, {
+    nowMin: opts?.nowMin ?? null,
+    anchorYmd,
+  });
 
   const rows: TimelineRow[] = rawRows.map(({ driver, placements }) => {
     const minutes = fillSequenceMinutes(
@@ -468,7 +569,10 @@ export function buildTimelineRows(
       return ms;
     }),
   );
-  const axis = buildTimelineAxis(allMinutes, { nowMin: opts?.nowMin ?? null });
+  const axis = buildTimelineAxis(allMinutes, {
+    nowMin: opts?.nowMin ?? null,
+    anchorYmd,
+  });
 
   for (const row of rows) {
     for (const n of row.nodes) {

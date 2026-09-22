@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import {
   buildTimelineRows,
+  formatTimelineTick,
   minToHm,
   nowJakartaMin,
   todayJakartaYmd,
@@ -70,13 +71,19 @@ export function DispatchLiveTimeline({
         <div className="dispatch-live-gantt-hours" style={{ gridTemplateColumns: `160px 1fr` }}>
           <div className="dispatch-live-gantt-corner" aria-hidden />
           <div className="dispatch-live-gantt-scale" aria-hidden>
-            {axis.ticks.map((t) => (
+            {axis.ticks.map((t, i) => (
               <span
-                key={t}
-                className="dispatch-live-gantt-tick"
-                style={{ left: `${((t - axis.startMin) / Math.max(1, axis.endMin - axis.startMin)) * 100}%` }}
+                key={`${t}-${i}`}
+                className={`dispatch-live-gantt-tick${
+                  axis.tickLabels[i] && axis.tickLabels[i]!.includes(" ")
+                    ? " is-dated"
+                    : ""
+                }`}
+                style={{
+                  left: `${((t - axis.startMin) / Math.max(1, axis.endMin - axis.startMin)) * 100}%`,
+                }}
               >
-                {minToHm(t)}
+                {axis.tickLabels[i] ?? minToHm(t)}
               </span>
             ))}
           </div>
@@ -106,7 +113,13 @@ export function DispatchLiveTimeline({
         <h2>Progress</h2>
         <span className="dispatch-live-timeline-hint">
           {drivers.length
-            ? `${minToHm(axis.startMin)}–${minToHm(axis.endMin)} WIB · faded plan · green actual`
+            ? `${formatTimelineTick(axis.startMin, {
+                anchorYmd: serviceDate,
+                multiDay: axis.endMin - axis.startMin > 24 * 60,
+              })}–${formatTimelineTick(axis.endMin, {
+                anchorYmd: serviceDate,
+                multiDay: axis.endMin - axis.startMin > 24 * 60,
+              })} WIB · faded plan · green actual`
             : null}
         </span>
       </div>

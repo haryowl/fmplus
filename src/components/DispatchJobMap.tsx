@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { STREET_TILE, streetTileOptions } from "../lib/mapTiles";
+import { asMapCoord } from "../lib/mapCoords";
 import type { DispatchStop } from "../lib/dispatch";
 import { LIVE_MAP_COLORS } from "./DispatchLiveMap";
 
@@ -29,11 +30,7 @@ type Props = {
 };
 
 function asCoord(lat: unknown, lon: unknown): [number, number] | null {
-  const a = Number(lat);
-  const b = Number(lon);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  if (Math.abs(a) > 90 || Math.abs(b) > 180) return null;
-  return [a, b];
+  return asMapCoord(lat, lon);
 }
 
 function cleanLine(raw: [number, number][] | undefined): [number, number][] {

@@ -8841,18 +8841,27 @@ html.onesheet-root body {
 
 .dispatch-live-gantt-scale {
   position: relative;
-  min-height: 28px;
+  min-height: 32px;
 }
 
 .dispatch-live-gantt-tick {
   position: absolute;
-  top: 6px;
+  top: 4px;
   transform: translateX(-50%);
   font-size: 0.68rem;
   letter-spacing: 0.02em;
   color: var(--ink-faint);
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   white-space: nowrap;
+  line-height: 1.15;
+  max-width: 5.5rem;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.dispatch-live-gantt-tick.is-dated {
+  font-size: 0.62rem;
+  max-width: 6.5rem;
 }
 
 .dispatch-live-gantt-rows {

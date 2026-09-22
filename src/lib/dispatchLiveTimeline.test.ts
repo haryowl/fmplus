@@ -45,12 +45,22 @@ describe("buildTimelineAxis", () => {
     expect(axis.startMin).toBeLessThanOrEqual(420);
     expect(axis.endMin).toBeGreaterThanOrEqual(1080);
     expect(axis.ticks[0]).toBe(axis.startMin);
+    expect(axis.tickLabels).toHaveLength(axis.ticks.length);
   });
 
   it("places now marker", () => {
     const axis = buildTimelineAxis([500], { nowMin: 600 });
     expect(axis.nowPct).not.toBeNull();
     expect(axis.nowPct!).toBeGreaterThan(0);
+  });
+
+  it("soft-clips wild outliers and spaces multi-day ticks with dates", () => {
+    const axis = buildTimelineAxis([480, 600, 720, 30 * 24 * 60], {
+      anchorYmd: "2026-09-22",
+    });
+    expect(axis.endMin - axis.startMin).toBeLessThanOrEqual(3 * 24 * 60);
+    expect(axis.ticks.length).toBeLessThan(40);
+    expect(axis.tickLabels.some((l) => /Sep|sept/i.test(l) || l.includes(":"))).toBe(true);
   });
 });
 

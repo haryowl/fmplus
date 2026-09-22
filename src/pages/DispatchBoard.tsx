@@ -199,7 +199,7 @@ export default function DispatchBoard() {
   const [editVolCap, setEditVolCap] = useState("12");
   const [editWtCap, setEditWtCap] = useState("1500");
   const [showPlanDay, setShowPlanDay] = useState(false);
-  const [fleetMode, setFleetMode] = useState<DispatchFleetMode>("both");
+  const [fleetMode, setFleetMode] = useState<DispatchFleetMode>("jobs");
   const [depotMode, setDepotMode] = useState<DispatchDepotMode>("open");
   const [depotPathMode, setDepotPathMode] = useState<DispatchDepotPathMode>("sequence");
   const [openStartMode, setOpenStartMode] = useState<DispatchOpenStartMode>("none");
@@ -216,8 +216,8 @@ export default function DispatchBoard() {
   const [planServiceMin, setPlanServiceMin] = useState("8");
   const [planDayStart, setPlanDayStart] = useState("08:00");
   const [planMaxStops, setPlanMaxStops] = useState("");
-  const [planOnlyEmpty, setPlanOnlyEmpty] = useState(false);
-  /** Empty = default: all jobs that day with no field driver assigned. */
+  const [planOnlyEmpty, setPlanOnlyEmpty] = useState(true);
+  /** Empty = default: draft jobs that day with no field driver assigned. */
   const [planJobIds, setPlanJobIds] = useState<string[]>([]);
   /** Empty = use all saved depots (previous multi-depot default). */
   const [planDepotIds, setPlanDepotIds] = useState<string[]>([]);
@@ -436,6 +436,10 @@ export default function DispatchBoard() {
   const planDayUnassignedJobs = useMemo(
     () => planDayJobs.filter((j) => !j.assignedFieldUserId),
     [planDayJobs],
+  );
+  const planDayDraftJobs = useMemo(
+    () => planDayUnassignedJobs.filter((j) => j.status === "draft"),
+    [planDayUnassignedJobs],
   );
 
   const routePathKey = useMemo(() => {
@@ -675,7 +679,14 @@ export default function DispatchBoard() {
     }
     const customers = selected.stops
       .map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) }))
-      .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180);
+      .filter(
+        (p) =>
+          Number.isFinite(p.lat) &&
+          Number.isFinite(p.lon) &&
+          Math.abs(p.lat) <= 90 &&
+          Math.abs(p.lon) <= 180 &&
+          !(p.lat === 0 && p.lon === 0),
+      );
     const mode = selected.routeAnchorMode;
     const start =
       mode === "map" || mode === "sequence"
@@ -1736,9 +1747,28 @@ export default function DispatchBoard() {
               type="button"
               className="btn-secondary"
               onClick={() => {
-                setShowPlanDay((v) => !v);
+                setShowPlanDay((v) => {
+                  const next = !v;
+                  if (next) {
+                    // Pre-select today's draft jobs so Auto-plan does not pull old fleet presets.
+                    setPlanJobIds(
+                      jobs
+                        .filter(
+                          (j) =>
+                            j.serviceDate === planDate &&
+                            j.status === "draft" &&
+                            !j.assignedFieldUserId,
+                        )
+                        .map((j) => j.id),
+                    );
+                    setFleetMode("jobs");
+                    setPlanOnlyEmpty(true);
+                  } else {
+                    setPlanJobIds([]);
+                  }
+                  return next;
+                });
                 setPlanPreview(null);
-                setPlanJobIds([]);
                 setPinningDepot(false);
                 setShowNewJob(false);
               }}
@@ -1897,6 +1927,13 @@ export default function DispatchBoard() {
                       <button
                         type="button"
                         className="btn-ghost"
+                        onClick={() => setPlanJobIds(planDayDraftJobs.map((j) => j.id))}
+                      >
+                        All drafts
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost"
                         onClick={() => setPlanJobIds(planDayUnassignedJobs.map((j) => j.id))}
                       >
                         All unassigned
@@ -1919,8 +1956,8 @@ export default function DispatchBoard() {
                   </div>
                   <p className="dispatch-search-hint">
                     {planJobIds.length
-                      ? `${planJobIds.length} job(s) selected`
-                      : `None selected → default: all ${planDayUnassignedJobs.length} job(s) not assigned to a driver`}
+                      ? `${planJobIds.length} job(s) selected · presets ignored while jobs are selected`
+                      : `None selected → default: all ${planDayDraftJobs.length} draft job(s) not assigned to a driver`}
                   </p>
                   {planDayJobs.length === 0 ? (
                     <p className="dispatch-search-hint">No open jobs on this date.</p>

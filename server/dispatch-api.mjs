@@ -2764,8 +2764,9 @@ export async function handleDispatchRequest(req, res) {
           jobParams.push(selectedJobIds);
           jobSql += ` AND id = ANY($${jobParams.length}::uuid[])`;
         } else {
-          // Default pool: plannable jobs not yet assigned to a field driver.
-          jobSql += ` AND assigned_field_user_id IS NULL`;
+          // Default pool: draft jobs not yet assigned to a field driver.
+          // (Avoids leftover assigned/en_route jobs and capacity-preset bleed.)
+          jobSql += ` AND status = 'draft' AND assigned_field_user_id IS NULL`;
         }
         jobSql += ` ORDER BY created_at ASC LIMIT 50`;
         const jobs = await dbQuery(jobSql, jobParams);
@@ -2810,6 +2811,10 @@ export async function handleDispatchRequest(req, res) {
       }
 
       if (fleetMode === "presets" || fleetMode === "both") {
+        // Explicit job selection means "only these jobs" — do not also pull every
+        // saved capacity preset (that leaked old vehicles into M1/M2/M3 plans).
+        const allowPresets = fleetMode === "presets" || selectedJobIds.length === 0;
+        if (allowPresets) {
         const presets = await dbQuery(
           `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, plate_parity
            FROM vehicle_capacities WHERE tenant_id = $1
@@ -2836,6 +2841,7 @@ export async function handleDispatchRequest(req, res) {
               plateParity: normalizePlateParity(p.plate_parity || "unknown"),
             },
           });
+        }
         }
       }
 
