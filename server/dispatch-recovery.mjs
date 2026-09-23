@@ -9,6 +9,7 @@ import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { buildStopRouteMeta } from "./stop-route-meta.mjs";
 import { recentPingTrail } from "./driver-pings.mjs";
 import { dayIndexForDate, recomputeJobSpan } from "./dispatch-span.mjs";
+import { restorePairPrecedence } from "./dispatch-pickup-drop.mjs";
 import {
   formatClockAt as formatTimeWib,
   hmToMin,
@@ -33,6 +34,14 @@ export function isFrozenStopStatus(status) {
 export function isRemainingStopStatus(status) {
   const st = String(status || "").toLowerCase();
   return st === "pending" || st === "arrived";
+}
+
+function restorePairStops(stops) {
+  return restorePairPrecedence(stops, (s) => {
+    if (!s?.order_id) return null;
+    if (s.role !== "pickup" && s.role !== "drop") return null;
+    return { key: String(s.order_id), role: s.role };
+  });
 }
 
 function minutesSince(iso) {
@@ -110,7 +119,9 @@ export async function reorderRemainingStops(jobId, opts = {}) {
   const customerOrder = start
     ? order.filter((i) => i > 0).map((i) => i - 1)
     : order;
-  const orderedMovable = customerOrder.map((i) => movable[i]).filter(Boolean);
+  const orderedMovable = restorePairStops(
+    customerOrder.map((i) => movable[i]).filter(Boolean),
+  );
 
   let sort = 0;
   for (const s of frozen) {
@@ -797,6 +808,10 @@ export async function buildReplanRemainingPreview(tenantId, opts = {}) {
 
     // At-risk pending with window → suggest move to lighter nearby job
     for (const s of remaining) {
+      if (s.role === "drop" && s.order_id) {
+        const mate = remaining.find((x) => x.order_id === s.order_id && x.role === "pickup");
+        if (mate) continue;
+      }
       const winEnd = hmToMin(s.window_end);
       const planned = hmToMin(s.planned_eta);
       const late =
@@ -953,8 +968,13 @@ export async function applyReplanSuggestions(tenantId, opts = {}) {
              WHERE id = $1 AND tenant_id = $2`,
             [stop.order_id, tenantId],
           );
+          await dbQuery(`DELETE FROM dispatch_stops WHERE order_id = $1 AND job_id = $2`, [
+            stop.order_id,
+            stop.job_id,
+          ]);
+        } else {
+          await dbQuery(`DELETE FROM dispatch_stops WHERE id = $1`, [stop.id]);
         }
-        await dbQuery(`DELETE FROM dispatch_stops WHERE id = $1`, [stop.id]);
         await recomputeJobSpan(s.jobId);
         await writeReplanAudit(tenantId, serviceDate, {
           actor,
@@ -991,6 +1011,24 @@ export async function applyReplanSuggestions(tenantId, opts = {}) {
           skipped.push({ id: s.id, reason: "frozen_stop" });
           continue;
         }
+        const mates = stop.order_id
+          ? (
+              await dbQuery(
+                `SELECT * FROM dispatch_stops WHERE job_id = $1 AND order_id = $2 ORDER BY sort_order ASC`,
+                [stop.job_id, stop.order_id],
+              )
+            ).rows
+          : [stop];
+        const pickupMate = mates.find((m) => m.role === "pickup");
+        if (pickupMate && isFrozenStopStatus(pickupMate.status) && stop.role === "drop") {
+          skipped.push({ id: s.id, reason: "pair_pickup_done" });
+          continue;
+        }
+        const toMove = mates.filter((m) => !isFrozenStopStatus(m.status));
+        if (!toMove.length) {
+          skipped.push({ id: s.id, reason: "frozen_stop" });
+          continue;
+        }
         // The stop lands on whichever leg of the destination tour covers the day
         // being recovered, and takes the last sequence slot within that day.
         const toDayIndex =
@@ -1000,17 +1038,21 @@ export async function applyReplanSuggestions(tenantId, opts = {}) {
            FROM dispatch_stops WHERE job_id = $1 AND day_index = $2`,
           [toJob.id, toDayIndex],
         );
-        const nextSort = (maxSort.rows[0]?.m ?? -1) + 1;
-        await dbQuery(
-          `UPDATE dispatch_stops
-           SET job_id = $1, sort_order = $2, day_index = $3, status = 'pending', arrived_at = NULL
-           WHERE id = $4`,
-          [toJob.id, nextSort, toDayIndex, stop.id],
-        );
+        let nextSort = (maxSort.rows[0]?.m ?? -1) + 1;
+        let firstMovedId = stop.id;
+        for (const m of restorePairStops(toMove)) {
+          await dbQuery(
+            `UPDATE dispatch_stops
+             SET job_id = $1, sort_order = $2, day_index = $3, status = 'pending', arrived_at = NULL
+             WHERE id = $4`,
+            [toJob.id, nextSort++, toDayIndex, m.id],
+          );
+          if (!firstMovedId) firstMovedId = m.id;
+        }
         if (stop.order_id) {
           await dbQuery(
             `UPDATE dispatch_orders SET job_id = $1, stop_id = $2, updated_at = now() WHERE id = $3`,
-            [toJob.id, stop.id, stop.order_id],
+            [toJob.id, firstMovedId, stop.order_id],
           );
         }
         await Promise.all([recomputeJobSpan(s.fromJobId), recomputeJobSpan(toJob.id)]);
@@ -1078,6 +1120,7 @@ export function computeSlaFromSnapshot(snapshot) {
 
   for (const s of stops) {
     const b = bucket(s);
+    if (s.role === "pickup") continue;
     if (s.status === "skipped" || s.stopStatus === "skipped") {
       skipped += 1;
       b.skipped += 1;

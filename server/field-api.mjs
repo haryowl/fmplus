@@ -183,6 +183,7 @@ function publicDispatchStop(row, jobServiceDate = "") {
     completeArmadaLon: fieldCoordOrNull(row.complete_armada_lon),
     skipReason: row.skip_reason || "",
     rescheduledTo: fieldYmd(row.rescheduled_to) || null,
+    role: row.role === "pickup" ? "pickup" : "drop",
   };
 }
 
@@ -193,7 +194,12 @@ function fieldCapacityFrom(row, stops) {
     row.weight_capacity_kg == null ? 1500 : Number(row.weight_capacity_kg) || 1500;
   let volumeUsed = 0;
   let weightUsed = 0;
+  const seenPair = new Set();
   for (const s of stops) {
+    const role = s.role || "drop";
+    const oid = s.order_id || "";
+    if (role === "drop" && oid && seenPair.has(oid)) continue;
+    if (role === "pickup" && oid) seenPair.add(oid);
     if (s.volume_m3 != null) volumeUsed += Number(s.volume_m3) || 0;
     if (s.weight_kg != null) weightUsed += Number(s.weight_kg) || 0;
   }
@@ -835,6 +841,18 @@ export async function handleFieldRequest(req, res) {
           return true;
         }
 
+        if (stopRow.role === "drop" && stopRow.order_id) {
+          const pickup = await dbQuery(
+            `SELECT status FROM dispatch_stops
+             WHERE job_id = $1 AND order_id = $2 AND role = 'pickup' LIMIT 1`,
+            [job.id, stopRow.order_id],
+          );
+          if (pickup.rows[0] && pickup.rows[0].status !== "done") {
+            json(res, 400, { error: "Finish pickup before this drop" });
+            return true;
+          }
+        }
+
         // Only a real status change needs vehicle evidence; resolving this
         // costs a full Armada usersstatus round-trip per call.
         const armada = await resolveArmadaCoords(user, job.armada_user_id);
@@ -957,6 +975,49 @@ export async function handleFieldRequest(req, res) {
         if (!updated.rows[0]) {
           json(res, 404, { error: "Stop not found" });
           return true;
+        }
+
+        // Skipping pickup also returns/blocks the paired drop.
+        if (status === "skipped" && stopRow.role === "pickup" && stopRow.order_id) {
+          const mate = await dbQuery(
+            `SELECT * FROM dispatch_stops
+             WHERE job_id = $1 AND order_id = $2 AND role = 'drop' AND id <> $3 LIMIT 1`,
+            [job.id, stopRow.order_id, stopId],
+          );
+          const drop = mate.rows[0];
+          if (drop && drop.status !== "done" && drop.status !== "skipped") {
+            if (carryToDayIndex != null) {
+              const tail = await dbQuery(
+                `SELECT COALESCE(MAX(sort_order), -1)::int AS m
+                 FROM dispatch_stops WHERE job_id = $1 AND day_index = $2 AND id <> $3`,
+                [job.id, carryToDayIndex, drop.id],
+              );
+              await dbQuery(
+                `UPDATE dispatch_stops
+                 SET status = 'pending', day_index = $1, sort_order = $2,
+                     planned_eta = NULL, arrived_at = NULL, skip_reason = $3,
+                     rescheduled_to = $4::date
+                 WHERE id = $5 AND job_id = $6`,
+                [
+                  carryToDayIndex,
+                  (tail.rows[0]?.m ?? -1) + 1,
+                  skipReason,
+                  rescheduleDate,
+                  drop.id,
+                  job.id,
+                ],
+              );
+            } else {
+              await dbQuery(
+                `UPDATE dispatch_stops
+                 SET status = 'skipped', completed_at = COALESCE(completed_at, now()),
+                     arrived_at = COALESCE(arrived_at, now()), skip_reason = $1,
+                     rescheduled_to = $2::date
+                 WHERE id = $3 AND job_id = $4`,
+                [skipReason, rescheduleDate, drop.id, job.id],
+              );
+            }
+          }
         }
 
         // Reuse same order: detach and move to reschedule date (order number unchanged)

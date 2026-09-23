@@ -24,6 +24,10 @@ export type DispatchStopStatus = "pending" | "arrived" | "done" | "skipped";
 
 export type DispatchOrderStatus = "pending" | "assigned" | "cancelled";
 
+export type DispatchStopRole = "pickup" | "drop";
+
+export type DispatchOrderKind = "drop" | "pickup_drop";
+
 export type DispatchRouteAnchor = {
   lat: number;
   lon: number;
@@ -66,6 +70,8 @@ export type DispatchStop = {
   rescheduledTo?: string | null;
   /** Planned arrival HH:MM snapshotted at plan/optimize */
   plannedEta?: string;
+  /** Pickup vs drop. Drop-only orders are always `drop`. */
+  role?: DispatchStopRole;
 };
 
 /** One calendar day of a multi-day tour, as seen from the driver's day view. */
@@ -122,6 +128,7 @@ export type DispatchJob = {
 
 export type DispatchOrder = {
   id: string;
+  kind?: DispatchOrderKind;
   externalRef: string;
   customerName: string;
   address: string;
@@ -138,6 +145,14 @@ export type DispatchOrder = {
   serviceMinutes: number | null;
   /** When true, field FINISH requires at least one POD photo */
   proofRequired: boolean;
+  pickupAddress?: string;
+  pickupLat?: number | null;
+  pickupLon?: number | null;
+  pickupZone?: string;
+  pickupWindowStart?: string;
+  pickupWindowEnd?: string;
+  pickupServiceMinutes?: number | null;
+  pickupProofRequired?: boolean;
   /** Set when this order was generated from a routine template */
   templateId?: string | null;
   status: DispatchOrderStatus;
@@ -469,6 +484,7 @@ export type DispatchPlanDayStop = {
   windowEnd: string;
   late: boolean;
   early: boolean;
+  role?: DispatchStopRole;
 };
 
 export type DispatchPlanDayRoute = {
@@ -476,6 +492,7 @@ export type DispatchPlanDayRoute = {
   label: string;
   jobId?: string;
   orderIds: string[];
+  stopRoles?: DispatchStopRole[];
   volumeUsed: number;
   weightUsed: number;
   volumeCapacityM3: number;
@@ -796,6 +813,14 @@ export async function fetchDispatchOrders(
   return data.orders || [];
 }
 
+/** True when this drop cannot be started because its pair pickup is not done. */
+export function dropLockedUntilPickup(stop: DispatchStop, stops: DispatchStop[]): boolean {
+  if ((stop.role || "drop") !== "drop" || !stop.orderId) return false;
+  const pickup = stops.find((s) => s.orderId === stop.orderId && s.role === "pickup");
+  if (!pickup) return false;
+  return pickup.status !== "done";
+}
+
 export async function createDispatchOrder(body: {
   customerName: string;
   externalRef?: string;
@@ -812,6 +837,15 @@ export async function createDispatchOrder(body: {
   serviceMinutes?: number | null;
   proofRequired?: boolean;
   notes?: string;
+  kind?: DispatchOrderKind;
+  pickupAddress?: string;
+  pickupLat?: number | null;
+  pickupLon?: number | null;
+  pickupZone?: string;
+  pickupWindowStart?: string | null;
+  pickupWindowEnd?: string | null;
+  pickupServiceMinutes?: number | null;
+  pickupProofRequired?: boolean;
 }): Promise<DispatchOrder> {
   const res = await fetch("/api/dispatch/orders", {
     method: "POST",

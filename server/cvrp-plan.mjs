@@ -11,6 +11,12 @@ import {
   routeDominantZone,
   zoneMixPenalty,
 } from "./dispatch-zone.mjs";
+import {
+  pairMateIndex,
+  restorePairPrecedence,
+  routeLoadFeasible,
+  routePeakLoad,
+} from "./dispatch-pickup-drop.mjs";
 
 const SPEED_KMH = 35;
 const TW_LATE_PENALTY_KM = 40;
@@ -94,7 +100,8 @@ export function simulateRouteSchedule({
     const departMin = t + svc;
     stops.push({
       matrixIdx: cur,
-      orderId: order?.id || null,
+      orderId: order?.sourceOrderId || order?.id || null,
+      role: order?.role === "pickup" ? "pickup" : "drop",
       label: order?.label || "",
       arriveMin,
       arriveAt: formatMinutesClock(arriveMin),
@@ -112,36 +119,51 @@ export function simulateRouteSchedule({
   return stops;
 }
 
-function bestInsertion(route, nodeIdx, matrix, depotIdx) {
+function insertionDelta(route, pos, nodeIdx, matrix, depotIdx) {
   if (!route.length) {
-    const seedCost = depotIdx != null ? matrix[depotIdx][nodeIdx] : 0;
-    return { pos: 0, cost: seedCost };
+    return depotIdx != null ? matrix[depotIdx][nodeIdx] : 0;
   }
+  if (pos === 0) {
+    const next = route[0];
+    return depotIdx != null
+      ? matrix[depotIdx][nodeIdx] + matrix[nodeIdx][next] - matrix[depotIdx][next]
+      : matrix[nodeIdx][next];
+  }
+  if (pos === route.length) {
+    return matrix[route[route.length - 1]][nodeIdx];
+  }
+  const prev = route[pos - 1];
+  const next = route[pos];
+  return matrix[prev][nodeIdx] + matrix[nodeIdx][next] - matrix[prev][next];
+}
+
+function bestInsertion(route, nodeIdx, matrix, depotIdx) {
   let bestPos = 0;
   let bestCost = Infinity;
   for (let pos = 0; pos <= route.length; pos++) {
-    let delta;
-    if (pos === 0) {
-      const next = route[0];
-      const from = depotIdx != null ? depotIdx : null;
-      delta =
-        from != null
-          ? matrix[from][nodeIdx] + matrix[nodeIdx][next] - matrix[from][next]
-          : matrix[nodeIdx][next];
-    } else if (pos === route.length) {
-      const prev = route[route.length - 1];
-      delta = matrix[prev][nodeIdx];
-    } else {
-      const prev = route[pos - 1];
-      const next = route[pos];
-      delta = matrix[prev][nodeIdx] + matrix[nodeIdx][next] - matrix[prev][next];
-    }
+    const delta = insertionDelta(route, pos, nodeIdx, matrix, depotIdx);
     if (delta < bestCost) {
       bestCost = delta;
       bestPos = pos;
     }
   }
   return { pos: bestPos, cost: bestCost };
+}
+
+/** Cheapest pickup-then-drop placement (other stops may sit between). */
+function bestPairInsertion(route, pickupNode, dropNode, matrix, depotIdx) {
+  let best = null;
+  for (let pPos = 0; pPos <= route.length; pPos++) {
+    const pCost = insertionDelta(route, pPos, pickupNode, matrix, depotIdx);
+    const afterP = route.slice();
+    afterP.splice(pPos, 0, pickupNode);
+    for (let dPos = pPos + 1; dPos <= afterP.length; dPos++) {
+      const dCost = insertionDelta(afterP, dPos, dropNode, matrix, depotIdx);
+      const cost = pCost + dCost;
+      if (!best || cost < best.cost) best = { pPos, dPos, cost };
+    }
+  }
+  return best || { pPos: 0, dPos: 1, cost: 0 };
 }
 
 /**
@@ -250,13 +272,30 @@ function syncRouteFromOrderIndexes(vs, orderMatrixIndex) {
 }
 
 function usedDemand(vs, orders) {
-  let vol = 0;
-  let wt = 0;
-  for (const oi of vs.orderIndexes) {
-    vol += Math.max(0, num(orders[oi].volumeM3, 0));
-    wt += Math.max(0, num(orders[oi].weightKg, 0));
-  }
-  return { vol, wt };
+  return routePeakLoad(vs.orderIndexes, orders);
+}
+
+function refreshResidual(vs, orders) {
+  const used = usedDemand(vs, orders);
+  vs.residualVol = vs.volumeCapacityM3 - used.vol;
+  vs.residualWt = vs.weightCapacityKg - used.wt;
+}
+
+function isPairPickup(order) {
+  return Boolean(order?.pairKey && order.role === "pickup");
+}
+
+function isPairDrop(order) {
+  return Boolean(order?.pairKey && order.role === "drop");
+}
+
+function syncPairOrder(vs, orders, orderMatrixIndex) {
+  vs.orderIndexes = restorePairPrecedence(vs.orderIndexes.slice(), (oi) => {
+    const o = orders[oi];
+    if (!o?.pairKey) return null;
+    return { key: String(o.pairKey), role: o.role === "pickup" ? "pickup" : "drop" };
+  });
+  syncRouteFromOrderIndexes(vs, orderMatrixIndex);
 }
 
 function utilPct(vs, orders) {
@@ -301,18 +340,53 @@ function balanceRelocate(
       if (fromUtil < avg + 8) continue;
       for (let i = 0; i < from.orderIndexes.length; i++) {
         const oi = from.orderIndexes[i];
+        if (isPairDrop(orders[oi])) continue;
+        const dropI = isPairPickup(orders[oi]) ? pairMateIndex(orders, oi) : -1;
+        const pairMove = dropI >= 0 && from.orderIndexes.includes(dropI);
+        const extra = pairMove ? 1 : 0;
         const demand = {
           vol: Math.max(0, num(orders[oi].volumeM3, 0)),
           wt: Math.max(0, num(orders[oi].weightKg, 0)),
         };
         for (const to of vehicleStates) {
           if (to.key === from.key) continue;
-          if (maxStops > 0 && to.orderIndexes.length >= maxStops) continue;
-          // Soft same-zone: do not relocate into a route whose dominant zone differs.
+          if (maxStops > 0 && to.orderIndexes.length + 1 + extra > maxStops) continue;
           if (preferSameZone) {
             const cand = normalizeZoneKey(orders[oi]?.zone);
             const toDom = routeDominantZone(to.orderIndexes, orders);
             if (cand && toDom && cand !== toDom) continue;
+          }
+          if (pairMove) {
+            const tentative = to.orderIndexes.concat([oi, dropI]);
+            if (
+              !routeLoadFeasible(tentative, orders, to.volumeCapacityM3, to.weightCapacityKg)
+            ) {
+              continue;
+            }
+            const pNode = orderMatrixIndex(oi);
+            const dNode = orderMatrixIndex(dropI);
+            const ins = bestPairInsertion(to.route, pNode, dNode, matrix, depotIdx);
+            const fromBefore = pathKm(from.route, matrix, depotIdx, roundtrip);
+            const toBefore = pathKm(to.route, matrix, depotIdx, roundtrip);
+            const fromNext = from.orderIndexes.filter((x) => x !== oi && x !== dropI);
+            const toNext = to.orderIndexes.slice();
+            toNext.splice(ins.pPos, 0, oi);
+            toNext.splice(ins.dPos, 0, dropI);
+            const fromVs = { route: fromNext.map((x) => orderMatrixIndex(x)) };
+            const toVs = { route: toNext.map((x) => orderMatrixIndex(x)) };
+            const after =
+              pathKm(fromVs.route, matrix, depotIdx, roundtrip) +
+              pathKm(toVs.route, matrix, depotIdx, roundtrip);
+            if (after > (fromBefore + toBefore) * 1.08 + 0.5) continue;
+            from.orderIndexes = fromNext;
+            to.orderIndexes = toNext;
+            syncPairOrder(from, orders, orderMatrixIndex);
+            syncPairOrder(to, orders, orderMatrixIndex);
+            refreshResidual(from, orders);
+            refreshResidual(to, orders);
+            moves += 1;
+            improved = true;
+            break;
           }
           const toUsed = usedDemand(to, orders);
           if (
@@ -363,10 +437,8 @@ function balanceRelocate(
           to.orderIndexes.splice(ins.pos, 0, oi);
           syncRouteFromOrderIndexes(from, orderMatrixIndex);
           syncRouteFromOrderIndexes(to, orderMatrixIndex);
-          from.residualVol = from.volumeCapacityM3 - usedDemand(from, orders).vol;
-          from.residualWt = from.weightCapacityKg - usedDemand(from, orders).wt;
-          to.residualVol = to.volumeCapacityM3 - usedDemand(to, orders).vol;
-          to.residualWt = to.weightCapacityKg - usedDemand(to, orders).wt;
+          refreshResidual(from, orders);
+          refreshResidual(to, orders);
           moves += 1;
           improved = true;
           break;
@@ -560,11 +632,88 @@ export function planCvrp({
       for (const vs of eligible) {
         if (maxStops > 0 && vs.orderIndexes.length >= maxStops) continue;
         for (const oi of unassigned) {
+          if (isPairDrop(orders[oi])) continue;
+          if (isPairPickup(orders[oi])) {
+            const dropI = pairMateIndex(orders, oi);
+            if (dropI < 0 || !unassigned.has(dropI)) continue;
+            if (maxStops > 0 && vs.orderIndexes.length + 2 > maxStops) continue;
+            const pNode = orderMatrixIndex(oi);
+            const dNode = orderMatrixIndex(dropI);
+            const ins = bestPairInsertion(vs.route, pNode, dNode, matrixKm, depotIndex);
+            const tentativeIdx = vs.orderIndexes.slice();
+            tentativeIdx.splice(ins.pPos, 0, oi);
+            tentativeIdx.splice(ins.dPos, 0, dropI);
+            if (
+              !routeLoadFeasible(tentativeIdx, orders, vs.volumeCapacityM3, vs.weightCapacityKg)
+            ) {
+              continue;
+            }
+            const twP = evaluateTwInsertion({
+              route: vs.route,
+              pos: ins.pPos,
+              oi,
+              orders,
+              matrix: matrixKm,
+              depotIdx: depotIndex,
+              orderMatrixIndex,
+              twMode: mode,
+              dayStartMin: vs.dayStartMin,
+              serviceMinutes: svcMin,
+            });
+            if (!twP.feasible) continue;
+            const routeAfterP = vs.route.slice();
+            routeAfterP.splice(ins.pPos, 0, pNode);
+            const twD = evaluateTwInsertion({
+              route: routeAfterP,
+              pos: ins.dPos,
+              oi: dropI,
+              orders,
+              matrix: matrixKm,
+              depotIdx: depotIndex,
+              orderMatrixIndex,
+              twMode: mode,
+              dayStartMin: vs.dayStartMin,
+              serviceMinutes: svcMin,
+            });
+            if (!twD.feasible) continue;
+            const tentativeRoute = routeAfterP.slice();
+            tentativeRoute.splice(ins.dPos, 0, dNode);
+            if (maxTrips > 1 && depotIndex != null) {
+              const ret = estimateReturnMin({
+                route: tentativeRoute,
+                ordersByMatrixIdx,
+                matrix: matrixKm,
+                depotIdx: depotIndex,
+                dayStartMin: vs.dayStartMin,
+                serviceMinutes: svcMin,
+              });
+              if (ret != null && ret > endMin) continue;
+            }
+            const score =
+              ins.cost +
+              (mode === "off" ? 0 : twP.penalty + twD.penalty) +
+              zoneMixPenalty(sameZone, vs.orderIndexes, orders, oi);
+            if (!best || score < best.score - 1e-9) {
+              best = {
+                kind: "pair",
+                vs,
+                oi,
+                dropI,
+                pPos: ins.pPos,
+                dPos: ins.dPos,
+                pNode,
+                dNode,
+                score,
+              };
+            }
+            continue;
+          }
           const demand = {
             vol: Math.max(0, num(orders[oi].volumeM3, 0)),
             wt: Math.max(0, num(orders[oi].weightKg, 0)),
           };
           if (!fits({ vol: vs.residualVol, wt: vs.residualWt }, demand)) continue;
+          if (maxStops > 0 && vs.orderIndexes.length + 1 > maxStops) continue;
           const nodeIdx = orderMatrixIndex(oi);
           const ins = bestInsertion(vs.route, nodeIdx, matrixKm, depotIndex);
           const tw = evaluateTwInsertion({
@@ -580,7 +729,11 @@ export function planCvrp({
             serviceMinutes: svcMin,
           });
           if (!tw.feasible) continue;
-          // Soft check: after inserting, trip must still return before day end when multi-trip.
+          const tentativeIdx = vs.orderIndexes.slice();
+          tentativeIdx.splice(ins.pos, 0, oi);
+          if (!routeLoadFeasible(tentativeIdx, orders, vs.volumeCapacityM3, vs.weightCapacityKg)) {
+            continue;
+          }
           if (maxTrips > 1 && depotIndex != null) {
             const tentative = vs.route.slice();
             tentative.splice(ins.pos, 0, nodeIdx);
@@ -599,16 +752,25 @@ export function planCvrp({
             (mode === "off" ? 0 : tw.penalty) +
             zoneMixPenalty(sameZone, vs.orderIndexes, orders, oi);
           if (!best || score < best.score - 1e-9) {
-            best = { vs, oi, nodeIdx, pos: ins.pos, score, demand };
+            best = { kind: "single", vs, oi, nodeIdx, pos: ins.pos, score, demand };
           }
         }
       }
       if (!best) break;
-      best.vs.route.splice(best.pos, 0, best.nodeIdx);
-      best.vs.orderIndexes.splice(best.pos, 0, best.oi);
-      best.vs.residualVol -= best.demand.vol;
-      best.vs.residualWt -= best.demand.wt;
-      unassigned.delete(best.oi);
+      if (best.kind === "pair") {
+        best.vs.route.splice(best.pPos, 0, best.pNode);
+        best.vs.orderIndexes.splice(best.pPos, 0, best.oi);
+        best.vs.route.splice(best.dPos, 0, best.dNode);
+        best.vs.orderIndexes.splice(best.dPos, 0, best.dropI);
+        refreshResidual(best.vs, orders);
+        unassigned.delete(best.oi);
+        unassigned.delete(best.dropI);
+      } else {
+        best.vs.route.splice(best.pos, 0, best.nodeIdx);
+        best.vs.orderIndexes.splice(best.pos, 0, best.oi);
+        refreshResidual(best.vs, orders);
+        unassigned.delete(best.oi);
+      }
     }
 
     // Balance only within this trip (shared start times roughly similar).
@@ -646,6 +808,7 @@ export function planCvrp({
           byMatrix.set(orderMatrixIndex(i), i);
         }
         vs.orderIndexes = vs.route.map((mi) => byMatrix.get(mi)).filter((x) => x != null);
+        syncPairOrder(vs, orders, orderMatrixIndex);
         vs.distanceKm = Math.round(improved.distanceKm * 100) / 100;
       }
 
@@ -671,7 +834,8 @@ export function planCvrp({
           parentKey: vs.key,
           tripStartMin: vs.dayStartMin,
         },
-        orderIds: vs.orderIndexes.map((i) => orders[i].id),
+        orderIds: vs.orderIndexes.map((i) => orders[i].sourceOrderId || orders[i].id),
+        stopRoles: vs.orderIndexes.map((i) => (orders[i].role === "pickup" ? "pickup" : "drop")),
         orderIndexes: vs.orderIndexes.slice(),
         volumeUsed: Math.round(volUsed * 1000) / 1000,
         weightUsed: Math.round(wtUsed * 10) / 10,
@@ -690,6 +854,7 @@ export function planCvrp({
           windowEnd: s.windowEnd,
           late: s.late,
           early: s.early,
+          role: s.role || "drop",
         })),
       });
 
@@ -720,8 +885,14 @@ export function planCvrp({
     if (trip < maxTrips && vehicleStates.every((vs) => vs.locked)) break;
   }
 
-  const unassignedList = [...unassigned].map((i) => {
+  const unassignedList = [];
+  const seenUnassigned = new Set();
+  for (const i of unassigned) {
     const o = orders[i];
+    if (isPairDrop(o)) continue;
+    const oid = o.sourceOrderId || o.id;
+    if (seenUnassigned.has(oid)) continue;
+    seenUnassigned.add(oid);
     const demand = {
       vol: Math.max(0, num(o.volumeM3, 0)),
       wt: Math.max(0, num(o.weightKg, 0)),
@@ -736,12 +907,12 @@ export function planCvrp({
     if (anyFit && maxTrips > 1 && vehicleStates.every((vs) => vs.locked)) {
       reason = "no_shift_time_for_next_trip";
     }
-    return {
-      orderId: o.id,
-      label: o.label || o.id,
+    unassignedList.push({
+      orderId: oid,
+      label: o.label || oid,
       reason,
-    };
-  });
+    });
+  }
 
   return {
     routes: collectedRoutes,

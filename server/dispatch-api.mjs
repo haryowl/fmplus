@@ -33,6 +33,13 @@ import {
   partitionOrdersByNearestDepot,
   planCvrp,
 } from "./cvrp-plan.mjs";
+import {
+  expandOrdersToPlanTasks,
+  isPickupDropOrder,
+  pairCrossesDepots,
+  parseOrderKind,
+  pickupCoord,
+} from "./dispatch-pickup-drop.mjs";
 import { normalizeZoneKey } from "./dispatch-zone.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
@@ -91,6 +98,82 @@ function parseOpenStartMode(v) {
     .trim();
   if (s === "vehicle" || s === "last_position" || s === "gps") return "vehicle";
   return "none";
+}
+
+function rowToPlanOrder(o) {
+  const pickupMin =
+    o.pickup_service_minutes == null || o.pickup_service_minutes === ""
+      ? null
+      : Number(o.pickup_service_minutes);
+  const svcMin =
+    o.service_minutes == null || o.service_minutes === "" ? null : Number(o.service_minutes);
+  return {
+    id: o.id,
+    kind: parseOrderKind(o.kind),
+    lat: o.lat == null ? null : Number(o.lat),
+    lon: o.lon == null ? null : Number(o.lon),
+    pickupLat: o.pickup_lat == null ? null : Number(o.pickup_lat),
+    pickupLon: o.pickup_lon == null ? null : Number(o.pickup_lon),
+    pickupAddress: o.pickup_address || "",
+    pickupZone: o.pickup_zone || "",
+    pickupWindowStart: o.pickup_window_start || "",
+    pickupWindowEnd: o.pickup_window_end || "",
+    pickupServiceMinutes: Number.isFinite(pickupMin) ? pickupMin : null,
+    volumeM3: o.volume_m3 == null ? 0 : Number(o.volume_m3) || 0,
+    weightKg: o.weight_kg == null ? 0 : Number(o.weight_kg) || 0,
+    label: o.customer_name || o.external_ref || o.id,
+    zone: o.zone || "",
+    windowStart: o.window_start || "",
+    windowEnd: o.window_end || "",
+    serviceMinutes: Number.isFinite(svcMin) ? svcMin : null,
+  };
+}
+
+async function planCvrpOnOrders(orders, vehicles, routing, depotPt, roundtrip, planOpts) {
+  const tasks = expandOrdersToPlanTasks(orders);
+  const points = depotPt
+    ? [{ lat: depotPt.lat, lon: depotPt.lon }, ...tasks.map((t) => ({ lat: t.lat, lon: t.lon }))]
+    : tasks.map((t) => ({ lat: t.lat, lon: t.lon }));
+  if (points.length > 80) {
+    const err = new Error(
+      `Too many points for matrix (${points.length}). Cap is 80 (depot + stops).`,
+    );
+    err.code = "too_many_points";
+    throw err;
+  }
+  if (!tasks.length) {
+    return {
+      plan: {
+        routes: [],
+        unassigned: orders.map((o) => ({
+          orderId: o.id,
+          label: o.label || o.id,
+          reason: "no_coords",
+        })),
+        balanceMoves: 0,
+        roundtrip: false,
+      },
+      engine: "haversine",
+      warning: null,
+      pointCount: points.length,
+    };
+  }
+  const matrix = await getDistanceMatrix(points, routing);
+  const plan = planCvrp({
+    orders: tasks,
+    vehicles,
+    matrixKm: matrix.matrixKm,
+    points,
+    depotIndex: depotPt ? 0 : null,
+    roundtrip: Boolean(depotPt && roundtrip),
+    ...planOpts,
+  });
+  return {
+    plan,
+    engine: matrix.engine,
+    warning: matrix.warning || null,
+    pointCount: points.length,
+  };
 }
 
 function routeAnchorFromRow(lat, lon, label) {
@@ -389,6 +472,7 @@ function publicStop(row, jobServiceDate = "") {
     skipReason: row.skip_reason || "",
     rescheduledTo: formatServiceDate(row.rescheduled_to) || null,
     plannedEta: row.planned_eta || "",
+    role: row.role === "pickup" ? "pickup" : "drop",
   };
 }
 
@@ -399,7 +483,13 @@ function capacityFrom(row, stops) {
     row.weight_capacity_kg == null ? 1500 : Number(row.weight_capacity_kg) || 1500;
   let volumeUsed = 0;
   let weightUsed = 0;
+  // Pair drop legs store cargo too — count pickup (or drop-only) once.
+  const seenPair = new Set();
   for (const s of stops) {
+    const role = s.role || s.Role || "drop";
+    const oid = s.order_id || s.orderId || "";
+    if (role === "drop" && oid && seenPair.has(oid)) continue;
+    if (role === "pickup" && oid) seenPair.add(oid);
     if (s.volume_m3 != null) volumeUsed += Number(s.volume_m3) || 0;
     else if (s.volumeM3 != null) volumeUsed += Number(s.volumeM3) || 0;
     if (s.weight_kg != null) weightUsed += Number(s.weight_kg) || 0;
@@ -486,6 +576,7 @@ function stopsForDay(stops, dayIndex) {
 function publicOrder(row) {
   return {
     id: row.id,
+    kind: parseOrderKind(row.kind),
     externalRef: row.external_ref || "",
     customerName: row.customer_name || "",
     address: row.address || "",
@@ -499,6 +590,15 @@ function publicOrder(row) {
     serviceDate: formatServiceDate(row.service_date) || todayYmd(),
     serviceMinutes: row.service_minutes == null ? null : Number(row.service_minutes),
     proofRequired: row.proof_required === true,
+    pickupAddress: row.pickup_address || "",
+    pickupLat: row.pickup_lat == null ? null : Number(row.pickup_lat),
+    pickupLon: row.pickup_lon == null ? null : Number(row.pickup_lon),
+    pickupZone: row.pickup_zone || "",
+    pickupWindowStart: row.pickup_window_start || "",
+    pickupWindowEnd: row.pickup_window_end || "",
+    pickupServiceMinutes:
+      row.pickup_service_minutes == null ? null : Number(row.pickup_service_minutes),
+    pickupProofRequired: row.pickup_proof_required === true,
     templateId: row.template_id || null,
     status: row.status || "pending",
     jobId: row.job_id || null,
@@ -633,19 +733,178 @@ function normalizeStops(raw) {
   return out;
 }
 
-/** Unlink order from its job stop (removes the stop). */
+/** Unlink order from its job stop(s) — both legs of a pickup/drop pair. */
 async function detachOrderFromJob(order) {
   if (!order) return;
-  const stopId = order.stop_id || null;
   await dbQuery(
     `UPDATE dispatch_orders
      SET stop_id = NULL, job_id = NULL, updated_at = now()
      WHERE id = $1`,
     [order.id],
   );
-  if (stopId) {
-    await dbQuery(`DELETE FROM dispatch_stops WHERE id = $1`, [stopId]);
+  await dbQuery(`DELETE FROM dispatch_stops WHERE order_id = $1`, [order.id]);
+}
+
+/**
+ * Insert one or two stops from a pending order. Pair drop stores cargo on
+ * pickup only so job utilization does not double-count.
+ * @returns {Promise<{ firstStopId: string, count: number }>}
+ */
+async function insertStopsFromOrder(jobId, order, sortBase, dayIndex) {
+  const kind = parseOrderKind(order.kind);
+  const pair = kind === "pickup_drop";
+  const legs = [];
+  if (pair) {
+    const p = pickupCoord(order);
+    if (!p) {
+      return { firstStopId: null, count: 0 };
+    }
+    legs.push({
+      role: "pickup",
+      name: `${order.customer_name || order.external_ref || "Stop"} · pickup`,
+      address: order.pickup_address,
+      lat: p.lat,
+      lon: p.lon,
+      zone: order.pickup_zone || order.zone,
+      volume: order.volume_m3,
+      weight: order.weight_kg,
+      windowStart: order.pickup_window_start,
+      windowEnd: order.pickup_window_end,
+      serviceMinutes: order.pickup_service_minutes ?? order.service_minutes,
+      proof: order.pickup_proof_required === true,
+    });
+    legs.push({
+      role: "drop",
+      name: `${order.customer_name || order.external_ref || "Stop"} · drop`,
+      address: order.address,
+      lat: order.lat,
+      lon: order.lon,
+      zone: order.zone,
+      volume: null,
+      weight: null,
+      windowStart: order.window_start,
+      windowEnd: order.window_end,
+      serviceMinutes: order.service_minutes,
+      proof: order.proof_required === true,
+    });
+  } else {
+    legs.push({
+      role: "drop",
+      name: order.customer_name || order.external_ref || `Stop ${sortBase + 1}`,
+      address: order.address,
+      lat: order.lat,
+      lon: order.lon,
+      zone: order.zone,
+      volume: order.volume_m3,
+      weight: order.weight_kg,
+      windowStart: order.window_start,
+      windowEnd: order.window_end,
+      serviceMinutes: order.service_minutes,
+      proof: order.proof_required === true,
+    });
   }
+  let firstStopId = null;
+  let n = 0;
+  for (const leg of legs) {
+    const inserted = await dbQuery(
+      `INSERT INTO dispatch_stops (
+         job_id, sort_order, name, address, lat, lon, notes,
+         zone, volume_m3, weight_kg, window_start, window_end, service_minutes, proof_required, order_id,
+         day_index, role
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       RETURNING id`,
+      [
+        jobId,
+        sortBase + n,
+        leg.name,
+        leg.address,
+        leg.lat,
+        leg.lon,
+        order.notes,
+        leg.zone,
+        leg.volume,
+        leg.weight,
+        leg.windowStart,
+        leg.windowEnd,
+        leg.serviceMinutes,
+        leg.proof,
+        order.id,
+        dayIndex,
+        leg.role,
+      ],
+    );
+    if (!firstStopId) firstStopId = inserted.rows[0].id;
+    n += 1;
+  }
+  return { firstStopId, count: n };
+}
+
+/** Insert a single pickup or drop leg (used when Auto-plan sequences other stops between them). */
+async function insertStopLeg(jobId, order, role, sortBase, dayIndex) {
+  const want = role === "pickup" ? "pickup" : "drop";
+  const pair = parseOrderKind(order.kind) === "pickup_drop";
+  if (want === "pickup" && !pair) return null;
+  const p = pair ? pickupCoord(order) : null;
+  const nameBase = order.customer_name || order.external_ref || "Stop";
+  const leg =
+    want === "pickup"
+      ? {
+          role: "pickup",
+          name: `${nameBase} · pickup`,
+          address: order.pickup_address,
+          lat: p?.lat,
+          lon: p?.lon,
+          zone: order.pickup_zone || order.zone,
+          volume: order.volume_m3,
+          weight: order.weight_kg,
+          windowStart: order.pickup_window_start,
+          windowEnd: order.pickup_window_end,
+          serviceMinutes: order.pickup_service_minutes ?? order.service_minutes,
+          proof: order.pickup_proof_required === true,
+        }
+      : {
+          role: "drop",
+          name: pair ? `${nameBase} · drop` : nameBase,
+          address: order.address,
+          lat: order.lat,
+          lon: order.lon,
+          zone: order.zone,
+          volume: pair ? null : order.volume_m3,
+          weight: pair ? null : order.weight_kg,
+          windowStart: order.window_start,
+          windowEnd: order.window_end,
+          serviceMinutes: order.service_minutes,
+          proof: order.proof_required === true,
+        };
+  if (leg.lat == null || leg.lon == null) return null;
+  const inserted = await dbQuery(
+    `INSERT INTO dispatch_stops (
+       job_id, sort_order, name, address, lat, lon, notes,
+       zone, volume_m3, weight_kg, window_start, window_end, service_minutes, proof_required, order_id,
+       day_index, role
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+     RETURNING id`,
+    [
+      jobId,
+      sortBase,
+      leg.name,
+      leg.address,
+      leg.lat,
+      leg.lon,
+      order.notes,
+      leg.zone,
+      leg.volume,
+      leg.weight,
+      leg.windowStart,
+      leg.windowEnd,
+      leg.serviceMinutes,
+      leg.proof,
+      order.id,
+      dayIndex,
+      leg.role,
+    ],
+  );
+  return inserted.rows[0]?.id || null;
 }
 
 async function replaceStops(jobId, stops) {
@@ -658,8 +917,8 @@ async function replaceStops(jobId, stops) {
       `INSERT INTO dispatch_stops (
          job_id, sort_order, name, address, lat, lon, notes,
          zone, volume_m3, weight_kg, window_start, window_end, service_minutes, proof_required, order_id,
-         day_index
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         day_index, role
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        RETURNING id`,
       [
         jobId,
@@ -678,6 +937,7 @@ async function replaceStops(jobId, stops) {
         s.proofRequired === true,
         s.orderId,
         s.dayIndex ?? 0,
+        s.role === "pickup" ? "pickup" : "drop",
       ],
     );
     if (s.orderId) {
@@ -1395,11 +1655,22 @@ export async function handleDispatchRequest(req, res) {
       const lat = numOrNull(body.lat);
       const lon = numOrNull(body.lon ?? body.lng);
       const serviceDate = parseServiceDate(body.serviceDate) || todayYmd();
+      const kind = parseOrderKind(body.kind);
+      if (kind === "pickup_drop") {
+        const pLat = numOrNull(body.pickupLat);
+        const pLon = numOrNull(body.pickupLon);
+        if (pLat == null || pLon == null) {
+          json(res, 400, { error: "pickup_drop orders require pickupLat and pickupLon" });
+          return true;
+        }
+      }
       const inserted = await dbQuery(
         `INSERT INTO dispatch_orders (
            tenant_id, external_ref, customer_name, address, lat, lon, zone,
-           volume_m3, weight_kg, window_start, window_end, notes, service_date, service_minutes, proof_required
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+           volume_m3, weight_kg, window_start, window_end, notes, service_date, service_minutes, proof_required,
+           kind, pickup_address, pickup_lat, pickup_lon, pickup_zone,
+           pickup_window_start, pickup_window_end, pickup_service_minutes, pickup_proof_required
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
          RETURNING *`,
         [
           dbTenant.id,
@@ -1417,6 +1688,15 @@ export async function handleDispatchRequest(req, res) {
           serviceDate,
           serviceMinutesOrNull(body.serviceMinutes),
           body.proofRequired === true || body.proof_required === true,
+          parseOrderKind(body.kind),
+          String(body.pickupAddress || "").trim().slice(0, 500) || null,
+          numOrNull(body.pickupLat),
+          numOrNull(body.pickupLon),
+          String(body.pickupZone || "").trim().slice(0, 80) || null,
+          normalizeWindowClock(body.pickupWindowStart),
+          normalizeWindowClock(body.pickupWindowEnd),
+          serviceMinutesOrNull(body.pickupServiceMinutes),
+          body.pickupProofRequired === true,
         ],
       );
       json(res, 201, { order: publicOrder(inserted.rows[0]) });
@@ -1650,6 +1930,42 @@ export async function handleDispatchRequest(req, res) {
         params.push(body.proofRequired === true || body.proof_required === true);
         sets.push(`proof_required = $${params.length}`);
       }
+      if ("kind" in body) {
+        params.push(parseOrderKind(body.kind));
+        sets.push(`kind = $${params.length}`);
+      }
+      if ("pickupAddress" in body) {
+        params.push(String(body.pickupAddress || "").trim().slice(0, 500) || null);
+        sets.push(`pickup_address = $${params.length}`);
+      }
+      if ("pickupLat" in body) {
+        params.push(numOrNull(body.pickupLat));
+        sets.push(`pickup_lat = $${params.length}`);
+      }
+      if ("pickupLon" in body) {
+        params.push(numOrNull(body.pickupLon));
+        sets.push(`pickup_lon = $${params.length}`);
+      }
+      if ("pickupZone" in body) {
+        params.push(String(body.pickupZone || "").trim().slice(0, 80) || null);
+        sets.push(`pickup_zone = $${params.length}`);
+      }
+      if ("pickupWindowStart" in body) {
+        params.push(normalizeWindowClock(body.pickupWindowStart));
+        sets.push(`pickup_window_start = $${params.length}`);
+      }
+      if ("pickupWindowEnd" in body) {
+        params.push(normalizeWindowClock(body.pickupWindowEnd));
+        sets.push(`pickup_window_end = $${params.length}`);
+      }
+      if ("pickupServiceMinutes" in body) {
+        params.push(serviceMinutesOrNull(body.pickupServiceMinutes));
+        sets.push(`pickup_service_minutes = $${params.length}`);
+      }
+      if ("pickupProofRequired" in body) {
+        params.push(body.pickupProofRequired === true);
+        sets.push(`pickup_proof_required = $${params.length}`);
+      }
       if ("status" in body) {
         const st = String(body.status || "").toLowerCase();
         if (!ORDER_STATUSES.includes(st)) {
@@ -1664,6 +1980,15 @@ export async function handleDispatchRequest(req, res) {
           }
           sets.push(`job_id = NULL`);
           sets.push(`stop_id = NULL`);
+        }
+      }
+      const nextKind = "kind" in body ? parseOrderKind(body.kind) : parseOrderKind(existing.rows[0].kind);
+      if (nextKind === "pickup_drop") {
+        const pLat = "pickupLat" in body ? numOrNull(body.pickupLat) : existing.rows[0].pickup_lat;
+        const pLon = "pickupLon" in body ? numOrNull(body.pickupLon) : existing.rows[0].pickup_lon;
+        if (pLat == null || pLon == null) {
+          json(res, 400, { error: "pickup_drop orders require pickupLat and pickupLon" });
+          return true;
         }
       }
       if (!sets.length) {
@@ -2111,37 +2436,15 @@ export async function handleDispatchRequest(req, res) {
           if (offset == null) continue;
           dayIndex = offset;
         }
-        const inserted = await dbQuery(
-          `INSERT INTO dispatch_stops (
-             job_id, sort_order, name, address, lat, lon, notes,
-             zone, volume_m3, weight_kg, window_start, window_end, service_minutes, proof_required, order_id,
-             day_index
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-           RETURNING id`,
-          [
-            job.id,
-            sortBase++,
-            o.customer_name || o.external_ref || `Stop ${sortBase}`,
-            o.address,
-            o.lat,
-            o.lon,
-            o.notes,
-            o.zone,
-            o.volume_m3,
-            o.weight_kg,
-            o.window_start,
-            o.window_end,
-            o.service_minutes,
-            o.proof_required === true,
-            o.id,
-            dayIndex,
-          ],
-        );
+        if (parseOrderKind(o.kind) === "pickup_drop" && !pickupCoord(o)) continue;
+        const inserted = await insertStopsFromOrder(job.id, o, sortBase, dayIndex);
+        if (!inserted.firstStopId) continue;
+        sortBase += inserted.count;
         await dbQuery(
           `UPDATE dispatch_orders
            SET status = 'assigned', job_id = $1, stop_id = $2, updated_at = now()
            WHERE id = $3`,
-          [job.id, inserted.rows[0].id, o.id],
+          [job.id, inserted.firstStopId, o.id],
         );
       }
       if (job.status === "draft" && job.assigned_field_user_id) {
@@ -2565,8 +2868,13 @@ export async function handleDispatchRequest(req, res) {
            WHERE id = $1 AND tenant_id = $2`,
           [stop.order_id, dbTenant.id],
         );
+        await dbQuery(`DELETE FROM dispatch_stops WHERE order_id = $1 AND job_id = $2`, [
+          stop.order_id,
+          job.id,
+        ]);
+      } else {
+        await dbQuery(`DELETE FROM dispatch_stops WHERE id = $1 AND job_id = $2`, [stop.id, job.id]);
       }
-      await dbQuery(`DELETE FROM dispatch_stops WHERE id = $1 AND job_id = $2`, [stop.id, job.id]);
       await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [job.id]);
       // Returning the last stop of the final day shortens the tour.
       await recomputeJobSpan(job.id);
@@ -2735,27 +3043,36 @@ export async function handleDispatchRequest(req, res) {
       const orders = [];
       const skipped = [];
       for (const o of orderRows.rows) {
-        const lat = o.lat == null ? null : Number(o.lat);
-        const lon = o.lon == null ? null : Number(o.lon);
-        if (lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+        const planOrder = rowToPlanOrder(o);
+        const dropOk =
+          planOrder.lat != null &&
+          planOrder.lon != null &&
+          Number.isFinite(planOrder.lat) &&
+          Number.isFinite(planOrder.lon);
+        if (!dropOk) {
           skipped.push({ orderId: o.id, reason: "no_coords" });
           continue;
         }
-        orders.push({
-          id: o.id,
-          lat,
-          lon,
-          volumeM3: o.volume_m3 == null ? 0 : Number(o.volume_m3) || 0,
-          weightKg: o.weight_kg == null ? 0 : Number(o.weight_kg) || 0,
-          label: o.customer_name || o.external_ref || o.id,
-          zone: o.zone || "",
-          windowStart: o.window_start || "",
-          windowEnd: o.window_end || "",
-          serviceMinutes:
-            o.service_minutes == null || o.service_minutes === ""
-              ? null
-              : Number(o.service_minutes),
-        });
+        if (isPickupDropOrder(planOrder)) {
+          const p = pickupCoord(planOrder);
+          if (!p) {
+            skipped.push({ orderId: o.id, reason: "no_coords" });
+            continue;
+          }
+          if (depotMode === "open") {
+            skipped.push({ orderId: o.id, reason: "pair_requires_depot" });
+            continue;
+          }
+        }
+        orders.push(planOrder);
+      }
+      if (depotMode === "multi" && multiDepots.length) {
+        for (let i = orders.length - 1; i >= 0; i--) {
+          if (pairCrossesDepots(orders[i], multiDepots, {})) {
+            skipped.push({ orderId: orders[i].id, reason: "cross_depot_pair" });
+            orders.splice(i, 1);
+          }
+        }
       }
       if (!orders.length) {
         json(res, 400, {
@@ -3003,28 +3320,28 @@ export async function handleDispatchRequest(req, res) {
           }
 
           const clusterVehicles = vehicleIdxs.map((i) => vehicles[i]);
-          const points = [
-            { lat: d.lat, lon: d.lon },
-            ...clusterOrders.map((o) => ({ lat: o.lat, lon: o.lon })),
-          ];
-          if (points.length > 80) {
-            json(res, 400, {
-              error: `Too many points for depot “${d.name}” (${points.length}). Cap is 80 (depot + orders).`,
-            });
-            return true;
+          let planned;
+          try {
+            planned = await planCvrpOnOrders(
+              clusterOrders,
+              clusterVehicles,
+              routing,
+              { lat: d.lat, lon: d.lon },
+              roundtrip,
+              planOpts,
+            );
+          } catch (err) {
+            if (err?.code === "too_many_points") {
+              json(res, 400, {
+                error: `Too many points for depot “${d.name}”. Cap is 80 (depot + stops).`,
+              });
+              return true;
+            }
+            throw err;
           }
-          const matrix = await getDistanceMatrix(points, routing);
-          engines.add(matrix.engine);
-          if (matrix.warning) warnings.push(matrix.warning);
-          const plan = planCvrp({
-            orders: clusterOrders,
-            vehicles: clusterVehicles,
-            matrixKm: matrix.matrixKm,
-            points,
-            depotIndex: 0,
-            roundtrip,
-            ...planOpts,
-          });
+          engines.add(planned.engine);
+          if (planned.warning) warnings.push(planned.warning);
+          const plan = planned.plan;
           planBalanceMoves += plan.balanceMoves || 0;
           planRoundtrip = planRoundtrip || plan.roundtrip;
           for (const route of plan.routes) {
@@ -3109,28 +3426,26 @@ export async function handleDispatchRequest(req, res) {
             }
             continue;
           }
-          const points = [
-            { lat: d.lat, lon: d.lon },
-            ...clusterOrders.map((o) => ({ lat: o.lat, lon: o.lon })),
-          ];
-          if (points.length > 80) {
-            json(res, 400, {
-              error: `Too many points for vehicle start (${points.length}). Cap is 80.`,
-            });
-            return true;
+          let planned;
+          try {
+            planned = await planCvrpOnOrders(
+              clusterOrders,
+              clusterVehicles,
+              routing,
+              { lat: d.lat, lon: d.lon },
+              roundtrip,
+              planOpts,
+            );
+          } catch (err) {
+            if (err?.code === "too_many_points") {
+              json(res, 400, { error: "Too many points for vehicle start. Cap is 80." });
+              return true;
+            }
+            throw err;
           }
-          const matrix = await getDistanceMatrix(points, routing);
-          engines.add(matrix.engine);
-          if (matrix.warning) warnings.push(matrix.warning);
-          const plan = planCvrp({
-            orders: clusterOrders,
-            vehicles: clusterVehicles,
-            matrixKm: matrix.matrixKm,
-            points,
-            depotIndex: 0,
-            roundtrip,
-            ...planOpts,
-          });
+          engines.add(planned.engine);
+          if (planned.warning) warnings.push(planned.warning);
+          const plan = planned.plan;
           planBalanceMoves += plan.balanceMoves || 0;
           planRoundtrip = planRoundtrip || plan.roundtrip;
           for (const route of plan.routes) {
@@ -3160,28 +3475,26 @@ export async function handleDispatchRequest(req, res) {
         previewDepot = null;
       } else {
         const useDepot = depotMode === "depot";
-        const depotIndex = useDepot ? 0 : null;
-        const points = useDepot
-          ? [{ lat: depotLat, lon: depotLon }, ...orders.map((o) => ({ lat: o.lat, lon: o.lon }))]
-          : orders.map((o) => ({ lat: o.lat, lon: o.lon }));
-
-        if (points.length > 80) {
-          json(res, 400, {
-            error: `Too many points for matrix (${points.length}). Cap is 80 (depot + orders).`,
-          });
-          return true;
+        let planned;
+        try {
+          planned = await planCvrpOnOrders(
+            orders,
+            vehicles,
+            routing,
+            useDepot ? { lat: depotLat, lon: depotLon } : null,
+            useDepot && roundtrip,
+            planOpts,
+          );
+        } catch (err) {
+          if (err?.code === "too_many_points") {
+            json(res, 400, {
+              error: "Too many points for matrix. Cap is 80 (depot + stops).",
+            });
+            return true;
+          }
+          throw err;
         }
-
-        const matrix = await getDistanceMatrix(points, routing);
-        const plan = planCvrp({
-          orders,
-          vehicles,
-          matrixKm: matrix.matrixKm,
-          points,
-          depotIndex,
-          roundtrip: useDepot && roundtrip,
-          ...planOpts,
-        });
+        const plan = planned.plan;
         planRoutes = plan.routes.map((route) =>
           enrichRouteWithAnchors(
             useDepot
@@ -3201,8 +3514,8 @@ export async function handleDispatchRequest(req, res) {
           ),
         );
         planUnassigned = [...plan.unassigned, ...skipped];
-        planEngine = matrix.engine;
-        planWarning = matrix.warning || null;
+        planEngine = planned.engine;
+        planWarning = planned.warning || null;
         planBalanceMoves = plan.balanceMoves || 0;
         planRoundtrip = plan.roundtrip;
         previewDepot = useDepot ? { lat: depotLat, lon: depotLon } : null;
@@ -3291,47 +3604,36 @@ export async function handleDispatchRequest(req, res) {
         );
         if (!jobOk.rows[0]) continue;
 
-        // Assign in route order
+        // Assign in route order (pairs emit the same orderId twice with stopRoles).
         let sortBase = (await loadStops(jobId)).length;
-        for (const oid of route.orderIds) {
+        const seenLeg = new Set();
+        const roles = Array.isArray(route.stopRoles) ? route.stopRoles : [];
+        for (let i = 0; i < route.orderIds.length; i++) {
+          const oid = route.orderIds[i];
+          const role = roles[i] === "pickup" ? "pickup" : "drop";
           const ord = await dbQuery(
             `SELECT * FROM dispatch_orders
-             WHERE id = $1 AND tenant_id = $2 AND status = 'pending'
+             WHERE id = $1 AND tenant_id = $2 AND status IN ('pending', 'assigned')
                AND service_date = $3::date`,
             [oid, dbTenant.id, serviceDate],
           );
           const o = ord.rows[0];
           if (!o) continue;
-          const inserted = await dbQuery(
-            `INSERT INTO dispatch_stops (
-               job_id, sort_order, name, address, lat, lon, notes,
-               zone, volume_m3, weight_kg, window_start, window_end, service_minutes, proof_required, order_id
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-             RETURNING id`,
-            [
-              jobId,
-              sortBase++,
-              o.customer_name || o.external_ref || `Stop ${sortBase}`,
-              o.address,
-              o.lat,
-              o.lon,
-              o.notes,
-              o.zone,
-              o.volume_m3,
-              o.weight_kg,
-              o.window_start,
-              o.window_end,
-              o.service_minutes,
-              o.proof_required === true,
-              o.id,
-            ],
-          );
-          await dbQuery(
-            `UPDATE dispatch_orders
-             SET status = 'assigned', job_id = $1, stop_id = $2, updated_at = now()
-             WHERE id = $3`,
-            [jobId, inserted.rows[0].id, o.id],
-          );
+          const legKey = `${oid}:${role}`;
+          if (seenLeg.has(legKey)) continue;
+          const stopId = await insertStopLeg(jobId, o, role, sortBase, 0);
+          if (!stopId) continue;
+          sortBase += 1;
+          seenLeg.add(legKey);
+          if (!seenLeg.has(oid)) {
+            seenLeg.add(oid);
+            await dbQuery(
+              `UPDATE dispatch_orders
+               SET status = 'assigned', job_id = $1, stop_id = $2, updated_at = now()
+               WHERE id = $3`,
+              [jobId, stopId, o.id],
+            );
+          }
         }
         await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [jobId]);
         // Auto-plan is single-day, so this normally collapses end_date to NULL.

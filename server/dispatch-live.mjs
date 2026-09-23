@@ -453,6 +453,7 @@ export async function buildDispatchLiveSnapshot(opts) {
         delayed: delayedFlag,
         windowStart: s.window_start || "",
         windowEnd: s.window_end || "",
+        role: s.role === "pickup" ? "pickup" : "drop",
         serviceMinutes:
           s.service_minutes == null || s.service_minutes === ""
             ? null

@@ -69,6 +69,7 @@ import {
   type DispatchJob,
   type DispatchOrder,
   type DispatchOrderCadence,
+  type DispatchOrderKind,
   type DispatchOrderTemplate,
   type DispatchPhoto,
   type DispatchPlanDayResult,
@@ -99,6 +100,8 @@ import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
 
 const emptyOrderForm = {
+  kind: "drop" as DispatchOrderKind,
+  pinTarget: "drop" as "drop" | "pickup",
   customerName: "",
   externalRef: "",
   address: "",
@@ -109,6 +112,14 @@ const emptyOrderForm = {
   windowEnd: "12:00",
   serviceMinutes: "",
   proofRequired: false,
+  pickupAddress: "",
+  pickupLat: null as number | null,
+  pickupLon: null as number | null,
+  pickupZone: "",
+  pickupWindowStart: "08:00",
+  pickupWindowEnd: "12:00",
+  pickupServiceMinutes: "",
+  pickupProofRequired: false,
   saveAsTemplate: false,
   templateCadence: "daily" as DispatchOrderCadence,
   templateWeekday: String(new Date().getDay()),
@@ -146,6 +157,10 @@ function planUnassignedReasonLabel(reason: string): string {
       return "Time window or capacity";
     case "no_shift_time_for_next_trip":
       return "No shift time for next trip";
+    case "pair_requires_depot":
+      return "Pickup/drop needs depot or multi-depot";
+    case "cross_depot_pair":
+      return "Pickup and drop in different depot areas";
     default:
       return reason ? reason.replace(/_/g, " ") : "Unassigned";
   }
@@ -254,6 +269,12 @@ export default function DispatchBoard() {
     orderForm.lat != null && orderForm.lon != null
       ? { lat: orderForm.lat, lon: orderForm.lon }
       : null;
+  const draftPickupPin =
+    orderForm.kind === "pickup_drop" &&
+    orderForm.pickupLat != null &&
+    orderForm.pickupLon != null
+      ? { lat: orderForm.pickupLat, lon: orderForm.pickupLon }
+      : null;
   const depotPin = useMemo(() => {
     const lat = Number(depotLat);
     const lon = Number(depotLon);
@@ -274,8 +295,8 @@ export default function DispatchBoard() {
         : depotPin
       : draftPin;
   const fitKey = selected
-    ? `${selected.id}-${selected.stops.map((s) => s.id).join(",")}-${mapDraftPin ? "pin" : ""}-${jobRoute?.geometry?.length || 0}-${jobPhoneTrail.length}-${jobArmadaTrack.length}`
-    : `empty-${mapDraftPin ? `${mapDraftPin.lat},${mapDraftPin.lon}` : ""}`;
+    ? `${selected.id}-${selected.stops.map((s) => s.id).join(",")}-${mapDraftPin ? "pin" : ""}-${draftPickupPin ? "ppin" : ""}-${jobRoute?.geometry?.length || 0}-${jobPhoneTrail.length}-${jobArmadaTrack.length}`
+    : `empty-${mapDraftPin ? `${mapDraftPin.lat},${mapDraftPin.lon}` : ""}-${draftPickupPin ? "ppin" : ""}`;
 
   const stopRouteMeta = useMemo(() => {
     if (!selected) {
@@ -887,14 +908,27 @@ export default function DispatchBoard() {
   }
 
   function applyPin(result: PlaceSearchResult) {
-    setOrderForm((f) => ({
-      ...f,
-      address: result.label,
-      lat: result.lat,
-      lon: result.lon,
-      customerName: f.customerName || result.customerHint || shortCustomerFromLabel(result.label),
-      zone: f.zone || result.zoneHint || "",
-    }));
+    setOrderForm((f) => {
+      const toPickup = f.kind === "pickup_drop" && f.pinTarget === "pickup";
+      if (toPickup) {
+        return {
+          ...f,
+          pickupAddress: result.label,
+          pickupLat: result.lat,
+          pickupLon: result.lon,
+          pickupZone: f.pickupZone || result.zoneHint || "",
+          customerName: f.customerName || result.customerHint || shortCustomerFromLabel(result.label),
+        };
+      }
+      return {
+        ...f,
+        address: result.label,
+        lat: result.lat,
+        lon: result.lon,
+        customerName: f.customerName || result.customerHint || shortCustomerFromLabel(result.label),
+        zone: f.zone || result.zoneHint || "",
+      };
+    });
     setPlacing(true);
     setSearchQ("");
     setSearchResults([]);
@@ -1109,21 +1143,43 @@ export default function DispatchBoard() {
     setPinBusy(true);
     setError("");
     setPlacing(true);
-    setOrderForm((f) => ({ ...f, lat, lon }));
+    const pinPickup = orderForm.kind === "pickup_drop" && orderForm.pinTarget === "pickup";
+    if (pinPickup) {
+      setOrderForm((f) => ({ ...f, pickupLat: lat, pickupLon: lon }));
+    } else {
+      setOrderForm((f) => ({ ...f, lat, lon }));
+    }
     try {
       const result = await reverseAddress(lat, lon);
-      setOrderForm((f) => ({
-        ...f,
-        lat: result.lat,
-        lon: result.lon,
-        address: result.label,
-        customerName: f.customerName || shortCustomerFromLabel(result.label),
-      }));
+      setOrderForm((f) =>
+        pinPickup
+          ? {
+              ...f,
+              pickupLat: result.lat,
+              pickupLon: result.lon,
+              pickupAddress: result.label,
+              customerName: f.customerName || shortCustomerFromLabel(result.label),
+            }
+          : {
+              ...f,
+              lat: result.lat,
+              lon: result.lon,
+              address: result.label,
+              customerName: f.customerName || shortCustomerFromLabel(result.label),
+            },
+      );
     } catch (err) {
-      setOrderForm((f) => ({
-        ...f,
-        address: f.address || `Pin ${lat.toFixed(4)}, ${lon.toFixed(4)}`,
-      }));
+      setOrderForm((f) =>
+        pinPickup
+          ? {
+              ...f,
+              pickupAddress: f.pickupAddress || `Pin ${lat.toFixed(4)}, ${lon.toFixed(4)}`,
+            }
+          : {
+              ...f,
+              address: f.address || `Pin ${lat.toFixed(4)}, ${lon.toFixed(4)}`,
+            },
+      );
       setError(err instanceof Error ? err.message : "Could not resolve address");
     } finally {
       setPinBusy(false);
@@ -1142,6 +1198,8 @@ export default function DispatchBoard() {
     setEditingOrderId(o.id);
     setPlacing(true);
     setOrderForm({
+      kind: o.kind === "pickup_drop" ? "pickup_drop" : "drop",
+      pinTarget: "drop",
       customerName: o.customerName || "",
       externalRef: o.externalRef || "",
       address: o.address || "",
@@ -1152,6 +1210,14 @@ export default function DispatchBoard() {
       windowEnd: normalizeClockHm(o.windowEnd),
       serviceMinutes: o.serviceMinutes != null ? String(o.serviceMinutes) : "",
       proofRequired: o.proofRequired === true,
+      pickupAddress: o.pickupAddress || "",
+      pickupLat: o.pickupLat ?? null,
+      pickupLon: o.pickupLon ?? null,
+      pickupZone: o.pickupZone || "",
+      pickupWindowStart: normalizeClockHm(o.pickupWindowStart || ""),
+      pickupWindowEnd: normalizeClockHm(o.pickupWindowEnd || ""),
+      pickupServiceMinutes: o.pickupServiceMinutes != null ? String(o.pickupServiceMinutes) : "",
+      pickupProofRequired: o.pickupProofRequired === true,
       saveAsTemplate: false,
       templateCadence: "daily",
       templateWeekday: String(new Date().getDay()),
@@ -1173,9 +1239,14 @@ export default function DispatchBoard() {
       setError("Pin a location on the map or pick an address search result");
       return;
     }
+    if (orderForm.kind === "pickup_drop" && (orderForm.pickupLat == null || orderForm.pickupLon == null)) {
+      setError("Pin a pickup location (or switch the pin target to Pickup)");
+      return;
+    }
     setBusy(true);
     setError("");
     const payload = {
+      kind: orderForm.kind,
       customerName: orderForm.customerName.trim(),
       externalRef: orderForm.externalRef.trim() || undefined,
       address: orderForm.address.trim() || undefined,
@@ -1191,6 +1262,21 @@ export default function DispatchBoard() {
           ? null
           : Number(orderForm.serviceMinutes),
       proofRequired: orderForm.proofRequired,
+      pickupAddress: orderForm.kind === "pickup_drop" ? orderForm.pickupAddress.trim() || undefined : "",
+      pickupLat: orderForm.kind === "pickup_drop" ? orderForm.pickupLat : null,
+      pickupLon: orderForm.kind === "pickup_drop" ? orderForm.pickupLon : null,
+      pickupZone: orderForm.kind === "pickup_drop" ? orderForm.pickupZone.trim() || undefined : "",
+      pickupWindowStart:
+        orderForm.kind === "pickup_drop" ? normalizeClockHm(orderForm.pickupWindowStart) || null : null,
+      pickupWindowEnd:
+        orderForm.kind === "pickup_drop" ? normalizeClockHm(orderForm.pickupWindowEnd) || null : null,
+      pickupServiceMinutes:
+        orderForm.kind === "pickup_drop"
+          ? orderForm.pickupServiceMinutes.trim() === ""
+            ? null
+            : Number(orderForm.pickupServiceMinutes)
+          : null,
+      pickupProofRequired: orderForm.kind === "pickup_drop" && orderForm.pickupProofRequired,
       serviceDate: planDate,
       lat: orderForm.lat,
       lon: orderForm.lon,
@@ -2938,16 +3024,77 @@ export default function DispatchBoard() {
             {placing || draftPin ? (
               <div className="dispatch-order-draft" ref={orderDraftRef}>
                 <p className="dispatch-eyebrow">{editingOrderId ? "Edit order" : "New stop"}</p>
+                <div className="dispatch-window-presets" role="group" aria-label="Order type">
+                  <button
+                    type="button"
+                    className={`dispatch-window-chip${orderForm.kind === "drop" ? " is-active" : ""}`}
+                    onClick={() => setOrderForm((f) => ({ ...f, kind: "drop", pinTarget: "drop" }))}
+                  >
+                    Drop only
+                  </button>
+                  <button
+                    type="button"
+                    className={`dispatch-window-chip${orderForm.kind === "pickup_drop" ? " is-active" : ""}`}
+                    onClick={() =>
+                      setOrderForm((f) => ({
+                        ...f,
+                        kind: "pickup_drop",
+                        pinTarget: f.pickupLat == null ? "pickup" : "drop",
+                      }))
+                    }
+                  >
+                    Pickup + drop
+                  </button>
+                </div>
+                {orderForm.kind === "pickup_drop" ? (
+                  <div className="dispatch-window-presets" role="group" aria-label="Map pin target">
+                    <button
+                      type="button"
+                      className={`dispatch-window-chip${orderForm.pinTarget === "pickup" ? " is-active" : ""}`}
+                      onClick={() => setOrderForm((f) => ({ ...f, pinTarget: "pickup" }))}
+                    >
+                      Pin pickup
+                    </button>
+                    <button
+                      type="button"
+                      className={`dispatch-window-chip${orderForm.pinTarget === "drop" ? " is-active" : ""}`}
+                      onClick={() => setOrderForm((f) => ({ ...f, pinTarget: "drop" }))}
+                    >
+                      Pin drop
+                    </button>
+                  </div>
+                ) : null}
+                {draftPickupPin ? (
+                  <div className="dispatch-pin-chip" title={orderForm.pickupAddress}>
+                    <span className="dispatch-pin-dot" aria-hidden />
+                    <span>
+                      {pinBusy && orderForm.pinTarget === "pickup" ? "Resolving address…" : "Pickup"}
+                      <strong>
+                        {orderForm.pickupAddress
+                          ? orderForm.pickupAddress.length > 72
+                            ? `${orderForm.pickupAddress.slice(0, 72)}…`
+                            : orderForm.pickupAddress
+                          : `${orderForm.pickupLat?.toFixed(4)}, ${orderForm.pickupLon?.toFixed(4)}`}
+                      </strong>
+                    </span>
+                  </div>
+                ) : null}
                 {draftPin && pinLabel ? (
                   <div className="dispatch-pin-chip" title={orderForm.address}>
                     <span className="dispatch-pin-dot" aria-hidden />
                     <span>
-                      {pinBusy ? "Resolving address…" : "Pinned"}
+                      {pinBusy && orderForm.pinTarget === "drop" ? "Resolving address…" : orderForm.kind === "pickup_drop" ? "Drop" : "Pinned"}
                       <strong>{pinLabel}</strong>
                     </span>
                   </div>
                 ) : (
-                  <p className="dispatch-search-hint">Click the map to set the delivery point.</p>
+                  <p className="dispatch-search-hint">
+                    {orderForm.kind === "pickup_drop"
+                      ? orderForm.pinTarget === "pickup"
+                        ? "Click the map to set the pickup point."
+                        : "Click the map to set the drop point."
+                      : "Click the map to set the delivery point."}
+                  </p>
                 )}
                 <label className="field">
                   Customer
@@ -2996,9 +3143,78 @@ export default function DispatchBoard() {
                     />
                   </label>
                 </div>
+                {orderForm.kind === "pickup_drop" ? (
+                  <div className="dispatch-window-block">
+                    <div className="dispatch-window-head">
+                      <span className="dispatch-eyebrow">Collect window</span>
+                      {(orderForm.pickupWindowStart || orderForm.pickupWindowEnd) && (
+                        <span className="dispatch-window-summary">
+                          {formatDispatchWindow({
+                            windowStart: orderForm.pickupWindowStart,
+                            windowEnd: orderForm.pickupWindowEnd,
+                          }) || "Any time"}
+                        </span>
+                      )}
+                    </div>
+                    <div className="dispatch-window-presets" role="group" aria-label="Collect window presets">
+                      {WINDOW_PRESETS.map((p) => {
+                        const active =
+                          activeWindowPreset(orderForm.pickupWindowStart, orderForm.pickupWindowEnd) === p.id;
+                        return (
+                          <button
+                            key={`p-${p.id}`}
+                            type="button"
+                            className={`dispatch-window-chip${active ? " is-active" : ""}`}
+                            onClick={() =>
+                              setOrderForm((f) => ({
+                                ...f,
+                                pickupWindowStart: p.start,
+                                pickupWindowEnd: p.end,
+                              }))
+                            }
+                          >
+                            {p.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="dispatch-order-form-row dispatch-order-form-row-2">
+                      <label className="field">
+                        Collect from
+                        <input
+                          type="time"
+                          step={300}
+                          value={orderForm.pickupWindowStart}
+                          onChange={(e) =>
+                            setOrderForm((f) => ({
+                              ...f,
+                              pickupWindowStart: normalizeClockHm(e.target.value),
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        Collect by
+                        <input
+                          type="time"
+                          step={300}
+                          value={orderForm.pickupWindowEnd}
+                          onChange={(e) =>
+                            setOrderForm((f) => ({
+                              ...f,
+                              pickupWindowEnd: normalizeClockHm(e.target.value),
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="dispatch-window-block">
                   <div className="dispatch-window-head">
-                    <span className="dispatch-eyebrow">Delivery window</span>
+                    <span className="dispatch-eyebrow">
+                      {orderForm.kind === "pickup_drop" ? "Drop window" : "Delivery window"}
+                    </span>
                     {(orderForm.windowStart || orderForm.windowEnd) && (
                       <span className="dispatch-window-summary">
                         {formatDispatchWindow({
@@ -3084,13 +3300,25 @@ export default function DispatchBoard() {
                     stop”.
                   </p>
                 </div>
+                {orderForm.kind === "pickup_drop" ? (
+                  <label className="dispatch-plan-check" style={{ marginTop: 4 }}>
+                    <input
+                      type="checkbox"
+                      checked={orderForm.pickupProofRequired}
+                      onChange={(e) =>
+                        setOrderForm((f) => ({ ...f, pickupProofRequired: e.target.checked }))
+                      }
+                    />
+                    Proof photo required on pickup
+                  </label>
+                ) : null}
                 <label className="dispatch-plan-check" style={{ marginTop: 4 }}>
                   <input
                     type="checkbox"
                     checked={orderForm.proofRequired}
                     onChange={(e) => setOrderForm((f) => ({ ...f, proofRequired: e.target.checked }))}
                   />
-                  Proof photo required on FINISH
+                  Proof photo required on {orderForm.kind === "pickup_drop" ? "drop" : "FINISH"}
                 </label>
                 {!editingOrderId ? (
                   <>
@@ -3153,7 +3381,11 @@ export default function DispatchBoard() {
                   <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={busy || orderForm.lat == null}
+                    disabled={
+                      busy ||
+                      orderForm.lat == null ||
+                      (orderForm.kind === "pickup_drop" && orderForm.pickupLat == null)
+                    }
                     onClick={() => void handleSaveOrder()}
                   >
                     {editingOrderId ? "Save changes" : "Add to pool"}
@@ -3254,6 +3486,11 @@ export default function DispatchBoard() {
                           <span className="dispatch-order-card-top">
                             <strong>{o.customerName || o.externalRef || "Order"}</strong>
                             {o.zone ? <span className="dispatch-zone-tag">{o.zone}</span> : null}
+                            {o.kind === "pickup_drop" ? (
+                              <span className="dispatch-zone-tag" title="Pickup then drop on the same vehicle">
+                                P+D
+                              </span>
+                            ) : null}
                             {o.proofRequired ? (
                               <span className="dispatch-zone-tag" title="Proof photo required on FINISH">
                                 POD req
@@ -3265,7 +3502,14 @@ export default function DispatchBoard() {
                               </span>
                             ) : null}
                           </span>
-                          {o.address ? <span className="dispatch-order-addr">{o.address}</span> : null}
+                          {o.kind === "pickup_drop" && o.pickupAddress ? (
+                            <span className="dispatch-order-addr">P · {o.pickupAddress}</span>
+                          ) : null}
+                          {o.address ? (
+                            <span className="dispatch-order-addr">
+                              {o.kind === "pickup_drop" ? `D · ${o.address}` : o.address}
+                            </span>
+                          ) : null}
                           <span className="dispatch-order-meta">
                             {o.volumeM3 != null ? `${o.volumeM3} m³` : "—"}
                             <span aria-hidden>·</span>
@@ -3369,6 +3613,7 @@ export default function DispatchBoard() {
                 stops={selected?.stops || []}
                 fitKey={fitKey}
                 draftPin={mapDraftPin}
+                draftPickupPin={showPlanDay ? null : draftPickupPin}
                 routeGeometry={jobRoute?.geometry || []}
                 phoneTrail={jobPhoneTrail}
                 armadaTrack={jobArmadaTrack}
@@ -3803,7 +4048,9 @@ export default function DispatchBoard() {
                             Boolean(selected.routeStart && selected.routeAnchorMode === "sequence"));
                         return (
                           <li key={stop.id}>
-                            <span className="dispatch-stop-idx">{i + 1}</span>
+                            <span className="dispatch-stop-idx">
+                              {stop.role === "pickup" ? "P" : stop.role === "drop" && stop.orderId ? "D" : i + 1}
+                            </span>
                             <div className="dispatch-stop-body">
                               <strong>{stop.name}</strong>
                               <span className="dispatch-stop-meta">

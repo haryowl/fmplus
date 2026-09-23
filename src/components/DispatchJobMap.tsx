@@ -12,6 +12,7 @@ type Props = {
   stops: DispatchStop[];
   fitKey: string;
   draftPin?: DraftPin | null;
+  draftPickupPin?: DraftPin | null;
   onMapClick?: (lat: number, lon: number) => void;
   /** When true, always show a usable map even with no stop coords. */
   interactiveEmpty?: boolean;
@@ -65,6 +66,7 @@ export function DispatchJobMap({
   stops,
   fitKey,
   draftPin = null,
+  draftPickupPin = null,
   onMapClick,
   interactiveEmpty = true,
   routeGeometry = [],
@@ -197,12 +199,46 @@ export function DispatchJobMap({
       for (const p of armadaLine) bounds.push(p);
     }
 
+    const pairDrawn = new Set<string>();
     withCoords.forEach((stop, i) => {
+      if (stop.orderId && (stop.role === "pickup" || stop.role === "drop")) {
+        const mate = withCoords.find(
+          (x) =>
+            x.id !== stop.id &&
+            x.orderId === stop.orderId &&
+            x.role &&
+            x.role !== stop.role,
+        );
+        const pairKey = stop.orderId;
+        if (mate && !pairDrawn.has(pairKey)) {
+          pairDrawn.add(pairKey);
+          L.polyline(
+            [
+              [stop.lat, stop.lon],
+              [mate.lat, mate.lon],
+            ],
+            {
+              color: "#64748b",
+              weight: 2,
+              opacity: 0.7,
+              dashArray: "4 6",
+            },
+          ).addTo(layer);
+        }
+      }
       const color =
-        stop.status === "done" ? "#1e5c34" : stop.status === "skipped" ? "#5e584f" : "#3b4cb3";
+        stop.status === "done"
+          ? "#1e5c34"
+          : stop.status === "skipped"
+            ? "#5e584f"
+            : stop.role === "pickup"
+              ? "#0f766e"
+              : "#3b4cb3";
+      const letter =
+        stop.role === "pickup" ? "P" : stop.role === "drop" && stop.orderId ? "D" : String(i + 1);
       const icon = L.divIcon({
         className: "route-plan-marker",
-        html: `<span class="route-plan-marker-dot" style="background:${color}">${i + 1}</span>`,
+        html: `<span class="route-plan-marker-dot" style="background:${color}">${letter}</span>`,
         iconSize: [24, 24],
         iconAnchor: [12, 12],
       });
@@ -279,6 +315,18 @@ export function DispatchJobMap({
       }
     }
 
+    if (draftPickupPin && Number.isFinite(draftPickupPin.lat) && Number.isFinite(draftPickupPin.lon)) {
+      const icon = L.divIcon({
+        className: "route-plan-marker",
+        html: `<span class="route-plan-marker-dot" style="background:#0f766e">P</span>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+      });
+      L.marker([draftPickupPin.lat, draftPickupPin.lon], { icon })
+        .addTo(layer)
+        .bindPopup("Pickup pin");
+      bounds.push([draftPickupPin.lat, draftPickupPin.lon]);
+    }
     if (draftPin && Number.isFinite(draftPin.lat) && Number.isFinite(draftPin.lon)) {
       const icon = L.divIcon({
         className: "route-plan-marker",
@@ -286,11 +334,25 @@ export function DispatchJobMap({
         iconSize: [26, 26],
         iconAnchor: [13, 13],
       });
-      L.marker([draftPin.lat, draftPin.lon], { icon }).addTo(layer).bindPopup("New order pin");
+      L.marker([draftPin.lat, draftPin.lon], { icon }).addTo(layer).bindPopup("Drop pin");
       bounds.push([draftPin.lat, draftPin.lon]);
-      if (!withCoords.length) {
+      if (!withCoords.length && !draftPickupPin) {
         map.setView([draftPin.lat, draftPin.lon], Math.max(map.getZoom(), 15));
       }
+    }
+    if (
+      draftPin &&
+      draftPickupPin &&
+      Number.isFinite(draftPin.lat) &&
+      Number.isFinite(draftPickupPin.lat)
+    ) {
+      L.polyline(
+        [
+          [draftPickupPin.lat, draftPickupPin.lon],
+          [draftPin.lat, draftPin.lon],
+        ],
+        { color: "#0f766e", weight: 2, opacity: 0.65, dashArray: "4 6" },
+      ).addTo(layer);
     }
 
     if (bounds.length && fitKey) {
@@ -303,6 +365,7 @@ export function DispatchJobMap({
     stops,
     fitKey,
     draftPin,
+    draftPickupPin,
     interactiveEmpty,
     withCoords,
     stopLine,

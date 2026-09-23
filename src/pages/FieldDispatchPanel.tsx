@@ -12,6 +12,7 @@ import { prepareImageDataUrl } from "../lib/imageUpload";
 import {
   DISPATCH_STATUS_LABELS,
   dispatchVehicleLabel,
+  dropLockedUntilPickup,
   fieldDispatchCalendar,
   fieldPatchStop,
   fieldStopPhotos,
@@ -275,6 +276,10 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
   async function openActiveStop(stop: DispatchStop) {
     if (!selected) return;
     if (stop.status === "done" || stop.status === "skipped") return;
+    if (dropLockedUntilPickup(stop, selected.stops)) {
+      onErrorRef.current("Finish pickup before this drop");
+      return;
+    }
     setBusy(true);
     setGpsWarn("");
     try {
@@ -306,6 +311,10 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
 
   async function finishActiveStop() {
     if (!selected || !activeStop) return;
+    if (dropLockedUntilPickup(activeStop, selected.stops)) {
+      onErrorRef.current("Finish pickup before this drop");
+      return;
+    }
     if (activeStop.proofRequired && photos.length === 0) {
       onErrorRef.current("Proof photo is required before finishing this order");
       return;
@@ -863,6 +872,10 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                       <div className="field-dispatch-stop-top">
                         <span className="field-dispatch-stop-num">{i + 1}</span>
                         <strong className="field-dispatch-stop-title">{stop.name}</strong>
+                        {stop.role === "pickup" ? <span className="field-order-chip">Pickup</span> : null}
+                        {stop.role === "drop" && stop.orderId ? (
+                          <span className="field-order-chip">Drop</span>
+                        ) : null}
                         {stop.proofRequired ? <span className="field-order-chip">POD</span> : null}
                         {isDone ? <span className="field-order-chip field-order-chip-done">Done</span> : null}
                         {isSkipped ? (
@@ -957,7 +970,12 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                           Skipped
                         </span>
                       ) : null}
-                      {!closed && !locked ? (
+                      {!closed && !locked && dropLockedUntilPickup(stop, selected.stops) ? (
+                        <span className="field-order-btn field-order-btn-skipped" aria-label="Wait for pickup">
+                          Wait for pickup
+                        </span>
+                      ) : null}
+                      {!closed && !locked && !dropLockedUntilPickup(stop, selected.stops) ? (
                         <button
                           type="button"
                           className="field-order-btn field-order-btn-start"
