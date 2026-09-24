@@ -59,7 +59,8 @@ export async function fieldFromRequest(req) {
   if (!token) return null;
   const res = await dbQuery(
     `SELECT s.id AS session_id, u.id, u.username, u.role, u.display_name, u.enabled,
-            t.id AS tenant_id, t.key AS tenant_key, t.app_id, t.enabled AS tenant_enabled
+            t.id AS tenant_id, t.key AS tenant_key, t.display_name AS tenant_display_name,
+            t.app_id, t.enabled AS tenant_enabled
      FROM field_sessions s
      JOIN field_users u ON u.id = s.field_user_id
      JOIN tenants t ON t.id = u.tenant_id
@@ -76,6 +77,7 @@ export async function fieldFromRequest(req) {
     sessionId: row.session_id,
     tenantId: row.tenant_id,
     tenantKey: row.tenant_key,
+    tenantDisplayName: row.tenant_display_name || "",
     appId: Number(row.app_id),
   };
 }

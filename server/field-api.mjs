@@ -97,6 +97,7 @@ function publicFieldUser(user) {
     role: user.role,
     displayName: user.displayName || user.display_name || "",
     tenantKey: user.tenantKey || user.tenant_key,
+    tenantDisplayName: user.tenantDisplayName || user.tenant_display_name || "",
     appId: user.appId ?? user.app_id,
     tenantId: user.tenantId || user.tenant_id,
   };
@@ -343,7 +344,8 @@ export async function handleFieldRequest(req, res) {
       }
       const found = await dbQuery(
         `SELECT u.id, u.username, u.password_hash, u.role, u.display_name, u.enabled,
-                t.id AS tenant_id, t.key AS tenant_key, t.app_id, t.enabled AS tenant_enabled
+                t.id AS tenant_id, t.key AS tenant_key, t.display_name AS tenant_display_name,
+                t.app_id, t.enabled AS tenant_enabled
          FROM field_users u
          JOIN tenants t ON t.id = u.tenant_id
          WHERE t.key = $1 AND u.username = $2`,
@@ -373,6 +375,7 @@ export async function handleFieldRequest(req, res) {
             role: row.role,
             displayName: row.display_name,
             tenantKey: row.tenant_key,
+            tenantDisplayName: row.tenant_display_name || "",
             tenantId: row.tenant_id,
             appId: Number(row.app_id),
           }),

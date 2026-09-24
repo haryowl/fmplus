@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { BrandMark } from "../components/BrandMark";
+import { FieldAccountChip } from "../components/FieldAccountChip";
 import { CatalogLineEditor } from "../components/CatalogLineEditor";
 import { FieldJobsChart } from "../components/FieldJobsChart";
 import { prepareImageDataUrl } from "../lib/imageUpload";
@@ -21,6 +22,7 @@ type FieldUser = {
   role: string;
   displayName: string;
   tenantKey: string;
+  tenantDisplayName?: string;
   appId: number;
 };
 
@@ -533,7 +535,12 @@ export default function FieldLogin() {
             </div>
           </div>
           <div className="field-topbar-meta">
-            <span className="field-user-chip">{user.displayName || user.username}</span>
+            <FieldAccountChip
+              tenantKey={user.tenantKey}
+              tenantDisplayName={user.tenantDisplayName}
+              username={user.username}
+              displayName={user.displayName}
+            />
             <button type="button" className="btn-ghost" disabled={busy} onClick={() => void handleLogout()}>
               Sign out
             </button>
