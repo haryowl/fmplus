@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchGroups, fetchUsersForGroup, groupOptionLabel, userOptionLabel } from "../lib/api";
 import { BrandMark } from "../components/BrandMark";
 import { CsvImportPanel } from "../components/CsvImportPanel";
+import { DispatchGoodsCatalogPanel } from "../components/DispatchGoodsCatalogPanel";
 import { DispatchJobMap } from "../components/DispatchJobMap";
+import { DispatchOrderGoodsEditor } from "../components/DispatchOrderGoodsEditor";
 import { ViewNav } from "../components/ViewNav";
 import {
   DISPATCH_ORDER_CSV_HEADERS,
@@ -38,6 +40,8 @@ import {
   fetchStopPhotos,
   fetchVehicleCapacities,
   fetchZoneDepotMap,
+  fetchDispatchGoods,
+  formatCargoSummary,
   formatDispatchWindow,
   formatDispatchServiceMinutes,
   formatServiceDateLabel,
@@ -55,6 +59,7 @@ import {
   saveDispatchDepot,
   saveZoneDepotMap,
   shiftServiceDate,
+  sumOrderCargoTotals,
   todayServiceDate,
   upsertVehicleCapacity,
   utilizationTone,
@@ -67,7 +72,9 @@ import {
   type DispatchOpenStartMode,
   type DispatchTwMode,
   type DispatchJob,
+  type DispatchGoodsItem,
   type DispatchOrder,
+  type DispatchOrderLine,
   type DispatchOrderCadence,
   type DispatchOrderKind,
   type DispatchOrderTemplate,
@@ -169,6 +176,8 @@ const emptyOrderForm = {
   templateWeekday: String(new Date().getDay()),
   lat: null as number | null,
   lon: null as number | null,
+  lines: [] as DispatchOrderLine[],
+  cargoTotalsLocked: false,
 };
 
 const WINDOW_PRESETS: { id: string; label: string; start: string; end: string }[] = [
@@ -217,6 +226,9 @@ export default function DispatchBoard() {
   const [orders, setOrders] = useState<DispatchOrder[]>([]);
   const [templates, setTemplates] = useState<DispatchOrderTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showGoodsCatalog, setShowGoodsCatalog] = useState(false);
+  const [goodsCatalog, setGoodsCatalog] = useState<DispatchGoodsItem[]>([]);
+  const [showOrderGoods, setShowOrderGoods] = useState(false);
   const [fieldUsers, setFieldUsers] = useState<DispatchFieldUser[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -689,6 +701,15 @@ export default function DispatchBoard() {
     setEditDepotId(cap?.depotId || "");
     setEditPlateParity((cap?.plateParity as typeof editPlateParity) || "unknown");
   }, [selected?.id, selected?.volumeCapacityM3, selected?.weightCapacityKg, selected?.armadaUserId, vehicleCaps]);
+
+  useEffect(() => {
+    if (!ready || !query.tenantKey) return;
+    const ac = new AbortController();
+    void fetchDispatchGoods(ac.signal)
+      .then(setGoodsCatalog)
+      .catch(() => setGoodsCatalog([]));
+    return () => ac.abort();
+  }, [ready, query.tenantKey, reload]);
 
   useEffect(() => {
     if (!ready) return;
@@ -1250,8 +1271,22 @@ export default function DispatchBoard() {
     setOrderForm(emptyOrderForm);
     setEditingOrderId(null);
     setPlacing(false);
+    setShowOrderGoods(false);
     setSearchQ("");
     setSearchResults([]);
+  }
+
+  function applyOrderLines(lines: DispatchOrderLine[]) {
+    setOrderForm((f) => {
+      const next = { ...f, lines };
+      if (next.cargoTotalsLocked) return next;
+      const totals = sumOrderCargoTotals(lines);
+      return {
+        ...next,
+        volumeM3: totals.volumeM3 != null ? String(totals.volumeM3) : f.volumeM3,
+        weightKg: totals.weightKg != null ? String(totals.weightKg) : f.weightKg,
+      };
+    });
   }
 
   function startEditOrder(o: DispatchOrder) {
@@ -1283,7 +1318,10 @@ export default function DispatchBoard() {
       templateWeekday: String(new Date().getDay()),
       lat: o.lat,
       lon: o.lon,
+      lines: o.lines || [],
+      cargoTotalsLocked: o.cargoTotalsLocked === true,
     });
+    setShowOrderGoods(Boolean(o.lines?.length));
     setSearchQ("");
     setSearchResults([]);
     setError("");
@@ -1338,6 +1376,8 @@ export default function DispatchBoard() {
             : Number(orderForm.pickupServiceMinutes)
           : null,
       pickupProofRequired: orderForm.kind === "pickup_drop" && orderForm.pickupProofRequired,
+      cargoTotalsLocked: orderForm.cargoTotalsLocked,
+      lines: orderForm.lines.filter((l) => l.name.trim() && Number(l.qty) > 0),
       serviceDate: planDate,
       lat: orderForm.lat,
       lon: orderForm.lon,
@@ -2876,7 +2916,25 @@ export default function DispatchBoard() {
               >
                 {showTemplates ? "Hide routines" : `Routines (${templates.length})`}
               </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowGoodsCatalog((v) => !v)}
+              >
+                {showGoodsCatalog ? "Hide goods" : `Goods (${goodsCatalog.length})`}
+              </button>
             </div>
+
+            {showGoodsCatalog ? (
+              <DispatchGoodsCatalogPanel
+                onClose={() => {
+                  setShowGoodsCatalog(false);
+                  void fetchDispatchGoods()
+                    .then(setGoodsCatalog)
+                    .catch(() => undefined);
+                }}
+              />
+            ) : null}
 
             <CsvImportPanel
               title="Import orders CSV"
@@ -3213,7 +3271,13 @@ export default function DispatchBoard() {
                     <input
                       size={1}
                       value={orderForm.volumeM3}
-                      onChange={(e) => setOrderForm((f) => ({ ...f, volumeM3: e.target.value }))}
+                      onChange={(e) =>
+                        setOrderForm((f) => ({
+                          ...f,
+                          volumeM3: e.target.value,
+                          cargoTotalsLocked: f.lines.length > 0 ? true : f.cargoTotalsLocked,
+                        }))
+                      }
                       inputMode="decimal"
                     />
                   </label>
@@ -3222,10 +3286,54 @@ export default function DispatchBoard() {
                     <input
                       size={1}
                       value={orderForm.weightKg}
-                      onChange={(e) => setOrderForm((f) => ({ ...f, weightKg: e.target.value }))}
+                      onChange={(e) =>
+                        setOrderForm((f) => ({
+                          ...f,
+                          weightKg: e.target.value,
+                          cargoTotalsLocked: f.lines.length > 0 ? true : f.cargoTotalsLocked,
+                        }))
+                      }
                       inputMode="decimal"
                     />
                   </label>
+                </div>
+                {orderForm.cargoTotalsLocked && orderForm.lines.length > 0 ? (
+                  <p className="dispatch-window-warn">
+                    Totals are overridden and may differ from the goods sum.
+                  </p>
+                ) : null}
+                <div className="dispatch-goods-block">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setShowOrderGoods((v) => !v)}
+                  >
+                    {showOrderGoods || orderForm.lines.length
+                      ? `Goods (${orderForm.lines.length})`
+                      : "Goods (optional)"}
+                  </button>
+                  {showOrderGoods || orderForm.lines.length ? (
+                    <DispatchOrderGoodsEditor
+                      catalog={goodsCatalog}
+                      lines={orderForm.lines}
+                      onChange={applyOrderLines}
+                      totalsLocked={orderForm.cargoTotalsLocked}
+                      onToggleLock={(locked) => {
+                        setOrderForm((f) => {
+                          if (!locked) {
+                            const totals = sumOrderCargoTotals(f.lines);
+                            return {
+                              ...f,
+                              cargoTotalsLocked: false,
+                              volumeM3: totals.volumeM3 != null ? String(totals.volumeM3) : f.volumeM3,
+                              weightKg: totals.weightKg != null ? String(totals.weightKg) : f.weightKg,
+                            };
+                          }
+                          return { ...f, cargoTotalsLocked: true };
+                        });
+                      }}
+                    />
+                  ) : null}
                 </div>
                 {orderForm.kind === "pickup_drop" ? (
                   <div className="dispatch-window-block">
@@ -3607,6 +3715,9 @@ export default function DispatchBoard() {
                             <span className="dispatch-order-addr">
                               {o.kind === "pickup_drop" ? `D · ${o.address}` : o.address}
                             </span>
+                          ) : null}
+                          {o.lines?.length ? (
+                            <span className="dispatch-order-addr">{formatCargoSummary(o.lines)}</span>
                           ) : null}
                           <span className="dispatch-order-meta">
                             {o.volumeM3 != null ? `${o.volumeM3} m³` : "—"}

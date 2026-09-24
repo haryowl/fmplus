@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { DispatchOrderGoodsEditor } from "../components/DispatchOrderGoodsEditor";
 import { DutyLocationCard } from "../components/DutyLocationCard";
 import { FieldDispatchMonthChart } from "../components/FieldDispatchMonthChart";
 import {
@@ -14,7 +15,10 @@ import {
   dispatchVehicleLabel,
   dropLockedUntilPickup,
   fieldDispatchCalendar,
+  fieldFetchDispatchGoods,
   fieldPatchStop,
+  fieldPutOrderLines,
+  formatCargoSummary,
   fieldStopPhotos,
   formatDispatchWindow,
   formatServiceDateLabel,
@@ -24,7 +28,9 @@ import {
   todayServiceDate,
   uploadDispatchStopPhoto,
   type DispatchCalendarSummary,
+  type DispatchGoodsItem,
   type DispatchJob,
+  type DispatchOrderLine,
   type DispatchPhoto,
   type DispatchStatus,
   type DispatchStop,
@@ -120,6 +126,9 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
   const [skipReason, setSkipReason] = useState("");
   const [skipDate, setSkipDate] = useState(() => shiftServiceDate(todayServiceDate(), 1));
   const [locationConsent, setLocationConsent] = useState(readLocationConsent);
+  const [goodsCatalog, setGoodsCatalog] = useState<DispatchGoodsItem[]>([]);
+  const [cargoOrderId, setCargoOrderId] = useState<string | null>(null);
+  const [cargoDraft, setCargoDraft] = useState<DispatchOrderLine[]>([]);
   const onErrorRef = useRef(onError);
   const onNoticeRef = useRef(onNotice);
   onErrorRef.current = onError;
@@ -167,6 +176,12 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
     selectedDayCount > 1
       ? (selected?.dayLegs || []).reduce((n, leg) => n + leg.remaining, 0)
       : stopsLeft;
+
+  useEffect(() => {
+    void fieldFetchDispatchGoods()
+      .then(setGoodsCatalog)
+      .catch(() => setGoodsCatalog([]));
+  }, []);
 
   const loadJobs = useCallback(async () => {
     setLoading(true);
@@ -255,6 +270,24 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
   // Leaving the driver app must not leave a watch running.
   useEffect(() => () => void stopDutyTracking(), []);
 
+  async function saveCargo(orderId: string) {
+    setBusy(true);
+    try {
+      const { job } = await fieldPutOrderLines(
+        orderId,
+        cargoDraft.filter((l) => l.name.trim() && Number(l.qty) > 0),
+      );
+      if (job) setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
+      setCargoOrderId(null);
+      onErrorRef.current("");
+      onNoticeRef.current("Cargo updated");
+    } catch (err) {
+      onErrorRef.current(err instanceof Error ? err.message : "Could not save cargo");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function patchJob(id: string, body: Record<string, unknown>) {
     setBusy(true);
     try {
@@ -279,6 +312,10 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
     if (dropLockedUntilPickup(stop, selected.stops)) {
       onErrorRef.current("Finish pickup before this drop");
       return;
+    }
+    if (stop.orderId) {
+      setCargoOrderId(stop.orderId);
+      setCargoDraft(stop.lines || []);
     }
     setBusy(true);
     setGpsWarn("");
@@ -565,7 +602,36 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
           ) : null}
           {activeStop.proofRequired ? <p className="muted">Proof photo required</p> : null}
           {gpsWarn ? <p className="muted">{gpsWarn}</p> : null}
+          {formatCargoSummary(activeStop.lines) ? (
+            <p className="muted">{formatCargoSummary(activeStop.lines)}</p>
+          ) : null}
         </section>
+
+        {activeStop.orderId && !locked ? (
+          <section className="field-panel">
+            <header className="field-panel-head">
+              <h3>Cargo</h3>
+              <p className="muted">Catalog or free text. Same list on pickup and drop.</p>
+            </header>
+            <DispatchOrderGoodsEditor
+              catalog={goodsCatalog}
+              lines={cargoOrderId === activeStop.orderId ? cargoDraft : activeStop.lines || []}
+              onChange={(lines) => {
+                setCargoOrderId(activeStop.orderId!);
+                setCargoDraft(lines);
+              }}
+              compact
+            />
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={() => void saveCargo(activeStop.orderId!)}
+            >
+              Save cargo
+            </button>
+          </section>
+        ) : null}
 
         <section className="field-panel">
           <header className="field-panel-head">
@@ -894,6 +960,52 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                           .filter(Boolean)
                           .join(" · ") || "—"}
                       </p>
+                      {formatCargoSummary(stop.lines) ? (
+                        <p className="field-goods-summary">{formatCargoSummary(stop.lines)}</p>
+                      ) : null}
+                      {stop.orderId && !closed ? (
+                        <div className="dispatch-goods-block">
+                          {cargoOrderId === stop.orderId ? (
+                            <>
+                              <DispatchOrderGoodsEditor
+                                catalog={goodsCatalog}
+                                lines={cargoDraft}
+                                onChange={setCargoDraft}
+                                compact
+                              />
+                              <div className="field-action-row">
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  disabled={busy}
+                                  onClick={() => void saveCargo(stop.orderId!)}
+                                >
+                                  Save cargo
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-ghost"
+                                  onClick={() => setCargoOrderId(null)}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn-ghost"
+                              disabled={busy || locked}
+                              onClick={() => {
+                                setCargoOrderId(stop.orderId!);
+                                setCargoDraft(stop.lines || []);
+                              }}
+                            >
+                              {stop.lines?.length ? "Edit cargo" : "Add cargo"}
+                            </button>
+                          )}
+                        </div>
+                      ) : null}
 
                       {isSkipped ? (
                         <div className="field-dispatch-exec">

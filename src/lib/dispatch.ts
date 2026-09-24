@@ -28,6 +28,33 @@ export type DispatchStopRole = "pickup" | "drop";
 
 export type DispatchOrderKind = "drop" | "pickup" | "pickup_drop";
 
+export type DispatchGoodsUnit = "pcs" | "box" | "bag" | "kg" | "L";
+
+export const DISPATCH_GOODS_UNITS: DispatchGoodsUnit[] = ["pcs", "box", "bag", "kg", "L"];
+
+export type DispatchGoodsItem = {
+  id: string;
+  name: string;
+  sku: string;
+  unit: DispatchGoodsUnit;
+  volumeM3Each: number | null;
+  weightKgEach: number | null;
+  enabled: boolean;
+  sortOrder: number;
+};
+
+export type DispatchOrderLine = {
+  id?: string;
+  orderId?: string;
+  catalogItemId?: string | null;
+  name: string;
+  qty: number;
+  unit: DispatchGoodsUnit;
+  volumeM3Each?: number | null;
+  weightKgEach?: number | null;
+  sortOrder?: number;
+};
+
 export type DispatchRouteAnchor = {
   lat: number;
   lon: number;
@@ -72,6 +99,8 @@ export type DispatchStop = {
   plannedEta?: string;
   /** Pickup vs drop. Drop-only is `drop`; pickup-only is `pickup`. */
   role?: DispatchStopRole;
+  /** Cargo for the parent order (same list on both pair legs). */
+  lines?: DispatchOrderLine[];
 };
 
 /** One calendar day of a multi-day tour, as seen from the driver's day view. */
@@ -153,6 +182,8 @@ export type DispatchOrder = {
   pickupWindowEnd?: string;
   pickupServiceMinutes?: number | null;
   pickupProofRequired?: boolean;
+  cargoTotalsLocked?: boolean;
+  lines?: DispatchOrderLine[];
   /** Set when this order was generated from a routine template */
   templateId?: string | null;
   status: DispatchOrderStatus;
@@ -821,6 +852,125 @@ export function dropLockedUntilPickup(stop: DispatchStop, stops: DispatchStop[])
   return pickup.status !== "done";
 }
 
+export function sumOrderCargoTotals(lines: DispatchOrderLine[] | undefined): {
+  volumeM3: number | null;
+  weightKg: number | null;
+} {
+  let volumeM3 = 0;
+  let weightKg = 0;
+  let anyVol = false;
+  let anyWt = false;
+  for (const line of lines || []) {
+    const qty = Math.max(0, Number(line.qty) || 0);
+    if (line.volumeM3Each != null && Number.isFinite(Number(line.volumeM3Each))) {
+      volumeM3 += qty * Number(line.volumeM3Each);
+      anyVol = true;
+    }
+    if (line.weightKgEach != null && Number.isFinite(Number(line.weightKgEach))) {
+      weightKg += qty * Number(line.weightKgEach);
+      anyWt = true;
+    }
+  }
+  return {
+    volumeM3: anyVol ? Math.round(volumeM3 * 1000) / 1000 : null,
+    weightKg: anyWt ? Math.round(weightKg * 10) / 10 : null,
+  };
+}
+
+export function formatCargoSummary(lines: DispatchOrderLine[] | undefined, maxItems = 3): string {
+  const list = (lines || []).filter((l) => l && String(l.name || "").trim());
+  if (!list.length) return "";
+  const parts = list.slice(0, maxItems).map((l) => {
+    const qty = Number(l.qty);
+    const q = Number.isFinite(qty) ? String(qty) : "";
+    return [q, l.unit || "pcs", String(l.name).trim()].filter(Boolean).join(" ");
+  });
+  const extra = list.length > maxItems ? ` +${list.length - maxItems}` : "";
+  return `${parts.join(" · ")}${extra}`;
+}
+
+export async function fetchDispatchGoods(signal?: AbortSignal): Promise<DispatchGoodsItem[]> {
+  const res = await fetch("/api/dispatch/goods", {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as { items?: DispatchGoodsItem[]; error?: string };
+  if (!res.ok) throw new Error(data.error || `Goods ${res.status}`);
+  return data.items || [];
+}
+
+export async function createDispatchGoodsItem(body: {
+  name: string;
+  sku?: string;
+  unit?: DispatchGoodsUnit;
+  volumeM3Each?: number | null;
+  weightKgEach?: number | null;
+  enabled?: boolean;
+}): Promise<DispatchGoodsItem> {
+  const res = await fetch("/api/dispatch/goods", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as { item?: DispatchGoodsItem; error?: string };
+  if (!res.ok) throw new Error(data.error || `Create goods ${res.status}`);
+  if (!data.item) throw new Error("Create goods failed");
+  return data.item;
+}
+
+export async function patchDispatchGoodsItem(
+  id: string,
+  patch: Partial<DispatchGoodsItem>,
+): Promise<DispatchGoodsItem> {
+  const res = await fetch(`/api/dispatch/goods/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(patch),
+  });
+  const data = (await res.json().catch(() => ({}))) as { item?: DispatchGoodsItem; error?: string };
+  if (!res.ok) throw new Error(data.error || `Patch goods ${res.status}`);
+  if (!data.item) throw new Error("Patch goods failed");
+  return data.item;
+}
+
+export async function deleteDispatchGoodsItem(id: string): Promise<void> {
+  const res = await fetch(`/api/dispatch/goods/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { accept: "application/json", ...tenantHeaders() },
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(data.error || `Delete goods ${res.status}`);
+}
+
+export async function fieldFetchDispatchGoods(): Promise<DispatchGoodsItem[]> {
+  const res = await fetch("/api/field/dispatch/goods", {
+    credentials: "include",
+    headers: { accept: "application/json" },
+  });
+  const data = (await res.json().catch(() => ({}))) as { items?: DispatchGoodsItem[]; error?: string };
+  if (!res.ok) throw new Error(data.error || `Goods ${res.status}`);
+  return data.items || [];
+}
+
+export async function fieldPutOrderLines(
+  orderId: string,
+  lines: DispatchOrderLine[],
+): Promise<{ lines: DispatchOrderLine[]; job: DispatchJob | null }> {
+  const res = await fetch(`/api/field/dispatch/orders/${encodeURIComponent(orderId)}/lines`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ lines }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    lines?: DispatchOrderLine[];
+    job?: DispatchJob | null;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Save cargo ${res.status}`);
+  return { lines: data.lines || [], job: data.job || null };
+}
+
 export async function createDispatchOrder(body: {
   customerName: string;
   externalRef?: string;
@@ -846,6 +996,8 @@ export async function createDispatchOrder(body: {
   pickupWindowEnd?: string | null;
   pickupServiceMinutes?: number | null;
   pickupProofRequired?: boolean;
+  cargoTotalsLocked?: boolean;
+  lines?: DispatchOrderLine[];
 }): Promise<DispatchOrder> {
   const res = await fetch("/api/dispatch/orders", {
     method: "POST",

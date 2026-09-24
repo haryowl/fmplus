@@ -35,6 +35,12 @@ import {
   normalizePing,
   PING_MAX_BODY_BYTES,
 } from "./driver-pings.mjs";
+import {
+  applyCargoTotals,
+  decorateJobsWithLines,
+  listGoodsItems,
+  replaceOrderLines,
+} from "./dispatch-goods.mjs";
 
 const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
   lat, lon, notification_id, started_at, ended_at, odometer_km,
@@ -311,6 +317,13 @@ async function loadDispatchStops(jobId) {
     [jobId],
   );
   return all.rows;
+}
+
+async function fieldJobWithLines(tenantId, row, requestedDate) {
+  const [job] = await decorateJobsWithLines(tenantId, [
+    publicDispatchJob(row, await loadDispatchStops(row.id), requestedDate),
+  ]);
+  return job;
 }
 
 async function resolveArmadaCoords(user, armadaUserId) {
@@ -698,6 +711,46 @@ export async function handleFieldRequest(req, res) {
         return true;
       }
 
+      if (url.pathname === "/api/field/dispatch/goods" && req.method === "GET") {
+        const items = await listGoodsItems(user.tenantId, { includeDisabled: false });
+        json(res, 200, { items });
+        return true;
+      }
+
+      const fieldOrderLines = /^\/api\/field\/dispatch\/orders\/([0-9a-f-]{36})\/lines$/i.exec(
+        url.pathname,
+      );
+      if (fieldOrderLines && req.method === "PUT") {
+        const found = await dbQuery(
+          `SELECT o.*, o.cargo_totals_locked
+           FROM dispatch_orders o
+           JOIN dispatch_jobs j ON j.id = o.job_id
+           WHERE o.id = $1 AND o.tenant_id = $2 AND j.assigned_field_user_id = $3`,
+          [fieldOrderLines[1], user.tenantId, user.id],
+        );
+        if (!found.rows[0]) {
+          json(res, 404, { error: "Order not found on one of your jobs" });
+          return true;
+        }
+        const order = found.rows[0];
+        if (order.status === "cancelled") {
+          json(res, 403, { error: "Cancelled orders cannot be edited" });
+          return true;
+        }
+        const body = await readJson(req);
+        const lines = await replaceOrderLines(user.tenantId, order.id, body.lines || []);
+        if (order.cargo_totals_locked !== true) {
+          await applyCargoTotals(user.tenantId, order.id, { locked: false });
+        }
+        const jobRow = await loadAssignedDispatchJob(user.tenantId, order.job_id, user.id);
+        json(res, 200, {
+          lines,
+          cargoTotalsLocked: order.cargo_totals_locked === true,
+          job: jobRow ? await fieldJobWithLines(user.tenantId, jobRow, todayServiceDate()) : null,
+        });
+        return true;
+      }
+
       if (url.pathname === "/api/field/dispatch/jobs" && req.method === "GET") {
         const dateParam = String(url.searchParams.get("date") || "").trim().slice(0, 10);
         const serviceDate = parseServiceDate(dateParam) || todayServiceDate();
@@ -729,7 +782,7 @@ export async function handleFieldRequest(req, res) {
           // publicDispatchJob narrows to the leg being worked and summarises the rest.
           jobs.push(publicDispatchJob(row, await loadDispatchStops(row.id), serviceDate));
         }
-        json(res, 200, { jobs, serviceDate });
+        json(res, 200, { jobs: await decorateJobsWithLines(user.tenantId, jobs), serviceDate });
         return true;
       }
 
@@ -740,7 +793,7 @@ export async function handleFieldRequest(req, res) {
           json(res, 404, { error: "Job not found or not assigned to you" });
           return true;
         }
-        json(res, 200, { job: publicDispatchJob(row, await loadDispatchStops(row.id), todayServiceDate()) });
+        json(res, 200, { job: await fieldJobWithLines(user.tenantId, row, todayServiceDate()) });
         return true;
       }
 
@@ -787,7 +840,7 @@ export async function handleFieldRequest(req, res) {
           params,
         );
         const row = await loadAssignedDispatchJob(user.tenantId, existing.id, user.id);
-        json(res, 200, { job: publicDispatchJob(row, await loadDispatchStops(row.id), todayServiceDate()) });
+        json(res, 200, { job: await fieldJobWithLines(user.tenantId, row, todayServiceDate()) });
         return true;
       }
 
@@ -833,7 +886,7 @@ export async function handleFieldRequest(req, res) {
           const row = await loadAssignedDispatchJob(user.tenantId, job.id, user.id);
           json(res, 200, {
             stop: publicDispatchStop(updated.rows[0], fieldYmd(job.service_date)),
-            job: publicDispatchJob(row, await loadDispatchStops(row.id), todayServiceDate()),
+            job: await fieldJobWithLines(user.tenantId, row, todayServiceDate()),
           });
           return true;
         }
@@ -1062,7 +1115,7 @@ export async function handleFieldRequest(req, res) {
         const row = await loadAssignedDispatchJob(user.tenantId, job.id, user.id);
         json(res, 200, {
           stop: publicDispatchStop(updated.rows[0], fieldYmd(job.service_date)),
-          job: publicDispatchJob(row, await loadDispatchStops(row.id), todayServiceDate()),
+          job: await fieldJobWithLines(user.tenantId, row, todayServiceDate()),
           gps: {
             phone: phone || null,
             armada: armada || null,

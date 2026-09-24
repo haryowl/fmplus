@@ -9291,3 +9291,100 @@ button.dispatch-pin-chip {
     grid-template-columns: 120px 1fr;
   }
 }
+
+.dispatch-goods-block,
+.dispatch-goods-catalog,
+.dispatch-goods-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.dispatch-goods-catalog,
+.dispatch-goods-editor {
+  padding: 10px 0;
+}
+
+.dispatch-goods-catalog-head,
+.dispatch-goods-catalog-add,
+.dispatch-goods-add,
+.dispatch-goods-catalog-list li,
+.dispatch-goods-lines li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.dispatch-goods-catalog-add,
+.dispatch-goods-add,
+.dispatch-goods-lines li {
+  flex-wrap: wrap;
+}
+
+.dispatch-goods-catalog-list,
+.dispatch-goods-lines,
+.dispatch-goods-suggest {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dispatch-goods-catalog-list li,
+.dispatch-goods-suggest li button {
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.dispatch-goods-catalog-list li.is-disabled {
+  opacity: 0.55;
+}
+
+.dispatch-goods-catalog-list li,
+.dispatch-goods-suggest li button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dispatch-goods-catalog-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.dispatch-goods-suggest li button span,
+.dispatch-goods-catalog-list li span,
+.dispatch-goods-totals {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.dispatch-goods-lines li input,
+.dispatch-goods-lines li select {
+  min-width: 0;
+}
+
+.dispatch-goods-lines li input:first-child {
+  flex: 1 1 120px;
+}
+
+.dispatch-goods-lines li input[aria-label="Quantity"],
+.dispatch-goods-lines li select {
+  flex: 0 0 64px;
+}
+
+.field-goods-summary {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}

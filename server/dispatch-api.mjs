@@ -40,6 +40,17 @@ import {
   parseOrderKind,
   pickupCoord,
 } from "./dispatch-pickup-drop.mjs";
+import {
+  applyCargoTotals,
+  createGoodsItem,
+  decorateJobsWithLines,
+  decorateOrdersWithLines,
+  deleteGoodsItem,
+  listGoodsItems,
+  replaceOrderLines,
+  setCargoTotalsLocked,
+  updateGoodsItem,
+} from "./dispatch-goods.mjs";
 import { normalizeZoneKey } from "./dispatch-zone.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
@@ -604,9 +615,21 @@ function publicOrder(row) {
     jobId: row.job_id || null,
     stopId: row.stop_id || null,
     notes: row.notes || "",
+    cargoTotalsLocked: row.cargo_totals_locked === true,
+    lines: [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+async function publicOrderWithLines(tenantId, row) {
+  const [order] = await decorateOrdersWithLines(tenantId, [publicOrder(row)]);
+  return order;
+}
+
+async function publicJobWithLines(tenantId, row, stops = []) {
+  const [job] = await decorateJobsWithLines(tenantId, [publicJob(row, stops)]);
+  return job;
 }
 
 function publicOrderTemplate(row) {
@@ -1049,6 +1072,32 @@ export async function handleDispatchRequest(req, res) {
     }
     if (!(await requireDispatchModule(dbTenant.id))) {
       json(res, 403, { error: "Dispatch module not enabled for this tenant" });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/goods" && req.method === "GET") {
+      const items = await listGoodsItems(dbTenant.id, { includeDisabled: true });
+      json(res, 200, { items });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/goods" && req.method === "POST") {
+      const body = await readJson(req);
+      const item = await createGoodsItem(dbTenant.id, body);
+      json(res, 201, { item });
+      return true;
+    }
+
+    const goodsOne = /^\/api\/dispatch\/goods\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (goodsOne && req.method === "PATCH") {
+      const body = await readJson(req);
+      const item = await updateGoodsItem(dbTenant.id, goodsOne[1], body);
+      json(res, 200, { item });
+      return true;
+    }
+    if (goodsOne && req.method === "DELETE") {
+      await deleteGoodsItem(dbTenant.id, goodsOne[1]);
+      json(res, 200, { ok: true });
       return true;
     }
 
@@ -1675,7 +1724,10 @@ export async function handleDispatchRequest(req, res) {
          LIMIT $${params.length}`,
         params,
       );
-      json(res, 200, { orders: rows.rows.map(publicOrder), serviceDate: date });
+      json(res, 200, {
+        orders: await decorateOrdersWithLines(dbTenant.id, rows.rows.map(publicOrder)),
+        serviceDate: date,
+      });
       return true;
     }
 
@@ -1703,8 +1755,9 @@ export async function handleDispatchRequest(req, res) {
            tenant_id, external_ref, customer_name, address, lat, lon, zone,
            volume_m3, weight_kg, window_start, window_end, notes, service_date, service_minutes, proof_required,
            kind, pickup_address, pickup_lat, pickup_lon, pickup_zone,
-           pickup_window_start, pickup_window_end, pickup_service_minutes, pickup_proof_required
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+           pickup_window_start, pickup_window_end, pickup_service_minutes, pickup_proof_required,
+           cargo_totals_locked
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
          RETURNING *`,
         [
           dbTenant.id,
@@ -1731,9 +1784,20 @@ export async function handleDispatchRequest(req, res) {
           normalizeWindowClock(body.pickupWindowEnd),
           serviceMinutesOrNull(body.pickupServiceMinutes),
           body.pickupProofRequired === true,
+          body.cargoTotalsLocked === true,
         ],
       );
-      json(res, 201, { order: publicOrder(inserted.rows[0]) });
+      const created = inserted.rows[0];
+      if (Array.isArray(body.lines)) {
+        await replaceOrderLines(dbTenant.id, created.id, body.lines);
+      }
+      if (body.cargoTotalsLocked === true) {
+        await setCargoTotalsLocked(dbTenant.id, created.id, true);
+      } else {
+        await applyCargoTotals(dbTenant.id, created.id, { locked: false });
+      }
+      const fresh = await dbQuery(`SELECT * FROM dispatch_orders WHERE id = $1`, [created.id]);
+      json(res, 201, { order: await publicOrderWithLines(dbTenant.id, fresh.rows[0] || created) });
       return true;
     }
 
@@ -2000,6 +2064,10 @@ export async function handleDispatchRequest(req, res) {
         params.push(body.pickupProofRequired === true);
         sets.push(`pickup_proof_required = $${params.length}`);
       }
+      if ("cargoTotalsLocked" in body) {
+        params.push(body.cargoTotalsLocked === true);
+        sets.push(`cargo_totals_locked = $${params.length}`);
+      }
       if ("status" in body) {
         const st = String(body.status || "").toLowerCase();
         if (!ORDER_STATUSES.includes(st)) {
@@ -2025,19 +2093,36 @@ export async function handleDispatchRequest(req, res) {
           return true;
         }
       }
-      if (!sets.length) {
+      if (!sets.length && !Array.isArray(body.lines)) {
         json(res, 400, { error: "No fields to update" });
         return true;
       }
-      sets.push(`updated_at = now()`);
-      params.push(orderOne[1], dbTenant.id);
-      const updated = await dbQuery(
-        `UPDATE dispatch_orders SET ${sets.join(", ")}
-         WHERE id = $${params.length - 1} AND tenant_id = $${params.length}
-         RETURNING *`,
-        params,
+      let row = existing.rows[0];
+      if (sets.length) {
+        sets.push(`updated_at = now()`);
+        params.push(orderOne[1], dbTenant.id);
+        const updated = await dbQuery(
+          `UPDATE dispatch_orders SET ${sets.join(", ")}
+           WHERE id = $${params.length - 1} AND tenant_id = $${params.length}
+           RETURNING *`,
+          params,
+        );
+        row = updated.rows[0];
+      }
+      if (Array.isArray(body.lines)) {
+        await replaceOrderLines(dbTenant.id, row.id, body.lines);
+      }
+      const locked =
+        body.cargoTotalsLocked === true ||
+        (body.cargoTotalsLocked !== false && row.cargo_totals_locked === true);
+      if (!locked) {
+        await applyCargoTotals(dbTenant.id, row.id, { locked: false });
+      }
+      const fresh = await dbQuery(
+        `SELECT * FROM dispatch_orders WHERE id = $1 AND tenant_id = $2`,
+        [row.id, dbTenant.id],
       );
-      const row = updated.rows[0];
+      row = fresh.rows[0] || row;
       // Keep linked stop in sync when dispatcher edits an assigned order
       if (row.stop_id && row.status === "assigned") {
         await dbQuery(
@@ -2072,7 +2157,7 @@ export async function handleDispatchRequest(req, res) {
           ],
         );
       }
-      json(res, 200, { order: publicOrder(row) });
+      json(res, 200, { order: await publicOrderWithLines(dbTenant.id, row) });
       return true;
     }
 
@@ -2305,7 +2390,10 @@ export async function handleDispatchRequest(req, res) {
         const stops = await loadStops(row.id);
         jobs.push(withRequestedDay(publicJob(row, stops), date));
       }
-      json(res, 200, { jobs, serviceDate: date });
+      json(res, 200, {
+        jobs: await decorateJobsWithLines(dbTenant.id, jobs),
+        serviceDate: date,
+      });
       return true;
     }
 
@@ -2386,7 +2474,7 @@ export async function handleDispatchRequest(req, res) {
       await replaceStops(jobId, normalizeStops(body.stops));
       const row = await loadJob(dbTenant.id, jobId);
       const stops = await loadStops(jobId);
-      const job = publicJob(row, stops);
+      const job = await publicJobWithLines(dbTenant.id, row, stops);
       if (assigneeId) {
         try {
           await maybeNotifyDispatchJobAssigned({
@@ -2492,7 +2580,7 @@ export async function handleDispatchRequest(req, res) {
       }
       await recomputeJobSpan(job.id);
       const row = await loadJob(dbTenant.id, job.id);
-      json(res, 200, { job: publicJob(row, await loadStops(job.id)) });
+      json(res, 200, { job: await publicJobWithLines(dbTenant.id, row, await loadStops(job.id)) });
       return true;
     }
 
@@ -2597,7 +2685,7 @@ export async function handleDispatchRequest(req, res) {
       );
       const row = await loadJob(dbTenant.id, job.id);
       json(res, 200, {
-        job: publicJob(row, orderedStops),
+        job: await publicJobWithLines(dbTenant.id, row, orderedStops),
         engine: route.engine,
         matrixEngine: optResult.matrixEngine || null,
         frozenStops: stops.length - remaining.length,
@@ -2615,7 +2703,7 @@ export async function handleDispatchRequest(req, res) {
         json(res, 404, { error: "Job not found" });
         return true;
       }
-      json(res, 200, { job: publicJob(row, await loadStops(row.id)) });
+      json(res, 200, { job: await publicJobWithLines(dbTenant.id, row, await loadStops(row.id)) });
       return true;
     }
 
@@ -2751,7 +2839,7 @@ export async function handleDispatchRequest(req, res) {
 
       const row = await loadJob(dbTenant.id, existing.id);
       const stops = await loadStops(row.id);
-      const job = publicJob(row, stops);
+      const job = await publicJobWithLines(dbTenant.id, row, stops);
       if (assigneeChanged && job.assignedFieldUserId) {
         try {
           await maybeNotifyDispatchJobAssigned({
@@ -2799,7 +2887,7 @@ export async function handleDispatchRequest(req, res) {
       }
       json(res, 200, {
         stop: publicStop(updated.rows[0], formatServiceDate(job.service_date)),
-        job: publicJob(await loadJob(dbTenant.id, job.id), await loadStops(job.id)),
+        job: await publicJobWithLines(dbTenant.id, await loadJob(dbTenant.id, job.id), await loadStops(job.id)),
       });
       return true;
     }
@@ -2864,7 +2952,7 @@ export async function handleDispatchRequest(req, res) {
       const row = await loadJob(dbTenant.id, job.id);
       json(res, 200, {
         stop: publicStop(updated.rows[0], formatServiceDate(row.service_date)),
-        job: publicJob(row, await loadStops(job.id)),
+        job: await publicJobWithLines(dbTenant.id, row, await loadStops(job.id)),
       });
       return true;
     }
@@ -2914,7 +3002,7 @@ export async function handleDispatchRequest(req, res) {
       await recomputeJobSpan(job.id);
       const row = await loadJob(dbTenant.id, job.id);
       json(res, 200, {
-        job: publicJob(row, await loadStops(job.id)),
+        job: await publicJobWithLines(dbTenant.id, row, await loadStops(job.id)),
         returnedOrderId: stop.order_id || null,
       });
       return true;
@@ -3717,7 +3805,7 @@ export async function handleDispatchRequest(req, res) {
         applied.push({
           ...route,
           jobId,
-          job: publicJob(row, await loadStops(jobId)),
+          job: await publicJobWithLines(dbTenant.id, row, await loadStops(jobId)),
           route: routeGeom,
         });
       }
