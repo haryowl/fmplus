@@ -4513,6 +4513,14 @@ html.onesheet-root body {
   box-sizing: border-box;
 }
 
+.dispatch-pin-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .dispatch-pin-chip {
   display: flex;
   gap: 10px;
@@ -4531,6 +4539,21 @@ html.onesheet-root body {
   width: 100%;
 }
 
+button.dispatch-pin-chip {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dispatch-pin-chip.is-active {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.12);
+}
+
+.dispatch-pin-chip.is-missing {
+  border-style: dashed;
+}
+
 .dispatch-pin-chip > span:last-child {
   min-width: 0;
   flex: 1 1 auto;
@@ -4545,6 +4568,11 @@ html.onesheet-root body {
   word-break: break-word;
 }
 
+.dispatch-pin-chip.is-missing strong {
+  color: var(--danger);
+  font-weight: 500;
+}
+
 .dispatch-pin-dot {
   flex: 0 0 auto;
   width: 10px;
@@ -4553,6 +4581,12 @@ html.onesheet-root body {
   border-radius: 50%;
   background: #c45c16;
   box-shadow: 0 0 0 4px rgba(196, 92, 22, 0.18);
+}
+
+.dispatch-pin-dot.is-hollow {
+  background: transparent;
+  border: 2px solid var(--danger);
+  box-shadow: none;
 }
 
 .dispatch-draft-pin-dot {

@@ -12,6 +12,8 @@ describe("pickup/drop helpers", () => {
   it("parses kind and expands a pair into two tasks", () => {
     expect(parseOrderKind("pickup_drop")).toBe("pickup_drop");
     expect(parseOrderKind("drop")).toBe("drop");
+    expect(parseOrderKind("pickup")).toBe("pickup");
+    expect(parseOrderKind("pickup only")).toBe("pickup");
     const tasks = expandOrdersToPlanTasks([
       {
         id: "ord-1",
@@ -38,6 +40,38 @@ describe("pickup/drop helpers", () => {
     expect(tasks[0]).toMatchObject({ sourceOrderId: "ord-1", role: "pickup", pairKey: "ord-1", preloaded: false });
     expect(tasks[1]).toMatchObject({ sourceOrderId: "ord-1", role: "drop", pairKey: "ord-1" });
     expect(tasks[2]).toMatchObject({ sourceOrderId: "ord-2", role: "drop", preloaded: true });
+  });
+
+  it("expands pickup-only into one collect task", () => {
+    const tasks = expandOrdersToPlanTasks([
+      {
+        id: "p1",
+        kind: "pickup",
+        customerName: "Collect",
+        lat: -6.2,
+        lon: 106.8,
+        volumeM3: 3,
+        weightKg: 40,
+      },
+    ]);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({
+      sourceOrderId: "p1",
+      role: "pickup",
+      pairKey: null,
+      preloaded: false,
+      volumeM3: 3,
+    });
+  });
+
+  it("pickup-only adds running load without a drop mate", () => {
+    const tasks = [
+      { pairKey: null, role: "pickup", volumeM3: 4, weightKg: 50, preloaded: false },
+      { pairKey: null, role: "drop", volumeM3: 2, weightKg: 20, preloaded: true },
+    ];
+    expect(routeLoadFeasible([1, 0], tasks, 7, 80)).toBe(true);
+    expect(routeLoadFeasible([1, 0], tasks, 5, 80)).toBe(false);
+    expect(routePeakLoad([1, 0], tasks)).toMatchObject({ vol: 6, wt: 70, endVol: 6, endWt: 70 });
   });
 
   it("running load rises at pickup and falls at drop", () => {

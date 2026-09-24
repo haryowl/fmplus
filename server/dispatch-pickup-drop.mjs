@@ -1,17 +1,25 @@
 /**
- * Pickup/drop helpers — v1: drop-only orders (current) plus optional
- * pickup_drop pairs (same vehicle, pickup before drop, no cross-depot).
+ * Pickup/drop helpers — drop-only, pickup-only, and pickup_drop pairs
+ * (same vehicle, pickup before drop, no cross-depot).
  */
 import { haversineKm } from "./route-optimize.mjs";
 import { partitionOrdersToDepots } from "./dispatch-zone.mjs";
 
 export function parseOrderKind(v) {
-  return String(v || "drop").toLowerCase() === "pickup_drop" ? "pickup_drop" : "drop";
+  const s = String(v || "drop").toLowerCase().replace(/[\s-]+/g, "_");
+  if (s === "pickup_drop" || s === "both") return "pickup_drop";
+  if (s === "pickup" || s === "pickup_only" || s === "collect") return "pickup";
+  return "drop";
 }
 
 export function isPickupDropOrder(row) {
   if (!row) return false;
   return parseOrderKind(row.kind) === "pickup_drop";
+}
+
+export function isPickupOnlyOrder(row) {
+  if (!row) return false;
+  return parseOrderKind(row.kind) === "pickup";
 }
 
 export function finiteCoord(lat, lon) {
@@ -43,6 +51,27 @@ export function expandOrdersToPlanTasks(orders) {
     const label = o.label || o.customerName || o.id;
     const vol = Math.max(0, Number(o.volumeM3) || 0);
     const wt = Math.max(0, Number(o.weightKg) || 0);
+    if (isPickupOnlyOrder(o)) {
+      const p = dropCoord(o) || pickupCoord(o);
+      if (!p) continue;
+      tasks.push({
+        id: o.id,
+        sourceOrderId: o.id,
+        role: "pickup",
+        pairKey: null,
+        preloaded: false,
+        lat: p.lat,
+        lon: p.lon,
+        volumeM3: vol,
+        weightKg: wt,
+        windowStart: o.windowStart || o.window_start || o.pickupWindowStart || o.pickup_window_start || "",
+        windowEnd: o.windowEnd || o.window_end || o.pickupWindowEnd || o.pickup_window_end || "",
+        serviceMinutes: o.serviceMinutes ?? o.service_minutes ?? null,
+        zone: o.zone || o.pickupZone || o.pickup_zone || "",
+        label: `${label} · P`,
+      });
+      continue;
+    }
     if (isPickupDropOrder(o)) {
       const p = pickupCoord(o);
       const d = dropCoord(o);
@@ -163,15 +192,20 @@ export function routeLoadFeasible(taskIndexes, tasks, capVol, capWt) {
   let wt = startWt;
   for (const i of taskIndexes) {
     const t = tasks[i];
-    if (!t || !t.pairKey) continue;
+    if (!t) continue;
     const dv = Math.max(0, Number(t.volumeM3) || 0);
     const dw = Math.max(0, Number(t.weightKg) || 0);
-    if (t.role === "pickup") {
+    if (t.role === "pickup" && !t.pairKey) {
       vol += dv;
       wt += dw;
-    } else if (t.role === "drop") {
+    } else if (t.pairKey && t.role === "pickup") {
+      vol += dv;
+      wt += dw;
+    } else if (t.pairKey && t.role === "drop") {
       vol -= dv;
       wt -= dw;
+    } else {
+      continue;
     }
     if (vol > capVol + 1e-9 || wt > capWt + 1e-9) return false;
     if (vol < -1e-6 || wt < -1e-6) return false;
@@ -209,15 +243,20 @@ export function routePeakLoad(taskIndexes, tasks) {
   let peakWt = startWt;
   for (const i of taskIndexes) {
     const t = tasks[i];
-    if (!t?.pairKey) continue;
+    if (!t) continue;
     const dv = Math.max(0, Number(t.volumeM3) || 0);
     const dw = Math.max(0, Number(t.weightKg) || 0);
-    if (t.role === "pickup") {
+    if (t.role === "pickup" && !t.pairKey) {
       vol += dv;
       wt += dw;
-    } else if (t.role === "drop") {
+    } else if (t.pairKey && t.role === "pickup") {
+      vol += dv;
+      wt += dw;
+    } else if (t.pairKey && t.role === "drop") {
       vol -= dv;
       wt -= dw;
+    } else {
+      continue;
     }
     if (vol > peakVol) peakVol = vol;
     if (wt > peakWt) peakWt = wt;

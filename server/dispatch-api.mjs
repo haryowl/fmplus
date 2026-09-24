@@ -753,8 +753,24 @@ async function detachOrderFromJob(order) {
 async function insertStopsFromOrder(jobId, order, sortBase, dayIndex) {
   const kind = parseOrderKind(order.kind);
   const pair = kind === "pickup_drop";
+  const pickupOnly = kind === "pickup";
   const legs = [];
-  if (pair) {
+  if (pickupOnly) {
+    legs.push({
+      role: "pickup",
+      name: `${order.customer_name || order.external_ref || "Stop"} · pickup`,
+      address: order.address,
+      lat: order.lat,
+      lon: order.lon,
+      zone: order.zone,
+      volume: order.volume_m3,
+      weight: order.weight_kg,
+      windowStart: order.window_start,
+      windowEnd: order.window_end,
+      serviceMinutes: order.service_minutes,
+      proof: order.proof_required === true,
+    });
+  } else if (pair) {
     const p = pickupCoord(order);
     if (!p) {
       return { firstStopId: null, count: 0 };
@@ -842,13 +858,31 @@ async function insertStopsFromOrder(jobId, order, sortBase, dayIndex) {
 /** Insert a single pickup or drop leg (used when Auto-plan sequences other stops between them). */
 async function insertStopLeg(jobId, order, role, sortBase, dayIndex) {
   const want = role === "pickup" ? "pickup" : "drop";
-  const pair = parseOrderKind(order.kind) === "pickup_drop";
-  if (want === "pickup" && !pair) return null;
+  const kind = parseOrderKind(order.kind);
+  const pair = kind === "pickup_drop";
+  const pickupOnly = kind === "pickup";
+  if (want === "pickup" && !pair && !pickupOnly) return null;
+  if (want === "drop" && pickupOnly) return null;
   const p = pair ? pickupCoord(order) : null;
   const nameBase = order.customer_name || order.external_ref || "Stop";
   const leg =
     want === "pickup"
-      ? {
+      ? pickupOnly
+        ? {
+            role: "pickup",
+            name: `${nameBase} · pickup`,
+            address: order.address,
+            lat: order.lat,
+            lon: order.lon,
+            zone: order.zone,
+            volume: order.volume_m3,
+            weight: order.weight_kg,
+            windowStart: order.window_start,
+            windowEnd: order.window_end,
+            serviceMinutes: order.service_minutes,
+            proof: order.proof_required === true,
+          }
+        : {
           role: "pickup",
           name: `${nameBase} · pickup`,
           address: order.pickup_address,

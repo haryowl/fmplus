@@ -66,6 +66,55 @@ describe("planCvrp pickup/drop pairs", () => {
     expect(dAt).toBeGreaterThan(pAt);
   });
 
+  it("assigns a pickup-only collect as one stop and keeps load on the vehicle", () => {
+    const depot = { lat: -6.2, lon: 106.8 };
+    const orders = [
+      {
+        id: "p1",
+        kind: "pickup",
+        label: "Collect",
+        lat: -6.21,
+        lon: 106.8,
+        volumeM3: 4,
+        weightKg: 80,
+      },
+      {
+        id: "d1",
+        kind: "drop",
+        label: "Drop",
+        lat: -6.23,
+        lon: 106.8,
+        volumeM3: 2,
+        weightKg: 20,
+      },
+    ];
+    const tasks = expandOrdersToPlanTasks(orders);
+    const points = [depot, ...tasks.map((t) => ({ lat: t.lat, lon: t.lon }))];
+    const plan = planCvrp({
+      orders: tasks,
+      vehicles: [
+        {
+          key: "v1",
+          label: "V1",
+          volumeCapacityM3: 10,
+          weightCapacityKg: 1500,
+          meta: { fullVolumeCapacityM3: 10, fullWeightCapacityKg: 1500 },
+        },
+      ],
+      matrixKm: gridMatrix(points.length, 3),
+      points,
+      depotIndex: 0,
+      roundtrip: true,
+      twMode: "off",
+    });
+    expect(plan.routes).toHaveLength(1);
+    const route = plan.routes[0]!;
+    expect(route.orderIds).toEqual(expect.arrayContaining(["p1", "d1"]));
+    expect(route.orderIds.filter((id: string) => id === "p1")).toHaveLength(1);
+    const pAt = route.orderIds.findIndex((id: string) => id === "p1");
+    expect(route.stopRoles[pAt]).toBe("pickup");
+  });
+
   it("rejects a pair that exceeds running load even if drop-only sum would fit", () => {
     const depot = { lat: -6.2, lon: 106.8 };
     const orders = [

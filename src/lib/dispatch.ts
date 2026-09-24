@@ -26,7 +26,7 @@ export type DispatchOrderStatus = "pending" | "assigned" | "cancelled";
 
 export type DispatchStopRole = "pickup" | "drop";
 
-export type DispatchOrderKind = "drop" | "pickup_drop";
+export type DispatchOrderKind = "drop" | "pickup" | "pickup_drop";
 
 export type DispatchRouteAnchor = {
   lat: number;
@@ -70,7 +70,7 @@ export type DispatchStop = {
   rescheduledTo?: string | null;
   /** Planned arrival HH:MM snapshotted at plan/optimize */
   plannedEta?: string;
-  /** Pickup vs drop. Drop-only orders are always `drop`. */
+  /** Pickup vs drop. Drop-only is `drop`; pickup-only is `pickup`. */
   role?: DispatchStopRole;
 };
 
