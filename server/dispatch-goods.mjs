@@ -70,6 +70,135 @@ export function sumCargoTotals(lines) {
   };
 }
 
+/**
+ * Parse an optional order-CSV goods cell.
+ * Accepts `Oil:2; Filter:1 box` or `Oil x 2 pcs | SKU-9:3`.
+ */
+export function parseOrderGoodsCell(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return [];
+  const chunks =
+    /[;|]/.test(text) ? text.split(/[;|]/) : /:|\s[x×]\s/i.test(text) ? text.split(",") : [text];
+  const out = [];
+  for (const chunk of chunks) {
+    const s = chunk.trim();
+    if (!s) continue;
+    let m = s.match(/^(.+?)\s*[x×]\s*(\d+(?:\.\d+)?)\s*([A-Za-z]+)?$/i);
+    if (m) {
+      out.push({ key: m[1].trim(), qty: Number(m[2]), unit: m[3] || "" });
+      continue;
+    }
+    m = s.match(/^(.+?):(\d+(?:\.\d+)?)(?:[:\s]+([A-Za-z]+))?$/);
+    if (m) {
+      out.push({ key: m[1].trim(), qty: Number(m[2]), unit: m[3] || "" });
+      continue;
+    }
+    out.push({ key: s, qty: 1, unit: "" });
+  }
+  return out.filter((p) => p.key && Number.isFinite(p.qty) && p.qty > 0);
+}
+
+export async function resolveCsvGoodsLines(tenantId, rawCell, extraRow = {}) {
+  const parsed = parseOrderGoodsCell(rawCell);
+  const extraName = String(extraRow.goods_name || extraRow.goodsName || "").trim();
+  if (extraName && !parsed.some((p) => p.key.toLowerCase() === extraName.toLowerCase())) {
+    const qty = Number(extraRow.goods_qty ?? extraRow.goodsQty ?? 1);
+    parsed.push({
+      key: extraName,
+      qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+      unit: String(extraRow.goods_unit || extraRow.goodsUnit || ""),
+    });
+  }
+  if (!parsed.length) return [];
+  const catalog = await listGoodsItems(tenantId, { includeDisabled: true });
+  const bySku = new Map();
+  const byName = new Map();
+  for (const item of catalog) {
+    if (item.sku) bySku.set(item.sku.toLowerCase(), item);
+    byName.set(item.name.toLowerCase(), item);
+  }
+  return parsed.slice(0, MAX_LINES).map((p, i) => {
+    const item = bySku.get(p.key.toLowerCase()) || byName.get(p.key.toLowerCase()) || null;
+    return {
+      catalogItemId: item ? item.id : null,
+      name: item ? item.name : p.key.slice(0, 200),
+      qty: p.qty,
+      unit: parseGoodsUnit(p.unit || item?.unit),
+      volumeM3Each: item ? item.volumeM3Each : null,
+      weightKgEach: item ? item.weightKgEach : null,
+      sortOrder: i,
+    };
+  });
+}
+
+function csvEnabledFlag(v) {
+  if (v == null || v === "") return true;
+  const s = String(v).trim().toLowerCase();
+  if (["0", "no", "false", "off", "disabled"].includes(s)) return false;
+  return true;
+}
+
+export async function importGoodsItemsFromRows(tenantId, rawRows) {
+  const rows = Array.isArray(rawRows) ? rawRows : [];
+  if (rows.length > 500) {
+    const err = new Error("Maximum 500 catalog rows per import");
+    err.status = 400;
+    throw err;
+  }
+  const created = [];
+  const updated = [];
+  const errors = [];
+  const existing = await listGoodsItems(tenantId, { includeDisabled: true });
+  const bySku = new Map();
+  const byName = new Map();
+  for (const item of existing) {
+    if (item.sku) bySku.set(item.sku.toLowerCase(), item);
+    byName.set(item.name.toLowerCase(), item);
+  }
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] && typeof rows[i] === "object" ? rows[i] : {};
+    const line = i + 2;
+    const name = String(row.name || row.item || "").trim().slice(0, 200);
+    if (!name) {
+      errors.push({ line, error: "name is required" });
+      continue;
+    }
+    const sku = String(row.sku || "").trim().slice(0, 80);
+    const body = {
+      name,
+      sku,
+      unit: parseGoodsUnit(row.unit),
+      volumeM3Each: numOrNullGoods(row.volume_m3_each ?? row.volumeM3Each),
+      weightKgEach: numOrNullGoods(row.weight_kg_each ?? row.weightKgEach),
+      enabled: csvEnabledFlag(row.enabled),
+    };
+    try {
+      const found =
+        (sku && bySku.get(sku.toLowerCase())) || byName.get(name.toLowerCase()) || null;
+      if (found) {
+        const item = await updateGoodsItem(tenantId, found.id, body);
+        updated.push(item);
+        if (item.sku) bySku.set(item.sku.toLowerCase(), item);
+        byName.set(item.name.toLowerCase(), item);
+      } else {
+        const item = await createGoodsItem(tenantId, body);
+        created.push(item);
+        if (item.sku) bySku.set(item.sku.toLowerCase(), item);
+        byName.set(item.name.toLowerCase(), item);
+      }
+    } catch (err) {
+      errors.push({ line, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return {
+    created: created.length,
+    updated: updated.length,
+    errors: errors.length,
+    items: [...created, ...updated],
+    errorRows: errors,
+  };
+}
+
 export function formatCargoSummary(lines, maxItems = 3) {
   const list = (lines || []).filter((l) => l && String(l.name || "").trim());
   if (!list.length) return "";

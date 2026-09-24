@@ -46,8 +46,10 @@ import {
   decorateJobsWithLines,
   decorateOrdersWithLines,
   deleteGoodsItem,
+  importGoodsItemsFromRows,
   listGoodsItems,
   replaceOrderLines,
+  resolveCsvGoodsLines,
   setCargoTotalsLocked,
   updateGoodsItem,
 } from "./dispatch-goods.mjs";
@@ -1088,6 +1090,21 @@ export async function handleDispatchRequest(req, res) {
       return true;
     }
 
+    if (url.pathname === "/api/dispatch/goods/import" && req.method === "POST") {
+      const body = await readJson(req);
+      let rawRows = Array.isArray(body.rows) ? body.rows : null;
+      if (!rawRows && typeof body.csv === "string") {
+        rawRows = parseCsv(body.csv).rows;
+      }
+      if (!rawRows || !rawRows.length) {
+        json(res, 400, { error: "rows or csv required" });
+        return true;
+      }
+      const out = await importGoodsItemsFromRows(dbTenant.id, rawRows);
+      json(res, 200, out);
+      return true;
+    }
+
     const goodsOne = /^\/api\/dispatch\/goods\/([0-9a-f-]{36})$/i.exec(url.pathname);
     if (goodsOne && req.method === "PATCH") {
       const body = await readJson(req);
@@ -1892,7 +1909,23 @@ export async function handleDispatchRequest(req, res) {
               csvBool(row.proof_required ?? row.proofRequired),
             ],
           );
-          created.push(publicOrder(inserted.rows[0]));
+          const goodsCell = row.goods || row.cargo || "";
+          const lines = await resolveCsvGoodsLines(dbTenant.id, goodsCell, row);
+          if (lines.length) {
+            await replaceOrderLines(dbTenant.id, inserted.rows[0].id, lines);
+            const hasManualTotals =
+              csvNum(row.volume_m3 ?? row.volumeM3) != null ||
+              csvNum(row.weight_kg ?? row.weightKg) != null;
+            if (hasManualTotals) {
+              await setCargoTotalsLocked(dbTenant.id, inserted.rows[0].id, true);
+            } else {
+              await applyCargoTotals(dbTenant.id, inserted.rows[0].id, { locked: false });
+            }
+          }
+          const fresh = await dbQuery(`SELECT * FROM dispatch_orders WHERE id = $1`, [
+            inserted.rows[0].id,
+          ]);
+          created.push(await publicOrderWithLines(dbTenant.id, fresh.rows[0] || inserted.rows[0]));
         } catch (err) {
           errors.push({
             line,

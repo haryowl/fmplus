@@ -121,6 +121,7 @@ export const DISPATCH_ORDER_CSV_HEADERS = [
   "service_minutes",
   "proof_required",
   "notes",
+  "goods",
 ] as const;
 
 export function dispatchOrderCsvTemplate(): string {
@@ -142,7 +143,27 @@ export function dispatchOrderCsvTemplate(): string {
         8,
         "yes",
         "Gate A",
+        "Oil:2; Filter:1 box",
       ],
+    ],
+  );
+}
+
+export const DISPATCH_GOODS_CSV_HEADERS = [
+  "name",
+  "sku",
+  "unit",
+  "volume_m3_each",
+  "weight_kg_each",
+  "enabled",
+] as const;
+
+export function dispatchGoodsCsvTemplate(): string {
+  return toCsv(
+    [...DISPATCH_GOODS_CSV_HEADERS],
+    [
+      ["Oil", "OIL-01", "pcs", 0.02, 4, "yes"],
+      ["Filter", "FIL-02", "box", 0.1, 8, "yes"],
     ],
   );
 }

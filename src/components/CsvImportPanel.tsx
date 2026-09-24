@@ -11,6 +11,7 @@ type Props = {
   parseFile: (text: string) => { rows: Record<string, string>[]; error?: string };
   onImport: (rows: Record<string, string>[]) => Promise<{
     created: number;
+    updated?: number;
     skipped?: number;
     errors?: number;
     errorRows?: CsvImportErrorRow[];
@@ -79,6 +80,7 @@ export function CsvImportPanel({
     try {
       const out = await onImport(rows);
       const parts = [`Created ${out.created}`];
+      if (out.updated) parts.push(`updated ${out.updated}`);
       if (out.skipped) parts.push(`skipped ${out.skipped}`);
       if (out.errors) parts.push(`errors ${out.errors}`);
       setResult(parts.join(" · "));

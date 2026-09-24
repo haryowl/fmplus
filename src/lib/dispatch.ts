@@ -1010,6 +1010,38 @@ export async function createDispatchOrder(body: {
   return data.order;
 }
 
+export async function importDispatchGoods(body: {
+  rows: Record<string, string>[];
+}): Promise<{
+  created: number;
+  updated: number;
+  errors: number;
+  items: DispatchGoodsItem[];
+  errorRows: Array<{ line: number; error: string }>;
+}> {
+  const res = await fetch("/api/dispatch/goods/import", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    created?: number;
+    updated?: number;
+    errors?: number;
+    items?: DispatchGoodsItem[];
+    errorRows?: Array<{ line: number; error: string }>;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Import goods ${res.status}`);
+  return {
+    created: Number(data.created) || 0,
+    updated: Number(data.updated) || 0,
+    errors: Number(data.errors) || 0,
+    items: data.items || [],
+    errorRows: data.errorRows || [],
+  };
+}
+
 export async function importDispatchOrders(body: {
   serviceDate?: string;
   rows: Record<string, string>[];
