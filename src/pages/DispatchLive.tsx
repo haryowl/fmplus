@@ -244,22 +244,33 @@ export default function DispatchLive() {
       .filter((id) => Number.isInteger(id) && id > 0)
       .map((userId) => ({ userId, date: serviceDate }));
     if (!days.length) return;
-    const ac = new AbortController();
     let cancelled = false;
-    setArmadaTracksLoading(true);
-    fetchArmadaDayTracks(days, ac.signal)
-      .then((map) => {
-        if (!cancelled) setArmadaTracks(map);
-      })
-      .catch(() => {
-        /* keep prior tracks if a refetch fails */
-      })
-      .finally(() => {
-        if (!cancelled) setArmadaTracksLoading(false);
-      });
+    const load = (refresh = false) => {
+      const ac = new AbortController();
+      if (!refresh) setArmadaTracksLoading(true);
+      fetchArmadaDayTracks(days, ac.signal, refresh ? { refresh: true } : undefined)
+        .then((map) => {
+          if (!cancelled) setArmadaTracks(map);
+        })
+        .catch(() => {
+          /* keep prior tracks if a refetch fails */
+        })
+        .finally(() => {
+          if (!cancelled) setArmadaTracksLoading(false);
+        });
+      return ac;
+    };
+    const first = load(false);
+    const pollToday = serviceDate === todayServiceDate();
+    const timer = pollToday
+      ? window.setInterval(() => {
+          load(true);
+        }, 120_000)
+      : 0;
     return () => {
       cancelled = true;
-      ac.abort();
+      first.abort();
+      if (timer) window.clearInterval(timer);
     };
   }, [ready, tab, serviceDate, armadaTrackJobsKey]);
 
@@ -309,15 +320,44 @@ export default function DispatchLive() {
   const summary = snapshot?.summary;
   const drivers = useMemo(() => {
     const list = snapshot?.drivers || [];
-    if (!armadaTracks.size) return list;
     const now = Date.now();
     return list.map((d) => {
       if (d.armadaUserId == null) return d;
       const key = `${d.armadaUserId}|${serviceDate}`;
-      const timed = armadaTracks.get(key);
-      if (!timed?.length) return d;
-      const track = clipTimedTrackToWindow(timed, d.startedAt, d.completedAt, now);
-      if (!track.length) return d;
+      const timed = armadaTracks.get(key) || [];
+      let track = timed.length
+        ? clipTimedTrackToWindow(timed, d.startedAt, d.completedAt, now)
+        : [];
+      const live = d.vehiclePos;
+      if (
+        live &&
+        Number.isFinite(live.lat) &&
+        Number.isFinite(live.lon) &&
+        Math.abs(live.lat) <= 90 &&
+        Math.abs(live.lon) <= 180
+      ) {
+        const last = track[track.length - 1];
+        if (!last || last[0] !== live.lat || last[1] !== live.lon) {
+          track = [...track, [live.lat, live.lon]];
+        }
+      }
+      if (track.length < 2) {
+        const crumbs: [number, number][] = [];
+        for (const s of d.stops || []) {
+          for (const pair of [
+            [s.startVehicleLat, s.startVehicleLon],
+            [s.vehicleLat, s.vehicleLon],
+          ] as const) {
+            const lat = Number(pair[0]);
+            const lon = Number(pair[1]);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+            if (Math.abs(lat) > 90 || Math.abs(lon) > 180) continue;
+            crumbs.push([lat, lon]);
+          }
+        }
+        if (crumbs.length >= 2) track = crumbs;
+      }
+      if (track.length < 2) return d;
       return { ...d, armadaTrack: track };
     });
   }, [snapshot?.drivers, armadaTracks, serviceDate]);

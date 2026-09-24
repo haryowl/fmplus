@@ -33,8 +33,9 @@ export function clipTimedTrackToWindow(
 
   if (out.length >= 1) return out;
 
-  // No start/end known — show the full day trail.
-  if (!Number.isFinite(startMs) && !Number.isFinite(endMs)) {
+  // Window missed every timed sample (clock skew, or startedAt after the
+  // last GPS). Keep the day trail so Live still draws an Armada line.
+  if (points.length >= 2) {
     return points.map((p) => [p.lat, p.lon]);
   }
   return out;

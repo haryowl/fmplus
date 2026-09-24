@@ -1518,22 +1518,38 @@ function downsampleMapLine(points: [number, number][], maxPoints = ARMADA_MAP_MA
   return out;
 }
 
+function parseTrackUtcMs(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const ms = raw < 1e12 ? raw * 1000 : raw;
+    return Number.isFinite(ms) ? ms : null;
+  }
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const ms = Date.parse(s);
+  return Number.isFinite(ms) ? ms : null;
+}
+
 function timedPointFromTrack(raw: unknown): TimedMapPoint | null {
   if (!raw || typeof raw !== "object") return null;
   const item = raw as {
     position?: { latitude?: unknown; longitude?: unknown };
+    lat?: unknown;
+    latitude?: unknown;
+    lon?: unknown;
+    lng?: unknown;
+    longitude?: unknown;
     utc?: unknown;
     uTC?: unknown;
     UTC?: unknown;
+    serverUtc?: unknown;
+    recordedAt?: unknown;
   };
-  const lat = Number(item.position?.latitude);
-  const lon = Number(item.position?.longitude);
+  const lat = Number(item.position?.latitude ?? item.lat ?? item.latitude);
+  const lon = Number(item.position?.longitude ?? item.lon ?? item.lng ?? item.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
-  const utc = String(item.utc ?? item.uTC ?? item.UTC ?? "").trim();
-  if (!utc) return null;
-  const ms = Date.parse(utc);
-  if (!Number.isFinite(ms)) return null;
+  const ms = parseTrackUtcMs(item.utc ?? item.uTC ?? item.UTC ?? item.serverUtc ?? item.recordedAt);
+  if (ms == null) return null;
   return { lat, lon, recordedAt: new Date(ms).toISOString() };
 }
 
@@ -1549,6 +1565,7 @@ function cacheTtlMs(date: string): number {
 export async function fetchArmadaDayTracks(
   days: { userId: number; date: string }[],
   signal?: AbortSignal,
+  opts?: { refresh?: boolean },
 ): Promise<Map<string, TimedMapPoint[]>> {
   const unique = new Map<string, { userId: number; date: string }>();
   for (const d of days) {
@@ -1564,7 +1581,7 @@ export async function fetchArmadaDayTracks(
   for (const d of list) {
     const key = `${d.userId}|${d.date}`;
     const hit = armadaDayCache.get(key);
-    if (hit && now - hit.at < cacheTtlMs(d.date)) {
+    if (!opts?.refresh && hit && now - hit.at < cacheTtlMs(d.date)) {
       out.set(key, hit.points);
     } else {
       needFetch.push(d);
@@ -1581,6 +1598,7 @@ export async function fetchArmadaDayTracks(
     },
     body: JSON.stringify({
       days: needFetch.map((d) => ({ userId: d.userId, date: d.date })),
+      tz: "+07:00",
     }),
     signal,
   });
@@ -1598,7 +1616,12 @@ export async function fetchArmadaDayTracks(
       if (tp) timed.push(tp);
     }
     const slim = downsampleTimedTrack(timed, ARMADA_MAP_MAX_POINTS);
-    armadaDayCache.set(key, { at: Date.now(), points: slim });
+    const date = key.includes("|") ? key.slice(key.lastIndexOf("|") + 1) : "";
+    // Do not cache an empty "today" — a parked or late first fetch would hide
+    // the line for the rest of the TTL.
+    if (slim.length || (date && date !== todayServiceDate())) {
+      armadaDayCache.set(key, { at: Date.now(), points: slim });
+    }
     out.set(key, slim);
   };
 

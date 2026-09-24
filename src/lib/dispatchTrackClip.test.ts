@@ -26,6 +26,16 @@ describe("clipTimedTrackToWindow", () => {
     const line = clipTimedTrackToWindow(pts, "2026-09-19T02:00:00.000Z", null, now);
     expect(line).toEqual([[1, 1]]);
   });
+
+  it("falls back to the day trail when the job window matches no samples", () => {
+    const line = clipTimedTrackToWindow(
+      pts,
+      "2026-09-19T12:00:00.000Z",
+      "2026-09-19T13:00:00.000Z",
+    );
+    expect(line).toHaveLength(4);
+    expect(line[0]).toEqual([0, 0]);
+  });
 });
 
 describe("downsampleTimedTrack", () => {
