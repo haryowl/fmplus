@@ -1,7 +1,7 @@
 /**
- * On-duty driver location tracking for the mobile Dispatch PWA.
+ * On-duty driver location tracking for Field Dispatch.
  *
- * What the web platform actually allows, so nobody expects more:
+ * Browser PWA:
  * - `watchPosition` only runs while this page is alive. Once the OS suspends the
  *   tab (screen off on iOS, aggressive backgrounding on Android), fixes stop.
  * - A service worker cannot take a fix — `geolocation` does not exist in
@@ -9,10 +9,17 @@
  * - Screen Wake Lock keeps the display on while the app is foregrounded, which is
  *   the closest thing to continuous tracking a PWA has.
  *
- * The design therefore assumes gaps are normal: every fix is queued in IndexedDB
- * with its own timestamp and flushed opportunistically, and Dispatch Live judges
- * freshness from `recordedAt` rather than trusting that the newest row is now.
+ * ARMADA Field APK:
+ * - A native foreground service takes fixes and POSTs `/api/field/location`
+ *   with the Field session cookie, so sharing continues with the screen off or
+ *   another app in front. Swiping the app away still stops it.
+ *
+ * Every fix is queued with its own timestamp. Dispatch Live judges freshness
+ * from `recordedAt` rather than trusting that the newest row is now.
  */
+
+import { DutyLocation, type NativeDutyStatus } from "./dutyLocationNative";
+import { isNativeFieldApp } from "./nativeField";
 
 const DB_NAME = "dispatch-driver-location";
 const DB_VERSION = 1;
@@ -203,6 +210,14 @@ async function trimQueue() {
 
 /** Send queued fixes. Rows are only deleted once the server has taken them. */
 export async function flushDriverLocationQueue(): Promise<boolean> {
+  if (isNativeFieldApp()) {
+    try {
+      applyNativeSnapshot(await DutyLocation.flush());
+      return true;
+    } catch {
+      return false;
+    }
+  }
   if (flushing) return false;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
   flushing = true;
@@ -363,12 +378,80 @@ function handleWatchError(err: GeolocationPositionError) {
   emit();
 }
 
+let nativeListen: { remove: () => Promise<void> } | null = null;
+let nativePoll: number | null = null;
+
+function applyNativeSnapshot(next: NativeDutyStatus) {
+  status.active = next.active;
+  status.lastFixAt = next.lastFixAt ?? null;
+  status.lastSentAt = next.lastSentAt ?? null;
+  status.queued = next.queued ?? 0;
+  status.error = next.error ?? null;
+  status.wakeLock = false;
+  if (
+    next.permission === "granted" ||
+    next.permission === "denied" ||
+    next.permission === "prompt" ||
+    next.permission === "unknown"
+  ) {
+    status.permission = next.permission;
+  }
+  emit();
+}
+
+async function bindNativeStatus() {
+  if (!nativeListen) {
+    nativeListen = await DutyLocation.addListener("status", applyNativeSnapshot);
+  }
+  if (nativePoll == null) {
+    nativePoll = window.setInterval(() => {
+      void DutyLocation.getStatus().then(applyNativeSnapshot).catch(() => {});
+    }, 10_000);
+  }
+  try {
+    applyNativeSnapshot(await DutyLocation.getStatus());
+  } catch {
+    // Status catch-up is best-effort; the service still runs.
+  }
+}
+
+function unbindNativeStatus() {
+  void nativeListen?.remove();
+  nativeListen = null;
+  if (nativePoll != null) {
+    window.clearInterval(nativePoll);
+    nativePoll = null;
+  }
+}
+
+async function startNativeTracking(): Promise<boolean> {
+  try {
+    const started = await DutyLocation.start({
+      jobId: activeJobId,
+      origin: window.location.origin,
+    });
+    applyNativeSnapshot({ ...started, active: true, permission: started.permission || "granted" });
+    await bindNativeStatus();
+    return true;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Location permission is off";
+    status.active = false;
+    status.error = message;
+    if (/permission/i.test(message)) status.permission = "denied";
+    emit();
+    return false;
+  }
+}
+
 /**
  * Begin sharing position while on duty. Idempotent; call again with a new job id
  * to re-tag subsequent fixes.
  */
 export async function startDutyTracking(jobId?: string | null): Promise<boolean> {
   activeJobId = jobId || null;
+  if (isNativeFieldApp()) {
+    return startNativeTracking();
+  }
   if (status.active) {
     emit();
     return true;
@@ -404,6 +487,20 @@ export async function startDutyTracking(jobId?: string | null): Promise<boolean>
 
 /** Stop sharing position. Queued fixes are flushed one last time. */
 export async function stopDutyTracking(): Promise<void> {
+  if (isNativeFieldApp()) {
+    unbindNativeStatus();
+    try {
+      await DutyLocation.stop();
+    } catch {
+      // Service may already be gone.
+    }
+    status.active = false;
+    activeJobId = null;
+    lastKept = null;
+    status.wakeLock = false;
+    emit();
+    return;
+  }
   if (watchId != null) {
     navigator.geolocation?.clearWatch(watchId);
     watchId = null;

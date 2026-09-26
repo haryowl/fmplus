@@ -6,6 +6,7 @@ import {
   subscribeDriverLocation,
   type DriverLocationStatus,
 } from "../lib/driverLocation";
+import { isNativeFieldApp } from "../lib/nativeField";
 
 export function useDriverLocationStatus(): DriverLocationStatus {
   const [status, setStatus] = useState<DriverLocationStatus>(driverLocationStatus);
@@ -32,9 +33,11 @@ type Props = {
  *
  * The wording matters here: a PWA cannot track with the screen off, so the card
  * says so rather than letting dispatch believe a parked driver is being followed.
+ * The APK can keep sharing with a persistent notification.
  */
 export function DutyLocationCard({ consent, onConsentChange, onDuty }: Props) {
   const status = useDriverLocationStatus();
+  const native = isNativeFieldApp();
 
   return (
     <section className="field-panel duty-location-card">
@@ -92,8 +95,9 @@ export function DutyLocationCard({ consent, onConsentChange, onDuty }: Props) {
 
       {status.permission === "denied" ? (
         <p className="duty-location-warn">
-          Location permission is blocked for this site. Enable it in your browser
-          settings, otherwise Dispatch cannot see where you are.
+          {native
+            ? "Location permission is blocked for this app. Enable Location in Android settings, otherwise Dispatch cannot see where you are."
+            : "Location permission is blocked for this site. Enable it in your browser settings, otherwise Dispatch cannot see where you are."}
         </p>
       ) : null}
 
@@ -103,10 +107,10 @@ export function DutyLocationCard({ consent, onConsentChange, onDuty }: Props) {
 
       {consent && status.active ? (
         <p className="muted duty-location-note">
-          Keep this app open on screen. Phones stop sharing location when the
-          screen is off or the app is closed — your queued positions are sent as
-          soon as you come back.
-          {status.wakeLock ? " Screen is being kept awake." : ""}
+          {native
+            ? "Location stays on when the screen is off or you switch apps. A notification stays up while a job is in progress. Swiping the app away stops sharing."
+            : "Keep this app open on screen. Phones stop sharing location when the screen is off or the app is closed — your queued positions are sent as soon as you come back."}
+          {!native && status.wakeLock ? " Screen is being kept awake." : ""}
         </p>
       ) : null}
     </section>

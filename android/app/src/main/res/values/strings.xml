@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ARMADA Field</string>
+    <string name="title_activity_main">ARMADA Field</string>
+    <string name="package_name">id.armada.field</string>
+    <string name="custom_url_scheme">id.armada.field</string>
+    <string name="duty_location_channel">On-duty location</string>
+    <string name="duty_location_title">Sharing location with Dispatch</string>
+    <string name="duty_location_text">On duty — Dispatch can see your position</string>
+</resources>

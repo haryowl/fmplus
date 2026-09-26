@@ -20,10 +20,14 @@
     "db:down": "docker compose down",
     "db:migrate": "node server/db/migrate.mjs",
     "probe:armada": "node scripts/probe-armada-apis.mjs",
-    "osrm:up": "docker compose --profile osrm up -d osrm"
+    "osrm:up": "docker compose --profile osrm up -d osrm",
+    "apk:sync": "npm run build && npx cap sync android",
+    "apk:debug": "node scripts/apk-debug.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.901.0",
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
     "chart.js": "^4.5.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
@@ -34,6 +38,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^26.4.0",
     "@types/react": "^19.2.18",

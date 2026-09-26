@@ -9,6 +9,7 @@ import {
   stopDutyTracking,
   writeLocationConsent,
 } from "../lib/driverLocation";
+import { isNativeFieldApp } from "../lib/nativeField";
 import { prepareImageDataUrl } from "../lib/imageUpload";
 import {
   DISPATCH_STATUS_LABELS,
@@ -267,8 +268,14 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
     else void stopDutyTracking();
   }, [locationConsent, dutyJobId]);
 
-  // Leaving the driver app must not leave a watch running.
-  useEffect(() => () => void stopDutyTracking(), []);
+  // Leaving the PWA must not leave a watch running. The APK keeps the
+  // foreground service alive when this panel unmounts (Maintenance tab).
+  useEffect(
+    () => () => {
+      if (!isNativeFieldApp()) void stopDutyTracking();
+    },
+    [],
+  );
 
   async function saveCargo(orderId: string) {
     setBusy(true);

@@ -15,3 +15,5 @@ ssl/*.pem
 *.log
 .vscode
 .idea
+*.apk
+*.aab

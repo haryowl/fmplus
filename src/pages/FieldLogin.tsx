@@ -14,6 +14,7 @@ import {
   type ServiceLine,
   type ServicePhoto,
 } from "../lib/maintenance";
+import { stopDutyTracking } from "../lib/driverLocation";
 import { FieldDispatchPanel } from "./FieldDispatchPanel";
 
 type FieldUser = {
@@ -368,6 +369,7 @@ export default function FieldLogin() {
   async function handleLogout() {
     setBusy(true);
     try {
+      await stopDutyTracking();
       await api("/api/field/logout", { method: "POST", body: "{}" });
       setUser(null);
       setJobs([]);
