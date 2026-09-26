@@ -10,12 +10,24 @@ import { fileURLToPath } from "node:url";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const android = path.join(root, "android");
 const isWin = process.platform === "win32";
-const gradlew = isWin ? "gradlew.bat" : "./gradlew";
 
-const child = spawn(gradlew, ["assembleDebug"], {
-  cwd: android,
-  stdio: "inherit",
-  shell: isWin,
+if (!isWin) {
+  try {
+    fs.chmodSync(path.join(android, "gradlew"), 0o755);
+  } catch {
+    // `sh ./gradlew` still works if chmod is blocked.
+  }
+}
+
+// Windows: gradlew.bat. Linux/macOS: run via sh so a missing +x bit (common
+// after a Windows commit) does not fail with spawn EACCES.
+const child = isWin
+  ? spawn("gradlew.bat", ["assembleDebug"], { cwd: android, stdio: "inherit", shell: true })
+  : spawn("sh", ["./gradlew", "assembleDebug"], { cwd: android, stdio: "inherit" });
+
+child.on("error", (err) => {
+  console.error(err.message);
+  process.exit(1);
 });
 
 child.on("exit", (code) => {
