@@ -174,9 +174,10 @@ export function clipTimedTrailToWindow(points, startIso, endIso, nowMs = Date.no
     if (pt) out.push(pt);
   }
   if (out.length >= 1) return out;
-  if (!Number.isFinite(startMs) && !Number.isFinite(endMs)) {
-    return points.map((p) => asMapPoint(p.lat, p.lon)).filter(Boolean);
-  }
+  // Same fallback as the Armada client clip: a missed window (clock skew,
+  // startedAt after the last ping) must not hide a known day trail.
+  const raw = points.map((p) => asMapPoint(p.lat, p.lon)).filter(Boolean);
+  if (raw.length >= 2) return raw;
   return out;
 }
 

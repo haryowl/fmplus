@@ -1033,6 +1033,20 @@ export async function handleFieldRequest(req, res) {
           return true;
         }
 
+        // One-shot stop GPS also feeds the Live phone trail. Duty pings are
+        // the dense line; without this, only S/C dots appear.
+        if (phone) {
+          const check = normalizePing({
+            lat: phone.lat,
+            lon: phone.lon,
+            recordedAt: new Date().toISOString(),
+            jobId: job.id,
+          });
+          if (check.ok) {
+            await insertDriverPings(user.tenantId, user.id, [check.ping]).catch(() => 0);
+          }
+        }
+
         // Skipping pickup also returns/blocks the paired drop.
         if (status === "skipped" && stopRow.role === "pickup" && stopRow.order_id) {
           const mate = await dbQuery(

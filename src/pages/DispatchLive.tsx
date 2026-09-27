@@ -9,6 +9,7 @@ import {
   fetchArmadaDayTracks,
   fetchDispatchLive,
   fetchDispatchSla,
+  fetchPhoneTrailForDate,
   formatServiceDateLabel,
   replanDispatchRemaining,
   shiftServiceDate,
@@ -22,6 +23,7 @@ import {
   type DispatchSlaScorecard,
 } from "../lib/dispatch";
 import { clipTimedTrackToWindow, type TimedMapPoint } from "../lib/dispatchTrackClip";
+import { phoneTrailOrCrumbs } from "../lib/dispatchPhoneTrail";
 import { writeLocationSearch } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 
@@ -180,6 +182,7 @@ export default function DispatchLive() {
   /** Armada day polylines keyed by `${userId}|${date}` — loaded separately from the 20s live poll. */
   const [armadaTracks, setArmadaTracks] = useState<Map<string, TimedMapPoint[]>>(new Map());
   const [armadaTracksLoading, setArmadaTracksLoading] = useState(false);
+  const [phoneTracks, setPhoneTracks] = useState<Map<string, TimedMapPoint[]>>(new Map());
   const [folded, setFolded] = useState<FoldState>(() => loadFoldState());
 
   function toggleFold(id: FoldId) {
@@ -277,7 +280,45 @@ export default function DispatchLive() {
   useEffect(() => {
     setArmadaTracks(new Map());
     setArmadaTracksLoading(false);
+    setPhoneTracks(new Map());
   }, [serviceDate]);
+
+  const phoneTrackJobsKey = useMemo(() => {
+    if (!snapshot?.drivers?.length) return "";
+    return snapshot.drivers
+      .map((d) => d.assignedFieldUserId)
+      .filter((id): id is string => Boolean(id))
+      .sort()
+      .join(",");
+  }, [snapshot?.drivers]);
+
+  useEffect(() => {
+    if (!ready || (tab !== "live" && tab !== "history") || !phoneTrackJobsKey) return;
+    const ids = [...new Set(phoneTrackJobsKey.split(",").filter(Boolean))];
+    if (!ids.length) return;
+    let cancelled = false;
+    const load = () => {
+      Promise.all(
+        ids.map((id) =>
+          fetchPhoneTrailForDate(id, serviceDate).then((points) => [id, points] as const),
+        ),
+      )
+        .then((rows) => {
+          if (cancelled) return;
+          setPhoneTracks(new Map(rows));
+        })
+        .catch(() => {
+          /* keep prior trails if a refetch fails */
+        });
+    };
+    load();
+    const pollToday = serviceDate === todayServiceDate();
+    const timer = pollToday ? window.setInterval(load, 60_000) : 0;
+    return () => {
+      cancelled = true;
+      if (timer) window.clearInterval(timer);
+    };
+  }, [ready, tab, serviceDate, phoneTrackJobsKey]);
 
   useEffect(() => {
     if (!ready || tab !== "live") return;
@@ -322,7 +363,17 @@ export default function DispatchLive() {
     const list = snapshot?.drivers || [];
     const now = Date.now();
     return list.map((d) => {
-      if (d.armadaUserId == null) return d;
+      const timedPhone = d.assignedFieldUserId
+        ? phoneTracks.get(d.assignedFieldUserId) || []
+        : [];
+      const fromFetch = timedPhone.length
+        ? clipTimedTrackToWindow(timedPhone, d.startedAt, d.completedAt, now)
+        : [];
+      const phoneTrail = phoneTrailOrCrumbs(fromFetch.length >= 2 ? fromFetch : d.phoneTrail, d);
+
+      if (d.armadaUserId == null) {
+        return { ...d, phoneTrail };
+      }
       const key = `${d.armadaUserId}|${serviceDate}`;
       const timed = armadaTracks.get(key) || [];
       let track = timed.length
@@ -357,11 +408,10 @@ export default function DispatchLive() {
         }
         if (crumbs.length >= 2) track = crumbs;
       }
-      if (track.length < 2) return d;
-      return { ...d, armadaTrack: track };
+      return { ...d, phoneTrail, armadaTrack: track.length >= 2 ? track : d.armadaTrack };
     });
-  }, [snapshot?.drivers, armadaTracks, serviceDate]);
-  const mapFitKey = `${serviceDate}:${focusJobId || "all"}:${drivers.length}:${armadaTracks.size}`;
+  }, [snapshot?.drivers, armadaTracks, phoneTracks, serviceDate]);
+  const mapFitKey = `${serviceDate}:${focusJobId || "all"}:${drivers.length}:${armadaTracks.size}:${phoneTracks.size}`;
   const exceptions = snapshot?.exceptions || [];
   const exceptionSummary = snapshot?.exceptionSummary;
   const sla = snapshot?.sla;

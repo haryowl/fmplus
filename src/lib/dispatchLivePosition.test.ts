@@ -74,6 +74,16 @@ describe("clipTimedTrailToWindow", () => {
       clipTimedTrailToWindow(pts, "2026-09-19T02:00:00.000Z", "2026-09-19T04:00:00.000Z"),
     ).toEqual([[1, 1]]);
   });
+
+  it("falls back to the day trail when the job window matches no samples", () => {
+    expect(
+      clipTimedTrailToWindow(pts, "2026-09-19T12:00:00.000Z", "2026-09-19T13:00:00.000Z"),
+    ).toEqual([
+      [0, 0],
+      [1, 1],
+      [2, 2],
+    ]);
+  });
 });
 
 describe("computeDwellMinutes", () => {

@@ -52,7 +52,10 @@ final class DutyHttp {
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setRequestProperty("Accept", "application/json");
-        String cookie = CookieManager.getInstance().getCookie(base);
+        try {
+            CookieManager.getInstance().flush();
+        } catch (Exception ignored) {}
+        String cookie = firstCookie(base, url.toString());
         if (cookie != null && !cookie.isEmpty()) {
             conn.setRequestProperty("Cookie", cookie);
         }
@@ -92,5 +95,17 @@ final class DutyHttp {
         ctx.init(null, managers, new SecureRandom());
         conn.setSSLSocketFactory(ctx.getSocketFactory());
         conn.setHostnameVerifier((hostname, session) -> DutyHosts.allowsHost(hostname));
+    }
+
+    private static String firstCookie(String origin, String requestUrl) {
+        CookieManager manager = CookieManager.getInstance();
+        String[] candidates = new String[] { origin, origin + "/", origin + "/m", requestUrl };
+        for (String url : candidates) {
+            try {
+                String cookie = manager.getCookie(url);
+                if (cookie != null && !cookie.isEmpty()) return cookie;
+            } catch (Exception ignored) {}
+        }
+        return null;
     }
 }
