@@ -6355,11 +6355,31 @@ button.dispatch-pin-chip {
   font-size: 0.9rem;
 }
 
+.field-dispatch-cal-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 6px;
+}
+
 .field-dispatch-cal-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #9a4a2e;
+  background: #c49a5a;
+}
+
+.field-dispatch-cal-dot.is-pending {
+  background: #c49a5a;
+}
+
+.field-dispatch-cal-dot.is-progress {
+  background: #0b6b62;
+}
+
+.field-dispatch-cal-dot.is-done {
+  background: #5a7a72;
 }
 
 .field-action-row {

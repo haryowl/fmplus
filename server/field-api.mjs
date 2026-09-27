@@ -674,7 +674,11 @@ export async function handleFieldRequest(req, res) {
         // A multi-day tour is marked on every day it covers, so the driver's month
         // view does not go blank on days 2..N of a job.
         const rows = await dbQuery(
-          `SELECT d::text AS service_date, COUNT(*)::int AS job_count
+          `SELECT d::text AS service_date,
+                  COUNT(*)::int AS job_count,
+                  COUNT(*) FILTER (WHERE j.status = 'assigned')::int AS pending,
+                  COUNT(*) FILTER (WHERE j.status IN ('en_route', 'arrived'))::int AS in_progress,
+                  COUNT(*) FILTER (WHERE j.status = 'done')::int AS completed
            FROM dispatch_jobs j
            CROSS JOIN LATERAL generate_series(
              GREATEST(j.service_date, $3::date),
@@ -710,6 +714,9 @@ export async function handleFieldRequest(req, res) {
           days: rows.rows.map((r) => ({
             date: fieldYmd(r.service_date),
             jobCount: Number(r.job_count) || 0,
+            pending: Number(r.pending) || 0,
+            inProgress: Number(r.in_progress) || 0,
+            completed: Number(r.completed) || 0,
           })),
           summary: {
             pending: Number(summary.pending) || 0,

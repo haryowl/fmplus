@@ -13,6 +13,7 @@ import {
 } from "../lib/driverLocation";
 import { isNativeFieldApp } from "../lib/nativeField";
 import {
+  calendarDayDotTones,
   DISPATCH_STATUS_LABELS,
   dispatchVehicleLabel,
   dropLockedUntilPickup,
@@ -29,6 +30,7 @@ import {
   shiftServiceDate,
   todayServiceDate,
   uploadDispatchStopPhoto,
+  type DispatchCalendarDay,
   type DispatchCalendarSummary,
   type DispatchGoodsItem,
   type DispatchJob,
@@ -114,7 +116,7 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
     const t = todayServiceDate();
     return Number(t.slice(5, 7)) - 1;
   });
-  const [markedDays, setMarkedDays] = useState<Record<string, number>>({});
+  const [markedDays, setMarkedDays] = useState<Record<string, DispatchCalendarDay>>({});
   const [monthSummary, setMonthSummary] = useState<DispatchCalendarSummary>({
     pending: 0,
     inProgress: 0,
@@ -205,8 +207,8 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
     const { from, to } = monthBounds(calYear, calMonth);
     try {
       const { days, summary } = await fieldDispatchCalendar(from, to);
-      const map: Record<string, number> = {};
-      for (const d of days) map[d.date] = d.jobCount;
+      const map: Record<string, DispatchCalendarDay> = {};
+      for (const d of days) if (d.date) map[d.date] = d;
       setMarkedDays(map);
       setMonthSummary(summary);
       onErrorRef.current("");
@@ -558,7 +560,7 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
           </button>
         </div>
         <p className="muted" style={{ margin: "0 0 8px" }}>
-          Days with assigned jobs are marked. Tap a marked day to open jobs.
+          Dots match the chart: pending, in progress, completed. Tap a marked day to open jobs.
         </p>
         <FieldDispatchMonthChart counts={monthSummary} periodLabel={monthLabel} />
         <div className="field-dispatch-cal" role="grid" aria-label="Dispatch calendar">
@@ -572,7 +574,9 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
           <div className="field-dispatch-cal-grid">
             {calCells.map((cell, i) => {
               if (!cell) return <span key={`e-${i}`} className="field-dispatch-cal-empty" />;
-              const count = markedDays[cell.ymd] || 0;
+              const mark = markedDays[cell.ymd];
+              const count = mark?.jobCount || 0;
+              const tones = calendarDayDotTones(mark);
               const isToday = cell.ymd === today;
               return (
                 <button
@@ -583,7 +587,22 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                   onClick={() => openDay(cell.ymd)}
                 >
                   <span className="field-dispatch-cal-num">{cell.day}</span>
-                  {count ? <span className="field-dispatch-cal-dot" aria-label={`${count} jobs`} /> : null}
+                  {tones.length ? (
+                    <span
+                      className="field-dispatch-cal-dots"
+                      aria-label={[
+                        mark?.pending ? `${mark.pending} pending` : "",
+                        mark?.inProgress ? `${mark.inProgress} in progress` : "",
+                        mark?.completed ? `${mark.completed} completed` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(", ")}
+                    >
+                      {tones.map((tone) => (
+                        <span key={tone} className={`field-dispatch-cal-dot is-${tone}`} />
+                      ))}
+                    </span>
+                  ) : null}
                 </button>
               );
             })}

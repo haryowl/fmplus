@@ -22,6 +22,7 @@ import {
   type DispatchReplanSuggestion,
   type DispatchSlaScorecard,
 } from "../lib/dispatch";
+import { livePositionLabel } from "../lib/dispatchLiveLabel";
 import { clipTimedTrackToWindow, type TimedMapPoint } from "../lib/dispatchTrackClip";
 import { phoneTrailOrCrumbs } from "../lib/dispatchPhoneTrail";
 import { writeLocationSearch } from "../lib/routing";
@@ -73,44 +74,6 @@ function formatUpdatedAt(iso: string | undefined): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-}
-
-/** Compact age for a live fix: "12s", "4m", "1h 20m". */
-function formatFixAge(ageSec: number | null | undefined): string {
-  if (ageSec == null || !Number.isFinite(ageSec)) return "";
-  const sec = Math.max(0, Math.round(ageSec));
-  if (sec < 60) return `${sec}s`;
-  const min = Math.round(sec / 60);
-  if (min < 60) return `${min}m`;
-  return `${Math.floor(min / 60)}h ${min % 60}m`;
-}
-
-/**
- * Where this driver's dot is coming from. Dispatchers act differently on a
- * 12-second-old phone fix than on a vehicle tracker with no timestamp, so the
- * source and its age are stated rather than shown as a bare lat/lon.
- */
-function livePositionLabel(driver: DispatchLiveDriver): {
-  text: string;
-  stale: boolean;
-} | null {
-  const pos = driver.livePosition;
-  if (!pos) {
-    if (driver.liveLat == null || driver.liveLon == null) return null;
-    return { text: "Position reported", stale: false };
-  }
-  const parts: string[] = [];
-  if (pos.source === "phone") {
-    const age = formatFixAge(pos.ageSec);
-    parts.push(age ? `Driver phone · ${age} ago` : "Driver phone");
-  } else {
-    parts.push("Vehicle GPS");
-  }
-  if (pos.phoneSeparationKm != null && pos.phoneSeparationKm >= 0.2) {
-    parts.push(`${pos.phoneSeparationKm.toFixed(1)} km from vehicle`);
-  }
-  const stale = pos.source === "phone" && pos.ageSec != null && pos.ageSec > 300;
-  return { text: parts.join(" · "), stale };
 }
 
 function matchSearch(row: DispatchLiveStop, q: string): boolean {

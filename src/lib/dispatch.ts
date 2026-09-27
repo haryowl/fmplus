@@ -1300,22 +1300,44 @@ export type DispatchCalendarSummary = {
   completed: number;
 };
 
+export type DispatchCalendarDay = DispatchCalendarSummary & {
+  date: string;
+  jobCount: number;
+};
+
+export type CalendarDotTone = "pending" | "progress" | "done";
+
+/** Which status dots to draw on a calendar day. Order matches the month chart. */
+export function calendarDayDotTones(day: Partial<DispatchCalendarSummary> | null | undefined): CalendarDotTone[] {
+  const tones: CalendarDotTone[] = [];
+  if ((Number(day?.pending) || 0) > 0) tones.push("pending");
+  if ((Number(day?.inProgress) || 0) > 0) tones.push("progress");
+  if ((Number(day?.completed) || 0) > 0) tones.push("done");
+  return tones;
+}
+
 export async function fieldDispatchCalendar(
   from: string,
   to: string,
-): Promise<{ days: { date: string; jobCount: number }[]; summary: DispatchCalendarSummary }> {
+): Promise<{ days: DispatchCalendarDay[]; summary: DispatchCalendarSummary }> {
   const res = await fetch(
     `/api/field/dispatch/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
     { credentials: "include", headers: { accept: "application/json" } },
   );
   const data = (await res.json().catch(() => ({}))) as {
-    days?: { date: string; jobCount: number }[];
+    days?: Array<Partial<DispatchCalendarDay>>;
     summary?: DispatchCalendarSummary;
     error?: string;
   };
   if (!res.ok) throw new Error(data.error || `Calendar ${res.status}`);
   return {
-    days: data.days || [],
+    days: (data.days || []).map((d) => ({
+      date: String(d.date || ""),
+      jobCount: Number(d.jobCount) || 0,
+      pending: Number(d.pending) || 0,
+      inProgress: Number(d.inProgress) || 0,
+      completed: Number(d.completed) || 0,
+    })),
     summary: {
       pending: Number(data.summary?.pending) || 0,
       inProgress: Number(data.summary?.inProgress) || 0,
