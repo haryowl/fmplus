@@ -14,7 +14,8 @@ import {
   type ServiceLine,
   type ServicePhoto,
 } from "../lib/maintenance";
-import { stopDutyTracking } from "../lib/driverLocation";
+import { applyDutyLocationPolicy, stopDutyTracking } from "../lib/driverLocation";
+import type { DutyLocationPolicy } from "../lib/dutyLocationPolicy";
 import { FieldDispatchPanel } from "./FieldDispatchPanel";
 
 type FieldUser = {
@@ -136,6 +137,7 @@ export default function FieldLogin() {
         user: FieldUser;
         mobileMaintenance?: boolean;
         mobileDispatch?: boolean;
+        dutyLocation?: DutyLocationPolicy;
       }>("/api/field/me");
       if (me.user.role === "manager") {
         setUser(null);
@@ -147,6 +149,7 @@ export default function FieldLogin() {
       setUser(me.user);
       setMobileMaintenance(Boolean(me.mobileMaintenance));
       setMobileDispatch(Boolean(me.mobileDispatch));
+      applyDutyLocationPolicy(me.dutyLocation);
       return true;
     } catch {
       setUser(null);
@@ -345,6 +348,7 @@ export default function FieldLogin() {
         user: FieldUser;
         mobileMaintenance?: boolean;
         mobileDispatch?: boolean;
+        dutyLocation?: DutyLocationPolicy;
       }>("/api/field/login", {
         method: "POST",
         body: JSON.stringify({ tenantKey: tenantKey.trim(), username, password }),
@@ -359,6 +363,7 @@ export default function FieldLogin() {
       setUser(data.user);
       setMobileMaintenance(Boolean(data.mobileMaintenance));
       setMobileDispatch(Boolean(data.mobileDispatch));
+      applyDutyLocationPolicy(data.dutyLocation);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

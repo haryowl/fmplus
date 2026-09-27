@@ -35,6 +35,7 @@ import {
   normalizePing,
   PING_MAX_BODY_BYTES,
 } from "./driver-pings.mjs";
+import { dutyLocationFromTenantRow } from "./duty-location-policy.mjs";
 import {
   applyCargoTotals,
   decorateJobsWithLines,
@@ -132,12 +133,17 @@ async function tenantMobileDispatchEnabled(tenantId) {
 }
 
 async function mobileFlagsForTenant(tenantId) {
-  const row = await dbQuery(`SELECT entitlements FROM tenants WHERE id = $1`, [tenantId]);
+  const row = await dbQuery(
+    `SELECT entitlements, duty_ping_interval_sec, duty_ping_quiet_sec, duty_ping_min_move_m
+     FROM tenants WHERE id = $1`,
+    [tenantId],
+  );
   const ent = mergeEntitlements(row.rows[0]?.entitlements);
   return {
     mobileMaintenance: ent.mobile?.maintenance === true,
     managerMaintenance: ent.mobile?.managerMaintenance === true,
     mobileDispatch: ent.mobile?.dispatch === true,
+    dutyLocation: dutyLocationFromTenantRow(row.rows[0] || {}),
   };
 }
 
@@ -395,6 +401,7 @@ export async function handleFieldRequest(req, res) {
           mobileMaintenance: flags.mobileMaintenance,
           managerMaintenance: flags.managerMaintenance,
           mobileDispatch: flags.mobileDispatch,
+          dutyLocation: flags.dutyLocation,
         },
         { "Set-Cookie": fieldSessionCookieHeader(session.token, maxAge) },
       );
@@ -420,6 +427,7 @@ export async function handleFieldRequest(req, res) {
         mobileMaintenance: flags.mobileMaintenance,
         managerMaintenance: flags.managerMaintenance,
         mobileDispatch: flags.mobileDispatch,
+        dutyLocation: flags.dutyLocation,
       });
       return true;
     }

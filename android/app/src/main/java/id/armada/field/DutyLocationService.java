@@ -36,12 +36,12 @@ public class DutyLocationService extends Service implements LocationListener {
     static final String ACTION_FLUSH = "id.armada.field.duty.FLUSH";
     static final String EXTRA_JOB_ID = "jobId";
     static final String EXTRA_ORIGIN = "origin";
+    static final String EXTRA_INTERVAL_MS = "intervalMs";
+    static final String EXTRA_QUIET_MS = "quietMs";
+    static final String EXTRA_MIN_MOVE_M = "minMoveM";
 
     private static final String CHANNEL_ID = "duty_location";
     private static final int NOTIF_ID = 4103;
-    private static final float MIN_MOVE_M = 25f;
-    private static final long MAX_QUIET_MS = 60_000L;
-    private static final long MIN_INTERVAL_MS = 15_000L;
     private static final float MAX_ACCURACY_M = 2000f;
 
     private static final Object LOCK = new Object();
@@ -69,11 +69,21 @@ public class DutyLocationService extends Service implements LocationListener {
         }
     }
 
-    static void start(Context context, String origin, String jobId) {
+    static void start(
+        Context context,
+        String origin,
+        String jobId,
+        long intervalMs,
+        long quietMs,
+        float minMoveM
+    ) {
         Intent intent = new Intent(context, DutyLocationService.class);
         intent.setAction(ACTION_START);
         intent.putExtra(EXTRA_ORIGIN, origin);
         intent.putExtra(EXTRA_JOB_ID, jobId);
+        intent.putExtra(EXTRA_INTERVAL_MS, intervalMs);
+        intent.putExtra(EXTRA_QUIET_MS, quietMs);
+        intent.putExtra(EXTRA_MIN_MOVE_M, minMoveM);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent);
         } else {
@@ -103,6 +113,9 @@ public class DutyLocationService extends Service implements LocationListener {
     private String jobId;
     private Location lastKept;
     private boolean listening;
+    private long minIntervalMs = 15_000L;
+    private long maxQuietMs = 60_000L;
+    private float minMoveM = 25f;
 
     @Override
     public void onCreate() {
@@ -136,6 +149,15 @@ public class DutyLocationService extends Service implements LocationListener {
             }
             if (intent.hasExtra(EXTRA_JOB_ID)) {
                 jobId = intent.getStringExtra(EXTRA_JOB_ID);
+            }
+            if (intent.hasExtra(EXTRA_INTERVAL_MS)) {
+                minIntervalMs = Math.max(5_000L, intent.getLongExtra(EXTRA_INTERVAL_MS, minIntervalMs));
+            }
+            if (intent.hasExtra(EXTRA_QUIET_MS)) {
+                maxQuietMs = Math.max(minIntervalMs, intent.getLongExtra(EXTRA_QUIET_MS, maxQuietMs));
+            }
+            if (intent.hasExtra(EXTRA_MIN_MOVE_M)) {
+                minMoveM = Math.max(5f, intent.getFloatExtra(EXTRA_MIN_MOVE_M, minMoveM));
             }
         }
         if (origin == null || origin.isEmpty()) {
@@ -205,9 +227,9 @@ public class DutyLocationService extends Service implements LocationListener {
         if (lastKept == null) return true;
         long elapsed = next.getTime() - lastKept.getTime();
         if (elapsed < 0) elapsed = System.currentTimeMillis() - lastKept.getTime();
-        if (elapsed >= MAX_QUIET_MS) return true;
-        if (elapsed < MIN_INTERVAL_MS) return false;
-        return next.distanceTo(lastKept) >= MIN_MOVE_M;
+        if (elapsed >= maxQuietMs) return true;
+        if (elapsed < minIntervalMs) return false;
+        return next.distanceTo(lastKept) >= minMoveM;
     }
 
     private void flushQueue() {
@@ -261,10 +283,10 @@ public class DutyLocationService extends Service implements LocationListener {
         if (listening || locationManager == null) return;
         try {
             if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, MIN_INTERVAL_MS, 0f, this, Looper.getMainLooper());
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, minIntervalMs, 0f, this, Looper.getMainLooper());
             }
             if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, MIN_INTERVAL_MS, 0f, this, Looper.getMainLooper());
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, minIntervalMs, 0f, this, Looper.getMainLooper());
             }
             listening = true;
             watchNetwork();

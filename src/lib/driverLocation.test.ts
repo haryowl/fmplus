@@ -56,6 +56,13 @@ describe("shouldRecordFix", () => {
       shouldRecordFix({ lat: -6.20001, lon: 106.8, accuracyM: 10, at: T0 + 120_000 }, last),
     ).toBe(true);
   });
+
+  it("honours a faster tenant interval", () => {
+    const rules = { intervalSec: 5, quietSec: 20, minMoveM: 25 };
+    expect(
+      shouldRecordFix({ lat: -6.201, lon: 106.8, accuracyM: 10, at: T0 + 6_000 }, last, rules),
+    ).toBe(true);
+  });
 });
 
 describe("formatAge", () => {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  dutyLocationPolicy,
   driverLocationStatus,
   flushDriverLocationQueue,
   formatAge,
@@ -38,6 +39,7 @@ type Props = {
 export function DutyLocationCard({ consent, onConsentChange, onDuty }: Props) {
   const status = useDriverLocationStatus();
   const native = isNativeFieldApp();
+  const cadence = dutyLocationPolicy();
 
   return (
     <section className="field-panel duty-location-card">
@@ -108,7 +110,7 @@ export function DutyLocationCard({ consent, onConsentChange, onDuty }: Props) {
       {consent && status.active ? (
         <p className="muted duty-location-note">
           {native
-            ? "Location stays on when the screen is off or you switch apps. A notification stays up while a job is in progress. Swiping the app away stops sharing."
+            ? `Sends a point about every ${cadence.intervalSec} seconds while moving (or every ${cadence.quietSec}s if parked). A notification stays up when the screen is off. Swiping the app away stops sharing.`
             : "Keep this app open on screen. Phones stop sharing location when the screen is off or the app is closed — your queued positions are sent as soon as you come back."}
           {!native && status.wakeLock ? " Screen is being kept awake." : ""}
         </p>

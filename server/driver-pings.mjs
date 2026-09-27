@@ -21,7 +21,7 @@ const MAX_ACCURACY_M = 2000;
 const RETENTION_DAYS = 14;
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX_REQUESTS = 10;
+const RATE_LIMIT_MAX_REQUESTS = 30;
 
 /** @type {Map<string, number[]>} fieldUserId -> recent request timestamps */
 const rateBuckets = new Map();

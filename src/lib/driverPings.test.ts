@@ -102,26 +102,26 @@ describe("normalizePing", () => {
 describe("checkPingRateLimit", () => {
   it("allows a normal flush cadence and then throttles a flood", () => {
     const user = `user-${Math.random()}`;
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 30; i++) {
       expect(checkPingRateLimit(user, NOW + i).ok).toBe(true);
     }
-    const blocked = checkPingRateLimit(user, NOW + 11);
+    const blocked = checkPingRateLimit(user, NOW + 31);
     expect(blocked.ok).toBe(false);
     expect(blocked.retryAfterSec).toBeGreaterThan(0);
   });
 
   it("recovers once the window slides", () => {
     const user = `user-${Math.random()}`;
-    for (let i = 0; i < 10; i++) checkPingRateLimit(user, NOW + i);
+    for (let i = 0; i < 30; i++) checkPingRateLimit(user, NOW + i);
     expect(checkPingRateLimit(user, NOW + 61_000).ok).toBe(true);
   });
 
   it("tracks drivers independently", () => {
     const a = `a-${Math.random()}`;
     const b = `b-${Math.random()}`;
-    for (let i = 0; i < 10; i++) checkPingRateLimit(a, NOW + i);
-    expect(checkPingRateLimit(a, NOW + 11).ok).toBe(false);
-    expect(checkPingRateLimit(b, NOW + 11).ok).toBe(true);
+    for (let i = 0; i < 30; i++) checkPingRateLimit(a, NOW + i);
+    expect(checkPingRateLimit(a, NOW + 31).ok).toBe(false);
+    expect(checkPingRateLimit(b, NOW + 31).ok).toBe(true);
   });
 });
 

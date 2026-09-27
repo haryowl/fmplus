@@ -16,6 +16,7 @@ import {
 } from "./admin-auth.mjs";
 import { encryptSecret, hashWebhookSecret, secretsKeyConfigured } from "./crypto-secrets.mjs";
 import { defaultEntitlements, mergeEntitlements } from "./entitlements.mjs";
+import { dutyLocationFromTenantRow, normalizeDutyLocationPolicy } from "./duty-location-policy.mjs";
 import {
   FIELD_ROLES,
   hashPassword,
@@ -100,6 +101,7 @@ function publicTenantRow(row) {
     updatedAt: row.updated_at,
     notifierUrlTemplate: `${base}/api/armada/notify?k=${k}&secret=<webhook-secret>&kind=exception`,
     notifierUrlMaintenance: `${base}/api/armada/notify?k=${k}&secret=<webhook-secret>&kind=maintenance`,
+    dutyLocation: dutyLocationFromTenantRow(row),
   };
 }
 
@@ -216,6 +218,7 @@ export async function handleAdminRequest(req, res) {
                 webhook_secret_hash, token_ciphertext,
                 notify_emails, notify_whatsapp, wablas_base_url,
                 wablas_token_ciphertext, wablas_secret_ciphertext,
+                duty_ping_interval_sec, duty_ping_quiet_sec, duty_ping_min_move_m,
                 created_at, updated_at
          FROM tenants
          ORDER BY created_at DESC`,
@@ -465,6 +468,7 @@ export async function handleAdminRequest(req, res) {
                   webhook_secret_hash, token_ciphertext,
                   notify_emails, notify_whatsapp, wablas_base_url,
                   wablas_token_ciphertext, wablas_secret_ciphertext,
+                  duty_ping_interval_sec, duty_ping_quiet_sec, duty_ping_min_move_m,
                   created_at, updated_at
            FROM tenants WHERE id = $1`,
           [id],
@@ -547,6 +551,15 @@ export async function handleAdminRequest(req, res) {
         if (body.wablasSecret !== undefined && String(body.wablasSecret).trim()) {
           wablasSecretCipher = encryptSecret(String(body.wablasSecret).trim());
         }
+        const dutyLocation = normalizeDutyLocationPolicy(
+          body.dutyLocation !== undefined
+            ? body.dutyLocation
+            : {
+                intervalSec: current.duty_ping_interval_sec,
+                quietSec: current.duty_ping_quiet_sec,
+                minMoveM: current.duty_ping_min_move_m,
+              },
+        );
 
         const updated = await dbQuery(
           `UPDATE tenants SET
@@ -564,12 +577,16 @@ export async function handleAdminRequest(req, res) {
              wablas_base_url = $13,
              wablas_token_ciphertext = $14,
              wablas_secret_ciphertext = $15,
+             duty_ping_interval_sec = $16,
+             duty_ping_quiet_sec = $17,
+             duty_ping_min_move_m = $18,
              updated_at = now()
            WHERE id = $1
            RETURNING id, key, app_id, display_name, enabled, user_ids, group_ids, entitlements,
                      webhook_secret_hash, token_ciphertext,
                      notify_emails, notify_whatsapp, wablas_base_url,
                      wablas_token_ciphertext, wablas_secret_ciphertext,
+                     duty_ping_interval_sec, duty_ping_quiet_sec, duty_ping_min_move_m,
                      created_at, updated_at`,
           [
             id,
@@ -587,6 +604,9 @@ export async function handleAdminRequest(req, res) {
             wablasBaseUrl,
             wablasTokenCipher,
             wablasSecretCipher,
+            dutyLocation.intervalSec,
+            dutyLocation.quietSec,
+            dutyLocation.minMoveM,
           ],
         );
         await writeAudit(admin.id, "tenant.update", {

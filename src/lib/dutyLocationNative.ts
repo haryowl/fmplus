@@ -10,10 +10,17 @@ export type NativeDutyStatus = {
 };
 
 export interface DutyLocationPlugin {
-  start(options: { jobId?: string | null; origin: string }): Promise<NativeDutyStatus>;
+  start(options: {
+    jobId?: string | null;
+    origin: string;
+    intervalSec?: number;
+    quietSec?: number;
+    minMoveM?: number;
+  }): Promise<NativeDutyStatus>;
   stop(): Promise<void>;
   flush(): Promise<NativeDutyStatus>;
   getStatus(): Promise<NativeDutyStatus>;
+  ensurePermission(): Promise<{ permission: string }>;
   addListener(
     eventName: "status",
     listenerFunc: (status: NativeDutyStatus) => void,

@@ -5,6 +5,7 @@ import { FieldDispatchMonthChart } from "../components/FieldDispatchMonthChart";
 import {
   readLocationConsent,
   registerDriverServiceWorker,
+  prepareNativeLocation,
   startDutyTracking,
   stopDutyTracking,
   writeLocationConsent,
@@ -254,13 +255,17 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
 
   // A job the driver has actually started is what puts them "on duty".
   const dutyJob = useMemo(
-    () => jobs.find((j) => j.status === "en_route" || j.status === "arrived") || null,
+    () =>
+      jobs.find((j) => j.status === "en_route" || j.status === "arrived") ||
+      jobs.find((j) => j.status === "assigned") ||
+      null,
     [jobs],
   );
   const dutyJobId = dutyJob?.id || null;
 
   useEffect(() => {
     if (locationConsent) void registerDriverServiceWorker();
+    if (locationConsent) void prepareNativeLocation();
   }, [locationConsent]);
 
   useEffect(() => {
@@ -904,6 +909,7 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
             onConsentChange={(on) => {
               writeLocationConsent(on);
               setLocationConsent(on);
+              if (on) void prepareNativeLocation();
             }}
             onDuty={dutyJobId === selected.id}
           />
@@ -1153,6 +1159,7 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
         onConsentChange={(on) => {
           writeLocationConsent(on);
           setLocationConsent(on);
+          if (on) void prepareNativeLocation();
         }}
         onDuty={Boolean(dutyJobId)}
       />

@@ -23,6 +23,7 @@ type AdminTenant = {
   wablasBaseUrl?: string;
   hasWablasToken?: boolean;
   hasWablasSecret?: boolean;
+  dutyLocation?: { intervalSec: number; quietSec: number; minMoveM: number };
   notifierUrlTemplate: string;
   notifierUrlMaintenance?: string;
   updatedAt?: string;
@@ -53,6 +54,9 @@ type Draft = {
   wablasSecret: string;
   enabled: boolean;
   entitlements: Entitlements;
+  dutyIntervalSec: string;
+  dutyQuietSec: string;
+  dutyMinMoveM: string;
 };
 
 const FIELD_ROLE_OPTIONS = [
@@ -78,6 +82,9 @@ function emptyDraft(): Draft {
     wablasSecret: "",
     enabled: true,
     entitlements: defaultEntitlements(),
+    dutyIntervalSec: "15",
+    dutyQuietSec: "60",
+    dutyMinMoveM: "25",
   };
 }
 
@@ -97,6 +104,9 @@ function draftFromTenant(t: AdminTenant): Draft {
     wablasSecret: "",
     enabled: t.enabled,
     entitlements: t.entitlements,
+    dutyIntervalSec: String(t.dutyLocation?.intervalSec ?? 15),
+    dutyQuietSec: String(t.dutyLocation?.quietSec ?? 60),
+    dutyMinMoveM: String(t.dutyLocation?.minMoveM ?? 25),
   };
 }
 
@@ -309,6 +319,11 @@ export default function AdminConsole() {
         ...(draft.webhookSecret.trim() ? { webhookSecret: draft.webhookSecret.trim() } : {}),
         ...(draft.wablasToken.trim() ? { wablasToken: draft.wablasToken.trim() } : {}),
         ...(draft.wablasSecret.trim() ? { wablasSecret: draft.wablasSecret.trim() } : {}),
+        dutyLocation: {
+          intervalSec: Number(draft.dutyIntervalSec),
+          quietSec: Number(draft.dutyQuietSec),
+          minMoveM: Number(draft.dutyMinMoveM),
+        },
       };
       if (selectedId === "new") {
         if (!payload.token) throw new Error("Armada token is required for new tenants");
@@ -724,6 +739,45 @@ export default function AdminConsole() {
                       onChange={(e) => setDraft({ ...draft, wablasSecret: e.target.value })}
                       autoComplete="off"
                       placeholder={selected?.hasWablasSecret ? "•••••••• (set)" : ""}
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <section className="admin-panel">
+                <header className="admin-panel-head">
+                  <h3>Field GPS</h3>
+                  <p className="muted">How often the driver phone records a point. Defaults 15s moving, 60s parked, 25 m.</p>
+                </header>
+                <div className="admin-grid">
+                  <label>
+                    Moving interval (seconds)
+                    <input
+                      type="number"
+                      min={5}
+                      max={120}
+                      value={draft.dutyIntervalSec}
+                      onChange={(e) => setDraft({ ...draft, dutyIntervalSec: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Parked heartbeat (seconds)
+                    <input
+                      type="number"
+                      min={5}
+                      max={600}
+                      value={draft.dutyQuietSec}
+                      onChange={(e) => setDraft({ ...draft, dutyQuietSec: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Minimum move (metres)
+                    <input
+                      type="number"
+                      min={5}
+                      max={200}
+                      value={draft.dutyMinMoveM}
+                      onChange={(e) => setDraft({ ...draft, dutyMinMoveM: e.target.value })}
                     />
                   </label>
                 </div>

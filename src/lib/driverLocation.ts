@@ -19,6 +19,11 @@
  */
 
 import { DutyLocation, type NativeDutyStatus } from "./dutyLocationNative";
+import {
+  DEFAULT_DUTY_LOCATION_POLICY,
+  normalizeDutyLocationPolicy,
+  type DutyLocationPolicy,
+} from "./dutyLocationPolicy";
 import { isNativeFieldApp } from "./nativeField";
 
 const DB_NAME = "dispatch-driver-location";
@@ -26,13 +31,17 @@ const DB_VERSION = 1;
 const STORE = "pings";
 const SYNC_TAG = "dispatch-ping-flush";
 
-/** Emit a fix once the driver has moved this far, regardless of the timer. */
-const MIN_MOVE_M = 25;
-/** Emit at least this often even when parked, so Live can tell idle from dead. */
-const MAX_QUIET_MS = 60_000;
-/** Fastest we will record while moving. */
-const MIN_INTERVAL_MS = 15_000;
 const FLUSH_INTERVAL_MS = 30_000;
+let policy: DutyLocationPolicy = { ...DEFAULT_DUTY_LOCATION_POLICY };
+
+export function dutyLocationPolicy(): DutyLocationPolicy {
+  return { ...policy };
+}
+
+export function applyDutyLocationPolicy(raw?: Partial<DutyLocationPolicy> | null): DutyLocationPolicy {
+  policy = normalizeDutyLocationPolicy(raw);
+  return dutyLocationPolicy();
+}
 const MAX_BATCH = 50;
 /** Above this the fix says little about which street the driver is on. */
 const MAX_ACCURACY_M = 2000;
@@ -137,13 +146,14 @@ export function metresBetween(
 export function shouldRecordFix(
   next: { lat: number; lon: number; accuracyM: number | null; at: number },
   last: { lat: number; lon: number; at: number } | null,
+  rules: DutyLocationPolicy = policy,
 ): boolean {
   if (next.accuracyM != null && next.accuracyM > MAX_ACCURACY_M) return false;
   if (!last) return true;
   const elapsed = next.at - last.at;
-  if (elapsed >= MAX_QUIET_MS) return true;
-  if (elapsed < MIN_INTERVAL_MS) return false;
-  return metresBetween(last.lat, last.lon, next.lat, next.lon) >= MIN_MOVE_M;
+  if (elapsed >= rules.quietSec * 1000) return true;
+  if (elapsed < rules.intervalSec * 1000) return false;
+  return metresBetween(last.lat, last.lon, next.lat, next.lon) >= rules.minMoveM;
 }
 
 const status: DriverLocationStatus = {
@@ -213,9 +223,8 @@ export async function flushDriverLocationQueue(): Promise<boolean> {
   if (isNativeFieldApp()) {
     try {
       applyNativeSnapshot(await DutyLocation.flush());
-      return true;
     } catch {
-      return false;
+      // Still flush the WebView queue — that POST has the session cookie.
     }
   }
   if (flushing) return false;
@@ -429,30 +438,40 @@ async function startNativeTracking(): Promise<boolean> {
     const started = await DutyLocation.start({
       jobId: activeJobId,
       origin: window.location.origin,
+      intervalSec: policy.intervalSec,
+      quietSec: policy.quietSec,
+      minMoveM: policy.minMoveM,
     });
     applyNativeSnapshot({ ...started, active: true, permission: started.permission || "granted" });
     await bindNativeStatus();
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Location permission is off";
-    status.active = false;
-    status.error = message;
     if (/permission/i.test(message)) status.permission = "denied";
+    status.error = message;
     emit();
     return false;
   }
 }
 
-/**
- * Begin sharing position while on duty. Idempotent; call again with a new job id
- * to re-tag subsequent fixes.
- */
-export async function startDutyTracking(jobId?: string | null): Promise<boolean> {
-  activeJobId = jobId || null;
-  if (isNativeFieldApp()) {
-    return startNativeTracking();
+/** Ask for Android location (and notification) as soon as the driver opts in. */
+export async function prepareNativeLocation(): Promise<void> {
+  if (!isNativeFieldApp()) return;
+  try {
+    const next = await DutyLocation.ensurePermission();
+    if (next.permission === "granted") status.permission = "granted";
+    emit();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Location permission is off";
+    if (/permission/i.test(message)) status.permission = "denied";
+    status.error = message;
+    emit();
   }
-  if (status.active) {
+}
+
+async function startWebWatch(): Promise<boolean> {
+  if (watchId != null) {
+    status.active = true;
     emit();
     return true;
   }
@@ -485,6 +504,22 @@ export async function startDutyTracking(jobId?: string | null): Promise<boolean>
   return true;
 }
 
+/**
+ * Begin sharing position while on duty. Idempotent; call again with a new job id
+ * to re-tag subsequent fixes.
+ *
+ * The APK also starts a native foreground service for screen-off. Interval
+ * pings still go through the WebView (`watchPosition` + cookie POST) because
+ * that path already works for stop complete. Native failure must not stop it.
+ */
+export async function startDutyTracking(jobId?: string | null): Promise<boolean> {
+  activeJobId = jobId || null;
+  if (isNativeFieldApp()) {
+    await startNativeTracking();
+  }
+  return startWebWatch();
+}
+
 /** Stop sharing position. Queued fixes are flushed one last time. */
 export async function stopDutyTracking(): Promise<void> {
   if (isNativeFieldApp()) {
@@ -494,12 +529,6 @@ export async function stopDutyTracking(): Promise<void> {
     } catch {
       // Service may already be gone.
     }
-    status.active = false;
-    activeJobId = null;
-    lastKept = null;
-    status.wakeLock = false;
-    emit();
-    return;
   }
   if (watchId != null) {
     navigator.geolocation?.clearWatch(watchId);
