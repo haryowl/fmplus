@@ -39,6 +39,26 @@ type FieldUserRow = {
   enabled: boolean;
 };
 
+type FieldUserEdit = {
+  username: string;
+  displayName: string;
+  role: string;
+  phone: string;
+  email: string;
+  password: string;
+};
+
+function editFromRow(u: FieldUserRow): FieldUserEdit {
+  return {
+    username: u.username,
+    displayName: u.displayName || "",
+    role: u.role,
+    phone: u.phone || "",
+    email: u.email || "",
+    password: "",
+  };
+}
+
 type Draft = {
   key: string;
   appId: string;
@@ -194,7 +214,7 @@ export default function AdminConsole() {
   const [fuDisplayName, setFuDisplayName] = useState("");
   const [fuPhone, setFuPhone] = useState("");
   const [fuEmail, setFuEmail] = useState("");
-  const [fuResetPass, setFuResetPass] = useState<Record<string, string>>({});
+  const [fuEdits, setFuEdits] = useState<Record<string, FieldUserEdit>>({});
 
   const refreshMe = useCallback(async () => {
     try {
@@ -215,6 +235,7 @@ export default function AdminConsole() {
   const loadFieldUsers = useCallback(async (tenantId: string) => {
     const data = await api<{ users: FieldUserRow[] }>(`/api/admin/tenants/${tenantId}/field-users`);
     setFieldUsers(data.users);
+    setFuEdits(Object.fromEntries(data.users.map((u) => [u.id, editFromRow(u)])));
   }, []);
 
   useEffect(() => {
@@ -227,6 +248,7 @@ export default function AdminConsole() {
   useEffect(() => {
     if (!selectedId || selectedId === "new") {
       setFieldUsers([]);
+      setFuEdits({});
       return;
     }
     void loadFieldUsers(selectedId).catch((err: Error) => setError(err.message));
@@ -400,6 +422,32 @@ export default function AdminConsole() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function updateFieldUserEdit(userId: string, patch: Partial<FieldUserEdit>) {
+    setFuEdits((prev) => {
+      const row = fieldUsers.find((u) => u.id === userId);
+      const current =
+        prev[userId] ||
+        (row
+          ? editFromRow(row)
+          : { username: "", displayName: "", role: "operator", phone: "", email: "", password: "" });
+      return { ...prev, [userId]: { ...current, ...patch } };
+    });
+  }
+
+  async function saveFieldUser(userId: string) {
+    const edit = fuEdits[userId];
+    if (!edit) return;
+    const body: Record<string, unknown> = {
+      username: edit.username.trim(),
+      displayName: edit.displayName.trim(),
+      role: edit.role,
+      phone: edit.phone.trim(),
+      email: edit.email.trim(),
+    };
+    if (edit.password.trim()) body.password = edit.password;
+    await patchFieldUser(userId, body);
   }
 
   async function patchFieldUser(userId: string, body: Record<string, unknown>) {
@@ -900,7 +948,8 @@ export default function AdminConsole() {
                   <header className="admin-panel-head">
                     <h3>Field users</h3>
                     <p className="muted">
-                      Sign-in at <code>/m</code> or <code>/dispatch</code> — scoped to this tenant
+                      Sign-in at <code>/m</code> or <code>/dispatch</code> — scoped to this tenant.
+                      Existing users stay editable; change any field and Save.
                     </p>
                   </header>
                   <form className="admin-form-grid" onSubmit={(e) => void createFieldUser(e)}>
@@ -958,73 +1007,109 @@ export default function AdminConsole() {
                   </form>
 
                   <ul className="admin-field-list">
-                    {fieldUsers.map((u) => (
-                      <li key={u.id}>
-                        <div className="admin-field-identity">
-                          <strong>{u.username}</strong>
-                          <div className="admin-field-tags">
-                            <span className="admin-pill is-muted">{u.role}</span>
-                            {!u.enabled ? <span className="admin-pill is-off">disabled</span> : null}
-                          </div>
-                          <span className="muted">
-                            {[u.displayName, u.phone, u.email].filter(Boolean).join(" · ") || "No contact set"}
-                          </span>
-                        </div>
-                        <div className="admin-field-row-actions">
-                          <select
-                            value={u.role}
-                            disabled={busy}
-                            onChange={(e) => void patchFieldUser(u.id, { role: e.target.value })}
-                          >
-                            {FIELD_ROLE_OPTIONS.map((o) => (
-                              <option key={o.value} value={o.value}>
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="password"
-                            placeholder="New password"
-                            value={fuResetPass[u.id] || ""}
-                            onChange={(e) => setFuResetPass({ ...fuResetPass, [u.id]: e.target.value })}
-                            autoComplete="new-password"
-                          />
-                          <button
-                            type="button"
-                            className="btn-ghost"
-                            disabled={busy || !(fuResetPass[u.id] || "").trim()}
-                            onClick={() => {
-                              const password = (fuResetPass[u.id] || "").trim();
-                              void patchFieldUser(u.id, { password }).then(() =>
-                                setFuResetPass((prev) => {
-                                  const next = { ...prev };
-                                  delete next[u.id];
-                                  return next;
-                                }),
-                              );
+                    {fieldUsers.map((u) => {
+                      const edit = fuEdits[u.id] || editFromRow(u);
+                      return (
+                        <li key={u.id}>
+                          <form
+                            className="admin-form-grid"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              void saveFieldUser(u.id);
                             }}
                           >
-                            Reset pw
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-ghost"
-                            disabled={busy}
-                            onClick={() => void patchFieldUser(u.id, { enabled: !u.enabled })}
-                          >
-                            {u.enabled ? "Disable" : "Enable"}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-ghost"
-                            disabled={busy}
-                            onClick={() => void deleteFieldUser(u.id, u.username)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </li>
-                    ))}
+                            <label>
+                              Username
+                              <input
+                                value={edit.username}
+                                onChange={(e) => updateFieldUserEdit(u.id, { username: e.target.value })}
+                                required
+                                disabled={busy}
+                              />
+                            </label>
+                            <label>
+                              New password
+                              <input
+                                type="password"
+                                value={edit.password}
+                                onChange={(e) => updateFieldUserEdit(u.id, { password: e.target.value })}
+                                placeholder="Leave blank to keep"
+                                minLength={6}
+                                autoComplete="new-password"
+                                disabled={busy}
+                              />
+                            </label>
+                            <label>
+                              Display name
+                              <input
+                                value={edit.displayName}
+                                onChange={(e) => updateFieldUserEdit(u.id, { displayName: e.target.value })}
+                                disabled={busy}
+                              />
+                            </label>
+                            <label>
+                              Role
+                              <select
+                                value={edit.role}
+                                onChange={(e) => updateFieldUserEdit(u.id, { role: e.target.value })}
+                                disabled={busy}
+                              >
+                                {FIELD_ROLE_OPTIONS.map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              Phone (WhatsApp)
+                              <input
+                                value={edit.phone}
+                                onChange={(e) => updateFieldUserEdit(u.id, { phone: e.target.value })}
+                                placeholder="62812…"
+                                disabled={busy}
+                              />
+                            </label>
+                            <label>
+                              Email
+                              <input
+                                type="email"
+                                value={edit.email}
+                                onChange={(e) => updateFieldUserEdit(u.id, { email: e.target.value })}
+                                placeholder="tech@…"
+                                disabled={busy}
+                              />
+                            </label>
+                            <div className="span-2 admin-field-row-actions">
+                              <button
+                                type="submit"
+                                className="btn btn-primary"
+                                disabled={busy || !edit.username.trim()}
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-ghost"
+                                disabled={busy}
+                                onClick={() => void patchFieldUser(u.id, { enabled: !u.enabled })}
+                              >
+                                {u.enabled ? "Disable" : "Enable"}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-ghost"
+                                disabled={busy}
+                                onClick={() => void deleteFieldUser(u.id, u.username)}
+                              >
+                                Delete
+                              </button>
+                              {!u.enabled ? <span className="admin-pill is-off">disabled</span> : null}
+                            </div>
+                          </form>
+                        </li>
+                      );
+                    })}
                     {fieldUsers.length === 0 && <li className="muted admin-empty">No field users yet.</li>}
                   </ul>
                 </section>

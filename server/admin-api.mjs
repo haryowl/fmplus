@@ -383,6 +383,14 @@ export async function handleAdminRequest(req, res) {
           return true;
         }
 
+        let username = current.username;
+        if (body.username !== undefined) {
+          username = String(body.username || "").trim();
+          if (!isFieldUsername(username)) {
+            json(res, 400, { error: "Invalid username (2–64: A–Z a–z 0–9 . _ -)" });
+            return true;
+          }
+        }
         let role = current.role;
         if (body.role !== undefined) {
           role = String(body.role || "").trim();
@@ -413,21 +421,23 @@ export async function handleAdminRequest(req, res) {
 
         const updated = await dbQuery(
           `UPDATE field_users SET
-             role = $3,
-             password_hash = $4,
-             display_name = $5,
-             phone = $6,
-             email = $7,
-             enabled = $8,
+             username = $3,
+             role = $4,
+             password_hash = $5,
+             display_name = $6,
+             phone = $7,
+             email = $8,
+             enabled = $9,
              updated_at = now()
            WHERE id = $1 AND tenant_id = $2
            RETURNING id, username, role, display_name, phone, email, enabled, created_at, updated_at`,
-          [userId, tenantId, role, passwordHash, displayName, phone, email, enabled],
+          [userId, tenantId, username, role, passwordHash, displayName, phone, email, enabled],
         );
         await writeAudit(admin.id, "field_user.update", {
           tenantId,
           userId,
-          username: current.username,
+          username,
+          previousUsername: current.username,
           passwordRotated: Boolean(body.password && String(body.password).trim()),
         });
         json(res, 200, { user: publicFieldUserRow(updated.rows[0]) });
