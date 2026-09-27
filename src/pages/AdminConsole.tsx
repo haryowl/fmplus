@@ -686,9 +686,19 @@ export default function AdminConsole() {
                 )}
               </div>
 
+              <div className="admin-main-cols">
+              <div className="admin-col">
               <section className="admin-panel">
-                <header className="admin-panel-head">
+                <header className="admin-panel-head admin-identity-head">
                   <h3>Identity</h3>
+                  <label className={`admin-switch${draft.enabled ? " is-on" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={draft.enabled}
+                      onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
+                    />
+                    <span>{draft.enabled ? "Enabled" : "Disabled"}</span>
+                  </label>
                 </header>
                 <div className="admin-form-grid">
                   <label>
@@ -707,20 +717,12 @@ export default function AdminConsole() {
                       inputMode="numeric"
                     />
                   </label>
-                  <label>
+                  <label className="span-2">
                     Display name
                     <input
                       value={draft.displayName}
                       onChange={(e) => setDraft({ ...draft, displayName: e.target.value })}
                     />
-                  </label>
-                  <label className="admin-toggle admin-toggle-inline">
-                    <input
-                      type="checkbox"
-                      checked={draft.enabled}
-                      onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
-                    />
-                    <span>Tenant enabled</span>
                   </label>
                 </div>
               </section>
@@ -771,60 +773,6 @@ export default function AdminConsole() {
                 </div>
               </AdminFold>
 
-              <AdminFold title="Notifications" hint="Reminder emails, WhatsApp, and Wablas">
-                <div className="admin-form-grid">
-                  <label className="span-2">
-                    Notify emails
-                    <input
-                      value={draft.notifyEmails}
-                      onChange={(e) => setDraft({ ...draft, notifyEmails: e.target.value })}
-                      placeholder="ops@company.com, manager@…"
-                    />
-                  </label>
-                  <label className="span-2">
-                    Notify WhatsApp numbers
-                    <input
-                      value={draft.notifyWhatsapp}
-                      onChange={(e) => setDraft({ ...draft, notifyWhatsapp: e.target.value })}
-                      placeholder="62812…, 62813…"
-                    />
-                    <p className="admin-section-hint muted">
-                      Ops alerts for maintenance due/overdue only. Job assignment WhatsApp/email
-                      (Dispatch and Maintenance) goes to the assigned field user’s phone/email, not
-                      this list.
-                    </p>
-                  </label>
-                  <label className="span-2">
-                    Wablas API base URL
-                    <input
-                      value={draft.wablasBaseUrl}
-                      onChange={(e) => setDraft({ ...draft, wablasBaseUrl: e.target.value })}
-                      placeholder="https://wablas.com or https://pati.wablas.com"
-                    />
-                  </label>
-                  <label>
-                    Wablas token {selectedId !== "new" ? "(leave blank to keep)" : ""}
-                    <input
-                      type="password"
-                      value={draft.wablasToken}
-                      onChange={(e) => setDraft({ ...draft, wablasToken: e.target.value })}
-                      autoComplete="off"
-                      placeholder={selected?.hasWablasToken ? "•••••••• (set)" : ""}
-                    />
-                  </label>
-                  <label>
-                    Wablas secret key {selectedId !== "new" ? "(leave blank to keep)" : ""}
-                    <input
-                      type="password"
-                      value={draft.wablasSecret}
-                      onChange={(e) => setDraft({ ...draft, wablasSecret: e.target.value })}
-                      autoComplete="off"
-                      placeholder={selected?.hasWablasSecret ? "•••••••• (set)" : ""}
-                    />
-                  </label>
-                </div>
-              </AdminFold>
-
               <AdminFold title="Field GPS" hint="Default 15s moving · 60s parked · 25 m">
                 <div className="admin-form-grid admin-gps-grid">
                   <label>
@@ -857,6 +805,60 @@ export default function AdminConsole() {
                       onChange={(e) => setDraft({ ...draft, dutyMinMoveM: e.target.value })}
                     />
                   </label>
+                </div>
+              </AdminFold>
+              </div>
+
+              <div className="admin-col">
+              <AdminFold title="Notifications" hint="Reminder emails, WhatsApp, and Wablas">
+                <div className="admin-form-grid">
+                  <label>
+                    Notify emails
+                    <input
+                      value={draft.notifyEmails}
+                      onChange={(e) => setDraft({ ...draft, notifyEmails: e.target.value })}
+                      placeholder="ops@company.com, manager@…"
+                    />
+                  </label>
+                  <label>
+                    Notify WhatsApp
+                    <input
+                      value={draft.notifyWhatsapp}
+                      onChange={(e) => setDraft({ ...draft, notifyWhatsapp: e.target.value })}
+                      placeholder="62812…, 62813…"
+                    />
+                  </label>
+                  <label className="span-2">
+                    Wablas API base URL
+                    <input
+                      value={draft.wablasBaseUrl}
+                      onChange={(e) => setDraft({ ...draft, wablasBaseUrl: e.target.value })}
+                      placeholder="https://wablas.com or https://pati.wablas.com"
+                    />
+                  </label>
+                  <label>
+                    Wablas token {selectedId !== "new" ? "(leave blank to keep)" : ""}
+                    <input
+                      type="password"
+                      value={draft.wablasToken}
+                      onChange={(e) => setDraft({ ...draft, wablasToken: e.target.value })}
+                      autoComplete="off"
+                      placeholder={selected?.hasWablasToken ? "•••••••• (set)" : ""}
+                    />
+                  </label>
+                  <label>
+                    Wablas secret {selectedId !== "new" ? "(leave blank to keep)" : ""}
+                    <input
+                      type="password"
+                      value={draft.wablasSecret}
+                      onChange={(e) => setDraft({ ...draft, wablasSecret: e.target.value })}
+                      autoComplete="off"
+                      placeholder={selected?.hasWablasSecret ? "•••••••• (set)" : ""}
+                    />
+                  </label>
+                  <p className="span-2 admin-section-hint muted">
+                    Ops due/overdue only. Job assignment goes to the assigned field user’s phone/email.
+                  </p>
                 </div>
               </AdminFold>
 
@@ -957,6 +959,8 @@ export default function AdminConsole() {
                   </div>
                 </AdminFold>
               )}
+              </div>
+              </div>
 
               <div className="admin-actions sticky">
                 <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveDraft()}>
