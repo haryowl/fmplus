@@ -15,6 +15,7 @@ import {
 import {
   assignOrdersToJob,
   cancelDispatchOrder,
+  createNextDispatchTrip,
   capacityForVehicle,
   carryOverDispatchOrders,
   cadenceLabel,
@@ -27,6 +28,7 @@ import {
   deleteDispatchOrderTemplate,
   DISPATCH_STATUS_LABELS,
   dispatchAssigneeLabel,
+  dispatchJobIsClosed,
   dispatchVehicleLabel,
   fetchDispatchDepot,
   fetchDispatchDepots,
@@ -1657,6 +1659,10 @@ export default function DispatchBoard() {
 
   async function handleAssignSelected() {
     if (!selected || !selectedOrderIds.length) return;
+    if (dispatchJobIsClosed(selected.status)) {
+      setError("This job is completed. Create a new trip for the same driver instead.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -1668,6 +1674,25 @@ export default function DispatchBoard() {
       setReload((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Assign failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCreateNextTrip() {
+    if (!selected || !selectedOrderIds.length) return;
+    setBusy(true);
+    setError("");
+    try {
+      const job = await createNextDispatchTrip(selected.id, selectedOrderIds, {
+        rejectOverCapacity: true,
+      });
+      setJobs((prev) => [job, ...prev.filter((j) => j.id !== job.id)]);
+      setSelectedId(job.id);
+      setSelectedOrderIds([]);
+      setReload((n) => n + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start a new trip");
     } finally {
       setBusy(false);
     }
@@ -3779,12 +3804,43 @@ export default function DispatchBoard() {
               <button
                 type="button"
                 className="btn btn-primary dispatch-assign-btn"
-                disabled={busy || !selected || !selectedOrderIds.length}
+                disabled={
+                  busy ||
+                  !selected ||
+                  !selectedOrderIds.length ||
+                  dispatchJobIsClosed(selected.status)
+                }
+                title={
+                  selected && dispatchJobIsClosed(selected.status)
+                    ? "Completed jobs cannot take more orders. Start a new trip for this driver."
+                    : undefined
+                }
                 onClick={() => void handleAssignSelected()}
               >
+                {selected && dispatchJobIsClosed(selected.status)
+                  ? "Can't assign to a completed job"
+                  : selectedOrderIds.length
+                    ? `Assign ${selectedOrderIds.length} to ${selected?.title || "job"}`
+                    : "Select orders to assign"}
+              </button>
+              <button
+                type="button"
+                className={
+                  selected && dispatchJobIsClosed(selected.status)
+                    ? "btn btn-primary dispatch-assign-btn"
+                    : "btn-secondary"
+                }
+                disabled={busy || !selected || !selectedOrderIds.length}
+                title="Keep this job as-is and start a new trip for the same driver and vehicle"
+                onClick={() => void handleCreateNextTrip()}
+              >
                 {selectedOrderIds.length
-                  ? `Assign ${selectedOrderIds.length} to ${selected?.title || "job"}`
-                  : "Select orders to assign"}
+                  ? `New trip for ${
+                      selected && dispatchAssigneeLabel(selected) !== "Unassigned"
+                        ? dispatchAssigneeLabel(selected)
+                        : "this vehicle"
+                    } · ${selectedOrderIds.length}`
+                  : "New trip for this driver"}
               </button>
               <button
                 type="button"

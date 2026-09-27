@@ -3,6 +3,7 @@
  * GET/POST /api/dispatch/jobs
  * GET/PATCH /api/dispatch/jobs/:id
  * POST /api/dispatch/jobs/:id/assign-orders
+ * POST /api/dispatch/jobs/:id/next-trip
  * POST /api/dispatch/jobs/:id/optimize-stops
  * POST /api/dispatch/jobs/:id/stops/:stopId/return
  * GET/POST /api/dispatch/orders
@@ -62,7 +63,11 @@ import { getObject, objectStorageConfigured, putObject } from "./storage.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 import { tenantFromRequest } from "./tenants.mjs";
 import { fetchVehiclePositions } from "./vehicle-positions.mjs";
-import { maybeNotifyDispatchJobAssigned } from "./dispatch-notify.mjs";
+import {
+  maybeNotifyDispatchJobAssigned,
+  maybeNotifyDispatchRouteUpdated,
+} from "./dispatch-notify.mjs";
+import { jobIsClosed, nextDispatchTripTitle } from "./dispatch-next-trip.mjs";
 import { csvBool, csvNum, parseCsv } from "./csv-parse.mjs";
 import { buildDispatchLiveSnapshot } from "./dispatch-live.mjs";
 import { pingTrailForServiceDate } from "./driver-pings.mjs";
@@ -768,6 +773,96 @@ async function detachOrderFromJob(order) {
     [order.id],
   );
   await dbQuery(`DELETE FROM dispatch_stops WHERE order_id = $1`, [order.id]);
+}
+
+/**
+ * Attach pending inbox orders to an open job. Completed/cancelled jobs are rejected
+ * so extra work becomes a new trip instead of hanging on a finished run.
+ * @returns {Promise<{ error?: string, status?: number, capacity?: object, addedNames: string[] }>}
+ */
+async function assignPendingOrdersToJob(dbTenant, job, orderIds, { rejectOverCapacity } = {}) {
+  if (jobIsClosed(job.status)) {
+    return {
+      error: "This job is completed. Create a new trip for the same driver instead.",
+      status: 400,
+      addedNames: [],
+    };
+  }
+  const ids = (Array.isArray(orderIds) ? orderIds : []).map(String).filter(Boolean).slice(0, 50);
+  const existingStops = await loadStops(job.id);
+  const cap = capacityFrom(job, existingStops);
+  let pendingVol = 0;
+  let pendingWt = 0;
+  if (rejectOverCapacity) {
+    for (const oid of ids) {
+      const ord = await dbQuery(
+        `SELECT volume_m3, weight_kg FROM dispatch_orders
+         WHERE id = $1 AND tenant_id = $2 AND status = 'pending'`,
+        [oid, dbTenant.id],
+      );
+      const o = ord.rows[0];
+      if (!o) continue;
+      pendingVol += Number(o.volume_m3) || 0;
+      pendingWt += Number(o.weight_kg) || 0;
+    }
+    if (
+      cap.volumeUsed + pendingVol > cap.volumeCapacityM3 + 1e-9 ||
+      cap.weightUsed + pendingWt > cap.weightCapacityKg + 1e-9
+    ) {
+      return {
+        error: "Assign would exceed vehicle capacity (volume or weight)",
+        status: 409,
+        addedNames: [],
+        capacity: {
+          ...cap,
+          pendingVolumeM3: Math.round(pendingVol * 1000) / 1000,
+          pendingWeightKg: Math.round(pendingWt * 10) / 10,
+        },
+      };
+    }
+  }
+  const addedNames = [];
+  let sortBase = existingStops.length;
+  for (const oid of ids) {
+    const ord = await dbQuery(
+      `SELECT * FROM dispatch_orders
+       WHERE id = $1 AND tenant_id = $2 AND status = 'pending'`,
+      [oid, dbTenant.id],
+    );
+    const o = ord.rows[0];
+    if (!o) continue;
+    const jobDate = formatServiceDate(job.service_date);
+    const jobEndDate = formatServiceDate(job.end_date) || jobDate;
+    const orderDate = formatServiceDate(o.service_date);
+    let dayIndex = 0;
+    if (jobDate && orderDate) {
+      const offset = dayIndexForDate(jobDate, jobEndDate, orderDate);
+      if (offset == null) continue;
+      dayIndex = offset;
+    }
+    if (parseOrderKind(o.kind) === "pickup_drop" && !pickupCoord(o)) continue;
+    const inserted = await insertStopsFromOrder(job.id, o, sortBase, dayIndex);
+    if (!inserted.firstStopId) continue;
+    sortBase += inserted.count;
+    await dbQuery(
+      `UPDATE dispatch_orders
+       SET status = 'assigned', job_id = $1, stop_id = $2, updated_at = now()
+       WHERE id = $3`,
+      [job.id, inserted.firstStopId, o.id],
+    );
+    addedNames.push(String(o.customer_name || o.external_ref || "Stop").trim() || "Stop");
+  }
+  if (job.status === "draft" && job.assigned_field_user_id) {
+    await dbQuery(
+      `UPDATE dispatch_jobs SET status = 'assigned', assigned_at = COALESCE(assigned_at, now()), updated_at = now()
+       WHERE id = $1`,
+      [job.id],
+    );
+  } else {
+    await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [job.id]);
+  }
+  await recomputeJobSpan(job.id);
+  return { addedNames };
 }
 
 /**
@@ -2539,81 +2634,115 @@ export async function handleDispatchRequest(req, res) {
         json(res, 400, { error: "orderIds required" });
         return true;
       }
-      const rejectOverCapacity = body.rejectOverCapacity === true;
-      const existingStops = await loadStops(job.id);
-      const cap = capacityFrom(job, existingStops);
-      let pendingVol = 0;
-      let pendingWt = 0;
-      if (rejectOverCapacity) {
-        for (const oid of orderIds.slice(0, 50)) {
-          const ord = await dbQuery(
-            `SELECT volume_m3, weight_kg FROM dispatch_orders
-             WHERE id = $1 AND tenant_id = $2 AND status = 'pending'`,
-            [oid, dbTenant.id],
-          );
-          const o = ord.rows[0];
-          if (!o) continue;
-          pendingVol += Number(o.volume_m3) || 0;
-          pendingWt += Number(o.weight_kg) || 0;
-        }
-        if (
-          cap.volumeUsed + pendingVol > cap.volumeCapacityM3 + 1e-9 ||
-          cap.weightUsed + pendingWt > cap.weightCapacityKg + 1e-9
-        ) {
-          json(res, 409, {
-            error: "Assign would exceed vehicle capacity (volume or weight)",
-            capacity: {
-              ...cap,
-              pendingVolumeM3: Math.round(pendingVol * 1000) / 1000,
-              pendingWeightKg: Math.round(pendingWt * 10) / 10,
-            },
-          });
-          return true;
-        }
+      const assigned = await assignPendingOrdersToJob(dbTenant, job, orderIds, {
+        rejectOverCapacity: body.rejectOverCapacity === true,
+      });
+      if (assigned.error) {
+        json(res, assigned.status || 400, {
+          error: assigned.error,
+          ...(assigned.capacity ? { capacity: assigned.capacity } : {}),
+        });
+        return true;
       }
-      let sortBase = existingStops.length;
-      for (const oid of orderIds.slice(0, 50)) {
-        const ord = await dbQuery(
-          `SELECT * FROM dispatch_orders
-           WHERE id = $1 AND tenant_id = $2 AND status = 'pending'`,
-          [oid, dbTenant.id],
-        );
-        const o = ord.rows[0];
-        if (!o) continue;
-        const jobDate = formatServiceDate(job.service_date);
-        const jobEndDate = formatServiceDate(job.end_date) || jobDate;
-        const orderDate = formatServiceDate(o.service_date);
-        // An order may join any day the tour covers, landing on that day's index.
-        // Single-day jobs behave exactly as before: only an exact date match.
-        let dayIndex = 0;
-        if (jobDate && orderDate) {
-          const offset = dayIndexForDate(jobDate, jobEndDate, orderDate);
-          if (offset == null) continue;
-          dayIndex = offset;
-        }
-        if (parseOrderKind(o.kind) === "pickup_drop" && !pickupCoord(o)) continue;
-        const inserted = await insertStopsFromOrder(job.id, o, sortBase, dayIndex);
-        if (!inserted.firstStopId) continue;
-        sortBase += inserted.count;
-        await dbQuery(
-          `UPDATE dispatch_orders
-           SET status = 'assigned', job_id = $1, stop_id = $2, updated_at = now()
-           WHERE id = $3`,
-          [job.id, inserted.firstStopId, o.id],
-        );
-      }
-      if (job.status === "draft" && job.assigned_field_user_id) {
-        await dbQuery(
-          `UPDATE dispatch_jobs SET status = 'assigned', assigned_at = COALESCE(assigned_at, now()), updated_at = now()
-           WHERE id = $1`,
-          [job.id],
-        );
-      } else {
-        await dbQuery(`UPDATE dispatch_jobs SET updated_at = now() WHERE id = $1`, [job.id]);
-      }
-      await recomputeJobSpan(job.id);
       const row = await loadJob(dbTenant.id, job.id);
-      json(res, 200, { job: await publicJobWithLines(dbTenant.id, row, await loadStops(job.id)) });
+      const publicJobRow = await publicJobWithLines(dbTenant.id, row, await loadStops(job.id));
+      if (assigned.addedNames.length && publicJobRow.assignedFieldUserId) {
+        try {
+          await maybeNotifyDispatchRouteUpdated({
+            tenantId: dbTenant.id,
+            tenantKey: dbTenant.key,
+            job: publicJobRow,
+            addedNames: assigned.addedNames,
+          });
+        } catch (err) {
+          console.error("[dispatch] route-updated notify", err);
+        }
+      }
+      json(res, 200, { job: publicJobRow });
+      return true;
+    }
+
+    const nextTrip = /^\/api\/dispatch\/jobs\/([0-9a-f-]{36})\/next-trip$/i.exec(url.pathname);
+    if (nextTrip && req.method === "POST") {
+      const source = await loadJob(dbTenant.id, nextTrip[1]);
+      if (!source) {
+        json(res, 404, { error: "Job not found" });
+        return true;
+      }
+      const body = await readJson(req);
+      const orderIds = Array.isArray(body.orderIds) ? body.orderIds.map(String) : [];
+      if (!orderIds.length) {
+        json(res, 400, { error: "orderIds required" });
+        return true;
+      }
+      let assigneeId = source.assigned_field_user_id || null;
+      if (assigneeId) {
+        const ok = await dbQuery(
+          `SELECT id FROM field_users WHERE id = $1 AND tenant_id = $2 AND enabled = true`,
+          [assigneeId, dbTenant.id],
+        );
+        if (!ok.rows[0]) assigneeId = null;
+      }
+      const status = assigneeId ? "assigned" : "draft";
+      const title = nextDispatchTripTitle(source.title);
+      const serviceDate = formatServiceDate(source.service_date) || todayYmd();
+      const inserted = await dbQuery(
+        `INSERT INTO dispatch_jobs (
+           tenant_id, status, title, notes,
+           armada_user_id, armada_username, user_display_name,
+           assigned_field_user_id, assigned_at,
+           volume_capacity_m3, weight_capacity_kg, service_date
+         ) VALUES (
+           $1,$2,$3,$4,$5,$6,$7,$8,
+           CASE WHEN $8::uuid IS NULL THEN NULL ELSE now() END,
+           COALESCE($9, 12), COALESCE($10, 1500), $11
+         )
+         RETURNING id`,
+        [
+          dbTenant.id,
+          status,
+          title,
+          null,
+          source.armada_user_id == null ? null : Number(source.armada_user_id),
+          source.armada_username || null,
+          source.user_display_name || null,
+          assigneeId,
+          source.volume_capacity_m3 == null ? null : Number(source.volume_capacity_m3),
+          source.weight_capacity_kg == null ? null : Number(source.weight_capacity_kg),
+          serviceDate,
+        ],
+      );
+      const jobId = inserted.rows[0].id;
+      const created = await loadJob(dbTenant.id, jobId);
+      const assigned = await assignPendingOrdersToJob(dbTenant, created, orderIds, {
+        rejectOverCapacity: body.rejectOverCapacity === true,
+      });
+      if (assigned.error) {
+        await dbQuery(`DELETE FROM dispatch_jobs WHERE id = $1 AND tenant_id = $2`, [
+          jobId,
+          dbTenant.id,
+        ]);
+        json(res, assigned.status || 400, {
+          error: assigned.error,
+          ...(assigned.capacity ? { capacity: assigned.capacity } : {}),
+        });
+        return true;
+      }
+      const row = await loadJob(dbTenant.id, jobId);
+      const job = await publicJobWithLines(dbTenant.id, row, await loadStops(jobId));
+      if (assigneeId) {
+        try {
+          await maybeNotifyDispatchJobAssigned({
+            tenantId: dbTenant.id,
+            tenantKey: dbTenant.key,
+            job,
+            prevAssignedFieldUserId: null,
+          });
+        } catch (err) {
+          console.error("[dispatch] next-trip assigned notify", err);
+        }
+      }
+      json(res, 201, { job });
       return true;
     }
 

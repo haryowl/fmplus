@@ -273,6 +273,11 @@ export function dispatchAssigneeLabel(job: DispatchJob): string {
   return job.assigneeDisplayName || job.assigneeUsername || "Unassigned";
 }
 
+export function dispatchJobIsClosed(status: DispatchStatus | string | null | undefined): boolean {
+  const s = String(status || "").toLowerCase();
+  return s === "done" || s === "cancelled";
+}
+
 /** Normalize a clock to HH:MM for `<input type="time">` and preset matching. */
 export function normalizeClockHm(value: string | null | undefined): string {
   const m = String(value || "")
@@ -419,6 +424,26 @@ export async function assignOrdersToJob(
   const data = (await res.json().catch(() => ({}))) as { job?: DispatchJob; error?: string };
   if (!res.ok) throw new Error(data.error || `Assign ${res.status}`);
   if (!data.job) throw new Error("Assign failed");
+  return data.job;
+}
+
+/** New job for the same driver/vehicle, with selected inbox orders (does not reopen a completed job). */
+export async function createNextDispatchTrip(
+  jobId: string,
+  orderIds: string[],
+  opts?: { rejectOverCapacity?: boolean },
+): Promise<DispatchJob> {
+  const res = await fetch(`/api/dispatch/jobs/${encodeURIComponent(jobId)}/next-trip`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify({
+      orderIds,
+      rejectOverCapacity: opts?.rejectOverCapacity === true,
+    }),
+  });
+  const data = (await res.json().catch(() => ({}))) as { job?: DispatchJob; error?: string };
+  if (!res.ok) throw new Error(data.error || `Next trip ${res.status}`);
+  if (!data.job) throw new Error("Next trip failed");
   return data.job;
 }
 

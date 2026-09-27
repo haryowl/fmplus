@@ -169,3 +169,69 @@ export async function maybeNotifyDispatchJobAssigned(opts) {
   }
   return { sent: results.filter((r) => r.ok).length, results };
 }
+
+function addedStopNames(names, limit = 4) {
+  const list = (Array.isArray(names) ? names : []).map((n) => String(n || "").trim()).filter(Boolean);
+  if (!list.length) return "";
+  const shown = list.slice(0, limit);
+  const extra = list.length - shown.length;
+  return extra > 0 ? `${shown.join(", ")} +${extra} more` : shown.join(", ");
+}
+
+export function buildRouteUpdatedMessage(job, tenantKey, addedNames) {
+  const names = addedStopNames(addedNames);
+  const n = Array.isArray(addedNames) ? addedNames.filter(Boolean).length : 0;
+  const title = String(job.title || "Dispatch job").trim() || "Dispatch job";
+  const lines = [
+    `ARMADA M.1 · Route updated`,
+    ``,
+    `Job: ${title}`,
+    `Date: ${serviceDateLabel(job)}`,
+    `${n} new stop${n === 1 ? "" : "s"} added${names ? `: ${names}` : ""}`,
+    ``,
+    `Open Dispatch:`,
+    dispatchFieldLink(tenantKey),
+  ];
+  return lines.join("\n").slice(0, 1024);
+}
+
+/**
+ * WhatsApp when new orders are added to a job the driver already owns.
+ * No-ops if there is no assignee, no new names, or Wablas is not configured.
+ */
+export async function maybeNotifyDispatchRouteUpdated(opts) {
+  const tenantId = opts.tenantId;
+  const job = opts.job;
+  const addedNames = Array.isArray(opts.addedNames) ? opts.addedNames : [];
+  if (!tenantId || !job) return { skipped: true, reason: "missing" };
+  if (!addedNames.length) return { skipped: true, reason: "no_added" };
+
+  const status = String(job.status || "").toLowerCase();
+  if (status === "done" || status === "cancelled") {
+    return { skipped: true, reason: "closed" };
+  }
+
+  const assigneeId = job.assignedFieldUserId || job.assigned_field_user_id || null;
+  if (!assigneeId) return { skipped: true, reason: "no_assignee" };
+
+  const { tenant, phones } = await recipientsForJob(tenantId, job);
+  if (!phones.length) return { skipped: true, reason: "no_phones" };
+
+  const creds = await wablasCreds(tenant);
+  if (!creds) return { skipped: true, reason: "wablas_not_configured" };
+
+  const tenantKey = opts.tenantKey || tenant?.key || "";
+  const message = buildRouteUpdatedMessage(job, tenantKey, addedNames);
+  const results = [];
+  for (const phone of phones) {
+    try {
+      await sendWablasMessage({ ...creds, phone, message });
+      results.push({ phone, ok: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[dispatch] route-updated WhatsApp", phone, msg);
+      results.push({ phone, ok: false, error: msg });
+    }
+  }
+  return { sent: results.filter((r) => r.ok).length, results };
+}
