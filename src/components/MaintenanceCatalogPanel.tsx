@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { printCatalogLabel } from "../lib/catalogCodes";
 import { CatalogCodesEditor } from "./CatalogCodesEditor";
 import {
   createMaintCatalogItem,
@@ -53,7 +54,7 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
     try {
       const priceRaw = newPrice[group.id];
       const costRaw = newCost[group.id];
-      await createMaintCatalogItem({
+      const created = await createMaintCatalogItem({
         groupId: group.id,
         name,
         sku: group.key === "part" ? (newSku[group.id] || "").trim() : undefined,
@@ -65,6 +66,7 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
       setNewCost((p) => ({ ...p, [group.id]: "" }));
       setNewSku((p) => ({ ...p, [group.id]: "" }));
       await reload();
+      if (group.key === "part" && created.sku) setOpenCodes(created.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Add failed");
     } finally {
@@ -105,7 +107,7 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
         <div>
           <h2>Parts &amp; service catalog</h2>
           <p className="muted">
-            Defaults for job lines. Field picks Part / Service items; Others is always free text.
+            Defaults for job lines. On Part, fill a SKU then Print QR / barcode. Others is always free text.
           </p>
         </div>
         {onClose ? (
@@ -189,13 +191,24 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
                         Remove
                       </button>
                       {group.key === "part" ? (
-                        <button
-                          type="button"
-                          className="btn-ghost btn-compact"
-                          onClick={() => setOpenCodes((id) => (id === item.id ? null : item.id))}
-                        >
-                          {openCodes === item.id ? "Hide codes" : "Codes"}
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className="btn-ghost btn-compact"
+                            disabled={busy || !item.sku}
+                            title={item.sku ? "Print QR and barcode" : "Add a SKU to print"}
+                            onClick={() => printCatalogLabel("maint_part", item.name, item.sku || "")}
+                          >
+                            Print QR / barcode
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost btn-compact"
+                            onClick={() => setOpenCodes((id) => (id === item.id ? null : item.id))}
+                          >
+                            {openCodes === item.id ? "Hide codes" : "Codes"}
+                          </button>
+                        </>
                       ) : null}
                       {group.key === "part" && openCodes === item.id ? (
                         <CatalogCodesEditor

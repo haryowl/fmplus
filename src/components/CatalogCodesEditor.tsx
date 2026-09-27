@@ -3,6 +3,7 @@ import {
   addCatalogCodeRow,
   deleteCatalogCodeRow,
   fetchCatalogCodes,
+  printCatalogLabel,
   scanPayloadFor,
   type CatalogCodeRow,
 } from "../lib/catalogCodes";
@@ -14,32 +15,6 @@ type Props = {
   name: string;
   disabled?: boolean;
 };
-
-function printLabel(name: string, sku: string, payload: string) {
-  const win = window.open("", "_blank", "width=420,height=520");
-  if (!win) return;
-  const safe = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  win.document.write(`<!doctype html><html><head><title>${safe(name)}</title>
-<style>
-  body { font-family: sans-serif; padding: 24px; text-align: center; }
-  h1 { font-size: 18px; margin: 0 0 8px; }
-  .sku { font-size: 14px; color: #444; }
-  .payload { font-family: ui-monospace, monospace; font-size: 12px; margin-top: 16px; word-break: break-all; }
-  img { width: 220px; height: 220px; margin: 16px 0; }
-</style></head><body>
-  <h1>${safe(name)}</h1>
-  <p class="sku">${safe(sku || "—")}</p>
-  ${
-    payload
-      ? `<img alt="QR" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payload)}" />`
-      : ""
-  }
-  <p class="payload">${safe(payload || "Add a SKU to print a QR")}</p>
-</body></html>`);
-  win.document.close();
-  win.focus();
-}
 
 export function CatalogCodesEditor({ kind, itemId, sku, name, disabled }: Props) {
   const [codes, setCodes] = useState<CatalogCodeRow[]>([]);
@@ -80,9 +55,9 @@ export function CatalogCodesEditor({ kind, itemId, sku, name, disabled }: Props)
           type="button"
           className="btn-ghost btn-compact"
           disabled={disabled || !payload}
-          onClick={() => printLabel(name, sku || "", payload)}
+          onClick={() => printCatalogLabel(kind, name, sku || "")}
         >
-          Print QR
+          Print QR / barcode
         </button>
       </div>
       {codes.length ? (

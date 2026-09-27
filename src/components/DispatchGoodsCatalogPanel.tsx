@@ -6,6 +6,7 @@ import {
   downloadCsv,
   parseCsv,
 } from "../lib/csvImport";
+import { printCatalogLabel } from "../lib/catalogCodes";
 import { CatalogCodesEditor } from "./CatalogCodesEditor";
 import {
   createDispatchGoodsItem,
@@ -60,7 +61,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
     setBusy(true);
     setError("");
     try {
-      await createDispatchGoodsItem({
+      const created = await createDispatchGoodsItem({
         name: nextName,
         sku: sku.trim() || undefined,
         unit,
@@ -72,6 +73,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
       setVol("");
       setWt("");
       await reload();
+      if (created.sku) setOpenCodes(created.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Add failed");
     } finally {
@@ -119,7 +121,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           <p className="dispatch-eyebrow">Cargo</p>
           <h2>Goods catalog</h2>
           <p className="dispatch-search-hint">
-            Office list. Orders can pick these or add free text. Defaults snapshot onto the order.
+            Office list. Fill a SKU, then Print QR / barcode to label the item. Orders can also pick free text.
           </p>
         </div>
         {onClose ? (
@@ -257,6 +259,15 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                   onClick={() => void removeItem(item)}
                 >
                   Delete
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost btn-compact"
+                  disabled={busy || !item.sku}
+                  title={item.sku ? "Print QR and barcode" : "Add a SKU to print"}
+                  onClick={() => printCatalogLabel("goods", item.name, item.sku)}
+                >
+                  Print QR / barcode
                 </button>
                 <button
                   type="button"
