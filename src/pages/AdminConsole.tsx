@@ -215,6 +215,7 @@ export default function AdminConsole() {
   const [fuPhone, setFuPhone] = useState("");
   const [fuEmail, setFuEmail] = useState("");
   const [fuEdits, setFuEdits] = useState<Record<string, FieldUserEdit>>({});
+  const [fuEditingId, setFuEditingId] = useState<string | null>(null);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -249,6 +250,7 @@ export default function AdminConsole() {
     if (!selectedId || selectedId === "new") {
       setFieldUsers([]);
       setFuEdits({});
+      setFuEditingId(null);
       return;
     }
     void loadFieldUsers(selectedId).catch((err: Error) => setError(err.message));
@@ -447,11 +449,17 @@ export default function AdminConsole() {
       email: edit.email.trim(),
     };
     if (edit.password.trim()) body.password = edit.password;
-    await patchFieldUser(userId, body);
+    const ok = await patchFieldUser(userId, body);
+    if (ok) setFuEditingId(null);
   }
 
-  async function patchFieldUser(userId: string, body: Record<string, unknown>) {
-    if (!selectedId || selectedId === "new") return;
+  function startEditFieldUser(u: FieldUserRow) {
+    setFuEdits((prev) => ({ ...prev, [u.id]: editFromRow(u) }));
+    setFuEditingId(u.id);
+  }
+
+  async function patchFieldUser(userId: string, body: Record<string, unknown>): Promise<boolean> {
+    if (!selectedId || selectedId === "new") return false;
     setBusy(true);
     setError("");
     try {
@@ -461,8 +469,10 @@ export default function AdminConsole() {
       });
       setNotice("Field user updated");
       await loadFieldUsers(selectedId);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -476,6 +486,7 @@ export default function AdminConsole() {
     try {
       await api(`/api/admin/tenants/${selectedId}/field-users/${userId}`, { method: "DELETE" });
       setNotice("Field user deleted");
+      setFuEditingId((id) => (id === userId ? null : id));
       await loadFieldUsers(selectedId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
@@ -949,7 +960,7 @@ export default function AdminConsole() {
                     <h3>Field users</h3>
                     <p className="muted">
                       Sign-in at <code>/m</code> or <code>/dispatch</code> — scoped to this tenant.
-                      Existing users stay editable; change any field and Save.
+                      Open a user with Edit to change their details.
                     </p>
                   </header>
                   <form className="admin-form-grid" onSubmit={(e) => void createFieldUser(e)}>
@@ -1008,105 +1019,140 @@ export default function AdminConsole() {
 
                   <ul className="admin-field-list">
                     {fieldUsers.map((u) => {
+                      const editing = fuEditingId === u.id;
                       const edit = fuEdits[u.id] || editFromRow(u);
                       return (
-                        <li key={u.id}>
-                          <form
-                            className="admin-form-grid"
-                            onSubmit={(e) => {
-                              e.preventDefault();
-                              void saveFieldUser(u.id);
-                            }}
-                          >
-                            <label>
-                              Username
-                              <input
-                                value={edit.username}
-                                onChange={(e) => updateFieldUserEdit(u.id, { username: e.target.value })}
-                                required
-                                disabled={busy}
-                              />
-                            </label>
-                            <label>
-                              New password
-                              <input
-                                type="password"
-                                value={edit.password}
-                                onChange={(e) => updateFieldUserEdit(u.id, { password: e.target.value })}
-                                placeholder="Leave blank to keep"
-                                minLength={6}
-                                autoComplete="new-password"
-                                disabled={busy}
-                              />
-                            </label>
-                            <label>
-                              Display name
-                              <input
-                                value={edit.displayName}
-                                onChange={(e) => updateFieldUserEdit(u.id, { displayName: e.target.value })}
-                                disabled={busy}
-                              />
-                            </label>
-                            <label>
-                              Role
-                              <select
-                                value={edit.role}
-                                onChange={(e) => updateFieldUserEdit(u.id, { role: e.target.value })}
-                                disabled={busy}
-                              >
-                                {FIELD_ROLE_OPTIONS.map((o) => (
-                                  <option key={o.value} value={o.value}>
-                                    {o.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label>
-                              Phone (WhatsApp)
-                              <input
-                                value={edit.phone}
-                                onChange={(e) => updateFieldUserEdit(u.id, { phone: e.target.value })}
-                                placeholder="62812…"
-                                disabled={busy}
-                              />
-                            </label>
-                            <label>
-                              Email
-                              <input
-                                type="email"
-                                value={edit.email}
-                                onChange={(e) => updateFieldUserEdit(u.id, { email: e.target.value })}
-                                placeholder="tech@…"
-                                disabled={busy}
-                              />
-                            </label>
-                            <div className="span-2 admin-field-row-actions">
-                              <button
-                                type="submit"
-                                className="btn btn-primary"
-                                disabled={busy || !edit.username.trim()}
-                              >
-                                Save
-                              </button>
-                              <button
-                                type="button"
-                                className="btn-ghost"
-                                disabled={busy}
-                                onClick={() => void patchFieldUser(u.id, { enabled: !u.enabled })}
-                              >
-                                {u.enabled ? "Disable" : "Enable"}
-                              </button>
-                              <button
-                                type="button"
-                                className="btn-ghost"
-                                disabled={busy}
-                                onClick={() => void deleteFieldUser(u.id, u.username)}
-                              >
-                                Delete
-                              </button>
-                              {!u.enabled ? <span className="admin-pill is-off">disabled</span> : null}
+                        <li key={u.id} className={editing ? "is-editing" : undefined}>
+                          <div className="admin-field-summary">
+                            <div className="admin-field-identity">
+                              <strong>{u.username}</strong>
+                              <div className="admin-field-tags">
+                                <span className="admin-pill is-muted">{u.role}</span>
+                                {!u.enabled ? <span className="admin-pill is-off">disabled</span> : null}
+                              </div>
+                              <span className="muted">
+                                {[u.displayName, u.phone, u.email].filter(Boolean).join(" · ") || "No contact set"}
+                              </span>
                             </div>
-                          </form>
+                            <div className="admin-field-row-actions">
+                              {editing ? (
+                                <button
+                                  type="button"
+                                  className="btn-ghost"
+                                  disabled={busy}
+                                  onClick={() => setFuEditingId(null)}
+                                >
+                                  Cancel
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  disabled={busy}
+                                  onClick={() => startEditFieldUser(u)}
+                                >
+                                  Edit
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {editing ? (
+                            <form
+                              className="admin-form-grid"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                void saveFieldUser(u.id);
+                              }}
+                            >
+                              <label>
+                                Username
+                                <input
+                                  value={edit.username}
+                                  onChange={(e) => updateFieldUserEdit(u.id, { username: e.target.value })}
+                                  required
+                                  disabled={busy}
+                                />
+                              </label>
+                              <label>
+                                New password
+                                <input
+                                  type="password"
+                                  value={edit.password}
+                                  onChange={(e) => updateFieldUserEdit(u.id, { password: e.target.value })}
+                                  placeholder="Leave blank to keep"
+                                  minLength={6}
+                                  autoComplete="new-password"
+                                  disabled={busy}
+                                />
+                              </label>
+                              <label>
+                                Display name
+                                <input
+                                  value={edit.displayName}
+                                  onChange={(e) => updateFieldUserEdit(u.id, { displayName: e.target.value })}
+                                  disabled={busy}
+                                />
+                              </label>
+                              <label>
+                                Role
+                                <select
+                                  value={edit.role}
+                                  onChange={(e) => updateFieldUserEdit(u.id, { role: e.target.value })}
+                                  disabled={busy}
+                                >
+                                  {FIELD_ROLE_OPTIONS.map((o) => (
+                                    <option key={o.value} value={o.value}>
+                                      {o.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                Phone (WhatsApp)
+                                <input
+                                  value={edit.phone}
+                                  onChange={(e) => updateFieldUserEdit(u.id, { phone: e.target.value })}
+                                  placeholder="62812…"
+                                  disabled={busy}
+                                />
+                              </label>
+                              <label>
+                                Email
+                                <input
+                                  type="email"
+                                  value={edit.email}
+                                  onChange={(e) => updateFieldUserEdit(u.id, { email: e.target.value })}
+                                  placeholder="tech@…"
+                                  disabled={busy}
+                                />
+                              </label>
+                              <div className="span-2 admin-field-row-actions">
+                                <button
+                                  type="submit"
+                                  className="btn btn-primary"
+                                  disabled={busy || !edit.username.trim()}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-ghost"
+                                  disabled={busy}
+                                  onClick={() => void patchFieldUser(u.id, { enabled: !u.enabled })}
+                                >
+                                  {u.enabled ? "Disable" : "Enable"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-ghost"
+                                  disabled={busy}
+                                  onClick={() => void deleteFieldUser(u.id, u.username)}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </form>
+                          ) : null}
                         </li>
                       );
                     })}

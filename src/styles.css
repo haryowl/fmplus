@@ -2826,10 +2826,20 @@ html.onesheet-root body {
   gap: 10px;
   border-radius: var(--radius-sm);
 }
+.admin-field-list li.is-editing {
+  border-color: var(--line-strong);
+}
 
+.admin-field-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
 .admin-field-identity {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .admin-field-tags {
