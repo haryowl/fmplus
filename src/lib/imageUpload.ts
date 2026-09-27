@@ -3,7 +3,7 @@
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.82;
 
-export function readFileAsDataUrl(file: File): Promise<string> {
+export function readFileAsDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ""));
@@ -15,13 +15,13 @@ export function readFileAsDataUrl(file: File): Promise<string> {
 /**
  * Returns a JPEG (or original if canvas fails) data URL small enough for field/maintenance upload.
  */
-export async function prepareImageDataUrl(file: File): Promise<string> {
-  if (!file.type.startsWith("image/") && file.type !== "") {
+export async function prepareImageBlob(blob: Blob): Promise<string> {
+  if (blob.type && !blob.type.startsWith("image/")) {
     throw new Error("Please choose an image file");
   }
-  const raw = await readFileAsDataUrl(file);
+  const raw = await readFileAsDataUrl(blob);
   try {
-    const bitmap = await createImageBitmap(file);
+    const bitmap = await createImageBitmap(blob);
     const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
     const w = Math.max(1, Math.round(bitmap.width * scale));
     const h = Math.max(1, Math.round(bitmap.height * scale));
@@ -42,4 +42,11 @@ export async function prepareImageDataUrl(file: File): Promise<string> {
   } catch {
     return raw;
   }
+}
+
+export async function prepareImageDataUrl(file: File): Promise<string> {
+  if (!file.type.startsWith("image/") && file.type !== "") {
+    throw new Error("Please choose an image file");
+  }
+  return prepareImageBlob(file);
 }

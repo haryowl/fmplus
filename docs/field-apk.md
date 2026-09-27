@@ -20,7 +20,7 @@ APK path:
 
 `android/app/build/outputs/apk/debug/app-debug.apk`
 
-Install on a phone (`adb install -r` or copy the file). Allow **Location** and **Notifications** when the driver starts a route.
+Install on a phone (`adb install -r` or copy the file). Allow **Location** and **Notifications** when the driver starts a route. Allow **Camera** the first time they tap **Take photo** (proof / POD). **From gallery** does not need Camera.
 
 `FIELD_APP_URL` is read at `apk:sync` time. Re-sync after changing it.
 

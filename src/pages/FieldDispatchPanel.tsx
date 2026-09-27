@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DispatchOrderGoodsEditor } from "../components/DispatchOrderGoodsEditor";
 import { DutyLocationCard } from "../components/DutyLocationCard";
 import { FieldDispatchMonthChart } from "../components/FieldDispatchMonthChart";
+import { FieldPhotoPicker } from "../components/FieldPhotoPicker";
 import {
   readLocationConsent,
   registerDriverServiceWorker,
@@ -11,7 +12,6 @@ import {
   writeLocationConsent,
 } from "../lib/driverLocation";
 import { isNativeFieldApp } from "../lib/nativeField";
-import { prepareImageDataUrl } from "../lib/imageUpload";
 import {
   DISPATCH_STATUS_LABELS,
   dispatchVehicleLabel,
@@ -450,13 +450,10 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
     }
   }
 
-  async function onPhoto(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !selected || !activeStop) return;
+  async function onPhotoDataUrl(dataUrl: string) {
+    if (!selected || !activeStop) return;
     setBusy(true);
     try {
-      const dataUrl = await prepareImageDataUrl(file);
       const photo = await uploadDispatchStopPhoto(selected.id, activeStop.id, dataUrl);
       setPhotos((prev) => [photo, ...prev]);
       onNoticeRef.current("POD photo saved");
@@ -679,17 +676,11 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
             ))}
           </div>
           {!locked ? (
-            <label className="field-photo-btn">
-              Take / upload photo
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                hidden
-                disabled={busy}
-                onChange={(e) => void onPhoto(e)}
-              />
-            </label>
+            <FieldPhotoPicker
+              disabled={busy}
+              onPick={onPhotoDataUrl}
+              onError={(message) => onErrorRef.current(message)}
+            />
           ) : null}
         </section>
 

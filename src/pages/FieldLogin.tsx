@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { FieldAccountChip } from "../components/FieldAccountChip";
 import { CatalogLineEditor } from "../components/CatalogLineEditor";
 import { FieldJobsChart } from "../components/FieldJobsChart";
-import { prepareImageDataUrl } from "../lib/imageUpload";
+import { FieldPhotoPicker } from "../components/FieldPhotoPicker";
 import {
   emptyLine,
   eventVehicleLabel,
@@ -494,10 +494,8 @@ export default function FieldLogin() {
     setNotice("");
   }
 
-  async function onPhoto(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !selectedId) return;
+  async function onPhotoDataUrl(dataUrl: string) {
+    if (!selectedId) return;
     setBusy(true);
     setError("");
     setNotice("Saving job sheet…");
@@ -506,7 +504,6 @@ export default function FieldLogin() {
       if (!saved) return;
       setBusy(true);
       setNotice("Uploading photo…");
-      const dataUrl = await prepareImageDataUrl(file);
       await api<{ photo: ServicePhoto }>(`/api/field/maintenance/events/${selectedId}/photos`, {
         method: "POST",
         body: JSON.stringify({ dataUrl }),
@@ -728,10 +725,11 @@ export default function FieldLogin() {
                 </p>
               </header>
               {!jobLocked ? (
-                <label className="field-photo-btn">
-                  Take / upload photo
-                  <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void onPhoto(e)} />
-                </label>
+                <FieldPhotoPicker
+                  disabled={busy}
+                  onPick={onPhotoDataUrl}
+                  onError={(message) => setError(message)}
+                />
               ) : null}
               {(detail.photos || []).length > 0 ? (
                 <ul className="field-photo-grid">

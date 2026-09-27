@@ -3090,11 +3090,18 @@ html.onesheet-root body {
 .field-lines-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; }
 .field-totals { display: inline-flex; gap: 8px; font-size: 0.86rem; font-weight: 650; color: var(--ink-soft); }
 
+.field-photo-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
 .field-photo-btn {
   display: inline-flex; justify-content: center; align-items: center; padding: 12px 14px;
   border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); background: #fff;
-  font-weight: 650; color: var(--accent); cursor: pointer;
+  font: inherit; font-weight: 650; color: var(--accent); cursor: pointer;
 }
+.field-photo-btn:disabled { opacity: 0.55; cursor: default; }
 .field-photo-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
 .field-photo-grid img { width: 100%; height: 110px; object-fit: cover; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #e8ebe9; }
 
@@ -3104,7 +3111,8 @@ html.onesheet-root body {
   box-shadow: 0 10px 28px rgba(23, 22, 20, 0.1); z-index: 2;
 }
 
-.field-photos-panel .field-photo-btn {
+.field-photos-panel .field-photo-btn,
+.field-photos-panel .field-photo-actions {
   min-height: 48px;
   width: 100%;
   max-width: 100%;
