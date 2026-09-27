@@ -382,9 +382,15 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
       setActiveStopId(null);
       setShowSkipPanel(false);
-      setView("orders");
       onErrorRef.current("");
-      onNoticeRef.current("Order completed");
+      if (job.status === "done") {
+        onNoticeRef.current("Job completed");
+        setSelectedId(null);
+        setView("jobs");
+      } else {
+        setView("orders");
+        onNoticeRef.current("Order completed");
+      }
     } catch (err) {
       onErrorRef.current(err instanceof Error ? err.message : "Finish failed");
     } finally {
@@ -425,9 +431,15 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
       setActiveStopId(null);
       setShowSkipPanel(false);
       setSkipReason("");
-      setView("orders");
       onErrorRef.current("");
-      onNoticeRef.current(`Skipped · order moved to ${skipDate}`);
+      if (job.status === "done") {
+        onNoticeRef.current("Job completed");
+        setSelectedId(null);
+        setView("jobs");
+      } else {
+        setView("orders");
+        onNoticeRef.current(`Skipped · order moved to ${skipDate}`);
+      }
     } catch (err) {
       onErrorRef.current(err instanceof Error ? err.message : "Skip failed");
     } finally {

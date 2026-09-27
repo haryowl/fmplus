@@ -7,6 +7,11 @@ import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { buildStopRouteMeta } from "./stop-route-meta.mjs";
 import { haversineKm } from "./route-optimize.mjs";
 import { enrichLiveSnapshot } from "./dispatch-recovery.mjs";
+import {
+  liveDriverCurrentStatus,
+  markJobDoneIfNoOpenStops,
+  shouldAutoCompleteJob,
+} from "./dispatch-job-complete.mjs";
 import { latestPingsByFieldUser, pingTrailForServiceDate } from "./driver-pings.mjs";
 import { dateForDayIndex, dayIndexForDate, spanDayCount } from "./dispatch-span.mjs";
 import {
@@ -526,7 +531,18 @@ export async function buildDispatchLiveSnapshot(opts) {
       : null;
     const livePosition = pickLivePosition(phonePos, vehiclePos);
     const livePos = livePosition;
+    if (shouldAutoCompleteJob(job.status, allStops)) {
+      const healed = await markJobDoneIfNoOpenStops(job.id, allStops);
+      if (healed) {
+        job.status = healed.status;
+        job.completed_at = healed.completed_at;
+      }
+    }
+
     const currentStop = currentIdx >= 0 ? stopsOut[currentIdx] : null;
+    const remainingOpen = stopsOut.filter(
+      (s) => s.status !== "delivered" && s.status !== "skipped",
+    ).length;
 
     const lastDone = [...stopsOut].reverse().find((s) => s.completedAt || s.arrivedAt);
     const windowLabel = [
@@ -616,7 +632,7 @@ export async function buildDispatchLiveSnapshot(opts) {
       doneCount,
       stopCount: stopsOut.length,
       currentOrderRef: currentStop?.externalRef || currentStop?.name || "",
-      currentStatus: currentStop?.status || (job.status === "done" ? "delivered" : "pending"),
+      currentStatus: liveDriverCurrentStatus(job.status, currentStop?.status, remainingOpen),
       timeWindowLabel: windowLabel,
       startedAt: job.started_at || null,
       completedAt: job.completed_at || null,

@@ -957,7 +957,7 @@ export default function DispatchLive() {
                           <i style={{ width: `${Math.min(100, Math.max(0, d.pctComplete))}%` }} />
                         </div>
                         <p className="dispatch-live-current">
-                          {d.jobStatus === "done"
+                          {d.jobStatus === "done" || tone === "delivered"
                             ? "Route complete"
                             : d.currentOrderRef
                               ? `Now · ${d.currentOrderRef}`

@@ -36,6 +36,7 @@ import {
   PING_MAX_BODY_BYTES,
 } from "./driver-pings.mjs";
 import { dutyLocationFromTenantRow } from "./duty-location-policy.mjs";
+import { markJobDoneIfNoOpenStops } from "./dispatch-job-complete.mjs";
 import {
   applyCargoTotals,
   decorateJobsWithLines,
@@ -787,8 +788,11 @@ export async function handleFieldRequest(req, res) {
         );
         const jobs = [];
         for (const row of rows.rows) {
+          const stops = await loadDispatchStops(row.id);
+          const healed = await markJobDoneIfNoOpenStops(row.id, stops);
+          const jobRow = healed || row;
           // publicDispatchJob narrows to the leg being worked and summarises the rest.
-          jobs.push(publicDispatchJob(row, await loadDispatchStops(row.id), serviceDate));
+          jobs.push(publicDispatchJob(jobRow, stops, serviceDate));
         }
         json(res, 200, { jobs: await decorateJobsWithLines(user.tenantId, jobs), serviceDate });
         return true;
@@ -1133,6 +1137,9 @@ export async function handleFieldRequest(req, res) {
              WHERE id = $1 AND status = 'assigned'`,
             [job.id],
           );
+        }
+        if (status === "done" || status === "skipped") {
+          await markJobDoneIfNoOpenStops(job.id);
         }
         const row = await loadAssignedDispatchJob(user.tenantId, job.id, user.id);
         json(res, 200, {

@@ -68,6 +68,7 @@ import {
   maybeNotifyDispatchRouteUpdated,
 } from "./dispatch-notify.mjs";
 import { jobIsClosed, nextDispatchTripTitle } from "./dispatch-next-trip.mjs";
+import { markJobDoneIfNoOpenStops } from "./dispatch-job-complete.mjs";
 import { csvBool, csvNum, parseCsv } from "./csv-parse.mjs";
 import { buildDispatchLiveSnapshot } from "./dispatch-live.mjs";
 import { pingTrailForServiceDate } from "./driver-pings.mjs";
@@ -2516,7 +2517,10 @@ export async function handleDispatchRequest(req, res) {
       const jobs = [];
       for (const row of rows.rows) {
         const stops = await loadStops(row.id);
-        jobs.push(withRequestedDay(publicJob(row, stops), date));
+        const healed = await markJobDoneIfNoOpenStops(row.id, stops);
+        const jobRow = healed || row;
+        if (status === "open" && jobIsClosed(jobRow.status)) continue;
+        jobs.push(withRequestedDay(publicJob(jobRow, stops), date));
       }
       json(res, 200, {
         jobs: await decorateJobsWithLines(dbTenant.id, jobs),
