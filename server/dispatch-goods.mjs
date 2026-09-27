@@ -105,11 +105,13 @@ export function parseOrderGoodsCell(raw) {
 
 export async function resolveCsvGoodsLines(tenantId, rawCell, extraRow = {}) {
   const parsed = parseOrderGoodsCell(rawCell);
+  const extraSku = goodsSkuFromCsvRow(extraRow) || String(extraRow.goods_sku || extraRow.goodsSku || "").trim();
   const extraName = String(extraRow.goods_name || extraRow.goodsName || "").trim();
-  if (extraName && !parsed.some((p) => p.key.toLowerCase() === extraName.toLowerCase())) {
+  const extraKey = extraSku || extraName;
+  if (extraKey && !parsed.some((p) => p.key.toLowerCase() === extraKey.toLowerCase())) {
     const qty = Number(extraRow.goods_qty ?? extraRow.goodsQty ?? 1);
     parsed.push({
-      key: extraName,
+      key: extraKey,
       qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
       unit: String(extraRow.goods_unit || extraRow.goodsUnit || ""),
     });
@@ -134,6 +136,13 @@ export async function resolveCsvGoodsLines(tenantId, rawCell, extraRow = {}) {
       sortOrder: i,
     };
   });
+}
+
+export function goodsSkuFromCsvRow(row) {
+  const r = row && typeof row === "object" ? row : {};
+  return String(r.sku || r.item_sku || r.item_code || r.product_code || "")
+    .trim()
+    .slice(0, 80);
 }
 
 function csvEnabledFlag(v) {
@@ -168,15 +177,15 @@ export async function importGoodsItemsFromRows(tenantId, rawRows) {
       errors.push({ line, error: "name is required" });
       continue;
     }
-    const sku = String(row.sku || "").trim().slice(0, 80);
+    const sku = goodsSkuFromCsvRow(row);
     const body = {
       name,
-      sku,
       unit: parseGoodsUnit(row.unit),
       volumeM3Each: numOrNullGoods(row.volume_m3_each ?? row.volumeM3Each),
       weightKgEach: numOrNullGoods(row.weight_kg_each ?? row.weightKgEach),
       enabled: csvEnabledFlag(row.enabled),
     };
+    if (sku) body.sku = sku;
     try {
       const found =
         (sku && bySku.get(sku.toLowerCase())) || byName.get(name.toLowerCase()) || null;

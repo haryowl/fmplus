@@ -1269,6 +1269,27 @@ export default function DispatchBoard() {
     }
   }
 
+  function closeGoodsCatalog() {
+    setShowGoodsCatalog(false);
+    void fetchDispatchGoods()
+      .then(setGoodsCatalog)
+      .catch(() => undefined);
+  }
+
+  useEffect(() => {
+    if (!showGoodsCatalog) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeGoodsCatalog();
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [showGoodsCatalog]);
+
   function clearDraft() {
     setOrderForm(emptyOrderForm);
     setEditingOrderId(null);
@@ -2944,28 +2965,17 @@ export default function DispatchBoard() {
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={() => setShowGoodsCatalog((v) => !v)}
+                onClick={() => setShowGoodsCatalog(true)}
               >
-                {showGoodsCatalog ? "Hide goods" : `Goods (${goodsCatalog.length})`}
+                Goods ({goodsCatalog.length})
               </button>
             </div>
-
-            {showGoodsCatalog ? (
-              <DispatchGoodsCatalogPanel
-                onClose={() => {
-                  setShowGoodsCatalog(false);
-                  void fetchDispatchGoods()
-                    .then(setGoodsCatalog)
-                    .catch(() => undefined);
-                }}
-              />
-            ) : null}
 
             <CsvImportPanel
               title="Import orders CSV"
               disabled={busy}
               templateFilename="dispatch-orders-template.csv"
-              hint="Required: customer_name, lat, lon. Optional: address, external_ref, zone, volume_m3, weight_kg, windows, proof_required, goods (Oil:2; Filter:1 box — matches catalog SKU/name or free text). Max 200 rows. Duplicate external_ref on this date is skipped."
+              hint="Required: customer_name, lat, lon. Optional: address, external_ref, zone, volume_m3, weight_kg, windows, proof_required, sku, goods (OIL-01:2; FIL-02:1 box — matches catalog SKU/name or free text). Max 200 rows. Duplicate external_ref on this date is skipped."
               onDownloadTemplate={() =>
                 downloadCsv("dispatch-orders-template.csv", dispatchOrderCsvTemplate())
               }
@@ -4477,6 +4487,19 @@ export default function DispatchBoard() {
           </section>
         </div>
       </main>
+      {showGoodsCatalog ? (
+        <div
+          className="dispatch-catalog-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Goods catalog"
+          onClick={closeGoodsCatalog}
+        >
+          <div className="dispatch-catalog-sheet" onClick={(e) => e.stopPropagation()}>
+            <DispatchGoodsCatalogPanel onClose={closeGoodsCatalog} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

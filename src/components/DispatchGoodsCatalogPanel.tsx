@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { CsvImportPanel } from "./CsvImportPanel";
 import {
   DISPATCH_GOODS_CSV_HEADERS,
+  dispatchGoodsCsvFromItems,
   dispatchGoodsCsvTemplate,
   downloadCsv,
   parseCsv,
@@ -176,41 +177,53 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           Add
         </button>
       </form>
-      <CsvImportPanel
-        title="Import goods CSV"
-        disabled={busy}
-        templateFilename="dispatch-goods-template.csv"
-        hint="Required: name. Optional: sku, unit (pcs/box/bag/kg/L), volume_m3_each, weight_kg_each, enabled. Matching SKU or name updates the existing item. Max 500 rows."
-        onDownloadTemplate={() => downloadCsv("dispatch-goods-template.csv", dispatchGoodsCsvTemplate())}
-        parseFile={(text) => {
-          const { headers, rows } = parseCsv(text);
-          if (!headers.includes("name")) {
-            return { rows: [], error: "CSV must include name column" };
-          }
-          const missing = DISPATCH_GOODS_CSV_HEADERS.filter((h) => h === "name").filter(
-            (h) => !headers.includes(h),
-          );
-          if (missing.length) return { rows: [], error: `Missing columns: ${missing.join(", ")}` };
-          if (!rows.length) return { rows: [], error: "No data rows found" };
-          if (rows.length > 500) return { rows: [], error: "Maximum 500 rows per import" };
-          return { rows };
-        }}
-        onImport={async (rows) => {
-          setBusy(true);
-          setError("");
-          try {
-            const out = await importDispatchGoods({ rows });
-            await reload();
-            return out;
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : "Import failed";
-            setError(msg);
-            throw err;
-          } finally {
-            setBusy(false);
-          }
-        }}
-      />
+      <div className="dispatch-goods-catalog-tools">
+        <CsvImportPanel
+          title="Import goods CSV"
+          disabled={busy}
+          templateFilename="dispatch-goods-template.csv"
+          hint="Required: name. Include sku to print QR/barcode and scan later. Optional: unit (pcs/box/bag/kg/L), volume_m3_each, weight_kg_each, enabled. Matching SKU or name updates the existing item. Max 500 rows."
+          onDownloadTemplate={() => downloadCsv("dispatch-goods-template.csv", dispatchGoodsCsvTemplate())}
+          parseFile={(text) => {
+            const { headers, rows } = parseCsv(text);
+            if (!headers.includes("name")) {
+              return { rows: [], error: "CSV must include name column" };
+            }
+            const missing = DISPATCH_GOODS_CSV_HEADERS.filter((h) => h === "name").filter(
+              (h) => !headers.includes(h),
+            );
+            if (missing.length) return { rows: [], error: `Missing columns: ${missing.join(", ")}` };
+            if (!rows.length) return { rows: [], error: "No data rows found" };
+            if (rows.length > 500) return { rows: [], error: "Maximum 500 rows per import" };
+            return { rows };
+          }}
+          onImport={async (rows) => {
+            setBusy(true);
+            setError("");
+            try {
+              const out = await importDispatchGoods({ rows });
+              await reload();
+              return out;
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : "Import failed";
+              setError(msg);
+              throw err;
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+        {items.length ? (
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={busy}
+            onClick={() => downloadCsv("dispatch-goods.csv", dispatchGoodsCsvFromItems(items))}
+          >
+            Export goods CSV
+          </button>
+        ) : null}
+      </div>
       <input
         type="search"
         value={filter}

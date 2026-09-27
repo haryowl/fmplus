@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   formatCargoSummary,
+  goodsSkuFromCsvRow,
   parseGoodsUnit,
   parseOrderGoodsCell,
   sumCargoTotals,
 } from "../../server/dispatch-goods.mjs";
+import { DISPATCH_GOODS_CSV_HEADERS, dispatchGoodsCsvFromItems, dispatchGoodsCsvTemplate } from "./csvImport";
 
 describe("dispatch goods helpers", () => {
   it("parses known units and falls back to pcs", () => {
@@ -45,5 +47,20 @@ describe("dispatch goods helpers", () => {
       { key: "SKU-9", qty: 3, unit: "" },
     ]);
     expect(parseOrderGoodsCell("")).toEqual([]);
+  });
+
+  it("reads SKU from goods CSV aliases", () => {
+    expect(goodsSkuFromCsvRow({ sku: "OIL-01" })).toBe("OIL-01");
+    expect(goodsSkuFromCsvRow({ item_sku: "FIL-02" })).toBe("FIL-02");
+    expect(goodsSkuFromCsvRow({ item_code: "BOX-1" })).toBe("BOX-1");
+    expect(goodsSkuFromCsvRow({ name: "Oil" })).toBe("");
+  });
+});
+
+describe("goods CSV template", () => {
+  it("includes a sku column", () => {
+    expect(DISPATCH_GOODS_CSV_HEADERS).toContain("sku");
+    expect(dispatchGoodsCsvTemplate()).toMatch(/^name,sku,unit/);
+    expect(dispatchGoodsCsvFromItems([{ name: "Oil", sku: "OIL-01", unit: "L" }])).toContain("OIL-01");
   });
 });

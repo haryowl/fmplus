@@ -9460,6 +9460,72 @@ button.dispatch-pin-chip {
   }
 }
 
+.dispatch-catalog-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(20, 18, 16, 0.45);
+}
+
+.dispatch-catalog-sheet {
+  width: min(880px, 100%);
+  max-height: min(88vh, 820px);
+  overflow: auto;
+  padding: 20px 22px 24px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(20, 18, 16, 0.22);
+}
+
+.dispatch-catalog-sheet .dispatch-goods-catalog {
+  padding: 0;
+}
+
+.dispatch-catalog-sheet .dispatch-goods-catalog-head {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.dispatch-catalog-sheet .dispatch-goods-catalog-add {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1.4fr) 7rem 5.5rem 6rem 6rem auto;
+  align-items: center;
+}
+
+.dispatch-catalog-sheet .dispatch-goods-catalog-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.dispatch-catalog-sheet .dispatch-goods-catalog-list li {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1.4fr) 7rem minmax(7rem, 1fr) auto;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.dispatch-catalog-sheet .dispatch-goods-catalog-list li .catalog-codes-editor {
+  grid-column: 1 / -1;
+}
+
+.dispatch-catalog-sheet .dispatch-goods-catalog-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (max-width: 720px) {
+  .dispatch-catalog-sheet .dispatch-goods-catalog-add,
+  .dispatch-catalog-sheet .dispatch-goods-catalog-list li {
+    display: flex;
+    flex-wrap: wrap;
+  }
+}
+
 .dispatch-goods-block,
 .dispatch-goods-catalog,
 .dispatch-goods-editor {
