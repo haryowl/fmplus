@@ -207,8 +207,13 @@ function AdminFold({
   defaultOpen?: boolean;
   children: ReactNode;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <details className="admin-panel admin-fold" defaultOpen={defaultOpen}>
+    <details
+      className="admin-panel admin-fold"
+      open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+    >
       <summary className="admin-fold-summary">
         <span>
           <strong>{title}</strong>
