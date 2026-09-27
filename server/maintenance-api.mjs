@@ -26,6 +26,12 @@ import {
   normalizeLineKind,
   updateCatalogItem,
 } from "./maintenance-catalog.mjs";
+import {
+  addCatalogCode,
+  deleteCatalogCode,
+  listCodesForTarget,
+  lookupCatalogScan,
+} from "./catalog-codes.mjs";
 import { mergeEntitlements } from "./entitlements.mjs";
 
 export { canTransition, serviceDurationMinutes, nextScheduleDueAt } from "./maintenance-lifecycle.mjs";
@@ -133,6 +139,10 @@ export function publicLine(row) {
     kind: LINE_KINDS.includes(kind) ? kind : "other",
     catalogItemId: row.catalog_item_id || null,
     description: row.description || "",
+    scannedCode: row.scanned_code || "",
+    serial: row.serial || "",
+    lot: row.lot || "",
+    scannedAt: row.scanned_at || null,
     qty,
     unitPrice,
     unitCost,
@@ -212,7 +222,8 @@ export function publicEvent(row, extras = {}) {
 
 export async function loadLines(eventId) {
   const rows = await dbQuery(
-    `SELECT id, kind, description, qty, unit_price, unit_cost, vendor, sort_order, catalog_item_id
+    `SELECT id, kind, description, qty, unit_price, unit_cost, vendor, sort_order, catalog_item_id,
+            scanned_code, serial, lot, scanned_at
      FROM service_event_lines WHERE event_id = $1 ORDER BY sort_order ASC, created_at ASC`,
     [eventId],
   );
@@ -273,10 +284,14 @@ export async function replaceLines(eventId, linesInput) {
     const unitCost = raw.unitCost == null || raw.unitCost === "" ? null : Number(raw.unitCost);
     const vendor = String(raw.vendor || "").trim().slice(0, 200) || null;
     const catalogItemId = raw.catalogItemId ? String(raw.catalogItemId) : null;
+    const scannedCode = String(raw.scannedCode || raw.scanned_code || "").trim().slice(0, 120) || null;
+    const serial = String(raw.serial || "").trim().slice(0, 80) || null;
+    const lot = String(raw.lot || "").trim().slice(0, 80) || null;
     await dbQuery(
       `INSERT INTO service_event_lines
-         (event_id, kind, description, qty, unit_price, unit_cost, vendor, sort_order, catalog_item_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+         (event_id, kind, description, qty, unit_price, unit_cost, vendor, sort_order, catalog_item_id,
+          scanned_code, serial, lot, scanned_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [
         eventId,
         kind,
@@ -287,6 +302,10 @@ export async function replaceLines(eventId, linesInput) {
         vendor,
         i,
         catalogItemId,
+        scannedCode,
+        serial,
+        lot,
+        raw.scannedAt || raw.scanned_at || null,
       ],
     );
     i += 1;
@@ -1173,6 +1192,56 @@ export async function handleMaintenanceRequest(req, res) {
     }
     if (catalogItemMatch && req.method === "DELETE") {
       await deleteCatalogItem(dbTenant.id, catalogItemMatch[1]);
+      json(res, 200, { ok: true });
+      return true;
+    }
+
+    if (url.pathname === "/api/maintenance/scan" && req.method === "POST") {
+      const body = await readJson(req);
+      json(res, 200, await lookupCatalogScan(dbTenant.id, { ...body, context: body.context || "maint_part" }));
+      return true;
+    }
+
+    const maintCodes = /^\/api\/maintenance\/catalog\/items\/([0-9a-f-]{36})\/codes$/i.exec(
+      url.pathname,
+    );
+    if (maintCodes && req.method === "GET") {
+      json(res, 200, { codes: await listCodesForTarget(dbTenant.id, "maint_part", maintCodes[1]) });
+      return true;
+    }
+    if (maintCodes && req.method === "POST") {
+      const found = await dbQuery(
+        `SELECT i.id, g.key AS group_key
+         FROM maintenance_catalog_items i
+         JOIN maintenance_catalog_groups g ON g.id = i.group_id
+         WHERE i.id = $1 AND i.tenant_id = $2`,
+        [maintCodes[1], dbTenant.id],
+      );
+      if (!found.rows[0]) {
+        json(res, 404, { error: "Catalog item not found" });
+        return true;
+      }
+      if (found.rows[0].group_key !== "part") {
+        json(res, 400, { error: "Scan codes are for parts only" });
+        return true;
+      }
+      const body = await readJson(req);
+      const code = await addCatalogCode(dbTenant.id, {
+        targetKind: "maint_part",
+        targetId: maintCodes[1],
+        code: body.code,
+        codeFormat: body.codeFormat || "ean",
+        label: body.label,
+      });
+      json(res, 201, { code });
+      return true;
+    }
+    const maintCodeOne =
+      /^\/api\/maintenance\/catalog\/items\/([0-9a-f-]{36})\/codes\/([0-9a-f-]{36})$/i.exec(
+        url.pathname,
+      );
+    if (maintCodeOne && req.method === "DELETE") {
+      await deleteCatalogCode(dbTenant.id, maintCodeOne[2]);
       json(res, 200, { ok: true });
       return true;
     }

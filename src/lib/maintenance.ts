@@ -18,6 +18,10 @@ export type ServiceLine = {
   sortOrder?: number;
   linePrice?: number | null;
   lineCost?: number | null;
+  scannedCode?: string;
+  serial?: string;
+  lot?: string;
+  scannedAt?: string | null;
 };
 
 export type ServicePhoto = {
@@ -171,6 +175,7 @@ export type CatalogItem = {
   groupId: string;
   groupKey: string;
   name: string;
+  sku?: string;
   unitPrice: number | null;
   unitCost: number | null;
   enabled: boolean;
@@ -278,6 +283,7 @@ export async function fetchMaintenanceCatalog(signal?: AbortSignal): Promise<Cat
 export async function createMaintCatalogItem(body: {
   groupId: string;
   name: string;
+  sku?: string;
   unitPrice?: number | null;
   unitCost?: number | null;
 }): Promise<CatalogItem> {

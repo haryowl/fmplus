@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { BrandMark } from "../components/BrandMark";
 import { FieldAccountChip } from "../components/FieldAccountChip";
 import { CatalogLineEditor } from "../components/CatalogLineEditor";
+import { CatalogScanButton } from "../components/CatalogScanButton";
+import { applyMaintPartScan, lookupCatalogScan } from "../lib/catalogScan";
 import { FieldJobsChart } from "../components/FieldJobsChart";
 import { FieldPhotoPicker } from "../components/FieldPhotoPicker";
 import {
@@ -9,6 +11,7 @@ import {
   eventVehicleLabel,
   SERVICE_STATUS_LABELS,
   type CatalogGroup,
+  type CatalogItem,
   type ServiceEvent,
   type ServiceEventStatus,
   type ServiceLine,
@@ -336,6 +339,10 @@ export default function FieldLogin() {
         unitCost: l.unitCost,
         vendor: l.vendor,
         sortOrder: i,
+        scannedCode: l.scannedCode || "",
+        serial: l.serial || "",
+        lot: l.lot || "",
+        scannedAt: l.scannedAt || null,
       }));
   }
 
@@ -764,16 +771,36 @@ export default function FieldLogin() {
               </div>
               {!jobLocked ? (
                 <div className="field-lines-footer">
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => {
-                      setLinesDirty(true);
-                      setLines((p) => [...p, emptyLine()]);
-                    }}
-                  >
-                    Add line
-                  </button>
+                  <div className="field-lines-actions">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => {
+                        setLinesDirty(true);
+                        setLines((p) => [...p, emptyLine()]);
+                      }}
+                    >
+                      Add line
+                    </button>
+                    <CatalogScanButton
+                      disabled={jobLocked || busy}
+                      label="Scan part"
+                      onCode={(code) => {
+                        void lookupCatalogScan(code, "maint_part", "field")
+                          .then((res) => {
+                            if (res.match !== "maint_part" || !res.item || !("groupKey" in res.item)) {
+                              setError(`Not in catalog: ${res.raw || code}`);
+                              return;
+                            }
+                            setLinesDirty(true);
+                            setLines((prev) =>
+                              applyMaintPartScan(prev, res.item as CatalogItem, res.code || code),
+                            );
+                          })
+                          .catch((err: Error) => setError(err.message));
+                      }}
+                    />
+                  </div>
                   <span className="field-totals">
                     Price Σ {priceTotal.toFixed(2)}
                     <span>·</span>

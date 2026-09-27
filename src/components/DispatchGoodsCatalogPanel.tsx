@@ -6,6 +6,7 @@ import {
   downloadCsv,
   parseCsv,
 } from "../lib/csvImport";
+import { CatalogCodesEditor } from "./CatalogCodesEditor";
 import {
   createDispatchGoodsItem,
   deleteDispatchGoodsItem,
@@ -32,6 +33,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
   const [vol, setVol] = useState("");
   const [wt, setWt] = useState("");
   const [filter, setFilter] = useState("");
+  const [openCodes, setOpenCodes] = useState<string | null>(null);
 
   async function reload(signal?: AbortSignal) {
     setItems(await fetchDispatchGoods(signal));
@@ -223,8 +225,19 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           {shown.map((item) => (
             <li key={item.id} className={item.enabled ? undefined : "is-disabled"}>
               <strong>{item.name}</strong>
+              <input
+                key={`${item.id}-sku-${item.sku || ""}`}
+                defaultValue={item.sku || ""}
+                placeholder="SKU"
+                disabled={busy}
+                size={8}
+                onBlur={(e) => {
+                  const sku = e.target.value.trim();
+                  if (sku !== (item.sku || "")) void saveItem(item, { sku });
+                }}
+              />
               <span>
-                {item.sku || "—"} · {item.unit}
+                {item.unit}
                 {item.volumeM3Each != null ? ` · ${item.volumeM3Each} m³` : ""}
                 {item.weightKgEach != null ? ` · ${item.weightKgEach} kg` : ""}
               </span>
@@ -245,7 +258,23 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                 >
                   Delete
                 </button>
+                <button
+                  type="button"
+                  className="btn-ghost btn-compact"
+                  onClick={() => setOpenCodes((id) => (id === item.id ? null : item.id))}
+                >
+                  {openCodes === item.id ? "Hide codes" : "Codes"}
+                </button>
               </div>
+              {openCodes === item.id ? (
+                <CatalogCodesEditor
+                  kind="goods"
+                  itemId={item.id}
+                  sku={item.sku}
+                  name={item.name}
+                  disabled={busy}
+                />
+              ) : null}
             </li>
           ))}
         </ul>

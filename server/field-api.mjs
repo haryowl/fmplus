@@ -37,6 +37,7 @@ import {
 } from "./driver-pings.mjs";
 import { dutyLocationFromTenantRow } from "./duty-location-policy.mjs";
 import { markJobDoneIfNoOpenStops } from "./dispatch-job-complete.mjs";
+import { lookupCatalogScan } from "./catalog-codes.mjs";
 import {
   applyCargoTotals,
   decorateJobsWithLines,
@@ -650,6 +651,17 @@ export async function handleFieldRequest(req, res) {
       }
 
       json(res, 404, { error: "Not found" });
+      return true;
+    }
+
+    if (url.pathname === "/api/field/scan" && req.method === "POST") {
+      const user = await fieldFromRequest(req);
+      if (!user) {
+        json(res, 401, { error: "Not logged in" });
+        return true;
+      }
+      const body = await readJson(req);
+      json(res, 200, await lookupCatalogScan(user.tenantId, body));
       return true;
     }
 

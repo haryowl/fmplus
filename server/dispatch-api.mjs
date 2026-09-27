@@ -69,6 +69,12 @@ import {
 } from "./dispatch-notify.mjs";
 import { jobIsClosed, nextDispatchTripTitle } from "./dispatch-next-trip.mjs";
 import { markJobDoneIfNoOpenStops } from "./dispatch-job-complete.mjs";
+import {
+  addCatalogCode,
+  deleteCatalogCode,
+  listCodesForTarget,
+  lookupCatalogScan,
+} from "./catalog-codes.mjs";
 import { csvBool, csvNum, parseCsv } from "./csv-parse.mjs";
 import { buildDispatchLiveSnapshot } from "./dispatch-live.mjs";
 import { pingTrailForServiceDate } from "./driver-pings.mjs";
@@ -1210,6 +1216,45 @@ export async function handleDispatchRequest(req, res) {
     }
     if (goodsOne && req.method === "DELETE") {
       await deleteGoodsItem(dbTenant.id, goodsOne[1]);
+      json(res, 200, { ok: true });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/scan" && req.method === "POST") {
+      const body = await readJson(req);
+      json(res, 200, await lookupCatalogScan(dbTenant.id, { ...body, context: body.context || "dispatch_cargo" }));
+      return true;
+    }
+
+    const goodsCodes = /^\/api\/dispatch\/goods\/([0-9a-f-]{36})\/codes$/i.exec(url.pathname);
+    if (goodsCodes && req.method === "GET") {
+      json(res, 200, { codes: await listCodesForTarget(dbTenant.id, "goods", goodsCodes[1]) });
+      return true;
+    }
+    if (goodsCodes && req.method === "POST") {
+      const found = await dbQuery(
+        `SELECT id FROM dispatch_goods_items WHERE id = $1 AND tenant_id = $2`,
+        [goodsCodes[1], dbTenant.id],
+      );
+      if (!found.rows[0]) {
+        json(res, 404, { error: "Goods item not found" });
+        return true;
+      }
+      const body = await readJson(req);
+      const code = await addCatalogCode(dbTenant.id, {
+        targetKind: "goods",
+        targetId: goodsCodes[1],
+        code: body.code,
+        codeFormat: body.codeFormat || "ean",
+        label: body.label,
+      });
+      json(res, 201, { code });
+      return true;
+    }
+    const goodsCodeOne =
+      /^\/api\/dispatch\/goods\/([0-9a-f-]{36})\/codes\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (goodsCodeOne && req.method === "DELETE") {
+      await deleteCatalogCode(dbTenant.id, goodsCodeOne[2]);
       json(res, 200, { ok: true });
       return true;
     }

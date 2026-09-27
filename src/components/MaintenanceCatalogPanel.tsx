@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { CatalogCodesEditor } from "./CatalogCodesEditor";
 import {
   createMaintCatalogItem,
   deleteMaintCatalogItem,
@@ -21,6 +22,8 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
   const [newName, setNewName] = useState<Record<string, string>>({});
   const [newPrice, setNewPrice] = useState<Record<string, string>>({});
   const [newCost, setNewCost] = useState<Record<string, string>>({});
+  const [newSku, setNewSku] = useState<Record<string, string>>({});
+  const [openCodes, setOpenCodes] = useState<string | null>(null);
 
   async function reload(signal?: AbortSignal) {
     const next = await fetchMaintenanceCatalog(signal);
@@ -53,12 +56,14 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
       await createMaintCatalogItem({
         groupId: group.id,
         name,
+        sku: group.key === "part" ? (newSku[group.id] || "").trim() : undefined,
         unitPrice: priceRaw === undefined || priceRaw === "" ? null : Number(priceRaw),
         unitCost: costRaw === undefined || costRaw === "" ? null : Number(costRaw),
       });
       setNewName((p) => ({ ...p, [group.id]: "" }));
       setNewPrice((p) => ({ ...p, [group.id]: "" }));
       setNewCost((p) => ({ ...p, [group.id]: "" }));
+      setNewSku((p) => ({ ...p, [group.id]: "" }));
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Add failed");
@@ -133,6 +138,17 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
                           if (name && name !== item.name) void saveItem(item, { name });
                         }}
                       />
+                      {group.key === "part" ? (
+                        <input
+                          placeholder="SKU"
+                          defaultValue={item.sku || ""}
+                          disabled={busy}
+                          onBlur={(e) => {
+                            const sku = e.target.value.trim();
+                            if (sku !== (item.sku || "")) void saveItem(item, { sku });
+                          }}
+                        />
+                      ) : null}
                       <input
                         type="number"
                         step="any"
@@ -172,6 +188,24 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
                       >
                         Remove
                       </button>
+                      {group.key === "part" ? (
+                        <button
+                          type="button"
+                          className="btn-ghost btn-compact"
+                          onClick={() => setOpenCodes((id) => (id === item.id ? null : item.id))}
+                        >
+                          {openCodes === item.id ? "Hide codes" : "Codes"}
+                        </button>
+                      ) : null}
+                      {group.key === "part" && openCodes === item.id ? (
+                        <CatalogCodesEditor
+                          kind="maint_part"
+                          itemId={item.id}
+                          sku={item.sku}
+                          name={item.name}
+                          disabled={busy}
+                        />
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -182,6 +216,14 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
                     onChange={(e) => setNewName((p) => ({ ...p, [group.id]: e.target.value }))}
                     disabled={busy}
                   />
+                  {group.key === "part" ? (
+                    <input
+                      placeholder="SKU"
+                      value={newSku[group.id] || ""}
+                      onChange={(e) => setNewSku((p) => ({ ...p, [group.id]: e.target.value }))}
+                      disabled={busy}
+                    />
+                  ) : null}
                   <input
                     type="number"
                     step="any"

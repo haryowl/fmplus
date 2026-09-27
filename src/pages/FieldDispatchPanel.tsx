@@ -661,6 +661,8 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                 setCargoDraft(lines);
               }}
               compact
+              scanSource="field"
+              onScanError={(msg) => onErrorRef.current(msg)}
             />
             <button
               type="button"
@@ -1007,6 +1009,8 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                                 lines={cargoDraft}
                                 onChange={setCargoDraft}
                                 compact
+                                scanSource="field"
+                                onScanError={(msg) => onErrorRef.current(msg)}
                               />
                               <div className="field-action-row">
                                 <button

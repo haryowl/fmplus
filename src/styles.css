@@ -3212,6 +3212,7 @@ html.onesheet-root body {
 .field-line-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .field-line-grid label { display: grid; gap: 4px; font-size: 0.78rem; color: var(--ink-faint); }
 .field-lines-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; }
+.field-lines-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .field-totals { display: inline-flex; gap: 8px; font-size: 0.86rem; font-weight: 650; color: var(--ink-soft); }
 
 .field-photo-actions {
@@ -7491,8 +7492,8 @@ button.dispatch-pin-chip {
 }
 
 .maintenance-catalog-list li {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) 5.5rem 5.5rem auto auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
@@ -7502,7 +7503,14 @@ button.dispatch-pin-chip {
 }
 
 .maintenance-catalog-list .catalog-name {
+  flex: 1 1 140px;
   min-width: 0;
+}
+
+.maintenance-catalog-list input[placeholder="SKU"],
+.maintenance-catalog-add input[placeholder="SKU"] {
+  flex: 0 0 7rem;
+  width: 7rem;
 }
 
 .catalog-enabled {
@@ -7514,9 +7522,10 @@ button.dispatch-pin-chip {
 }
 
 .maintenance-catalog-add {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) 5.5rem 5.5rem auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
 }
 
 .maintenance-cost-filters {
@@ -7574,7 +7583,7 @@ button.dispatch-pin-chip {
   }
   .maintenance-catalog-list li,
   .maintenance-catalog-add {
-    grid-template-columns: 1fr 1fr;
+    display: flex;
   }
 }
 
@@ -9546,4 +9555,80 @@ button.dispatch-pin-chip {
   margin: 4px 0 0;
   font-size: 0.8rem;
   color: var(--ink-soft);
+}
+
+.catalog-scan-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: end center;
+  background: rgba(20, 18, 16, 0.45);
+  padding: 16px;
+}
+
+.catalog-scan-sheet {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.catalog-scan-video {
+  width: 100%;
+  max-height: 220px;
+  background: #111;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.catalog-scan-type {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.catalog-codes-editor {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.catalog-codes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.catalog-codes-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+
+.catalog-codes-list em {
+  margin-left: 6px;
+  color: var(--ink-soft);
+  font-style: normal;
+}
+
+.catalog-codes-add {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.dispatch-goods-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }

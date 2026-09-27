@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { CatalogScanButton } from "./CatalogScanButton";
+import { applyGoodsScan, lookupCatalogScan } from "../lib/catalogScan";
 import {
   DISPATCH_GOODS_UNITS,
   sumOrderCargoTotals,
@@ -15,6 +17,9 @@ type Props = {
   compact?: boolean;
   totalsLocked?: boolean;
   onToggleLock?: (locked: boolean) => void;
+  /** Field uses cookie auth; desk uses the tenant key. */
+  scanSource?: "field" | "desk";
+  onScanError?: (message: string) => void;
 };
 
 function newFreeLine(): DispatchOrderLine {
@@ -36,6 +41,8 @@ export function DispatchOrderGoodsEditor({
   compact,
   totalsLocked,
   onToggleLock,
+  scanSource,
+  onScanError,
 }: Props) {
   const [query, setQuery] = useState("");
   const enabled = catalog.filter((i) => i.enabled !== false);
@@ -86,6 +93,22 @@ export function DispatchOrderGoodsEditor({
           >
             Free text
           </button>
+          {scanSource ? (
+            <CatalogScanButton
+              disabled={disabled}
+              onCode={(code) => {
+                void lookupCatalogScan(code, "dispatch_cargo", scanSource)
+                  .then((res) => {
+                    if (res.match !== "goods" || !res.item || !("unit" in res.item)) {
+                      onScanError?.(`Not in catalog: ${res.raw || code}`);
+                      return;
+                    }
+                    onChange(applyGoodsScan(lines, res.item, res.code || code));
+                  })
+                  .catch((err: Error) => onScanError?.(err.message));
+              }}
+            />
+          ) : null}
         </div>
       ) : null}
       {query && !disabled ? (

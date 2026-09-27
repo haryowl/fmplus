@@ -2,6 +2,7 @@
  * Tenant parts/service catalog for maintenance lines.
  */
 import { dbQuery } from "./db.mjs";
+import { deleteCodesForTarget, syncPrimarySku } from "./catalog-codes.mjs";
 
 const DEFAULT_ITEMS = {
   part: [
@@ -35,6 +36,7 @@ export function publicCatalogItem(row) {
     groupId: row.group_id,
     groupKey: row.group_key || row.key || "",
     name: row.name || "",
+    sku: row.sku || "",
     unitPrice: row.unit_price == null ? null : Number(row.unit_price),
     unitCost: row.unit_cost == null ? null : Number(row.unit_cost),
     enabled: row.enabled !== false,
@@ -82,7 +84,7 @@ export async function loadCatalog(tenantId) {
     [tenantId],
   );
   const items = await dbQuery(
-    `SELECT i.id, i.group_id, i.name, i.unit_price, i.unit_cost, i.enabled, i.sort_order, g.key AS group_key
+    `SELECT i.id, i.group_id, i.name, i.sku, i.unit_price, i.unit_cost, i.enabled, i.sort_order, g.key AS group_key
      FROM maintenance_catalog_items i
      JOIN maintenance_catalog_groups g ON g.id = i.group_id
      WHERE i.tenant_id = $1
@@ -123,22 +125,28 @@ export async function createCatalogItem(tenantId, body) {
   const unitPrice = body.unitPrice == null || body.unitPrice === "" ? null : Number(body.unitPrice);
   const unitCost = body.unitCost == null || body.unitCost === "" ? null : Number(body.unitCost);
   const sortOrder = Number(body.sortOrder);
+  const sku = String(body.sku || "").trim().slice(0, 80) || null;
   const inserted = await dbQuery(
     `INSERT INTO maintenance_catalog_items
-       (tenant_id, group_id, name, unit_price, unit_cost, enabled, sort_order)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
-     RETURNING id, group_id, name, unit_price, unit_cost, enabled, sort_order`,
+       (tenant_id, group_id, name, sku, unit_price, unit_cost, enabled, sort_order)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+     RETURNING id, group_id, name, sku, unit_price, unit_cost, enabled, sort_order`,
     [
       tenantId,
       groupId,
       name,
+      sku,
       Number.isFinite(unitPrice) ? unitPrice : null,
       Number.isFinite(unitCost) ? unitCost : null,
       body.enabled === false ? false : true,
       Number.isFinite(sortOrder) ? sortOrder : 0,
     ],
   );
-  return publicCatalogItem({ ...inserted.rows[0], group_key: g.rows[0].key });
+  const item = publicCatalogItem({ ...inserted.rows[0], group_key: g.rows[0].key });
+  if (g.rows[0].key === "part") {
+    await syncPrimarySku(tenantId, "maint_part", item.id, sku);
+  }
+  return item;
 }
 
 export async function updateCatalogItem(tenantId, itemId, body) {
@@ -171,17 +179,23 @@ export async function updateCatalogItem(tenantId, itemId, body) {
     body.sortOrder !== undefined && Number.isFinite(Number(body.sortOrder))
       ? Number(body.sortOrder)
       : row.sort_order;
+  const sku =
+    body.sku !== undefined ? String(body.sku || "").trim().slice(0, 80) || null : row.sku;
   const updated = await dbQuery(
     `UPDATE maintenance_catalog_items SET
-       name = $3, unit_price = $4, unit_cost = $5, enabled = $6, sort_order = $7, updated_at = now()
+       name = $3, sku = $4, unit_price = $5, unit_cost = $6, enabled = $7, sort_order = $8, updated_at = now()
      WHERE id = $1 AND tenant_id = $2
-     RETURNING id, group_id, name, unit_price, unit_cost, enabled, sort_order`,
-    [itemId, tenantId, name, unitPrice, unitCost, enabled, sortOrder],
+     RETURNING id, group_id, name, sku, unit_price, unit_cost, enabled, sort_order`,
+    [itemId, tenantId, name, sku, unitPrice, unitCost, enabled, sortOrder],
   );
+  if (row.group_key === "part" && body.sku !== undefined) {
+    await syncPrimarySku(tenantId, "maint_part", itemId, sku);
+  }
   return publicCatalogItem({ ...updated.rows[0], group_key: row.group_key });
 }
 
 export async function deleteCatalogItem(tenantId, itemId) {
+  await deleteCodesForTarget(tenantId, "maint_part", itemId);
   const res = await dbQuery(
     `DELETE FROM maintenance_catalog_items WHERE id = $1 AND tenant_id = $2 RETURNING id`,
     [itemId, tenantId],

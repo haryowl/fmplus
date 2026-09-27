@@ -3,6 +3,7 @@
  * Lines snapshot name / unit / per-unit volume+weight at pick time.
  */
 import { dbQuery } from "./db.mjs";
+import { deleteCodesForTarget, syncPrimarySku } from "./catalog-codes.mjs";
 
 export const GOODS_UNITS = ["pcs", "box", "bag", "kg", "L"];
 const MAX_LINES = 40;
@@ -43,6 +44,10 @@ export function publicOrderLine(row) {
     volumeM3Each: row.volume_m3_each == null ? null : Number(row.volume_m3_each),
     weightKgEach: row.weight_kg_each == null ? null : Number(row.weight_kg_each),
     sortOrder: Number(row.sort_order) || 0,
+    scannedCode: row.scanned_code || "",
+    serial: row.serial || "",
+    lot: row.lot || "",
+    scannedAt: row.scanned_at || null,
   };
 }
 
@@ -230,6 +235,7 @@ export async function createGoodsItem(tenantId, body) {
     err.status = 400;
     throw err;
   }
+  const sku = String(body.sku || "").trim().slice(0, 80) || null;
   const inserted = await dbQuery(
     `INSERT INTO dispatch_goods_items (
        tenant_id, name, sku, unit, volume_m3_each, weight_kg_each, enabled, sort_order
@@ -238,7 +244,7 @@ export async function createGoodsItem(tenantId, body) {
     [
       tenantId,
       name,
-      String(body.sku || "").trim().slice(0, 80) || null,
+      sku,
       parseGoodsUnit(body.unit),
       numOrNullGoods(body.volumeM3Each ?? body.volume_m3_each),
       numOrNullGoods(body.weightKgEach ?? body.weight_kg_each),
@@ -246,7 +252,9 @@ export async function createGoodsItem(tenantId, body) {
       Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
     ],
   );
-  return publicGoodsItem(inserted.rows[0]);
+  const item = inserted.rows[0];
+  await syncPrimarySku(tenantId, "goods", item.id, sku);
+  return publicGoodsItem(item);
 }
 
 export async function updateGoodsItem(tenantId, itemId, body) {
@@ -286,10 +294,14 @@ export async function updateGoodsItem(tenantId, itemId, body) {
      RETURNING *`,
     [itemId, tenantId, name, sku, unit, volume, weight, enabled, sortOrder],
   );
+  if (body.sku !== undefined) {
+    await syncPrimarySku(tenantId, "goods", itemId, sku);
+  }
   return publicGoodsItem(updated.rows[0]);
 }
 
 export async function deleteGoodsItem(tenantId, itemId) {
+  await deleteCodesForTarget(tenantId, "goods", itemId);
   const res = await dbQuery(
     `DELETE FROM dispatch_goods_items WHERE id = $1 AND tenant_id = $2 RETURNING id`,
     [itemId, tenantId],
@@ -390,6 +402,10 @@ async function resolveLineSnapshots(tenantId, rawLines) {
             ? numOrNullGoods(item.weight_kg_each)
             : null,
       sortOrder: i,
+      scannedCode: String(raw.scannedCode || raw.scanned_code || "").trim().slice(0, 120) || null,
+      serial: String(raw.serial || "").trim().slice(0, 80) || null,
+      lot: String(raw.lot || "").trim().slice(0, 80) || null,
+      scannedAt: raw.scannedAt || raw.scanned_at || null,
     });
   }
   return out;
@@ -406,8 +422,9 @@ export async function replaceOrderLines(tenantId, orderId, rawLines) {
     const inserted = await dbQuery(
       `INSERT INTO dispatch_order_lines (
          tenant_id, order_id, catalog_item_id, name, qty, unit,
-         volume_m3_each, weight_kg_each, sort_order
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         volume_m3_each, weight_kg_each, sort_order,
+         scanned_code, serial, lot, scanned_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING *`,
       [
         tenantId,
@@ -419,6 +436,10 @@ export async function replaceOrderLines(tenantId, orderId, rawLines) {
         line.volumeM3Each,
         line.weightKgEach,
         line.sortOrder,
+        line.scannedCode,
+        line.serial,
+        line.lot,
+        line.scannedAt,
       ],
     );
     saved.push(publicOrderLine(inserted.rows[0]));

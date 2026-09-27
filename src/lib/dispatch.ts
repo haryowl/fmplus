@@ -53,6 +53,10 @@ export type DispatchOrderLine = {
   volumeM3Each?: number | null;
   weightKgEach?: number | null;
   sortOrder?: number;
+  scannedCode?: string;
+  serial?: string;
+  lot?: string;
+  scannedAt?: string | null;
 };
 
 export type DispatchRouteAnchor = {

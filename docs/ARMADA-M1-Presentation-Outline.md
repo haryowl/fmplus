@@ -1,5 +1,7 @@
 # ARMADA M.1 — Presentation outline (6 slides)
 
+Full speaking copy and print flyers: [English promo pack](./ARMADA-M1-Promo-EN.md) · [Bahasa Indonesia](./ARMADA-M1-Promo-ID.md).
+
 Use for flyer decks, sales/demo, or internal rollout. Pair with Mermaid from the chat flow pack or `docs/ARMADA-M1-User-Guide.md`. Suggested timing: ~6–8 minutes.
 
 ---

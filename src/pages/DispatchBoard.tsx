@@ -3342,6 +3342,8 @@ export default function DispatchBoard() {
                       catalog={goodsCatalog}
                       lines={orderForm.lines}
                       onChange={applyOrderLines}
+                      scanSource="desk"
+                      onScanError={setError}
                       totalsLocked={orderForm.cargoTotalsLocked}
                       onToggleLock={(locked) => {
                         setOrderForm((f) => {

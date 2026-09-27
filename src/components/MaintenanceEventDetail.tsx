@@ -18,6 +18,7 @@ import {
   SCHEDULE_HEALTH_LABELS,
   uploadMaintPhoto,
   type CatalogGroup,
+  type CatalogItem,
   type FieldUserOption,
   type ScheduleHealth,
   type ServiceEvent,
@@ -30,6 +31,8 @@ import { formatKm } from "../lib/format";
 import { fullHref, tripsHref } from "../lib/routing";
 import { tenantHeaders } from "../lib/tenant";
 import { CatalogLineEditor } from "./CatalogLineEditor";
+import { CatalogScanButton } from "./CatalogScanButton";
+import { applyMaintPartScan, lookupCatalogScan } from "../lib/catalogScan";
 
 type Props = {
   eventId: string;
@@ -347,6 +350,10 @@ export function MaintenanceEventDetail({
             unitCost: l.unitCost,
             vendor: l.vendor,
             sortOrder: i,
+            scannedCode: l.scannedCode || "",
+            serial: l.serial || "",
+            lot: l.lot || "",
+            scannedAt: l.scannedAt || null,
           })),
         ...extra,
       };
@@ -983,14 +990,33 @@ export function MaintenanceEventDetail({
               />
             ))}
             <div className="maintenance-lines-footer">
-              <button
-                type="button"
-                className="btn-secondary"
-                disabled={locked}
-                onClick={() => setLines((p) => [...p, emptyLine()])}
-              >
-                Add line
-              </button>
+              <div className="field-lines-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={locked}
+                  onClick={() => setLines((p) => [...p, emptyLine()])}
+                >
+                  Add line
+                </button>
+                <CatalogScanButton
+                  disabled={locked}
+                  label="Scan part"
+                  onCode={(code) => {
+                    void lookupCatalogScan(code, "maint_part", "desk")
+                      .then((res) => {
+                        if (res.match !== "maint_part" || !res.item || !("groupKey" in res.item)) {
+                          setError(`Not in catalog: ${res.raw || code}`);
+                          return;
+                        }
+                        setLines((prev) =>
+                          applyMaintPartScan(prev, res.item as CatalogItem, res.code || code),
+                        );
+                      })
+                      .catch((err: Error) => setError(err.message));
+                  }}
+                />
+              </div>
               <span className="maint-line-totals">
                 <span>
                   Price <strong>{priceTotal.toFixed(2)}</strong>
