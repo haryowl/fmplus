@@ -2372,7 +2372,7 @@ html.onesheet-root body {
     radial-gradient(900px 420px at 100% 0%, rgba(196, 92, 22, 0.08), transparent 50%),
     linear-gradient(165deg, #f4f1ea 0%, #ebe6dc 48%, #e4ebe8 100%);
   color: var(--ink);
-  padding: 0 0 48px;
+  padding: 0 0 24px;
   font-family: var(--font);
 }
 
@@ -2423,7 +2423,7 @@ html.onesheet-root body {
 .admin-search input,
 .admin-field-row-actions input,
 .admin-field-row-actions select {
-  padding: 10px 12px;
+  padding: 7px 10px;
   border: 1px solid var(--line-strong);
   background: #fff;
   border-radius: var(--radius-sm);
@@ -2487,15 +2487,15 @@ html.onesheet-root body {
 .admin-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  padding: 18px 28px 0;
+  gap: 8px;
+  padding: 12px 28px 0;
   animation: admin-rise 480ms ease-out;
 }
 
 .admin-stat {
   display: grid;
-  gap: 4px;
-  padding: 14px 16px;
+  gap: 2px;
+  padding: 8px 12px;
   border: 1px solid var(--line);
   background: rgba(251, 249, 244, 0.9);
   border-radius: var(--radius-sm);
@@ -2509,7 +2509,7 @@ html.onesheet-root body {
 }
 
 .admin-stat strong {
-  font-size: 1.45rem;
+  font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -2520,10 +2520,10 @@ html.onesheet-root body {
 
 .admin-layout {
   display: grid;
-  grid-template-columns: minmax(240px, 280px) 1fr;
-  gap: 18px;
+  grid-template-columns: minmax(220px, 260px) 1fr;
+  gap: 14px;
   align-items: start;
-  padding: 18px 28px 0;
+  padding: 12px 28px 0;
 }
 
 .admin-sidebar {
@@ -2610,7 +2610,7 @@ html.onesheet-root body {
 
 .admin-main {
   display: grid;
-  gap: 14px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -2658,13 +2658,84 @@ html.onesheet-root body {
 
 .admin-panel {
   display: grid;
-  gap: 12px;
-  padding: 18px 18px 16px;
+  gap: 10px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
   background: rgba(251, 249, 244, 0.94);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   animation: admin-rise 420ms ease-out;
+}
+
+.admin-fold {
+  padding: 0;
+  gap: 0;
+}
+.admin-fold-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+}
+.admin-fold-summary::-webkit-details-marker {
+  display: none;
+}
+.admin-fold-summary::after {
+  content: "▸";
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+.admin-fold[open] > .admin-fold-summary::after {
+  content: "▾";
+}
+.admin-fold-summary span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.admin-fold-summary strong {
+  font-size: 0.95rem;
+}
+.admin-fold-summary .muted {
+  font-size: 0.75rem;
+}
+.admin-fold[open] > .admin-fold-summary {
+  border-bottom: 1px solid var(--line);
+}
+.admin-fold-body {
+  padding: 12px 14px 14px;
+  display: grid;
+  gap: 10px;
+}
+.admin-inner-fold {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  padding: 0;
+}
+.admin-inner-fold > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-weight: 650;
+  font-size: 0.86rem;
+  color: var(--accent);
+}
+.admin-inner-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.admin-inner-fold[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+.admin-inner-fold .admin-form-grid {
+  padding: 12px;
+}
+.admin-gps-grid {
+  grid-template-columns: 1fr 1fr 1fr;
 }
 
 .admin-panel-head h3 {
@@ -2686,7 +2757,7 @@ html.onesheet-root body {
 .admin-form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 8px 10px;
   margin: 0;
 }
 
@@ -2697,7 +2768,7 @@ html.onesheet-root body {
 .admin-fieldset {
   border: 1px solid var(--line);
   margin: 0;
-  padding: 12px 14px 14px;
+  padding: 8px 10px 10px;
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.45);
 }
@@ -2718,8 +2789,8 @@ html.onesheet-root body {
 .admin-chip-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 5px 10px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: #fff;
@@ -7448,7 +7519,8 @@ button.dispatch-pin-chip {
   .admin-layout {
     grid-template-columns: 1fr;
   }
-  .admin-form-grid {
+  .admin-form-grid,
+  .admin-gps-grid {
     grid-template-columns: 1fr;
   }
   .admin-topbar,

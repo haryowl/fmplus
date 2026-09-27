@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   defaultEntitlements,
   FEATURE_LABELS,
@@ -194,6 +194,30 @@ function ToggleGrid({
 
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return <span className={`admin-pill${ok ? " is-ok" : " is-off"}`}>{label}</span>;
+}
+
+function AdminFold({
+  title,
+  hint,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details className="admin-panel admin-fold" defaultOpen={defaultOpen}>
+      <summary className="admin-fold-summary">
+        <span>
+          <strong>{title}</strong>
+          {hint ? <span className="muted">{hint}</span> : null}
+        </span>
+      </summary>
+      <div className="admin-fold-body">{children}</div>
+    </details>
+  );
 }
 
 export default function AdminConsole() {
@@ -660,7 +684,6 @@ export default function AdminConsole() {
               <section className="admin-panel">
                 <header className="admin-panel-head">
                   <h3>Identity</h3>
-                  <p className="muted">Embed key and Armada application binding</p>
                 </header>
                 <div className="admin-form-grid">
                   <label>
@@ -697,13 +720,14 @@ export default function AdminConsole() {
                 </div>
               </section>
 
-              <section className="admin-panel">
-                <header className="admin-panel-head">
-                  <h3>Access & secrets</h3>
-                  <p className="muted">Armada token, webhook, and fleet scope</p>
-                </header>
+              <AdminFold
+                key={`${selectedId}-access`}
+                title="Access & secrets"
+                hint="Token, webhook, and fleet scope"
+                defaultOpen={selectedId === "new"}
+              >
                 <div className="admin-form-grid">
-                  <label className="span-2">
+                  <label>
                     Armada token {selectedId !== "new" ? "(leave blank to keep)" : ""}
                     <input
                       type="password"
@@ -713,7 +737,7 @@ export default function AdminConsole() {
                       placeholder={selected?.hasToken ? "•••••••• (set)" : ""}
                     />
                   </label>
-                  <label className="span-2">
+                  <label>
                     Webhook secret {selectedId !== "new" ? "(leave blank to keep)" : ""}
                     <input
                       type="password"
@@ -740,16 +764,9 @@ export default function AdminConsole() {
                     />
                   </label>
                 </div>
-              </section>
+              </AdminFold>
 
-              <section className="admin-panel">
-                <header className="admin-panel-head">
-                  <h3>Notifications</h3>
-                  <p className="muted">
-                    Recipients for maintenance reminders. SMTP is set on the server (`.env.local`); Wablas
-                    secrets are stored encrypted here.
-                  </p>
-                </header>
+              <AdminFold title="Notifications" hint="Reminder emails, WhatsApp, and Wablas">
                 <div className="admin-form-grid">
                   <label className="span-2">
                     Notify emails
@@ -801,14 +818,10 @@ export default function AdminConsole() {
                     />
                   </label>
                 </div>
-              </section>
+              </AdminFold>
 
-              <section className="admin-panel">
-                <header className="admin-panel-head">
-                  <h3>Field GPS</h3>
-                  <p className="muted">How often the driver phone records a point. Defaults 15s moving, 60s parked, 25 m.</p>
-                </header>
-                <div className="admin-grid">
+              <AdminFold title="Field GPS" hint="Default 15s moving · 60s parked · 25 m">
+                <div className="admin-form-grid admin-gps-grid">
                   <label>
                     Moving interval (seconds)
                     <input
@@ -840,13 +853,14 @@ export default function AdminConsole() {
                     />
                   </label>
                 </div>
-              </section>
+              </AdminFold>
 
-              <section className="admin-panel">
-                <header className="admin-panel-head">
-                  <h3>Entitlements</h3>
-                  <p className="muted">What this tenant can see in the embed and mobile apps</p>
-                </header>
+              <AdminFold
+                key={`${selectedId}-entitlements`}
+                title="Entitlements"
+                hint="Embed tabs, features, and mobile apps"
+                defaultOpen={selectedId === "new"}
+              >
                 <ToggleGrid
                   title="Modules"
                   hint="Visible tabs in the embed"
@@ -894,14 +908,10 @@ export default function AdminConsole() {
                     })
                   }
                 />
-              </section>
+              </AdminFold>
 
               {selected && (
-                <section className="admin-panel">
-                  <header className="admin-panel-head">
-                    <h3>Armada Command notifiers</h3>
-                    <p className="muted">Paste into Armada Custom Server URLs (replace webhook secret)</p>
-                  </header>
+                <AdminFold title="Armada Command notifiers" hint="Custom Server URLs">
                   <div className="admin-notifier-list">
                     <div className="admin-notifier-row">
                       <div>
@@ -940,7 +950,7 @@ export default function AdminConsole() {
                       </div>
                     )}
                   </div>
-                </section>
+                </AdminFold>
               )}
 
               <div className="admin-actions sticky">
@@ -959,64 +969,9 @@ export default function AdminConsole() {
                   <header className="admin-panel-head">
                     <h3>Field users</h3>
                     <p className="muted">
-                      Sign-in at <code>/m</code> or <code>/dispatch</code> — scoped to this tenant.
-                      Open a user with Edit to change their details.
+                      Sign-in at <code>/m</code> · Edit a row to change details
                     </p>
                   </header>
-                  <form className="admin-form-grid" onSubmit={(e) => void createFieldUser(e)}>
-                    <label>
-                      Username
-                      <input value={fuUsername} onChange={(e) => setFuUsername(e.target.value)} required />
-                    </label>
-                    <label>
-                      Password
-                      <input
-                        type="password"
-                        value={fuPassword}
-                        onChange={(e) => setFuPassword(e.target.value)}
-                        required
-                        minLength={6}
-                        autoComplete="new-password"
-                      />
-                    </label>
-                    <label>
-                      Display name
-                      <input value={fuDisplayName} onChange={(e) => setFuDisplayName(e.target.value)} />
-                    </label>
-                    <label>
-                      Role
-                      <select value={fuRole} onChange={(e) => setFuRole(e.target.value)}>
-                        {FIELD_ROLE_OPTIONS.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Phone (WhatsApp)
-                      <input
-                        value={fuPhone}
-                        onChange={(e) => setFuPhone(e.target.value)}
-                        placeholder="62812…"
-                      />
-                    </label>
-                    <label>
-                      Email
-                      <input
-                        type="email"
-                        value={fuEmail}
-                        onChange={(e) => setFuEmail(e.target.value)}
-                        placeholder="tech@…"
-                      />
-                    </label>
-                    <div className="span-2 admin-actions">
-                      <button type="submit" className="btn btn-primary" disabled={busy}>
-                        Add field user
-                      </button>
-                    </div>
-                  </form>
-
                   <ul className="admin-field-list">
                     {fieldUsers.map((u) => {
                       const editing = fuEditingId === u.id;
@@ -1158,6 +1113,62 @@ export default function AdminConsole() {
                     })}
                     {fieldUsers.length === 0 && <li className="muted admin-empty">No field users yet.</li>}
                   </ul>
+                  <details className="admin-inner-fold">
+                    <summary>Add field user</summary>
+                    <form className="admin-form-grid" onSubmit={(e) => void createFieldUser(e)}>
+                      <label>
+                        Username
+                        <input value={fuUsername} onChange={(e) => setFuUsername(e.target.value)} required />
+                      </label>
+                      <label>
+                        Password
+                        <input
+                          type="password"
+                          value={fuPassword}
+                          onChange={(e) => setFuPassword(e.target.value)}
+                          required
+                          minLength={6}
+                          autoComplete="new-password"
+                        />
+                      </label>
+                      <label>
+                        Display name
+                        <input value={fuDisplayName} onChange={(e) => setFuDisplayName(e.target.value)} />
+                      </label>
+                      <label>
+                        Role
+                        <select value={fuRole} onChange={(e) => setFuRole(e.target.value)}>
+                          {FIELD_ROLE_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Phone (WhatsApp)
+                        <input
+                          value={fuPhone}
+                          onChange={(e) => setFuPhone(e.target.value)}
+                          placeholder="62812…"
+                        />
+                      </label>
+                      <label>
+                        Email
+                        <input
+                          type="email"
+                          value={fuEmail}
+                          onChange={(e) => setFuEmail(e.target.value)}
+                          placeholder="tech@…"
+                        />
+                      </label>
+                      <div className="span-2 admin-actions">
+                        <button type="submit" className="btn btn-primary" disabled={busy}>
+                          Add field user
+                        </button>
+                      </div>
+                    </form>
+                  </details>
                 </section>
               )}
             </>
