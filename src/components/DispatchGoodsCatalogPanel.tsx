@@ -116,7 +116,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
   });
 
   return (
-    <section className="dispatch-goods-catalog">
+    <section className={`dispatch-goods-catalog${onClose ? " is-dialog" : ""}`}>
       <div className="dispatch-goods-catalog-head">
         <div>
           <p className="dispatch-eyebrow">Cargo</p>
