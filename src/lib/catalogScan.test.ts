@@ -5,6 +5,8 @@ import {
   applyMaintPartScan,
   catalogScanNeedsUnitId,
   isCatalogIdentityScan,
+  formatOnHand,
+  jobRequireScanReason,
   locationScanNotice,
   resolveVehicleJobOpen,
   stopRequireScanBlocks,
@@ -183,6 +185,42 @@ describe("vehicle and location scan helpers", () => {
     });
     expect(resolveVehicleJobOpen(jobs, 99, "a")).toEqual({ error: "Wrong vehicle" });
     expect(resolveVehicleJobOpen(jobs, 99, null)).toEqual({ error: "No open job for this vehicle" });
+  });
+
+  it("blocks complete when catalog parts or the vehicle are still pending", () => {
+    const pending = [
+      {
+        kind: "part" as const,
+        catalogItemId: "p1",
+        description: "Pad",
+        qty: 1,
+        unitPrice: 10,
+        unitCost: 4,
+        vendor: "",
+      },
+    ];
+    expect(jobRequireScanReason({ lines: pending })).toMatch(/catalog part/);
+    expect(
+      jobRequireScanReason({
+        lines: [{ ...pending[0]!, scannedAt: "2026-01-01T00:00:00.000Z" }],
+      }),
+    ).toBeNull();
+    expect(jobRequireScanReason({ requireVehicle: true, vehicleConfirmed: false })).toBe(
+      "Scan the vehicle before completing this job",
+    );
+    expect(jobRequireScanReason({ requireVehicle: true, vehicleConfirmed: true })).toBeNull();
+    expect(
+      jobRequireScanReason({
+        cargoLines: [{ catalogItemId: "g1", name: "Oil", qty: 1, unit: "L" }],
+      }),
+    ).toMatch(/expected item/);
+  });
+
+  it("formats catalog on-hand without inventing stock", () => {
+    expect(formatOnHand(undefined)).toBe("");
+    expect(formatOnHand({ onHand: null })).toBe("");
+    expect(formatOnHand({ onHand: 12 })).toBe("12 on hand");
+    expect(formatOnHand({ onHand: 12, reservedQty: 2 })).toBe("10 available · 12 on hand");
   });
 
   it("confirms a depot tag against the stop zone", () => {

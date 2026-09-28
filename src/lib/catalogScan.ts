@@ -126,6 +126,30 @@ export function stopRequireScanBlocks(lines: DispatchOrderLine[]): boolean {
   return catalogConfirmPending(lines).length > 0;
 }
 
+export function catalogExpectedPartLines(lines: ServiceLine[]): ServiceLine[] {
+  return lines.filter((l) => l.kind !== "service" && l.kind !== "labor" && l.kind !== "other" && Boolean(l.catalogItemId));
+}
+
+export function jobRequireScanReason(opts: {
+  lines?: ServiceLine[];
+  cargoLines?: DispatchOrderLine[];
+  requireVehicle?: boolean;
+  vehicleConfirmed?: boolean;
+}): string | null {
+  const partPending = catalogExpectedPartLines(opts.lines || []).filter((l) => !l.scannedAt);
+  if (partPending.length) {
+    return `Scan every catalog part before completing this job (${partPending.length} pending)`;
+  }
+  const cargoPending = catalogConfirmPending(opts.cargoLines || []);
+  if (cargoPending.length) {
+    return `Scan every expected item before completing this job (${cargoPending.length} pending)`;
+  }
+  if (opts.requireVehicle && !opts.vehicleConfirmed) {
+    return "Scan the vehicle before completing this job";
+  }
+  return null;
+}
+
 export function vehicleIdFromScan(item: { id?: string; armadaUserId?: number } | undefined): number | null {
   if (!item) return null;
   const n = Number(item.armadaUserId ?? item.id);
@@ -160,6 +184,17 @@ export function resolveVehicleJobOpen<T extends { id: string; armadaUserId?: num
     return { error: "Wrong vehicle" };
   }
   return { error: "No open job for this vehicle" };
+}
+
+export function formatOnHand(
+  item?: { onHand?: number | null; reservedQty?: number | null } | null,
+): string {
+  if (!item || item.onHand == null || !Number.isFinite(Number(item.onHand))) return "";
+  const onHand = Number(item.onHand);
+  const reserved = Number(item.reservedQty) || 0;
+  const qty = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 1000) / 1000));
+  if (reserved > 0) return `${qty(onHand - reserved)} available · ${qty(onHand)} on hand`;
+  return `${qty(onHand)} on hand`;
 }
 
 export function locationScanNotice(opts: { name: string; zone?: string | null }): string {

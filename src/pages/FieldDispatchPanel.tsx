@@ -16,6 +16,7 @@ import type { FieldScanCapabilities } from "../lib/scanCapabilities";
 import { fieldScanCanCargo, fieldScanCanLocation, fieldScanCanVehicle } from "../lib/scanCapabilities";
 import { CatalogScanButton } from "../components/CatalogScanButton";
 import {
+  jobRequireScanReason,
   locationNameFromScan,
   locationScanNotice,
   lookupCatalogScan,
@@ -147,6 +148,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
   const [locationConsent, setLocationConsent] = useState(readLocationConsent);
   const [goodsCatalog, setGoodsCatalog] = useState<DispatchGoodsItem[]>([]);
   const [cargoOrderId, setCargoOrderId] = useState<string | null>(null);
+  const [vehicleConfirmedJobId, setVehicleConfirmedJobId] = useState<string | null>(null);
   const [cargoDraft, setCargoDraft] = useState<DispatchOrderLine[]>([]);
   const onErrorRef = useRef(onError);
   const onNoticeRef = useRef(onNotice);
@@ -182,6 +184,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
         }
         onErrorRef.current("");
         onNoticeRef.current(result.notice);
+        setVehicleConfirmedJobId(result.jobId);
         if (result.jobId !== selectedId) {
           setSelectedId(result.jobId);
           setView("orders");
@@ -763,6 +766,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
               scanConfirm={scan?.cargoConfirm === true}
               scanManualAdd={scan?.cargoAdd !== false}
               onScanError={(msg) => onErrorRef.current(msg)}
+              onScanInfo={(msg) => onNoticeRef.current(msg)}
             />
             <button
               type="button"
@@ -966,14 +970,19 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
           <section className="field-panel field-dispatch-job-tools">
             <div className="field-action-row">
               {allowVehicleScan ? (
-                <CatalogScanButton
-                  disabled={busy}
-                  label="Scan vehicle"
-                  allowCamera={scan?.camera !== false}
-                  allowTyped={scan?.typed !== false}
-                  allowNfc={scan?.nfc === true}
-                  onCode={onVehicleCode}
-                />
+                <>
+                  <CatalogScanButton
+                    disabled={busy}
+                    label="Scan vehicle"
+                    allowCamera={scan?.camera !== false}
+                    allowTyped={scan?.typed !== false}
+                    allowNfc={scan?.nfc === true}
+                    onCode={onVehicleCode}
+                  />
+                  {vehicleConfirmedJobId === selected.id ? (
+                    <span className="field-pill">Vehicle confirmed</span>
+                  ) : null}
+                </>
               ) : null}
               {selected.status === "assigned" ? (
                 <button
@@ -999,15 +1008,27 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
                       ? "Later days of this tour still have open stops"
                       : undefined
                   }
-                  onClick={() =>
+                  onClick={() => {
+                    if (scan?.jobRequireScan) {
+                      const cargoLines = selected.stops.flatMap((s) => s.lines || []);
+                      const reason = jobRequireScanReason({
+                        cargoLines,
+                        requireVehicle: scan.vehicleOpen === true && Boolean(selected.armadaUserId),
+                        vehicleConfirmed: vehicleConfirmedJobId === selected.id,
+                      });
+                      if (reason) {
+                        onErrorRef.current(reason);
+                        return;
+                      }
+                    }
                     void patchJob(selected.id, { status: "done", fieldNote }).then((j) => {
                       if (!j) return;
                       onNoticeRef.current("Job completed");
                       setSelectedId(null);
                       setView("jobs");
                       void loadJobs();
-                    })
-                  }
+                    });
+                  }}
                 >
                   Complete job
                 </button>
@@ -1129,6 +1150,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
                                 scanConfirm={scan?.cargoConfirm === true}
                                 scanManualAdd={scan?.cargoAdd !== false}
                                 onScanError={(msg) => onErrorRef.current(msg)}
+                                onScanInfo={(msg) => onNoticeRef.current(msg)}
                               />
                               <div className="field-action-row">
                                 <button

@@ -7,6 +7,7 @@ import {
   catalogExpectedLines,
   catalogLineConfirmed,
   catalogScanNeedsUnitId,
+  formatOnHand,
   lookupCatalogScan,
 } from "../lib/catalogScan";
 import type { CatalogScanResult } from "../lib/catalogScan";
@@ -37,6 +38,7 @@ type Props = {
   scanConfirm?: boolean;
   scanManualAdd?: boolean;
   onScanError?: (message: string) => void;
+  onScanInfo?: (message: string) => void;
 };
 
 function newFreeLine(): DispatchOrderLine {
@@ -68,6 +70,7 @@ export function DispatchOrderGoodsEditor({
   scanConfirm = false,
   scanManualAdd = true,
   onScanError,
+  onScanInfo,
 }: Props) {
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState<{
@@ -103,6 +106,8 @@ export function DispatchOrderGoodsEditor({
       return;
     }
     onChange(result.lines);
+    const stock = formatOnHand(item);
+    if (stock) onScanInfo?.(`${item.name} · ${stock}`);
   }
 
   function onGoodsCode(code: string, res: CatalogScanResult, item: DispatchGoodsItem) {
@@ -212,6 +217,7 @@ export function DispatchOrderGoodsEditor({
                     {item.unit}
                     {item.volumeM3Each != null ? ` · ${item.volumeM3Each} m³` : ""}
                     {item.weightKgEach != null ? ` · ${item.weightKgEach} kg` : ""}
+                    {formatOnHand(item) ? ` · ${formatOnHand(item)}` : ""}
                   </span>
                 </button>
               </li>

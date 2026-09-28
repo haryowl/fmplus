@@ -16,7 +16,7 @@ export const SCAN_ACTION_KEYS = [
 ] as const;
 export type ScanActionKey = (typeof SCAN_ACTION_KEYS)[number];
 
-/** Actions Field already enforces. jobRequireScan stays reserved. */
+/** Actions Field already enforces. */
 export const SCAN_BUILT_ACTIONS: readonly ScanActionKey[] = [
   "cargoAdd",
   "partAdd",
@@ -24,6 +24,7 @@ export const SCAN_BUILT_ACTIONS: readonly ScanActionKey[] = [
   "cargoSerial",
   "stopRequireScan",
   "partSerial",
+  "jobRequireScan",
   "vehicleOpen",
   "locationSet",
 ];

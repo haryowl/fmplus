@@ -1,3 +1,4 @@
+import { formatOnHand } from "../lib/catalogScan";
 import type { CatalogGroup, CatalogItem, LineKind, ServiceLine } from "../lib/maintenance";
 import { LINE_KIND_LABELS, normalizeLineKindUi } from "../lib/maintenance";
 
@@ -95,6 +96,7 @@ export function CatalogLineEditor({
               <option key={it.id} value={it.id}>
                 {it.name}
                 {it.unitPrice != null ? ` · ${it.unitPrice}` : ""}
+                {formatOnHand(it) ? ` · ${formatOnHand(it)}` : ""}
               </option>
             ))}
             <option value="__custom__">Not listed (free text)</option>
@@ -210,6 +212,7 @@ export function CatalogLineEditor({
           {items.map((it) => (
             <option key={it.id} value={it.id}>
               {it.name}
+              {formatOnHand(it) ? ` · ${formatOnHand(it)}` : ""}
             </option>
           ))}
           <option value="__custom__">Not listed…</option>

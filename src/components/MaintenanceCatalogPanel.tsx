@@ -152,6 +152,19 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
                           }}
                         />
                       ) : null}
+                      {group.key === "part" ? (
+                        <input
+                          key={`${item.id}-onhand-${item.onHand ?? ""}`}
+                          placeholder="On hand"
+                          defaultValue={item.onHand ?? ""}
+                          inputMode="decimal"
+                          disabled={busy}
+                          onBlur={(e) => {
+                            const next = e.target.value === "" ? null : Number(e.target.value);
+                            if (next !== (item.onHand ?? null)) void saveItem(item, { onHand: next });
+                          }}
+                        />
+                      ) : null}
                       <input
                         type="number"
                         step="any"

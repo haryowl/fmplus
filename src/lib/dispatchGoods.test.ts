@@ -60,7 +60,8 @@ describe("dispatch goods helpers", () => {
 describe("goods CSV template", () => {
   it("includes a sku column", () => {
     expect(DISPATCH_GOODS_CSV_HEADERS).toContain("sku");
+    expect(DISPATCH_GOODS_CSV_HEADERS).toContain("on_hand");
     expect(dispatchGoodsCsvTemplate()).toMatch(/^name,sku,unit/);
-    expect(dispatchGoodsCsvFromItems([{ name: "Oil", sku: "OIL-01", unit: "L" }])).toContain("OIL-01");
+    expect(dispatchGoodsCsvFromItems([{ name: "Oil", sku: "OIL-01", unit: "L", onHand: 12 }])).toContain("12");
   });
 });

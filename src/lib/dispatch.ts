@@ -39,6 +39,8 @@ export type DispatchGoodsItem = {
   unit: DispatchGoodsUnit;
   volumeM3Each: number | null;
   weightKgEach: number | null;
+  onHand?: number | null;
+  reservedQty?: number;
   enabled: boolean;
   sortOrder: number;
 };
@@ -934,6 +936,7 @@ export async function createDispatchGoodsItem(body: {
   unit?: DispatchGoodsUnit;
   volumeM3Each?: number | null;
   weightKgEach?: number | null;
+  onHand?: number | null;
   enabled?: boolean;
 }): Promise<DispatchGoodsItem> {
   const res = await fetch("/api/dispatch/goods", {

@@ -35,6 +35,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
   const [unit, setUnit] = useState<DispatchGoodsUnit>("pcs");
   const [vol, setVol] = useState("");
   const [wt, setWt] = useState("");
+  const [onHand, setOnHand] = useState("");
   const [filter, setFilter] = useState("");
   const [openCodes, setOpenCodes] = useState<string | null>(null);
 
@@ -69,11 +70,13 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
         unit,
         volumeM3Each: vol === "" ? null : Number(vol),
         weightKgEach: wt === "" ? null : Number(wt),
+        onHand: onHand === "" ? null : Number(onHand),
       });
       setName("");
       setSku("");
       setVol("");
       setWt("");
+      setOnHand("");
       await reload();
       if (created.sku) setOpenCodes(created.id);
     } catch (err) {
@@ -174,6 +177,14 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           disabled={busy}
           size={1}
         />
+        <input
+          value={onHand}
+          onChange={(e) => setOnHand(e.target.value)}
+          placeholder="On hand"
+          inputMode="decimal"
+          disabled={busy}
+          size={1}
+        />
         <button type="submit" className="btn btn-primary" disabled={busy || !name.trim()}>
           Add
         </button>
@@ -183,7 +194,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           title="Import goods CSV"
           disabled={busy}
           templateFilename="dispatch-goods-template.csv"
-          hint="Required: name. Include sku to print QR/barcode and scan later. Optional: unit (pcs/box/bag/kg/L), volume_m3_each, weight_kg_each, enabled. Matching SKU or name updates the existing item. Max 500 rows."
+          hint="Required: name. Include sku to print QR/barcode and scan later. Optional: unit (pcs/box/bag/kg/L), volume_m3_each, weight_kg_each, on_hand, enabled. Matching SKU or name updates the existing item. Max 500 rows."
           onDownloadTemplate={() => downloadCsv("dispatch-goods-template.csv", dispatchGoodsCsvTemplate())}
           parseFile={(text) => {
             const { headers, rows } = parseCsv(text);
@@ -250,6 +261,18 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                 onBlur={(e) => {
                   const sku = e.target.value.trim();
                   if (sku !== (item.sku || "")) void saveItem(item, { sku });
+                }}
+              />
+              <input
+                key={`${item.id}-onhand-${item.onHand ?? ""}`}
+                defaultValue={item.onHand ?? ""}
+                placeholder="On hand"
+                inputMode="decimal"
+                disabled={busy}
+                size={6}
+                onBlur={(e) => {
+                  const next = e.target.value === "" ? null : Number(e.target.value);
+                  if (next !== (item.onHand ?? null)) void saveItem(item, { onHand: next });
                 }}
               />
               <span>

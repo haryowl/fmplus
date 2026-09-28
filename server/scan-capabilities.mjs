@@ -24,6 +24,7 @@ export const SCAN_BUILT_ACTIONS = [
   "cargoSerial",
   "stopRequireScan",
   "partSerial",
+  "jobRequireScan",
   "vehicleOpen",
   "locationSet",
 ];

@@ -6,7 +6,10 @@ import { CatalogScanButton } from "../components/CatalogScanButton";
 import { CatalogUnitIdPrompt } from "../components/CatalogUnitIdPrompt";
 import {
   applyMaintPartScanResult,
+  catalogExpectedPartLines,
   catalogScanNeedsUnitId,
+  formatOnHand,
+  jobRequireScanReason,
   lookupCatalogScan,
   resolveVehicleJobOpen,
   vehicleIdFromScan,
@@ -112,6 +115,7 @@ export default function ManagerMaintenance() {
     scannedCode: string;
     codeFormat?: string;
   } | null>(null);
+  const [vehicleConfirmedJobId, setVehicleConfirmedJobId] = useState<string | null>(null);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -337,8 +341,44 @@ export default function ManagerMaintenance() {
     }
   }
 
+  function onVehicleCode(code: string) {
+    void lookupCatalogScan(code, "vehicle", "field")
+      .then((res) => {
+        if (res.match !== "vehicle" || !res.item) {
+          setError(`Not in catalog: ${res.raw || code}`);
+          return;
+        }
+        const uid = vehicleIdFromScan(res.item);
+        if (!uid) {
+          setError(`Not in catalog: ${res.raw || code}`);
+          return;
+        }
+        const result = resolveVehicleJobOpen(jobs, uid, selectedId);
+        if ("error" in result) {
+          setError(result.error);
+          return;
+        }
+        setError("");
+        setNotice(result.notice);
+        setVehicleConfirmedJobId(result.jobId);
+        if (result.jobId !== selectedId) setSelectedId(result.jobId);
+      })
+      .catch((err: Error) => setError(err.message));
+  }
+
   async function saveJob(extra: Record<string, unknown> = {}) {
     if (!selectedId || locked) return null;
+    if (extra.status === "done" && scan?.jobRequireScan) {
+      const reason = jobRequireScanReason({
+        lines,
+        requireVehicle: scan.vehicleOpen === true && Boolean(detail?.armadaUserId),
+        vehicleConfirmed: vehicleConfirmedJobId === selectedId,
+      });
+      if (reason) {
+        setError(reason);
+        return null;
+      }
+    }
     setBusy(true);
     setError("");
     setNotice("");
@@ -557,30 +597,11 @@ export default function ManagerMaintenance() {
                     allowCamera={scan?.camera !== false}
                     allowTyped={scan?.typed !== false}
                     allowNfc={scan?.nfc === true}
-                    onCode={(code) => {
-                      void lookupCatalogScan(code, "vehicle", "field")
-                        .then((res) => {
-                          if (res.match !== "vehicle" || !res.item) {
-                            setError(`Not in catalog: ${res.raw || code}`);
-                            return;
-                          }
-                          const uid = vehicleIdFromScan(res.item);
-                          if (!uid) {
-                            setError(`Not in catalog: ${res.raw || code}`);
-                            return;
-                          }
-                          const result = resolveVehicleJobOpen(jobs, uid, selectedId);
-                          if ("error" in result) {
-                            setError(result.error);
-                            return;
-                          }
-                          setError("");
-                          setNotice(result.notice);
-                          if (result.jobId !== selectedId) setSelectedId(result.jobId);
-                        })
-                        .catch((err: Error) => setError(err.message));
-                    }}
+                    onCode={onVehicleCode}
                   />
+                  {vehicleConfirmedJobId === selectedId ? (
+                    <span className="field-pill">Vehicle confirmed</span>
+                  ) : null}
                 </div>
               ) : null}
               <p className="field-detail-date muted">
@@ -674,7 +695,26 @@ export default function ManagerMaintenance() {
             <section className="field-panel">
               <header className="field-panel-head">
                 <h3>Parts &amp; service</h3>
+                {scan?.jobRequireScan ? (
+                  <p className="muted">Catalog parts must be scanned before Done.</p>
+                ) : null}
               </header>
+              {scan?.jobRequireScan && catalogExpectedPartLines(lines).length ? (
+                <ul className="dispatch-cargo-checklist" aria-label="Expected parts">
+                  {catalogExpectedPartLines(lines).map((line, i) => (
+                    <li
+                      key={`${line.catalogItemId || "p"}-${line.serial || i}`}
+                      className={line.scannedAt ? "is-confirmed" : "is-pending"}
+                    >
+                      <span>
+                        {line.description}
+                        {line.serial ? ` · ${line.serial}` : ""}
+                      </span>
+                      <em>{line.scannedAt ? "Confirmed" : "Pending"}</em>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               <div className="field-lines">
                 {lines.map((line, idx) => (
                   <CatalogLineEditor
@@ -740,6 +780,8 @@ export default function ManagerMaintenance() {
                             }
                             setLinesDirty(true);
                             setLines(result.lines);
+                            const stock = formatOnHand(item);
+                            if (stock) setNotice(`${item.name} · ${stock}`);
                           })
                           .catch((err: Error) => setError(err.message));
                       }}
@@ -767,6 +809,8 @@ export default function ManagerMaintenance() {
                     }
                     setLinesDirty(true);
                     setLines(result.lines);
+                    const stock = formatOnHand(pendingPart.item);
+                    if (stock) setNotice(`${pendingPart.item.name} · ${stock}`);
                     setPendingPart(null);
                   }}
                   onCancel={() => setPendingPart(null)}
@@ -882,29 +926,7 @@ export default function ManagerMaintenance() {
                   allowCamera={scan?.camera !== false}
                   allowTyped={scan?.typed !== false}
                   allowNfc={scan?.nfc === true}
-                  onCode={(code) => {
-                    void lookupCatalogScan(code, "vehicle", "field")
-                      .then((res) => {
-                        if (res.match !== "vehicle" || !res.item) {
-                          setError(`Not in catalog: ${res.raw || code}`);
-                          return;
-                        }
-                        const uid = vehicleIdFromScan(res.item);
-                        if (!uid) {
-                          setError(`Not in catalog: ${res.raw || code}`);
-                          return;
-                        }
-                        const result = resolveVehicleJobOpen(jobs, uid, selectedId);
-                        if ("error" in result) {
-                          setError(result.error);
-                          return;
-                        }
-                        setError("");
-                        setNotice(result.notice);
-                        if (result.jobId !== selectedId) setSelectedId(result.jobId);
-                      })
-                      .catch((err: Error) => setError(err.message));
-                  }}
+                  onCode={onVehicleCode}
                 />
               </div>
             ) : null}

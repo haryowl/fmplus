@@ -178,6 +178,8 @@ export type CatalogItem = {
   sku?: string;
   unitPrice: number | null;
   unitCost: number | null;
+  onHand?: number | null;
+  reservedQty?: number;
   enabled: boolean;
   sortOrder: number;
 };
@@ -286,6 +288,7 @@ export async function createMaintCatalogItem(body: {
   sku?: string;
   unitPrice?: number | null;
   unitCost?: number | null;
+  onHand?: number | null;
 }): Promise<CatalogItem> {
   const res = await fetch("/api/maintenance/catalog/items", {
     method: "POST",

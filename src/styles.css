@@ -7576,7 +7576,8 @@ button.dispatch-pin-chip {
 }
 
 .maintenance-catalog-list input[placeholder="SKU"],
-.maintenance-catalog-add input[placeholder="SKU"] {
+.maintenance-catalog-add input[placeholder="SKU"],
+.maintenance-catalog-list input[placeholder="On hand"] {
   flex: 0 0 7rem;
   width: 7rem;
 }

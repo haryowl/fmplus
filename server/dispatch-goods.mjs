@@ -27,6 +27,8 @@ export function publicGoodsItem(row) {
     unit: parseGoodsUnit(row.unit),
     volumeM3Each: row.volume_m3_each == null ? null : Number(row.volume_m3_each),
     weightKgEach: row.weight_kg_each == null ? null : Number(row.weight_kg_each),
+    onHand: row.on_hand_qty == null ? null : Number(row.on_hand_qty),
+    reservedQty: Number(row.reserved_qty) || 0,
     enabled: row.enabled !== false,
     sortOrder: Number(row.sort_order) || 0,
     updatedAt: row.updated_at || null,
@@ -186,6 +188,13 @@ export async function importGoodsItemsFromRows(tenantId, rawRows) {
       enabled: csvEnabledFlag(row.enabled),
     };
     if (sku) body.sku = sku;
+    if (
+      Object.prototype.hasOwnProperty.call(row, "on_hand") ||
+      Object.prototype.hasOwnProperty.call(row, "onHand") ||
+      Object.prototype.hasOwnProperty.call(row, "on_hand_qty")
+    ) {
+      body.onHand = numOrNullGoods(row.on_hand ?? row.onHand ?? row.on_hand_qty);
+    }
     try {
       const found =
         (sku && bySku.get(sku.toLowerCase())) || byName.get(name.toLowerCase()) || null;
@@ -247,8 +256,9 @@ export async function createGoodsItem(tenantId, body) {
   const sku = String(body.sku || "").trim().slice(0, 80) || null;
   const inserted = await dbQuery(
     `INSERT INTO dispatch_goods_items (
-       tenant_id, name, sku, unit, volume_m3_each, weight_kg_each, enabled, sort_order
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       tenant_id, name, sku, unit, volume_m3_each, weight_kg_each,
+       on_hand_qty, reserved_qty, enabled, sort_order
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      RETURNING *`,
     [
       tenantId,
@@ -257,6 +267,8 @@ export async function createGoodsItem(tenantId, body) {
       parseGoodsUnit(body.unit),
       numOrNullGoods(body.volumeM3Each ?? body.volume_m3_each),
       numOrNullGoods(body.weightKgEach ?? body.weight_kg_each),
+      numOrNullGoods(body.onHand ?? body.on_hand ?? body.on_hand_qty),
+      numOrNullGoods(body.reservedQty ?? body.reserved_qty) ?? 0,
       body.enabled === false ? false : true,
       Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
     ],
@@ -295,13 +307,21 @@ export async function updateGoodsItem(tenantId, itemId, body) {
     body.sortOrder !== undefined && Number.isFinite(Number(body.sortOrder))
       ? Number(body.sortOrder)
       : row.sort_order;
+  let onHand = row.on_hand_qty;
+  if (body.onHand !== undefined || body.on_hand !== undefined || body.on_hand_qty !== undefined) {
+    onHand = numOrNullGoods(body.onHand ?? body.on_hand ?? body.on_hand_qty);
+  }
+  let reservedQty = row.reserved_qty;
+  if (body.reservedQty !== undefined || body.reserved_qty !== undefined) {
+    reservedQty = numOrNullGoods(body.reservedQty ?? body.reserved_qty) ?? 0;
+  }
   const updated = await dbQuery(
     `UPDATE dispatch_goods_items
      SET name = $3, sku = $4, unit = $5, volume_m3_each = $6, weight_kg_each = $7,
-         enabled = $8, sort_order = $9, updated_at = now()
+         on_hand_qty = $8, reserved_qty = $9, enabled = $10, sort_order = $11, updated_at = now()
      WHERE id = $1 AND tenant_id = $2
      RETURNING *`,
-    [itemId, tenantId, name, sku, unit, volume, weight, enabled, sortOrder],
+    [itemId, tenantId, name, sku, unit, volume, weight, onHand, reservedQty || 0, enabled, sortOrder],
   );
   if (body.sku !== undefined) {
     await syncPrimarySku(tenantId, "goods", itemId, sku);

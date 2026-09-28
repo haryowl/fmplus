@@ -47,8 +47,8 @@ Stored on the tenant as `entitlements.scan` (Admin → Entitlements → Field sc
 scan.inputs: camera · typed · nfc      ← Field enforces now
 scan.roles.{operator|driver|dispatcher|manager}:
   cargoAdd · partAdd · cargoSerial · partSerial
-  cargoConfirm · stopRequireScan · vehicleOpen · locationSet  ← Field enforces now
-  jobRequireScan                        ← stored, Field ignores until built
+  cargoConfirm · stopRequireScan · vehicleOpen · locationSet
+  jobRequireScan                        ← Field enforces now
 ```
 
 `/api/field/me` and login return the **resolved** flags for that user’s role. Field /m and Manager /mm hide Scan when the action or every input is off. `/api/field/scan` returns 403 for the same matrix. Desk embed scan is not gated by Field role.
@@ -62,7 +62,7 @@ scan.roles.{operator|driver|dispatcher|manager}:
 | `cargoAdd` | on | off | off on Field | off on Field |
 | `partAdd` | off | on | off | on for /mm |
 | `cargoConfirm` / `cargoSerial` / `stopRequireScan` | on for delivery checklists | off | desk | desk |
-| `partSerial` / `jobRequireScan` | off | serial when needed | — | — |
+| `partSerial` / `jobRequireScan` | off | on for workshop checklists | — | — |
 | `vehicleOpen` / `locationSet` | on when tags are issued | on when tags are issued | — | — |
 | NFC write | never | never | desk | desk |
 
@@ -99,11 +99,26 @@ Per-user override is out of scope until a tenant needs a special driver.
 - Vehicle tag → open the matching Field job or confirm the plate (`vehicleOpen`, default off). Desk prints / writes `am1:v1:vehicle:{armadaUserId}` on the job vehicle pane
 - Bin / depot tag → set the order zone on desk, or confirm the stop zone on Field (`locationSet`, default off). Codes live on the depot
 - Expected-vs-scanned checklist on a stop (`cargoConfirm`). Extra SKUs are rejected. Optional `stopRequireScan` blocks Finish until every catalog line has `scanned_at`
-- `jobRequireScan` stays reserved (do not require a scan to complete a whole job yet)
+- Completing a whole job still does not happen from a scan (`jobRequireScan` is a gate, not auto-done)
 
-## Not a phase until inventory is sold
+## Phase 6 — Require job (this release)
 
-On-hand qty, reservations, cycle count. Hang them on `catalog_codes` later.
+- Behind `jobRequireScan` (default off). Does **not** complete the job on a beep
+- Maintenance Done: every catalog part line needs `scanned_at`. Service / Other / labor lines do not
+- If `vehicleOpen` is also on and the job has a vehicle, Field must confirm that plate first
+- Dispatch Complete job: same vehicle gate, plus any expected cargo still pending on the stops
+- Skip / Cancel start stay available
+
+## Phase 7 — Catalog on-hand (this release)
+
+Display stock on the catalog. Scan / add / confirm / complete **do not** decrement.
+
+- `on_hand_qty` on goods and maintenance parts (`reserved_qty` stored, unused)
+- Desk catalog + goods CSV `on_hand`
+- Scan hit and catalog pickers show “12 on hand”
+- Empty on-hand means “not tracked”, not zero
+
+Reservations, cycle count, and consume-on-scan stay out until inventory is sold.
 
 ## Out of scope
 
