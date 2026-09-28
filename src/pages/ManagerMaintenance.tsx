@@ -4,6 +4,7 @@ import { FieldAccountChip } from "../components/FieldAccountChip";
 import { CatalogLineEditor } from "../components/CatalogLineEditor";
 import { CatalogScanButton } from "../components/CatalogScanButton";
 import { applyMaintPartScan, lookupCatalogScan } from "../lib/catalogScan";
+import { fieldScanCanPart, type FieldScanCapabilities } from "../lib/scanCapabilities";
 import { prepareImageDataUrl } from "../lib/imageUpload";
 import {
   emptyLine,
@@ -98,26 +99,31 @@ export default function ManagerMaintenance() {
   const [assignId, setAssignId] = useState("");
   const [lines, setLines] = useState<ServiceLine[]>([emptyLine()]);
   const [linesDirty, setLinesDirty] = useState(false);
+  const [scan, setScan] = useState<FieldScanCapabilities | null>(null);
 
   const refreshMe = useCallback(async () => {
     try {
       const me = await api<{
         user: ManagerUser;
         managerMaintenance?: boolean;
+        scan?: FieldScanCapabilities;
       }>("/api/field/me");
       if (me.user.role !== "manager") {
         setUser(null);
         setManagerMaintenance(false);
+        setScan(null);
         setError("This login is not a manager. Technicians use /m.");
         return false;
       }
       setUser(me.user);
       setManagerMaintenance(Boolean(me.managerMaintenance));
+      setScan(me.scan || null);
       setError("");
       return true;
     } catch {
       setUser(null);
       setManagerMaintenance(false);
+      setScan(null);
       return false;
     }
   }, []);
@@ -279,6 +285,7 @@ export default function ManagerMaintenance() {
       const data = await api<{
         user: ManagerUser;
         managerMaintenance?: boolean;
+        scan?: FieldScanCapabilities;
       }>("/api/field/login", {
         method: "POST",
         body: JSON.stringify({ tenantKey: tenantKey.trim(), username, password }),
@@ -287,11 +294,13 @@ export default function ManagerMaintenance() {
       if (data.user.role !== "manager") {
         await api("/api/field/logout", { method: "POST", body: "{}" });
         setUser(null);
+        setScan(null);
         setError("This account is not a manager. Technicians sign in at /m.");
         return;
       }
       setUser(data.user);
       setManagerMaintenance(Boolean(data.managerMaintenance));
+      setScan(data.scan || null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -308,6 +317,7 @@ export default function ManagerMaintenance() {
       setSelectedId(null);
       setDetail(null);
       setManagerMaintenance(false);
+      setScan(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Logout failed");
     } finally {
@@ -645,9 +655,12 @@ export default function ManagerMaintenance() {
                     >
                       Add line
                     </button>
+                    {fieldScanCanPart(scan) ? (
                     <CatalogScanButton
                       disabled={busy}
                       label="Scan part"
+                      allowCamera={scan?.camera !== false}
+                      allowTyped={scan?.typed !== false}
                       onCode={(code) => {
                         void lookupCatalogScan(code, "maint_part", "field")
                           .then((res) => {
@@ -663,6 +676,7 @@ export default function ManagerMaintenance() {
                           .catch((err: Error) => setError(err.message));
                       }}
                     />
+                    ) : null}
                   </div>
                 </div>
               ) : null}

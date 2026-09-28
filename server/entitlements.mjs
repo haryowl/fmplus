@@ -2,6 +2,7 @@
  * Default embed entitlements + helpers.
  * Admin can override per tenant in tenants.entitlements JSONB.
  */
+import { defaultScanEntitlements, mergeScanEntitlements } from "./scan-capabilities.mjs";
 
 export const MODULE_KEYS = [
   "full",
@@ -63,6 +64,7 @@ export function defaultEntitlements() {
       managerMaintenance: false,
       dispatch: false,
     },
+    scan: defaultScanEntitlements(),
   };
 }
 
@@ -80,6 +82,7 @@ export function mergeEntitlements(raw) {
       if (key in target && typeof value === "boolean") target[key] = value;
     }
   }
+  base.scan = mergeScanEntitlements(src.scan);
   return base;
 }
 

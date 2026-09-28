@@ -2856,6 +2856,50 @@ html.onesheet-root body {
   color: #08443e;
 }
 
+.admin-scan-matrix-wrap {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.admin-scan-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.admin-scan-matrix th,
+.admin-scan-matrix td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.admin-scan-matrix thead th {
+  font-weight: 650;
+  line-height: 1.25;
+  max-width: 92px;
+  white-space: normal;
+}
+
+.admin-scan-matrix th:first-child,
+.admin-scan-matrix td:first-child {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.admin-scan-later {
+  display: block;
+  font-weight: 400;
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+}
+
+.admin-chip-toggle .admin-scan-later {
+  display: inline;
+  font-style: normal;
+}
+
 .admin-col .admin-gps-grid {
   grid-template-columns: 1fr;
 }

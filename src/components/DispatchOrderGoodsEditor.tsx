@@ -19,6 +19,9 @@ type Props = {
   onToggleLock?: (locked: boolean) => void;
   /** Field uses cookie auth; desk uses the tenant key. */
   scanSource?: "field" | "desk";
+  scanAllow?: boolean;
+  scanCamera?: boolean;
+  scanTyped?: boolean;
   onScanError?: (message: string) => void;
 };
 
@@ -42,6 +45,9 @@ export function DispatchOrderGoodsEditor({
   totalsLocked,
   onToggleLock,
   scanSource,
+  scanAllow = true,
+  scanCamera = true,
+  scanTyped = true,
   onScanError,
 }: Props) {
   const [query, setQuery] = useState("");
@@ -93,9 +99,11 @@ export function DispatchOrderGoodsEditor({
           >
             Free text
           </button>
-          {scanSource ? (
+          {scanSource && scanAllow ? (
             <CatalogScanButton
               disabled={disabled}
+              allowCamera={scanCamera}
+              allowTyped={scanTyped}
               onCode={(code) => {
                 void lookupCatalogScan(code, "dispatch_cargo", scanSource)
                   .then((res) => {

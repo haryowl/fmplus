@@ -29,10 +29,53 @@ Bare SKU and factory EAN are also accepted. Do not put tenant keys or server URL
 - Browser: Barcode Detection API when present, else type the code
 - APK: same camera path in the WebView
 
+## Capability switchboard (prepared now, live for Phase 1 only)
+
+Prepare the **max scan surface**. Admin turns functions on per Field role. Do not put a unique checkbox set on every driver.
+
+Three layers — do not mix them:
+
+| Layer | Meaning | Example |
+|---|---|---|
+| **Input** | How the phone reads | Camera, type SKU, later NFC |
+| **Action** | What happens after a hit | Add cargo, confirm expected, open vehicle job |
+| **Policy** | How strict the job is | Optional vs required before complete |
+
+Stored on the tenant as `entitlements.scan` (Admin → Entitlements → Field scan by role).
+
+```
+scan.inputs: camera · typed · nfc
+scan.roles.{operator|driver|dispatcher|manager}:
+  cargoAdd · partAdd                    ← Field enforces now
+  cargoConfirm · cargoSerial · stopRequireScan
+  partSerial · jobRequireScan
+  vehicleOpen · locationSet             ← stored, Field ignores until built
+```
+
+`/api/field/me` and login return the **resolved** flags for that user’s role. Field /m and Manager /mm hide Scan when the action or every input is off. `/api/field/scan` returns 403 for the same matrix. Desk embed scan is not gated by Field role.
+
+**Shipped defaults** (no regression): every role has `cargoAdd` + `partAdd` on; camera + typed on; all later actions and NFC off. Admin can narrow a delivery-only tenant (driver cargo only) or a workshop tenant (operator parts only) without a new app.
+
+**Recommended later template** (not the shipped default):
+
+| | Driver | Operator | Dispatcher | Manager |
+|---|---|---|---|---|
+| `cargoAdd` | on | off | off on Field | off on Field |
+| `partAdd` | off | on | off | on for /mm |
+| `cargoConfirm` / `cargoSerial` / `stopRequireScan` | when built | off | desk | desk |
+| `partSerial` / `jobRequireScan` | off | when built | — | — |
+| `vehicleOpen` / `locationSet` | when built | when built | — | — |
+| NFC write | never | never | desk | desk |
+
+Per-user override is out of scope until a tenant needs a special driver.
+
+`requireScan` must stay off until confirm/serial exists — turning it on with only `add` would force drivers to invent qty by beeping.
+
 ## Phase 2 — NFC read (not built)
 
 - Same lookup. One “Scan or tap” control
 - APK only; phones without NFC still use the camera
+- Behind `scan.inputs.nfc` (default off)
 
 ## Phase 3 — Desk print + NFC write (print QR is in Phase 0; write is not built)
 
@@ -43,12 +86,13 @@ Bare SKU and factory EAN are also accepted. Do not put tenant keys or server URL
 
 - Scan can mean “this unit,” not “+1 of this SKU”
 - Fill `serial` / `lot` on the line; pickup vs drop can require the same serial
+- Behind `cargoSerial` / `partSerial` (default off)
 
 ## Phase 5 — Wider targets
 
-- Vehicle tag → open the right maintenance job or confirm the plate
-- Bin / depot tag → default zone or depot
-- Expected-vs-scanned checklist on a stop
+- Vehicle tag → open the right maintenance job or confirm the plate (`vehicleOpen`)
+- Bin / depot tag → default zone or depot (`locationSet`)
+- Expected-vs-scanned checklist on a stop (`cargoConfirm`, optional `stopRequireScan`)
 
 ## Not a phase until inventory is sold
 

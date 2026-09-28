@@ -2,9 +2,21 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import {
   defaultEntitlements,
   FEATURE_LABELS,
+  mergeEntitlements,
   MODULE_LABELS,
   type Entitlements,
 } from "../lib/entitlements";
+import {
+  SCAN_ACTION_KEYS,
+  SCAN_ACTION_LABELS,
+  SCAN_BUILT_ACTIONS,
+  SCAN_BUILT_INPUTS,
+  SCAN_INPUT_KEYS,
+  SCAN_INPUT_LABELS,
+  SCAN_ROLE_LABELS,
+  SCAN_ROLES,
+  type ScanEntitlements,
+} from "../lib/scanCapabilities";
 import { BrandMark } from "../components/BrandMark";
 
 type AdminTenant = {
@@ -123,7 +135,7 @@ function draftFromTenant(t: AdminTenant): Draft {
     wablasToken: "",
     wablasSecret: "",
     enabled: t.enabled,
-    entitlements: t.entitlements,
+    entitlements: mergeEntitlements(t.entitlements),
     dutyIntervalSec: String(t.dutyLocation?.intervalSec ?? 15),
     dutyQuietSec: String(t.dutyLocation?.quietSec ?? 60),
     dutyMinMoveM: String(t.dutyLocation?.minMoveM ?? 25),
@@ -154,6 +166,91 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 async function copyText(text: string) {
   await navigator.clipboard.writeText(text);
+}
+
+function ScanRoleMatrix({
+  scan,
+  onChange,
+}: {
+  scan: ScanEntitlements;
+  onChange: (next: ScanEntitlements) => void;
+}) {
+  return (
+    <fieldset className="admin-fieldset">
+      <legend>Field scan by role</legend>
+      <p className="admin-section-hint muted">
+        One lookup, many actions. Cargo add and Part add are live on Field /m and Manager /mm. Columns
+        marked later are stored for the wider scenario and do not change Field yet. Desk embed scan is
+        not gated here.
+      </p>
+      <div className="admin-toggle-grid">
+        {SCAN_INPUT_KEYS.map((key) => {
+          const on = scan.inputs[key] === true;
+          const later = !SCAN_BUILT_INPUTS.includes(key);
+          return (
+            <label key={key} className={`admin-chip-toggle${on ? " is-on" : ""}`}>
+              <input
+                type="checkbox"
+                checked={on}
+                onChange={(e) =>
+                  onChange({
+                    ...scan,
+                    inputs: { ...scan.inputs, [key]: e.target.checked },
+                  })
+                }
+              />
+              <span>
+                {SCAN_INPUT_LABELS[key]}
+                {later ? <em className="admin-scan-later"> later</em> : null}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      <div className="admin-scan-matrix-wrap">
+        <table className="admin-scan-matrix">
+          <thead>
+            <tr>
+              <th scope="col">Role</th>
+              {SCAN_ACTION_KEYS.map((key) => (
+                <th key={key} scope="col">
+                  {SCAN_ACTION_LABELS[key]}
+                  {!SCAN_BUILT_ACTIONS.includes(key) ? (
+                    <span className="admin-scan-later">later</span>
+                  ) : null}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {SCAN_ROLES.map((role) => (
+              <tr key={role}>
+                <th scope="row">{SCAN_ROLE_LABELS[role]}</th>
+                {SCAN_ACTION_KEYS.map((action) => (
+                  <td key={action}>
+                    <input
+                      type="checkbox"
+                      checked={scan.roles[role][action] === true}
+                      aria-label={`${SCAN_ROLE_LABELS[role]} ${SCAN_ACTION_LABELS[action]}`}
+                      onChange={(e) =>
+                        onChange({
+                          ...scan,
+                          roles: {
+                            ...scan.roles,
+                            [role]: { ...scan.roles[role], [action]: e.target.checked },
+                          },
+                        })
+                      }
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </fieldset>
+  );
 }
 
 function ToggleGrid({
@@ -865,7 +962,7 @@ export default function AdminConsole() {
               <AdminFold
                 key={`${selectedId}-entitlements`}
                 title="Entitlements"
-                hint="Embed tabs, features, and mobile apps"
+                hint="Embed tabs, features, mobile apps, and Field scan by role"
                 defaultOpen={selectedId === "new"}
               >
                 <ToggleGrid
@@ -912,6 +1009,15 @@ export default function AdminConsole() {
                         ...draft.entitlements,
                         mobile: { ...draft.entitlements.mobile, [key]: next },
                       },
+                    })
+                  }
+                />
+                <ScanRoleMatrix
+                  scan={draft.entitlements.scan}
+                  onChange={(scan) =>
+                    setDraft({
+                      ...draft,
+                      entitlements: { ...draft.entitlements, scan },
                     })
                   }
                 />

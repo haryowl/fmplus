@@ -5,9 +5,17 @@ type Props = {
   disabled?: boolean;
   label?: string;
   onCode: (code: string) => void;
+  allowCamera?: boolean;
+  allowTyped?: boolean;
 };
 
-export function CatalogScanButton({ disabled, label = "Scan", onCode }: Props) {
+export function CatalogScanButton({
+  disabled,
+  label = "Scan",
+  onCode,
+  allowCamera = true,
+  allowTyped = true,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [hint, setHint] = useState("");
@@ -19,8 +27,14 @@ export function CatalogScanButton({ disabled, label = "Scan", onCode }: Props) {
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    const canDetect = barcodeDetectorAvailable();
-    setHint(canDetect ? "Point the camera at a barcode or QR" : "Type the SKU or barcode");
+    const canDetect = allowCamera && barcodeDetectorAvailable();
+    setHint(
+      canDetect
+        ? "Point the camera at a barcode or QR"
+        : allowTyped
+          ? "Type the SKU or barcode"
+          : "Scan is disabled",
+    );
 
     async function start() {
       if (!canDetect || !navigator.mediaDevices?.getUserMedia) return;
@@ -62,7 +76,7 @@ export function CatalogScanButton({ disabled, label = "Scan", onCode }: Props) {
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     };
-  }, [open]);
+  }, [open, allowCamera, allowTyped]);
 
   return (
     <>
@@ -73,29 +87,31 @@ export function CatalogScanButton({ disabled, label = "Scan", onCode }: Props) {
         <div className="catalog-scan-modal" role="dialog" aria-label="Scan catalog code">
           <div className="catalog-scan-sheet">
             <p className="muted">{hint}</p>
-            <video ref={videoRef} className="catalog-scan-video" playsInline muted />
-            <form
-              className="catalog-scan-type"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const code = typed.trim();
-                if (!code) return;
-                onCode(code);
-                setTyped("");
-                setOpen(false);
-              }}
-            >
-              <input
-                value={typed}
-                onChange={(e) => setTyped(e.target.value)}
-                placeholder="SKU / barcode / QR text"
-                autoComplete="off"
-                autoFocus
-              />
-              <button type="submit" className="btn" disabled={!typed.trim()}>
-                Use code
-              </button>
-            </form>
+            {allowCamera ? <video ref={videoRef} className="catalog-scan-video" playsInline muted /> : null}
+            {allowTyped ? (
+              <form
+                className="catalog-scan-type"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const code = typed.trim();
+                  if (!code) return;
+                  onCode(code);
+                  setTyped("");
+                  setOpen(false);
+                }}
+              >
+                <input
+                  value={typed}
+                  onChange={(e) => setTyped(e.target.value)}
+                  placeholder="SKU / barcode / QR text"
+                  autoComplete="off"
+                  autoFocus
+                />
+                <button type="submit" className="btn" disabled={!typed.trim()}>
+                  Use code
+                </button>
+              </form>
+            ) : null}
             <button
               type="button"
               className="btn-ghost"

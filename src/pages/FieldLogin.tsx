@@ -4,6 +4,7 @@ import { FieldAccountChip } from "../components/FieldAccountChip";
 import { CatalogLineEditor } from "../components/CatalogLineEditor";
 import { CatalogScanButton } from "../components/CatalogScanButton";
 import { applyMaintPartScan, lookupCatalogScan } from "../lib/catalogScan";
+import { fieldScanCanPart, type FieldScanCapabilities } from "../lib/scanCapabilities";
 import { FieldJobsChart } from "../components/FieldJobsChart";
 import { FieldPhotoPicker } from "../components/FieldPhotoPicker";
 import {
@@ -133,6 +134,7 @@ export default function FieldLogin() {
   const [linesDirty, setLinesDirty] = useState(false);
   const [jobFilter, setJobFilter] = useState<JobListFilter>("all");
   const [catalog, setCatalog] = useState<CatalogGroup[]>([]);
+  const [scan, setScan] = useState<FieldScanCapabilities | null>(null);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -141,23 +143,27 @@ export default function FieldLogin() {
         mobileMaintenance?: boolean;
         mobileDispatch?: boolean;
         dutyLocation?: DutyLocationPolicy;
+        scan?: FieldScanCapabilities;
       }>("/api/field/me");
       if (me.user.role === "manager") {
         setUser(null);
         setMobileMaintenance(false);
         setMobileDispatch(false);
+        setScan(null);
         setError("Manager accounts sign in at /mm, not /m.");
         return false;
       }
       setUser(me.user);
       setMobileMaintenance(Boolean(me.mobileMaintenance));
       setMobileDispatch(Boolean(me.mobileDispatch));
+      setScan(me.scan || null);
       applyDutyLocationPolicy(me.dutyLocation);
       return true;
     } catch {
       setUser(null);
       setMobileMaintenance(false);
       setMobileDispatch(false);
+      setScan(null);
       return false;
     }
   }, []);
@@ -356,6 +362,7 @@ export default function FieldLogin() {
         mobileMaintenance?: boolean;
         mobileDispatch?: boolean;
         dutyLocation?: DutyLocationPolicy;
+        scan?: FieldScanCapabilities;
       }>("/api/field/login", {
         method: "POST",
         body: JSON.stringify({ tenantKey: tenantKey.trim(), username, password }),
@@ -364,12 +371,14 @@ export default function FieldLogin() {
       if (data.user.role === "manager") {
         await api("/api/field/logout", { method: "POST", body: "{}" });
         setUser(null);
+        setScan(null);
         setError("Manager accounts sign in at /mm, not /m.");
         return;
       }
       setUser(data.user);
       setMobileMaintenance(Boolean(data.mobileMaintenance));
       setMobileDispatch(Boolean(data.mobileDispatch));
+      setScan(data.scan || null);
       applyDutyLocationPolicy(data.dutyLocation);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -389,6 +398,7 @@ export default function FieldLogin() {
       setDetail(null);
       setMobileMaintenance(false);
       setMobileDispatch(false);
+      setScan(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Logout failed");
     } finally {
@@ -610,6 +620,7 @@ export default function FieldLogin() {
           <FieldDispatchPanel
             onError={(msg) => setError(msg)}
             onNotice={(msg) => setNotice(msg)}
+            scan={scan}
           />
         ) : !inMaintenance ? (
           <div className="field-panel">
@@ -782,9 +793,12 @@ export default function FieldLogin() {
                     >
                       Add line
                     </button>
+                    {fieldScanCanPart(scan) ? (
                     <CatalogScanButton
                       disabled={jobLocked || busy}
                       label="Scan part"
+                      allowCamera={scan?.camera !== false}
+                      allowTyped={scan?.typed !== false}
                       onCode={(code) => {
                         void lookupCatalogScan(code, "maint_part", "field")
                           .then((res) => {
@@ -800,6 +814,7 @@ export default function FieldLogin() {
                           .catch((err: Error) => setError(err.message));
                       }}
                     />
+                    ) : null}
                   </div>
                   <span className="field-totals">
                     Price Σ {priceTotal.toFixed(2)}

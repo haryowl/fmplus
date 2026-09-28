@@ -20,6 +20,12 @@ import {
 import { applyEventPatch, loadEventDetail, loadPhotoBytes, parseDataUrl, publicEvent, savePhoto } from "./maintenance-api.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 import { mergeEntitlements } from "./entitlements.mjs";
+import {
+  denyScanMessage,
+  fieldScanAllowsContext,
+  fieldScanHasInput,
+  resolveFieldScan,
+} from "./scan-capabilities.mjs";
 import { tenantByKey } from "./tenants.mjs";
 import { fetchVehiclePositions } from "./vehicle-positions.mjs";
 import {
@@ -146,6 +152,7 @@ async function mobileFlagsForTenant(tenantId) {
     managerMaintenance: ent.mobile?.managerMaintenance === true,
     mobileDispatch: ent.mobile?.dispatch === true,
     dutyLocation: dutyLocationFromTenantRow(row.rows[0] || {}),
+    scan: ent.scan,
   };
 }
 
@@ -404,6 +411,7 @@ export async function handleFieldRequest(req, res) {
           managerMaintenance: flags.managerMaintenance,
           mobileDispatch: flags.mobileDispatch,
           dutyLocation: flags.dutyLocation,
+          scan: resolveFieldScan(flags.scan, row.role),
         },
         { "Set-Cookie": fieldSessionCookieHeader(session.token, maxAge) },
       );
@@ -430,6 +438,7 @@ export async function handleFieldRequest(req, res) {
         managerMaintenance: flags.managerMaintenance,
         mobileDispatch: flags.mobileDispatch,
         dutyLocation: flags.dutyLocation,
+        scan: resolveFieldScan(flags.scan, user.role),
       });
       return true;
     }
@@ -660,7 +669,18 @@ export async function handleFieldRequest(req, res) {
         json(res, 401, { error: "Not logged in" });
         return true;
       }
+      const flags = await mobileFlagsForTenant(user.tenantId);
+      const caps = resolveFieldScan(flags.scan, user.role);
       const body = await readJson(req);
+      const context = String(body.context || "any");
+      if (!fieldScanHasInput(caps)) {
+        json(res, 403, { error: "Scan input is disabled for this tenant" });
+        return true;
+      }
+      if (!fieldScanAllowsContext(caps, context)) {
+        json(res, 403, { error: denyScanMessage(context) });
+        return true;
+      }
       json(res, 200, await lookupCatalogScan(user.tenantId, body));
       return true;
     }

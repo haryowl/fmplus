@@ -1,10 +1,17 @@
 /** Client-side default entitlements (mirrors server/entitlements.mjs). */
 
+import {
+  defaultScanEntitlements,
+  mergeScanEntitlements,
+  type ScanEntitlements,
+} from "./scanCapabilities";
+
 export type Entitlements = {
   modules: Record<string, boolean>;
   features: Record<string, boolean>;
   actions: Record<string, boolean>;
   mobile: Record<string, boolean>;
+  scan: ScanEntitlements;
 };
 
 export const MODULE_LABELS: Record<string, string> = {
@@ -65,6 +72,7 @@ export function defaultEntitlements(): Entitlements {
       managerMaintenance: false,
       dispatch: false,
     },
+    scan: defaultScanEntitlements(),
   };
 }
 
@@ -80,6 +88,7 @@ export function mergeEntitlements(raw: unknown): Entitlements {
       if (key in target && typeof value === "boolean") target[key] = value;
     }
   }
+  base.scan = mergeScanEntitlements(src.scan);
   return base;
 }
 

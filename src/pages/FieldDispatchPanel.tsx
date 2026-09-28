@@ -12,6 +12,8 @@ import {
   writeLocationConsent,
 } from "../lib/driverLocation";
 import { isNativeFieldApp } from "../lib/nativeField";
+import type { FieldScanCapabilities } from "../lib/scanCapabilities";
+import { fieldScanCanCargo } from "../lib/scanCapabilities";
 import {
   calendarDayDotTones,
   DISPATCH_STATUS_LABELS,
@@ -58,6 +60,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 type Props = {
   onError: (msg: string) => void;
   onNotice: (msg: string) => void;
+  scan?: FieldScanCapabilities | null;
 };
 
 type View = "calendar" | "jobs" | "orders" | "activeStop";
@@ -100,7 +103,8 @@ function ymdFromParts(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-export function FieldDispatchPanel({ onError, onNotice }: Props) {
+export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
+  const allowCargoScan = fieldScanCanCargo(scan);
   const [view, setView] = useState<View>("calendar");
   const [jobs, setJobs] = useState<DispatchJob[]>([]);
   const [loading, setLoading] = useState(false);
@@ -662,6 +666,9 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
               }}
               compact
               scanSource="field"
+              scanAllow={allowCargoScan}
+              scanCamera={scan?.camera !== false}
+              scanTyped={scan?.typed !== false}
               onScanError={(msg) => onErrorRef.current(msg)}
             />
             <button
@@ -1010,6 +1017,9 @@ export function FieldDispatchPanel({ onError, onNotice }: Props) {
                                 onChange={setCargoDraft}
                                 compact
                                 scanSource="field"
+                                scanAllow={allowCargoScan}
+                                scanCamera={scan?.camera !== false}
+                                scanTyped={scan?.typed !== false}
                                 onScanError={(msg) => onErrorRef.current(msg)}
                               />
                               <div className="field-action-row">

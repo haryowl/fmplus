@@ -14,6 +14,8 @@ describe("entitlements", () => {
     expect(merged.features.excel).toBe(true);
     expect(merged.features.deleteMaintenance).toBe(false);
     expect(merged.mobile.managerMaintenance).toBe(false);
+    expect(merged.scan.roles.driver.cargoAdd).toBe(true);
+    expect(merged.scan.inputs.nfc).toBe(false);
   });
 
   it("can enable managerMaintenance mobile flag", () => {
