@@ -17,7 +17,12 @@ export const SCAN_ACTION_KEYS = [
 export type ScanActionKey = (typeof SCAN_ACTION_KEYS)[number];
 
 /** Actions Field already enforces. Other keys persist for later phases. */
-export const SCAN_BUILT_ACTIONS: readonly ScanActionKey[] = ["cargoAdd", "partAdd"];
+export const SCAN_BUILT_ACTIONS: readonly ScanActionKey[] = [
+  "cargoAdd",
+  "partAdd",
+  "cargoSerial",
+  "partSerial",
+];
 
 export const SCAN_INPUT_KEYS = ["camera", "typed", "nfc"] as const;
 export type ScanInputKey = (typeof SCAN_INPUT_KEYS)[number];

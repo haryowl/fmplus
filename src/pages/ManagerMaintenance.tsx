@@ -3,7 +3,12 @@ import { BrandMark } from "../components/BrandMark";
 import { FieldAccountChip } from "../components/FieldAccountChip";
 import { CatalogLineEditor } from "../components/CatalogLineEditor";
 import { CatalogScanButton } from "../components/CatalogScanButton";
-import { applyMaintPartScan, lookupCatalogScan } from "../lib/catalogScan";
+import { CatalogUnitIdPrompt } from "../components/CatalogUnitIdPrompt";
+import {
+  applyMaintPartScanResult,
+  catalogScanNeedsUnitId,
+  lookupCatalogScan,
+} from "../lib/catalogScan";
 import { fieldScanCanPart, type FieldScanCapabilities } from "../lib/scanCapabilities";
 import { prepareImageDataUrl } from "../lib/imageUpload";
 import {
@@ -100,6 +105,11 @@ export default function ManagerMaintenance() {
   const [lines, setLines] = useState<ServiceLine[]>([emptyLine()]);
   const [linesDirty, setLinesDirty] = useState(false);
   const [scan, setScan] = useState<FieldScanCapabilities | null>(null);
+  const [pendingPart, setPendingPart] = useState<{
+    item: CatalogItem;
+    scannedCode: string;
+    codeFormat?: string;
+  } | null>(null);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -639,6 +649,7 @@ export default function ManagerMaintenance() {
                     disabled={locked || busy}
                     onChange={(patch) => updateLine(idx, patch)}
                     onRemove={() => removeLine(idx)}
+                    showUnitIds={scan?.partSerial === true}
                   />
                 ))}
               </div>
@@ -669,10 +680,30 @@ export default function ManagerMaintenance() {
                               setError(`Not in catalog: ${res.raw || code}`);
                               return;
                             }
+                            const item = res.item as CatalogItem;
+                            const scanned = res.code || code;
+                            if (
+                              catalogScanNeedsUnitId({
+                                sku: item.sku,
+                                kind: "maint_part",
+                                scannedCode: scanned,
+                                codeFormat: res.codeFormat,
+                                serialMode: scan?.partSerial === true,
+                              })
+                            ) {
+                              setPendingPart({ item, scannedCode: scanned, codeFormat: res.codeFormat });
+                              return;
+                            }
+                            const result = applyMaintPartScanResult(lines, item, scanned, {
+                              serialMode: scan?.partSerial === true,
+                              codeFormat: res.codeFormat,
+                            });
+                            if (result.error) {
+                              setError(result.error);
+                              return;
+                            }
                             setLinesDirty(true);
-                            setLines((prev) =>
-                              applyMaintPartScan(prev, res.item as CatalogItem, res.code || code),
-                            );
+                            setLines(result.lines);
                           })
                           .catch((err: Error) => setError(err.message));
                       }}
@@ -680,6 +711,30 @@ export default function ManagerMaintenance() {
                     ) : null}
                   </div>
                 </div>
+              ) : null}
+              {pendingPart ? (
+                <CatalogUnitIdPrompt
+                  itemName={pendingPart.item.name}
+                  allowCamera={scan?.camera !== false}
+                  allowTyped={scan?.typed !== false}
+                  allowNfc={scan?.nfc === true}
+                  onSubmit={(serial, lot) => {
+                    const result = applyMaintPartScanResult(lines, pendingPart.item, pendingPart.scannedCode, {
+                      serialMode: true,
+                      serial,
+                      lot,
+                      codeFormat: pendingPart.codeFormat,
+                    });
+                    if (result.error) {
+                      setError(result.error);
+                      return;
+                    }
+                    setLinesDirty(true);
+                    setLines(result.lines);
+                    setPendingPart(null);
+                  }}
+                  onCancel={() => setPendingPart(null)}
+                />
               ) : null}
             </section>
 

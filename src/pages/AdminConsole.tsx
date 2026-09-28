@@ -179,10 +179,9 @@ function ScanRoleMatrix({
     <fieldset className="admin-fieldset">
       <legend>Field scan by role</legend>
       <p className="admin-section-hint muted">
-        One lookup, many actions. Cargo add, Part add, camera, type, and NFC read are live on Field /m
-        and Manager /mm. NFC read is APK only and off until you enable it here. Columns marked later
-        are stored for the wider scenario and do not change Field yet. Desk embed scan is not gated
-        here.
+        One lookup, many actions. Cargo add, Part add, cargo/part serial, camera, type, and NFC read
+        are live on Field /m and Manager /mm. Serial and NFC stay off until you enable them here.
+        Columns marked later are stored for the wider scenario. Desk embed scan is not gated here.
       </p>
       <div className="admin-toggle-grid">
         {SCAN_INPUT_KEYS.map((key) => {

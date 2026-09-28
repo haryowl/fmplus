@@ -8,6 +8,7 @@ type Props = {
   compact?: boolean;
   onChange: (patch: Partial<ServiceLine>) => void;
   onRemove: () => void;
+  showUnitIds?: boolean;
 };
 
 const KIND_OPTIONS = Object.keys(LINE_KIND_LABELS) as Array<"part" | "service" | "other">;
@@ -18,7 +19,15 @@ function itemsForKind(catalog: CatalogGroup[], kind: LineKind): CatalogItem[] {
   return (group?.items || []).filter((it) => it.enabled !== false);
 }
 
-export function CatalogLineEditor({ line, catalog, disabled, compact, onChange, onRemove }: Props) {
+export function CatalogLineEditor({
+  line,
+  catalog,
+  disabled,
+  compact,
+  onChange,
+  onRemove,
+  showUnitIds = false,
+}: Props) {
   const kind = normalizeLineKindUi(line.kind);
   const items = itemsForKind(catalog, kind);
   const freeText = kind === "other" || !line.catalogItemId;
@@ -149,6 +158,28 @@ export function CatalogLineEditor({ line, catalog, disabled, compact, onChange, 
               placeholder="Optional"
             />
           </label>
+          {showUnitIds && kind === "part" ? (
+            <>
+              <label>
+                Serial
+                <input
+                  value={line.serial || ""}
+                  disabled={disabled}
+                  onChange={(e) => onChange({ serial: e.target.value })}
+                  placeholder="Serial"
+                />
+              </label>
+              <label>
+                Lot
+                <input
+                  value={line.lot || ""}
+                  disabled={disabled}
+                  onChange={(e) => onChange({ lot: e.target.value })}
+                  placeholder="Optional"
+                />
+              </label>
+            </>
+          ) : null}
         </div>
       </article>
     );
@@ -223,6 +254,22 @@ export function CatalogLineEditor({ line, catalog, disabled, compact, onChange, 
         disabled={disabled}
         onChange={(e) => onChange({ vendor: e.target.value })}
       />
+      {showUnitIds && kind === "part" ? (
+        <>
+          <input
+            placeholder="Serial"
+            value={line.serial || ""}
+            disabled={disabled}
+            onChange={(e) => onChange({ serial: e.target.value })}
+          />
+          <input
+            placeholder="Lot"
+            value={line.lot || ""}
+            disabled={disabled}
+            onChange={(e) => onChange({ lot: e.target.value })}
+          />
+        </>
+      ) : null}
       <button type="button" className="btn-icon" title="Remove line" disabled={disabled} onClick={onRemove}>
         ×
       </button>

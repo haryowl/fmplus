@@ -17,7 +17,7 @@ export const SCAN_ACTION_KEYS = [
   "locationSet",
 ];
 
-export const SCAN_BUILT_ACTIONS = ["cargoAdd", "partAdd"];
+export const SCAN_BUILT_ACTIONS = ["cargoAdd", "partAdd", "cargoSerial", "partSerial"];
 
 export const SCAN_INPUT_KEYS = ["camera", "typed", "nfc"];
 export const SCAN_BUILT_INPUTS = ["camera", "typed", "nfc"];

@@ -46,9 +46,9 @@ Stored on the tenant as `entitlements.scan` (Admin → Entitlements → Field sc
 ```
 scan.inputs: camera · typed · nfc      ← Field enforces now
 scan.roles.{operator|driver|dispatcher|manager}:
-  cargoAdd · partAdd                    ← Field enforces now
-  cargoConfirm · cargoSerial · stopRequireScan
-  partSerial · jobRequireScan
+  cargoAdd · partAdd · cargoSerial · partSerial  ← Field enforces now
+  cargoConfirm · stopRequireScan
+  jobRequireScan
   vehicleOpen · locationSet             ← stored, Field ignores until built
 ```
 
@@ -87,11 +87,13 @@ Per-user override is out of scope until a tenant needs a special driver.
 - Desk only (embed Chrome on Android, HTTPS). Field APK refuses to write
 - Desktop Chrome: copy the payload, or store the chip UID under Codes after a Field tap
 
-## Phase 4 — Serial / lot
+## Phase 4 — Serial / lot (this release)
 
-- Scan can mean “this unit,” not “+1 of this SKU”
-- Fill `serial` / `lot` on the line; pickup vs drop can require the same serial
 - Behind `cargoSerial` / `partSerial` (default off)
+- Identity scan (SKU / EAN / printed QR / NDEF payload) asks for a serial; a unique NFC UID is the serial
+- Each serial is its own qty-1 line. Scan the same serial again to confirm (`scanned_at`)
+- Drop only accepts a serial already on that order (“This serial is not on the order”)
+- Lot is optional on the prompt and the line
 
 ## Phase 5 — Wider targets
 

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { applyGoodsScan, applyMaintPartScan } from "./catalogScan";
+import {
+  applyGoodsScan,
+  applyGoodsScanResult,
+  applyMaintPartScan,
+  catalogScanNeedsUnitId,
+  isCatalogIdentityScan,
+} from "./catalogScan";
 import { formatScanPayload, normalizeCatalogCode, parseScanPayload } from "../../server/catalog-codes.mjs";
 
 describe("scan payload", () => {
@@ -72,5 +78,40 @@ describe("apply scan to lines", () => {
     const twice = applyMaintPartScan(next, item, "pad");
     expect(twice).toHaveLength(1);
     expect(twice[0]?.qty).toBe(2);
+  });
+
+  it("treats SKU, EAN, and versioned QR as identity, not a unit serial", () => {
+    expect(isCatalogIdentityScan({ sku: "OIL", kind: "goods", scannedCode: "oil" })).toBe(true);
+    expect(isCatalogIdentityScan({ sku: "OIL", kind: "goods", scannedCode: "am1:v1:goods:OIL" })).toBe(true);
+    expect(isCatalogIdentityScan({ sku: "OIL", kind: "goods", scannedCode: "oil", codeFormat: "ean" })).toBe(true);
+    expect(isCatalogIdentityScan({ sku: "OIL", kind: "goods", scannedCode: "04a2b1c3d5", codeFormat: "nfc" })).toBe(
+      false,
+    );
+    expect(
+      catalogScanNeedsUnitId({
+        sku: "OIL",
+        kind: "goods",
+        scannedCode: "oil",
+        serialMode: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("adds one goods line per serial and rejects an unknown drop serial", () => {
+    const first = applyGoodsScan([], good, "oil", { serialMode: true, serial: "SN-1" });
+    expect(first).toHaveLength(1);
+    expect(first[0]?.serial).toBe("SN-1");
+    expect(first[0]?.qty).toBe(1);
+    const second = applyGoodsScan(first, good, "oil", { serialMode: true, serial: "SN-2" });
+    expect(second).toHaveLength(2);
+    const again = applyGoodsScan(second, good, "oil", { serialMode: true, serial: "SN-1" });
+    expect(again).toHaveLength(2);
+    const drop = applyGoodsScanResult(second, good, "oil", {
+      serialMode: true,
+      serial: "SN-99",
+      onlyKnownSerial: true,
+    });
+    expect(drop.error).toBe("This serial is not on the order");
+    expect(drop.lines).toHaveLength(2);
   });
 });

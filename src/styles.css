@@ -9708,6 +9708,44 @@ button.dispatch-pin-chip {
   flex: 0 0 64px;
 }
 
+.dispatch-goods-lines li input[aria-label="Serial"],
+.dispatch-goods-lines li input[aria-label="Lot"] {
+  flex: 1 1 88px;
+}
+
+.catalog-unit-prompt-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 4100;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 18, 16, 0.45);
+  padding: 16px;
+}
+
+.catalog-unit-prompt-sheet {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(20, 18, 16, 0.22);
+}
+
+.catalog-unit-prompt-sheet label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.catalog-unit-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .field-goods-summary {
   margin: 4px 0 0;
   font-size: 0.8rem;

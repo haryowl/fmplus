@@ -655,7 +655,11 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
           <section className="field-panel">
             <header className="field-panel-head">
               <h3>Cargo</h3>
-              <p className="muted">Catalog or free text. Same list on pickup and drop.</p>
+              <p className="muted">
+                {scan?.cargoSerial
+                  ? "Each tap is one unit. Drop only accepts serials already on this order."
+                  : "Catalog or free text. Same list on pickup and drop."}
+              </p>
             </header>
             <DispatchOrderGoodsEditor
               catalog={goodsCatalog}
@@ -670,6 +674,8 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
               scanCamera={scan?.camera !== false}
               scanTyped={scan?.typed !== false}
               scanNfc={scan?.nfc === true}
+              scanSerial={scan?.cargoSerial === true}
+              scanKnownSerialOnly={scan?.cargoSerial === true && activeStop.role === "drop"}
               onScanError={(msg) => onErrorRef.current(msg)}
             />
             <button
@@ -1022,6 +1028,8 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
                                 scanCamera={scan?.camera !== false}
                                 scanTyped={scan?.typed !== false}
                                 scanNfc={scan?.nfc === true}
+                                scanSerial={scan?.cargoSerial === true}
+                                scanKnownSerialOnly={scan?.cargoSerial === true && stop.role === "drop"}
                                 onScanError={(msg) => onErrorRef.current(msg)}
                               />
                               <div className="field-action-row">

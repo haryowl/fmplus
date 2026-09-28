@@ -1,6 +1,12 @@
 import { useMemo, useState } from "react";
 import { CatalogScanButton } from "./CatalogScanButton";
-import { applyGoodsScan, lookupCatalogScan } from "../lib/catalogScan";
+import { CatalogUnitIdPrompt } from "./CatalogUnitIdPrompt";
+import {
+  applyGoodsScanResult,
+  catalogScanNeedsUnitId,
+  lookupCatalogScan,
+} from "../lib/catalogScan";
+import type { CatalogScanResult } from "../lib/catalogScan";
 import {
   DISPATCH_GOODS_UNITS,
   sumOrderCargoTotals,
@@ -23,6 +29,8 @@ type Props = {
   scanCamera?: boolean;
   scanTyped?: boolean;
   scanNfc?: boolean;
+  scanSerial?: boolean;
+  scanKnownSerialOnly?: boolean;
   onScanError?: (message: string) => void;
 };
 
@@ -50,9 +58,16 @@ export function DispatchOrderGoodsEditor({
   scanCamera = true,
   scanTyped = true,
   scanNfc = false,
+  scanSerial = false,
+  scanKnownSerialOnly = false,
   onScanError,
 }: Props) {
   const [query, setQuery] = useState("");
+  const [pending, setPending] = useState<{
+    item: DispatchGoodsItem;
+    scannedCode: string;
+    codeFormat?: string;
+  } | null>(null);
   const enabled = catalog.filter((i) => i.enabled !== false);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -65,6 +80,38 @@ export function DispatchOrderGoodsEditor({
 
   function patchLine(index: number, patch: Partial<DispatchOrderLine>) {
     onChange(lines.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+  }
+
+  function applyHit(item: DispatchGoodsItem, scannedCode: string, extra?: { serial?: string; lot?: string; codeFormat?: string }) {
+    const result = applyGoodsScanResult(lines, item, scannedCode, {
+      serialMode: scanSerial,
+      serial: extra?.serial,
+      lot: extra?.lot,
+      codeFormat: extra?.codeFormat,
+      onlyKnownSerial: scanKnownSerialOnly,
+    });
+    if (result.error) {
+      onScanError?.(result.error);
+      return;
+    }
+    onChange(result.lines);
+  }
+
+  function onGoodsCode(code: string, res: CatalogScanResult, item: DispatchGoodsItem) {
+    const scanned = res.code || code;
+    if (
+      catalogScanNeedsUnitId({
+        sku: item.sku,
+        kind: "goods",
+        scannedCode: scanned,
+        codeFormat: res.codeFormat,
+        serialMode: scanSerial,
+      })
+    ) {
+      setPending({ item, scannedCode: scanned, codeFormat: res.codeFormat });
+      return;
+    }
+    applyHit(item, scanned, { codeFormat: res.codeFormat });
   }
 
   function addCatalog(item: DispatchGoodsItem) {
@@ -114,13 +161,30 @@ export function DispatchOrderGoodsEditor({
                       onScanError?.(`Not in catalog: ${res.raw || code}`);
                       return;
                     }
-                    onChange(applyGoodsScan(lines, res.item, res.code || code));
+                    onGoodsCode(code, res, res.item);
                   })
                   .catch((err: Error) => onScanError?.(err.message));
               }}
             />
           ) : null}
         </div>
+      ) : null}
+      {pending ? (
+        <CatalogUnitIdPrompt
+          itemName={pending.item.name}
+          allowCamera={scanCamera}
+          allowTyped={scanTyped}
+          allowNfc={scanNfc}
+          onSubmit={(serial, lot) => {
+            applyHit(pending.item, pending.scannedCode, {
+              serial,
+              lot,
+              codeFormat: pending.codeFormat,
+            });
+            setPending(null);
+          }}
+          onCancel={() => setPending(null)}
+        />
       ) : null}
       {query && !disabled ? (
         <ul className="dispatch-goods-suggest">
@@ -204,6 +268,26 @@ export function DispatchOrderGoodsEditor({
                 }
                 size={1}
               />
+              {scanSerial ? (
+                <>
+                  <input
+                    aria-label="Serial"
+                    value={line.serial || ""}
+                    disabled={disabled}
+                    placeholder="Serial"
+                    onChange={(e) => patchLine(i, { serial: e.target.value })}
+                    size={1}
+                  />
+                  <input
+                    aria-label="Lot"
+                    value={line.lot || ""}
+                    disabled={disabled}
+                    placeholder="Lot"
+                    onChange={(e) => patchLine(i, { lot: e.target.value })}
+                    size={1}
+                  />
+                </>
+              ) : null}
               {!disabled ? (
                 <button
                   type="button"
