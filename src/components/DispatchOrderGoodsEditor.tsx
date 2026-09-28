@@ -22,6 +22,7 @@ type Props = {
   scanAllow?: boolean;
   scanCamera?: boolean;
   scanTyped?: boolean;
+  scanNfc?: boolean;
   onScanError?: (message: string) => void;
 };
 
@@ -48,6 +49,7 @@ export function DispatchOrderGoodsEditor({
   scanAllow = true,
   scanCamera = true,
   scanTyped = true,
+  scanNfc = false,
   onScanError,
 }: Props) {
   const [query, setQuery] = useState("");
@@ -104,6 +106,7 @@ export function DispatchOrderGoodsEditor({
               disabled={disabled}
               allowCamera={scanCamera}
               allowTyped={scanTyped}
+              allowNfc={scanNfc}
               onCode={(code) => {
                 void lookupCatalogScan(code, "dispatch_cargo", scanSource)
                   .then((res) => {

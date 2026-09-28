@@ -799,6 +799,7 @@ export default function FieldLogin() {
                       label="Scan part"
                       allowCamera={scan?.camera !== false}
                       allowTyped={scan?.typed !== false}
+                      allowNfc={scan?.nfc === true}
                       onCode={(code) => {
                         void lookupCatalogScan(code, "maint_part", "field")
                           .then((res) => {

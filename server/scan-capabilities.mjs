@@ -20,7 +20,7 @@ export const SCAN_ACTION_KEYS = [
 export const SCAN_BUILT_ACTIONS = ["cargoAdd", "partAdd"];
 
 export const SCAN_INPUT_KEYS = ["camera", "typed", "nfc"];
-export const SCAN_BUILT_INPUTS = ["camera", "typed"];
+export const SCAN_BUILT_INPUTS = ["camera", "typed", "nfc"];
 
 export function defaultScanRoleActions() {
   return {
@@ -80,7 +80,7 @@ export function resolveFieldScan(scan, role) {
 }
 
 export function fieldScanHasInput(caps) {
-  return caps?.camera === true || caps?.typed === true;
+  return caps?.camera === true || caps?.typed === true || caps?.nfc === true;
 }
 
 export function fieldScanAllowsContext(caps, context) {

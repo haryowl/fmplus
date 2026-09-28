@@ -21,7 +21,7 @@ export const SCAN_BUILT_ACTIONS: readonly ScanActionKey[] = ["cargoAdd", "partAd
 
 export const SCAN_INPUT_KEYS = ["camera", "typed", "nfc"] as const;
 export type ScanInputKey = (typeof SCAN_INPUT_KEYS)[number];
-export const SCAN_BUILT_INPUTS: readonly ScanInputKey[] = ["camera", "typed"];
+export const SCAN_BUILT_INPUTS: readonly ScanInputKey[] = ["camera", "typed", "nfc"];
 
 export type ScanRoleActions = Record<ScanActionKey, boolean>;
 
@@ -122,7 +122,7 @@ export function resolveFieldScan(scan: ScanEntitlements, role: string): FieldSca
 }
 
 export function fieldScanHasInput(caps: Pick<FieldScanCapabilities, ScanInputKey>): boolean {
-  return caps.camera === true || caps.typed === true;
+  return caps.camera === true || caps.typed === true || caps.nfc === true;
 }
 
 export function fieldScanAllowsContext(

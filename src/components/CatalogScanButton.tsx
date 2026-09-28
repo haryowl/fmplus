@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { barcodeDetectorAvailable, detectBarcodeFromVideo } from "../lib/catalogScan";
+import { scanButtonLabel, scanSheetHint, startNfcScan } from "../lib/nfcScan";
 
 type Props = {
   disabled?: boolean;
@@ -7,6 +8,7 @@ type Props = {
   onCode: (code: string) => void;
   allowCamera?: boolean;
   allowTyped?: boolean;
+  allowNfc?: boolean;
 };
 
 export function CatalogScanButton({
@@ -15,6 +17,7 @@ export function CatalogScanButton({
   onCode,
   allowCamera = true,
   allowTyped = true,
+  allowNfc = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
@@ -24,20 +27,15 @@ export function CatalogScanButton({
   const onCodeRef = useRef(onCode);
   onCodeRef.current = onCode;
 
+  const cameraReady = allowCamera && barcodeDetectorAvailable();
+
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    const canDetect = allowCamera && barcodeDetectorAvailable();
-    setHint(
-      canDetect
-        ? "Point the camera at a barcode or QR"
-        : allowTyped
-          ? "Type the SKU or barcode"
-          : "Scan is disabled",
-    );
+    setHint(scanSheetHint({ cameraReady, typed: allowTyped, nfcReady: false }));
 
     async function start() {
-      if (!canDetect || !navigator.mediaDevices?.getUserMedia) return;
+      if (!cameraReady || !navigator.mediaDevices?.getUserMedia) return;
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: "environment" } },
@@ -54,7 +52,7 @@ export function CatalogScanButton({
           await video.play().catch(() => undefined);
         }
       } catch {
-        setHint("Camera unavailable — type the code");
+        setHint(scanSheetHint({ cameraReady: false, typed: allowTyped, nfcReady: false }));
       }
     }
     void start();
@@ -76,12 +74,34 @@ export function CatalogScanButton({
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     };
-  }, [open, allowCamera, allowTyped]);
+  }, [open, allowCamera, allowTyped, cameraReady]);
+
+  useEffect(() => {
+    if (!open || !allowNfc) return;
+    let cancelled = false;
+    let stop: (() => Promise<void>) | undefined;
+    void startNfcScan((code) => {
+      if (cancelled) return;
+      onCodeRef.current(code);
+      setOpen(false);
+    }).then((res) => {
+      if (cancelled) {
+        void res.stop();
+        return;
+      }
+      stop = res.stop;
+      setHint(scanSheetHint({ cameraReady, typed: allowTyped, nfcReady: res.ready }));
+    });
+    return () => {
+      cancelled = true;
+      void stop?.();
+    };
+  }, [open, allowNfc, allowTyped, cameraReady]);
 
   return (
     <>
       <button type="button" className="btn-secondary" disabled={disabled} onClick={() => setOpen(true)}>
-        {label}
+        {scanButtonLabel(label, allowNfc)}
       </button>
       {open ? (
         <div className="catalog-scan-modal" role="dialog" aria-label="Scan catalog code">

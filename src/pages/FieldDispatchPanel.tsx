@@ -669,6 +669,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
               scanAllow={allowCargoScan}
               scanCamera={scan?.camera !== false}
               scanTyped={scan?.typed !== false}
+              scanNfc={scan?.nfc === true}
               onScanError={(msg) => onErrorRef.current(msg)}
             />
             <button
@@ -1020,6 +1021,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
                                 scanAllow={allowCargoScan}
                                 scanCamera={scan?.camera !== false}
                                 scanTyped={scan?.typed !== false}
+                                scanNfc={scan?.nfc === true}
                                 onScanError={(msg) => onErrorRef.current(msg)}
                               />
                               <div className="field-action-row">

@@ -5,6 +5,7 @@ import {
   fieldScanAllowsContext,
   fieldScanCanCargo,
   fieldScanCanPart,
+  fieldScanHasInput,
   mergeScanEntitlements,
   resolveFieldScan,
 } from "./scanCapabilities";
@@ -60,6 +61,17 @@ describe("scan capabilities", () => {
   it("treats a missing /me scan payload as Phase 1 still allowed", () => {
     expect(fieldScanCanCargo(null)).toBe(true);
     expect(fieldScanCanPart(undefined)).toBe(true);
+  });
+
+  it("counts NFC as a Field input when camera and type are off", () => {
+    const caps = resolveFieldScan(
+      mergeScanEntitlements({
+        inputs: { camera: false, typed: false, nfc: true },
+      }),
+      "driver",
+    );
+    expect(fieldScanHasInput(caps)).toBe(true);
+    expect(fieldScanCanCargo(caps)).toBe(true);
   });
 
   it("hangs scan on tenant entitlements merge", () => {

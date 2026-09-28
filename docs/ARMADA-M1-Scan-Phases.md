@@ -29,7 +29,7 @@ Bare SKU and factory EAN are also accepted. Do not put tenant keys or server URL
 - Browser: Barcode Detection API when present, else type the code
 - APK: same camera path in the WebView
 
-## Capability switchboard (prepared now, live for Phase 1 only)
+## Capability switchboard (Phase 1 add + Phase 2 NFC input)
 
 Prepare the **max scan surface**. Admin turns functions on per Field role. Do not put a unique checkbox set on every driver.
 
@@ -37,14 +37,14 @@ Three layers — do not mix them:
 
 | Layer | Meaning | Example |
 |---|---|---|
-| **Input** | How the phone reads | Camera, type SKU, later NFC |
+| **Input** | How the phone reads | Camera, type SKU, NFC tap (APK) |
 | **Action** | What happens after a hit | Add cargo, confirm expected, open vehicle job |
 | **Policy** | How strict the job is | Optional vs required before complete |
 
 Stored on the tenant as `entitlements.scan` (Admin → Entitlements → Field scan by role).
 
 ```
-scan.inputs: camera · typed · nfc
+scan.inputs: camera · typed · nfc      ← Field enforces now
 scan.roles.{operator|driver|dispatcher|manager}:
   cargoAdd · partAdd                    ← Field enforces now
   cargoConfirm · cargoSerial · stopRequireScan
@@ -71,11 +71,14 @@ Per-user override is out of scope until a tenant needs a special driver.
 
 `requireScan` must stay off until confirm/serial exists — turning it on with only `add` would force drivers to invent qty by beeping.
 
-## Phase 2 — NFC read (not built)
+## Phase 2 — NFC read (this release, APK)
 
-- Same lookup. One “Scan or tap” control
-- APK only; phones without NFC still use the camera
-- Behind `scan.inputs.nfc` (default off)
+- Same lookup. One “Scan or tap” control when `scan.inputs.nfc` is on
+- APK only (`NfcScan` reader mode). NDEF text first, then chip UID
+- Payload is still `am1:v1:goods:SKU` / `am1:v1:part:SKU`, or a UID stored as an extra catalog code
+- Phones without NFC, NFC off, or the browser PWA keep camera / type
+- Field does not write tags
+- Rebuild the Field APK after this release (`npm run apk:sync`)
 
 ## Phase 3 — Desk print + NFC write (print QR is in Phase 0; write is not built)
 

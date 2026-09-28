@@ -661,6 +661,7 @@ export default function ManagerMaintenance() {
                       label="Scan part"
                       allowCamera={scan?.camera !== false}
                       allowTyped={scan?.typed !== false}
+                      allowNfc={scan?.nfc === true}
                       onCode={(code) => {
                         void lookupCatalogScan(code, "maint_part", "field")
                           .then((res) => {
