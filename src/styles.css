@@ -4356,6 +4356,9 @@ html.onesheet-root body {
   min-height: min(64vh, 640px);
   height: min(78vh, 840px);
   max-height: min(78vh, 840px);
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
 }
 
 .dispatch-board-3col.is-drafting {
@@ -4946,6 +4949,12 @@ button.dispatch-pin-chip {
   overflow: visible;
 }
 
+.dispatch-rail.dispatch-pool,
+.dispatch-rail.dispatch-vehicle-pane {
+  position: relative;
+  z-index: 1;
+}
+
 .dispatch-rail.dispatch-vehicle-pane {
   overflow-x: hidden;
   overflow-y: auto;
@@ -5337,11 +5346,16 @@ button.dispatch-pin-chip {
 
 .dispatch-map-pane {
   padding: 14px;
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
 }
 
 .dispatch-map-pane > .dispatch-pane-head,
 .dispatch-map-pane > .dispatch-route-banner,
 .dispatch-map-pane > .dispatch-job-tabs {
+  position: relative;
+  z-index: 2;
   flex-shrink: 0;
 }
 
@@ -5363,6 +5377,9 @@ button.dispatch-pin-chip {
   flex-direction: column;
   border-radius: 12px;
   overflow: hidden;
+  isolation: isolate;
+  position: relative;
+  z-index: 0;
   border: 1px solid var(--line-strong);
   background: #d9d4cb;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
@@ -5374,6 +5391,9 @@ button.dispatch-pin-chip {
   height: 100%;
   display: flex;
   flex-direction: column;
+  isolation: isolate;
+  position: relative;
+  z-index: 0;
 }
 
 .dispatch-job-map {
@@ -5382,11 +5402,15 @@ button.dispatch-pin-chip {
   width: 100%;
   border: 0;
   background: #e8e4db;
+  isolation: isolate;
+  position: relative;
+  z-index: 0;
 }
 
 .dispatch-job-map .leaflet-container {
   width: 100% !important;
   height: 100% !important;
+  z-index: 0 !important;
 }
 
 .dispatch-job-map-wrap .dispatch-live-map-legend {
@@ -9383,6 +9407,9 @@ button.dispatch-pin-chip {
 
 .dispatch-live-map-panel {
   overflow: hidden;
+  isolation: isolate;
+  position: relative;
+  z-index: 0;
 }
 
 .dispatch-live-map-wrap {
