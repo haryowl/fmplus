@@ -226,6 +226,95 @@ function contextAllowsKind(context, kind) {
   return true;
 }
 
+async function matchGoodsItem(tenantId, parsed, row, codeFormat) {
+  const { publicGoodsItem } = await import("./dispatch-goods.mjs");
+  if (row.sku) {
+    try {
+      await syncPrimarySku(tenantId, "goods", row.id, row.sku);
+    } catch {
+      /* still return the catalog hit */
+    }
+  }
+  return {
+    match: "goods",
+    code: parsed.code,
+    raw: parsed.raw,
+    codeFormat,
+    payload: formatScanPayload("goods", row.sku || parsed.code),
+    item: publicGoodsItem(row),
+  };
+}
+
+async function matchPartItem(tenantId, parsed, row, codeFormat) {
+  const { publicCatalogItem } = await import("./maintenance-catalog.mjs");
+  if (row.sku) {
+    try {
+      await syncPrimarySku(tenantId, "maint_part", row.id, row.sku);
+    } catch {
+      /* still return the catalog hit */
+    }
+  }
+  return {
+    match: "maint_part",
+    code: parsed.code,
+    raw: parsed.raw,
+    codeFormat,
+    payload: formatScanPayload("maint_part", row.sku || parsed.code),
+    item: publicCatalogItem(row),
+  };
+}
+
+/** SKU or unique name on the catalog item, when catalog_codes has no row yet. */
+async function lookupByCatalogIdentity(tenantId, parsed, context) {
+  const code = parsed.code;
+  if (!code) return null;
+  const wantGoods =
+    contextAllowsKind(context, "goods") && (!parsed.targetKind || parsed.targetKind === "goods");
+  const wantPart =
+    contextAllowsKind(context, "maint_part") &&
+    (!parsed.targetKind || parsed.targetKind === "maint_part");
+
+  if (wantGoods) {
+    const bySku = await dbQuery(
+      `SELECT * FROM dispatch_goods_items
+       WHERE tenant_id = $1 AND enabled = true AND sku IS NOT NULL AND trim(sku) <> ''
+         AND lower(trim(sku)) = $2
+       LIMIT 1`,
+      [tenantId, code],
+    );
+    if (bySku.rows[0]) return matchGoodsItem(tenantId, parsed, bySku.rows[0], "sku");
+    const byName = await dbQuery(
+      `SELECT * FROM dispatch_goods_items
+       WHERE tenant_id = $1 AND enabled = true AND lower(trim(name)) = $2`,
+      [tenantId, code],
+    );
+    if (byName.rows.length === 1) return matchGoodsItem(tenantId, parsed, byName.rows[0], "other");
+  }
+
+  if (wantPart) {
+    const bySku = await dbQuery(
+      `SELECT i.*, g.key AS group_key
+       FROM maintenance_catalog_items i
+       JOIN maintenance_catalog_groups g ON g.id = i.group_id
+       WHERE i.tenant_id = $1 AND i.enabled = true AND g.key = 'part'
+         AND i.sku IS NOT NULL AND trim(i.sku) <> '' AND lower(trim(i.sku)) = $2
+       LIMIT 1`,
+      [tenantId, code],
+    );
+    if (bySku.rows[0]) return matchPartItem(tenantId, parsed, bySku.rows[0], "sku");
+    const byName = await dbQuery(
+      `SELECT i.*, g.key AS group_key
+       FROM maintenance_catalog_items i
+       JOIN maintenance_catalog_groups g ON g.id = i.group_id
+       WHERE i.tenant_id = $1 AND i.enabled = true AND g.key = 'part'
+         AND lower(trim(i.name)) = $2`,
+      [tenantId, code],
+    );
+    if (byName.rows.length === 1) return matchPartItem(tenantId, parsed, byName.rows[0], "other");
+  }
+  return null;
+}
+
 /**
  * @param {{ code: string, context?: string }} body
  */
@@ -269,6 +358,8 @@ export async function lookupCatalogScan(tenantId, body) {
     }
   }
   if (!row) {
+    const identity = await lookupByCatalogIdentity(tenantId, parsed, context);
+    if (identity) return identity;
     return { match: "none", reason: "unknown", code: parsed.code, raw: parsed.raw };
   }
   if (parsed.targetKind && parsed.targetKind !== row.target_kind) {
@@ -279,6 +370,8 @@ export async function lookupCatalogScan(tenantId, body) {
   }
   const hydrated = await hydrateMatch(tenantId, row);
   if (!hydrated) {
+    const identity = await lookupByCatalogIdentity(tenantId, parsed, context);
+    if (identity) return identity;
     return { match: "none", reason: "disabled", code: parsed.code, raw: parsed.raw };
   }
   return {

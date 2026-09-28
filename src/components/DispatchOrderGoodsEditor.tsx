@@ -175,7 +175,9 @@ export function DispatchOrderGoodsEditor({
                 void lookupCatalogScan(code, "dispatch_cargo", scanSource)
                   .then((res) => {
                     if (res.match !== "goods" || !res.item || !("unit" in res.item)) {
-                      onScanError?.(`Not in catalog: ${res.raw || code}`);
+                      onScanError?.(
+                        `Not in catalog: ${res.raw || code}. Type the SKU (e.g. OIL-01) or the exact catalog name.`,
+                      );
                       return;
                     }
                     onGoodsCode(code, res, res.item);
