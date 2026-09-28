@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { printCatalogLabel } from "../lib/catalogCodes";
 import { CatalogCodesEditor } from "./CatalogCodesEditor";
+import { CatalogNfcWriteButton } from "./CatalogNfcWriteButton";
 import {
   createMaintCatalogItem,
   deleteMaintCatalogItem,
@@ -107,7 +108,7 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
         <div>
           <h2>Parts &amp; service catalog</h2>
           <p className="muted">
-            Defaults for job lines. On Part, fill a SKU then Print QR / barcode. Others is always free text.
+            Defaults for job lines. On Part, fill a SKU then Print QR / barcode or Write NFC. Others is always free text.
           </p>
         </div>
         {onClose ? (
@@ -201,6 +202,12 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
                           >
                             Print QR / barcode
                           </button>
+                          <CatalogNfcWriteButton
+                            kind="maint_part"
+                            name={item.name}
+                            sku={item.sku || ""}
+                            disabled={busy}
+                          />
                           <button
                             type="button"
                             className="btn-ghost btn-compact"

@@ -7,6 +7,7 @@ import {
   scanPayloadFor,
   type CatalogCodeRow,
 } from "../lib/catalogCodes";
+import { CatalogNfcWriteButton } from "./CatalogNfcWriteButton";
 
 type Props = {
   kind: "goods" | "maint_part";
@@ -59,6 +60,7 @@ export function CatalogCodesEditor({ kind, itemId, sku, name, disabled }: Props)
         >
           Print QR / barcode
         </button>
+        <CatalogNfcWriteButton kind={kind} name={name} sku={sku || ""} disabled={disabled} />
       </div>
       {codes.length ? (
         <ul className="catalog-codes-list">

@@ -9,6 +9,7 @@ import {
 } from "../lib/csvImport";
 import { printCatalogLabel } from "../lib/catalogCodes";
 import { CatalogCodesEditor } from "./CatalogCodesEditor";
+import { CatalogNfcWriteButton } from "./CatalogNfcWriteButton";
 import {
   createDispatchGoodsItem,
   deleteDispatchGoodsItem,
@@ -122,7 +123,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           <p className="dispatch-eyebrow">Cargo</p>
           <h2>Goods catalog</h2>
           <p className="dispatch-search-hint">
-            Office list. Fill a SKU, then Print QR / barcode to label the item. Orders can also pick free text.
+            Office list. Fill a SKU, then Print QR / barcode or Write NFC. Orders can also pick free text.
           </p>
         </div>
         {onClose ? (
@@ -282,6 +283,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                 >
                   Print QR / barcode
                 </button>
+                <CatalogNfcWriteButton kind="goods" name={item.name} sku={item.sku || ""} disabled={busy} />
                 <button
                   type="button"
                   className="btn-ghost btn-compact"

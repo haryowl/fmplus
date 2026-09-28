@@ -80,10 +80,12 @@ Per-user override is out of scope until a tenant needs a special driver.
 - Field does not write tags
 - Rebuild the Field APK after this release (`npm run apk:sync`)
 
-## Phase 3 — Desk print + NFC write (print QR is in Phase 0; write is not built)
+## Phase 3 — Desk print + NFC write (this release)
 
-- Write NFC tag at the desk only, same `am1:v1:…` string
-- Field does not write tags
+- Print QR / Code 128 is on each goods and part row (Phase 0)
+- **Write NFC** is on the same rows and under Codes. Same `am1:v1:goods:SKU` / `am1:v1:part:SKU` text record
+- Desk only (embed Chrome on Android, HTTPS). Field APK refuses to write
+- Desktop Chrome: copy the payload, or store the chip UID under Codes after a Field tap
 
 ## Phase 4 — Serial / lot
 
