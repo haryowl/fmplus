@@ -8,8 +8,10 @@ import {
   applyMaintPartScanResult,
   catalogScanNeedsUnitId,
   lookupCatalogScan,
+  resolveVehicleJobOpen,
+  vehicleIdFromScan,
 } from "../lib/catalogScan";
-import { fieldScanCanPart, type FieldScanCapabilities } from "../lib/scanCapabilities";
+import { fieldScanCanPart, fieldScanCanVehicle, type FieldScanCapabilities } from "../lib/scanCapabilities";
 import { FieldJobsChart } from "../components/FieldJobsChart";
 import { FieldPhotoPicker } from "../components/FieldPhotoPicker";
 import {
@@ -657,6 +659,40 @@ export default function FieldLogin() {
               </div>
               <h2>{detail.title}</h2>
               <p className="field-vehicle">{eventVehicleLabel(detail)}</p>
+              {fieldScanCanVehicle(scan) && !jobLocked ? (
+                <div className="field-action-row">
+                  <CatalogScanButton
+                    disabled={busy}
+                    label="Scan vehicle"
+                    allowCamera={scan?.camera !== false}
+                    allowTyped={scan?.typed !== false}
+                    allowNfc={scan?.nfc === true}
+                    onCode={(code) => {
+                      void lookupCatalogScan(code, "vehicle", "field")
+                        .then((res) => {
+                          if (res.match !== "vehicle" || !res.item) {
+                            setError(`Not in catalog: ${res.raw || code}`);
+                            return;
+                          }
+                          const uid = vehicleIdFromScan(res.item);
+                          if (!uid) {
+                            setError(`Not in catalog: ${res.raw || code}`);
+                            return;
+                          }
+                          const result = resolveVehicleJobOpen(jobs, uid, selectedId);
+                          if ("error" in result) {
+                            setError(result.error);
+                            return;
+                          }
+                          setError("");
+                          setNotice(result.notice);
+                          if (result.jobId !== selectedId) setSelectedId(result.jobId);
+                        })
+                        .catch((err: Error) => setError(err.message));
+                    }}
+                  />
+                </div>
+              ) : null}
               <p className="field-detail-date muted">
                 {(() => {
                   const date = jobPrimaryDate(detail);
@@ -979,6 +1015,41 @@ export default function FieldLogin() {
                 {loadingJobs ? "…" : "Refresh"}
               </button>
             </div>
+
+            {fieldScanCanVehicle(scan) ? (
+              <div className="field-action-row" style={{ marginBottom: 8 }}>
+                <CatalogScanButton
+                  disabled={busy || loadingJobs}
+                  label="Scan vehicle"
+                  allowCamera={scan?.camera !== false}
+                  allowTyped={scan?.typed !== false}
+                  allowNfc={scan?.nfc === true}
+                  onCode={(code) => {
+                    void lookupCatalogScan(code, "vehicle", "field")
+                      .then((res) => {
+                        if (res.match !== "vehicle" || !res.item) {
+                          setError(`Not in catalog: ${res.raw || code}`);
+                          return;
+                        }
+                        const uid = vehicleIdFromScan(res.item);
+                        if (!uid) {
+                          setError(`Not in catalog: ${res.raw || code}`);
+                          return;
+                        }
+                        const result = resolveVehicleJobOpen(jobs, uid, selectedId);
+                        if ("error" in result) {
+                          setError(result.error);
+                          return;
+                        }
+                        setError("");
+                        setNotice(result.notice);
+                        if (result.jobId !== selectedId) setSelectedId(result.jobId);
+                      })
+                      .catch((err: Error) => setError(err.message));
+                  }}
+                />
+              </div>
+            ) : null}
 
             {loadingJobs && jobs.length === 0 && <p className="muted field-loading">Loading jobs…</p>}
 

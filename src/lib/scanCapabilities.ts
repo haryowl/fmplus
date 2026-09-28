@@ -16,12 +16,16 @@ export const SCAN_ACTION_KEYS = [
 ] as const;
 export type ScanActionKey = (typeof SCAN_ACTION_KEYS)[number];
 
-/** Actions Field already enforces. Other keys persist for later phases. */
+/** Actions Field already enforces. jobRequireScan stays reserved. */
 export const SCAN_BUILT_ACTIONS: readonly ScanActionKey[] = [
   "cargoAdd",
   "partAdd",
+  "cargoConfirm",
   "cargoSerial",
+  "stopRequireScan",
   "partSerial",
+  "vehicleOpen",
+  "locationSet",
 ];
 
 export const SCAN_INPUT_KEYS = ["camera", "typed", "nfc"] as const;
@@ -131,20 +135,41 @@ export function fieldScanHasInput(caps: Pick<FieldScanCapabilities, ScanInputKey
 }
 
 export function fieldScanAllowsContext(
-  caps: Pick<FieldScanCapabilities, "cargoAdd" | "partAdd">,
+  caps: Pick<
+    FieldScanCapabilities,
+    "cargoAdd" | "partAdd" | "cargoConfirm" | "vehicleOpen" | "locationSet"
+  >,
   context: string,
 ): boolean {
-  if (context === "dispatch_cargo") return caps.cargoAdd === true;
+  if (context === "dispatch_cargo") return caps.cargoAdd === true || caps.cargoConfirm === true;
   if (context === "maint_part") return caps.partAdd === true;
-  return caps.cargoAdd === true || caps.partAdd === true;
+  if (context === "vehicle") return caps.vehicleOpen === true;
+  if (context === "location") return caps.locationSet === true;
+  return (
+    caps.cargoAdd === true ||
+    caps.cargoConfirm === true ||
+    caps.partAdd === true ||
+    caps.vehicleOpen === true ||
+    caps.locationSet === true
+  );
 }
 
 export function fieldScanCanCargo(scan?: FieldScanCapabilities | null): boolean {
   if (!scan) return true;
-  return scan.cargoAdd === true && fieldScanHasInput(scan);
+  return (scan.cargoAdd === true || scan.cargoConfirm === true) && fieldScanHasInput(scan);
 }
 
 export function fieldScanCanPart(scan?: FieldScanCapabilities | null): boolean {
   if (!scan) return true;
   return scan.partAdd === true && fieldScanHasInput(scan);
+}
+
+export function fieldScanCanVehicle(scan?: FieldScanCapabilities | null): boolean {
+  if (!scan) return false;
+  return scan.vehicleOpen === true && fieldScanHasInput(scan);
+}
+
+export function fieldScanCanLocation(scan?: FieldScanCapabilities | null): boolean {
+  if (!scan) return false;
+  return scan.locationSet === true && fieldScanHasInput(scan);
 }

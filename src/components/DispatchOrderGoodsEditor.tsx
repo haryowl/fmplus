@@ -3,6 +3,9 @@ import { CatalogScanButton } from "./CatalogScanButton";
 import { CatalogUnitIdPrompt } from "./CatalogUnitIdPrompt";
 import {
   applyGoodsScanResult,
+  catalogConfirmPending,
+  catalogExpectedLines,
+  catalogLineConfirmed,
   catalogScanNeedsUnitId,
   lookupCatalogScan,
 } from "../lib/catalogScan";
@@ -31,6 +34,8 @@ type Props = {
   scanNfc?: boolean;
   scanSerial?: boolean;
   scanKnownSerialOnly?: boolean;
+  scanConfirm?: boolean;
+  scanManualAdd?: boolean;
   onScanError?: (message: string) => void;
 };
 
@@ -60,6 +65,8 @@ export function DispatchOrderGoodsEditor({
   scanNfc = false,
   scanSerial = false,
   scanKnownSerialOnly = false,
+  scanConfirm = false,
+  scanManualAdd = true,
   onScanError,
 }: Props) {
   const [query, setQuery] = useState("");
@@ -89,6 +96,7 @@ export function DispatchOrderGoodsEditor({
       lot: extra?.lot,
       codeFormat: extra?.codeFormat,
       onlyKnownSerial: scanKnownSerialOnly,
+      confirmMode: scanConfirm,
     });
     if (result.error) {
       onScanError?.(result.error);
@@ -133,21 +141,25 @@ export function DispatchOrderGoodsEditor({
     <div className={`dispatch-goods-editor${compact ? " is-compact" : ""}`}>
       {!disabled ? (
         <div className="dispatch-goods-add">
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search catalog…"
-            autoComplete="off"
-            size={1}
-          />
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => onChange([...lines, newFreeLine()])}
-          >
-            Free text
-          </button>
+          {scanManualAdd ? (
+            <>
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search catalog…"
+                autoComplete="off"
+                size={1}
+              />
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => onChange([...lines, newFreeLine()])}
+              >
+                Free text
+              </button>
+            </>
+          ) : null}
           {scanSource && scanAllow ? (
             <CatalogScanButton
               disabled={disabled}
@@ -208,8 +220,33 @@ export function DispatchOrderGoodsEditor({
         </ul>
       ) : null}
 
+      {scanConfirm && catalogExpectedLines(lines).length ? (
+        <ul className="dispatch-cargo-checklist" aria-label="Expected cargo">
+          {catalogExpectedLines(lines).map((line, i) => (
+            <li
+              key={`${line.catalogItemId || "c"}-${line.serial || i}`}
+              className={catalogLineConfirmed(line) ? "is-confirmed" : "is-pending"}
+            >
+              <span>
+                {line.name}
+                {line.serial ? ` · ${line.serial}` : ""}
+              </span>
+              <em>{catalogLineConfirmed(line) ? "Confirmed" : "Pending"}</em>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {scanConfirm && catalogConfirmPending(lines).length ? (
+        <p className="dispatch-search-hint">
+          {catalogConfirmPending(lines).length} expected item
+          {catalogConfirmPending(lines).length === 1 ? "" : "s"} still pending
+        </p>
+      ) : null}
+
       {lines.length === 0 ? (
-        <p className="dispatch-search-hint">Optional. Add catalog items or free text.</p>
+        <p className="dispatch-search-hint">
+          {scanConfirm ? "No expected catalog items on this stop." : "Optional. Add catalog items or free text."}
+        </p>
       ) : (
         <ul className="dispatch-goods-lines">
           {lines.map((line, i) => (

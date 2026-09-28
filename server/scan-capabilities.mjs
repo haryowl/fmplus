@@ -17,7 +17,16 @@ export const SCAN_ACTION_KEYS = [
   "locationSet",
 ];
 
-export const SCAN_BUILT_ACTIONS = ["cargoAdd", "partAdd", "cargoSerial", "partSerial"];
+export const SCAN_BUILT_ACTIONS = [
+  "cargoAdd",
+  "partAdd",
+  "cargoConfirm",
+  "cargoSerial",
+  "stopRequireScan",
+  "partSerial",
+  "vehicleOpen",
+  "locationSet",
+];
 
 export const SCAN_INPUT_KEYS = ["camera", "typed", "nfc"];
 export const SCAN_BUILT_INPUTS = ["camera", "typed", "nfc"];
@@ -84,13 +93,23 @@ export function fieldScanHasInput(caps) {
 }
 
 export function fieldScanAllowsContext(caps, context) {
-  if (context === "dispatch_cargo") return caps?.cargoAdd === true;
+  if (context === "dispatch_cargo") return caps?.cargoAdd === true || caps?.cargoConfirm === true;
   if (context === "maint_part") return caps?.partAdd === true;
-  return caps?.cargoAdd === true || caps?.partAdd === true;
+  if (context === "vehicle") return caps?.vehicleOpen === true;
+  if (context === "location") return caps?.locationSet === true;
+  return (
+    caps?.cargoAdd === true ||
+    caps?.cargoConfirm === true ||
+    caps?.partAdd === true ||
+    caps?.vehicleOpen === true ||
+    caps?.locationSet === true
+  );
 }
 
 export function denyScanMessage(context) {
   if (context === "maint_part") return "Scan part is disabled for this role";
   if (context === "dispatch_cargo") return "Scan cargo is disabled for this role";
+  if (context === "vehicle") return "Scan vehicle is disabled for this role";
+  if (context === "location") return "Scan location is disabled for this role";
   return "Scan is disabled for this role";
 }

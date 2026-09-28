@@ -5,6 +5,9 @@ import {
   applyMaintPartScan,
   catalogScanNeedsUnitId,
   isCatalogIdentityScan,
+  locationScanNotice,
+  resolveVehicleJobOpen,
+  stopRequireScanBlocks,
 } from "./catalogScan";
 import { formatScanPayload, normalizeCatalogCode, parseScanPayload } from "../../server/catalog-codes.mjs";
 
@@ -31,6 +34,10 @@ describe("scan payload", () => {
   it("prints a payload we can write to QR or NFC later", () => {
     expect(formatScanPayload("goods", "OIL-5W30")).toBe("am1:v1:goods:OIL-5W30");
     expect(formatScanPayload("maint_part", "PAD")).toBe("am1:v1:part:PAD");
+    expect(formatScanPayload("vehicle", "42")).toBe("am1:v1:vehicle:42");
+    expect(formatScanPayload("location", "depot-1")).toBe("am1:v1:location:depot-1");
+    expect(parseScanPayload("am1:v1:vehicle:42").targetKind).toBe("vehicle");
+    expect(parseScanPayload("am1:v1:location:depot-1").targetKind).toBe("location");
   });
 });
 
@@ -113,5 +120,76 @@ describe("apply scan to lines", () => {
     });
     expect(drop.error).toBe("This serial is not on the order");
     expect(drop.lines).toHaveLength(2);
+  });
+
+  it("confirms an expected goods line and rejects extras", () => {
+    const expected = [
+      {
+        catalogItemId: "g1",
+        name: "Oil",
+        qty: 2,
+        unit: "L" as const,
+        volumeM3Each: 0.01,
+        weightKgEach: 1,
+      },
+    ];
+    const hit = applyGoodsScanResult(expected, good, "oil", { confirmMode: true });
+    expect(hit.error).toBeUndefined();
+    expect(hit.lines).toHaveLength(1);
+    expect(hit.lines[0]?.qty).toBe(2);
+    expect(hit.lines[0]?.scannedAt).toBeTruthy();
+    const extra = applyGoodsScanResult(
+      expected,
+      { ...good, id: "g2", name: "Filter", sku: "FIL" },
+      "fil",
+      { confirmMode: true },
+    );
+    expect(extra.error).toBe("Not expected on this stop");
+    expect(extra.lines).toHaveLength(1);
+    expect(stopRequireScanBlocks(expected)).toBe(true);
+    expect(stopRequireScanBlocks(hit.lines)).toBe(false);
+  });
+
+  it("confirms a serial already on the stop", () => {
+    const lines = applyGoodsScan([], good, "oil", { serialMode: true, serial: "SN-1" });
+    const unmarked = lines.map((l) => ({ ...l, scannedAt: null }));
+    const miss = applyGoodsScanResult(unmarked, good, "oil", {
+      confirmMode: true,
+      serialMode: true,
+      serial: "SN-99",
+    });
+    expect(miss.error).toBe("Not expected on this stop");
+    const hit = applyGoodsScanResult(unmarked, good, "oil", {
+      confirmMode: true,
+      serialMode: true,
+      serial: "SN-1",
+    });
+    expect(hit.error).toBeUndefined();
+    expect(hit.lines[0]?.scannedAt).toBeTruthy();
+  });
+});
+
+describe("vehicle and location scan helpers", () => {
+  it("opens the matching open job or rejects the wrong plate", () => {
+    const jobs = [
+      { id: "a", armadaUserId: 11, status: "en_route" },
+      { id: "b", armadaUserId: 22, status: "assigned" },
+      { id: "c", armadaUserId: 11, status: "done" },
+    ];
+    expect(resolveVehicleJobOpen(jobs, 11, "a")).toEqual({ jobId: "a", notice: "Vehicle confirmed" });
+    expect(resolveVehicleJobOpen(jobs, 22, "a")).toEqual({
+      jobId: "b",
+      notice: "Opened job for this vehicle",
+    });
+    expect(resolveVehicleJobOpen(jobs, 99, "a")).toEqual({ error: "Wrong vehicle" });
+    expect(resolveVehicleJobOpen(jobs, 99, null)).toEqual({ error: "No open job for this vehicle" });
+  });
+
+  it("confirms a depot tag against the stop zone", () => {
+    expect(locationScanNotice({ name: "Dago", zone: "Dago" })).toBe("Location confirmed · Dago");
+    expect(locationScanNotice({ name: "Dago", zone: "Ciumbuleuit" })).toBe(
+      "Location: Dago (stop zone is Ciumbuleuit)",
+    );
+    expect(locationScanNotice({ name: "Dago" })).toBe("Location: Dago");
   });
 });

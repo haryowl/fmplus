@@ -6,7 +6,7 @@ import { dbQuery } from "./db.mjs";
 
 export const TARGET_KINDS = ["goods", "maint_part", "vehicle", "location"];
 export const CODE_FORMATS = ["sku", "ean", "qr", "nfc", "other"];
-export const SCAN_CONTEXTS = ["dispatch_cargo", "maint_part", "any"];
+export const SCAN_CONTEXTS = ["dispatch_cargo", "maint_part", "vehicle", "location", "any"];
 
 export function normalizeCatalogCode(raw) {
   const s = String(raw || "").trim();
@@ -170,10 +170,60 @@ async function hydrateMatch(tenantId, row) {
     if (!item || item.enabled === false) return null;
     return { kind: "maint_part", item: publicCatalogItem(item) };
   }
+  if (row.target_kind === "vehicle") {
+    return hydrateVehicle(tenantId, row.target_id);
+  }
+  if (row.target_kind === "location") {
+    return hydrateLocation(tenantId, row.target_id);
+  }
   return {
     kind: row.target_kind,
     item: { id: row.target_id },
   };
+}
+
+async function hydrateVehicle(tenantId, targetId) {
+  const uid = Number(targetId);
+  const found = await dbQuery(
+    `SELECT armada_user_id, label, plate_parity
+     FROM vehicle_capacities
+     WHERE tenant_id = $1 AND armada_user_id = $2`,
+    [tenantId, Number.isFinite(uid) ? uid : -1],
+  );
+  const cap = found.rows[0];
+  return {
+    kind: "vehicle",
+    item: {
+      id: String(targetId),
+      armadaUserId: Number.isFinite(uid) ? uid : 0,
+      label: cap?.label || "",
+      plateParity: cap?.plate_parity || "",
+    },
+  };
+}
+
+async function hydrateLocation(tenantId, targetId) {
+  const found = await dbQuery(
+    `SELECT id, name, lat, lon FROM dispatch_depots WHERE tenant_id = $1 AND id = $2`,
+    [tenantId, targetId],
+  );
+  const depot = found.rows[0];
+  if (!depot) {
+    return { kind: "location", item: { id: String(targetId), name: String(targetId) } };
+  }
+  return {
+    kind: "location",
+    item: { id: depot.id, name: depot.name, lat: depot.lat, lon: depot.lon },
+  };
+}
+
+function contextAllowsKind(context, kind) {
+  if (context === "any") return true;
+  if (context === "dispatch_cargo") return kind === "goods";
+  if (context === "maint_part") return kind === "maint_part";
+  if (context === "vehicle") return kind === "vehicle";
+  if (context === "location") return kind === "location";
+  return true;
 }
 
 /**
@@ -192,16 +242,39 @@ export async function lookupCatalogScan(tenantId, body) {
     [tenantId, parsed.code],
   );
   const row = found.rows[0];
+  if (!row && parsed.targetKind === "vehicle") {
+    const implicit = await hydrateVehicle(tenantId, parsed.code);
+    if (implicit.item.armadaUserId > 0 && contextAllowsKind(context, "vehicle")) {
+      return {
+        match: "vehicle",
+        code: parsed.code,
+        raw: parsed.raw,
+        codeFormat: "sku",
+        payload: formatScanPayload("vehicle", parsed.code),
+        item: implicit.item,
+      };
+    }
+  }
+  if (!row && parsed.targetKind === "location") {
+    const implicit = await hydrateLocation(tenantId, parsed.code);
+    if (implicit.item.id && implicit.item.name !== implicit.item.id && contextAllowsKind(context, "location")) {
+      return {
+        match: "location",
+        code: parsed.code,
+        raw: parsed.raw,
+        codeFormat: "sku",
+        payload: formatScanPayload("location", parsed.code),
+        item: implicit.item,
+      };
+    }
+  }
   if (!row) {
     return { match: "none", reason: "unknown", code: parsed.code, raw: parsed.raw };
   }
   if (parsed.targetKind && parsed.targetKind !== row.target_kind) {
     return { match: "none", reason: "kind_mismatch", code: parsed.code, raw: parsed.raw };
   }
-  if (context === "dispatch_cargo" && row.target_kind !== "goods") {
-    return { match: "none", reason: "wrong_context", code: parsed.code, raw: parsed.raw };
-  }
-  if (context === "maint_part" && row.target_kind !== "maint_part") {
+  if (!contextAllowsKind(context, row.target_kind)) {
     return { match: "none", reason: "wrong_context", code: parsed.code, raw: parsed.raw };
   }
   const hydrated = await hydrateMatch(tenantId, row);

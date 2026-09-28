@@ -1,5 +1,7 @@
 import { tenantHeaders } from "./tenant";
 
+export type CatalogTargetKind = "goods" | "maint_part" | "vehicle" | "location";
+
 export type CatalogCodeRow = {
   id: string;
   targetKind: string;
@@ -10,10 +12,17 @@ export type CatalogCodeRow = {
   enabled: boolean;
 };
 
-export function scanPayloadFor(kind: "goods" | "maint_part", sku: string): string {
-  const token = kind === "maint_part" ? "part" : "goods";
+export function scanPayloadFor(kind: CatalogTargetKind, sku: string): string {
+  const token = kind === "maint_part" ? "part" : kind;
   const code = String(sku || "").trim();
   return code ? `am1:v1:${token}:${code}` : "";
+}
+
+function codesBasePath(kind: CatalogTargetKind, itemId: string): string {
+  if (kind === "goods") return `/api/dispatch/goods/${itemId}/codes`;
+  if (kind === "maint_part") return `/api/maintenance/catalog/items/${itemId}/codes`;
+  if (kind === "vehicle") return `/api/dispatch/vehicles/${itemId}/codes`;
+  return `/api/dispatch/locations/${itemId}/codes`;
 }
 
 function escapePrintHtml(s: string): string {
@@ -21,7 +30,7 @@ function escapePrintHtml(s: string): string {
 }
 
 /** Opens a print sheet with QR (versioned payload) and Code 128 (SKU). */
-export function printCatalogLabel(kind: "goods" | "maint_part", name: string, sku: string): void {
+export function printCatalogLabel(kind: CatalogTargetKind, name: string, sku: string): void {
   const payload = scanPayloadFor(kind, sku);
   const label = String(name || "").trim() || "Catalog item";
   const code = String(sku || "").trim();
@@ -57,13 +66,10 @@ async function readJson<T>(res: Response): Promise<T & { error?: string }> {
 }
 
 export async function fetchCatalogCodes(
-  kind: "goods" | "maint_part",
+  kind: CatalogTargetKind,
   itemId: string,
 ): Promise<CatalogCodeRow[]> {
-  const path =
-    kind === "goods"
-      ? `/api/dispatch/goods/${itemId}/codes`
-      : `/api/maintenance/catalog/items/${itemId}/codes`;
+  const path = codesBasePath(kind, itemId);
   const res = await fetch(path, {
     headers: { accept: "application/json", ...tenantHeaders() },
   });
@@ -73,14 +79,11 @@ export async function fetchCatalogCodes(
 }
 
 export async function addCatalogCodeRow(
-  kind: "goods" | "maint_part",
+  kind: CatalogTargetKind,
   itemId: string,
   body: { code: string; codeFormat?: string; label?: string },
 ): Promise<CatalogCodeRow> {
-  const path =
-    kind === "goods"
-      ? `/api/dispatch/goods/${itemId}/codes`
-      : `/api/maintenance/catalog/items/${itemId}/codes`;
+  const path = codesBasePath(kind, itemId);
   const res = await fetch(path, {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
@@ -93,14 +96,11 @@ export async function addCatalogCodeRow(
 }
 
 export async function deleteCatalogCodeRow(
-  kind: "goods" | "maint_part",
+  kind: CatalogTargetKind,
   itemId: string,
   codeId: string,
 ): Promise<void> {
-  const path =
-    kind === "goods"
-      ? `/api/dispatch/goods/${itemId}/codes/${codeId}`
-      : `/api/maintenance/catalog/items/${itemId}/codes/${codeId}`;
+  const path = `${codesBasePath(kind, itemId)}/${codeId}`;
   const res = await fetch(path, {
     method: "DELETE",
     headers: { accept: "application/json", ...tenantHeaders() },

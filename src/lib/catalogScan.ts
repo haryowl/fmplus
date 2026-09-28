@@ -2,7 +2,21 @@ import { tenantHeaders } from "./tenant";
 import type { DispatchGoodsItem, DispatchOrderLine } from "./dispatch";
 import type { CatalogItem, ServiceLine } from "./maintenance";
 
-export type ScanContext = "dispatch_cargo" | "maint_part" | "any";
+export type ScanContext = "dispatch_cargo" | "maint_part" | "vehicle" | "location" | "any";
+
+export type VehicleScanItem = {
+  id: string;
+  armadaUserId: number;
+  label?: string;
+  plateParity?: string;
+};
+
+export type LocationScanItem = {
+  id: string;
+  name: string;
+  lat?: number;
+  lon?: number;
+};
 
 export type CatalogScanResult = {
   match: "goods" | "maint_part" | "vehicle" | "location" | "none";
@@ -10,7 +24,7 @@ export type CatalogScanResult = {
   code: string;
   raw: string;
   codeFormat?: string;
-  item?: DispatchGoodsItem | CatalogItem | { id: string };
+  item?: DispatchGoodsItem | CatalogItem | VehicleScanItem | LocationScanItem | { id: string };
 };
 
 export type CatalogScanOpts = {
@@ -19,6 +33,7 @@ export type CatalogScanOpts = {
   lot?: string;
   codeFormat?: string;
   onlyKnownSerial?: boolean;
+  confirmMode?: boolean;
 };
 
 export type ScanApplyResult<T> = { lines: T; error?: string };
@@ -95,6 +110,66 @@ export async function lookupCatalogScan(
   return data;
 }
 
+export function catalogExpectedLines(lines: DispatchOrderLine[]): DispatchOrderLine[] {
+  return lines.filter((l) => Boolean(l.catalogItemId));
+}
+
+export function catalogLineConfirmed(line: DispatchOrderLine): boolean {
+  return Boolean(line.scannedAt);
+}
+
+export function catalogConfirmPending(lines: DispatchOrderLine[]): DispatchOrderLine[] {
+  return catalogExpectedLines(lines).filter((l) => !catalogLineConfirmed(l));
+}
+
+export function stopRequireScanBlocks(lines: DispatchOrderLine[]): boolean {
+  return catalogConfirmPending(lines).length > 0;
+}
+
+export function vehicleIdFromScan(item: { id?: string; armadaUserId?: number } | undefined): number | null {
+  if (!item) return null;
+  const n = Number(item.armadaUserId ?? item.id);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function locationNameFromScan(item: { id?: string; name?: string } | undefined): string {
+  return String(item?.name || item?.id || "").trim();
+}
+
+function isClosedJobStatus(status?: string): boolean {
+  return status === "done" || status === "cancelled" || status === "skipped" || status === "approved";
+}
+
+export function resolveVehicleJobOpen<T extends { id: string; armadaUserId?: number | null; status?: string }>(
+  jobs: T[],
+  vehicleUserId: number,
+  selectedId?: string | null,
+): { jobId: string; notice: string } | { error: string } {
+  const selected = selectedId ? jobs.find((j) => j.id === selectedId) : undefined;
+  if (selected && Number(selected.armadaUserId) === vehicleUserId) {
+    return { jobId: selected.id, notice: "Vehicle confirmed" };
+  }
+  const match = jobs.find((j) => Number(j.armadaUserId) === vehicleUserId && !isClosedJobStatus(j.status));
+  if (match) {
+    return {
+      jobId: match.id,
+      notice: selected && selected.id !== match.id ? "Opened job for this vehicle" : "Vehicle confirmed",
+    };
+  }
+  if (selected && selected.armadaUserId && Number(selected.armadaUserId) !== vehicleUserId) {
+    return { error: "Wrong vehicle" };
+  }
+  return { error: "No open job for this vehicle" };
+}
+
+export function locationScanNotice(opts: { name: string; zone?: string | null }): string {
+  const name = String(opts.name || "").trim();
+  const zone = String(opts.zone || "").trim();
+  if (zone && zone.toLowerCase() === name.toLowerCase()) return `Location confirmed · ${name}`;
+  if (zone) return `Location: ${name} (stop zone is ${zone})`;
+  return name ? `Location: ${name}` : "Location confirmed";
+}
+
 export function applyGoodsScanResult(
   lines: DispatchOrderLine[],
   item: DispatchGoodsItem,
@@ -102,6 +177,43 @@ export function applyGoodsScanResult(
   opts?: CatalogScanOpts,
 ): ScanApplyResult<DispatchOrderLine[]> {
   const now = new Date().toISOString();
+  if (opts?.confirmMode) {
+    if (opts.serialMode) {
+      const serial = resolveScanSerial({
+        sku: item.sku,
+        kind: "goods",
+        scannedCode,
+        codeFormat: opts.codeFormat,
+        serial: opts.serial,
+      });
+      if (!serial) return { lines, error: "Serial is required" };
+      const idx = lines.findIndex(
+        (l) => l.catalogItemId === item.id && normUnit(l.serial) === normUnit(serial),
+      );
+      if (idx < 0) return { lines, error: "Not expected on this stop" };
+      return {
+        lines: lines.map((line, i) =>
+          i === idx
+            ? {
+                ...line,
+                scannedCode,
+                serial,
+                lot: opts.lot != null && opts.lot !== "" ? opts.lot : line.lot,
+                scannedAt: now,
+              }
+            : line,
+        ),
+      };
+    }
+    const pendingIdx = lines.findIndex((l) => l.catalogItemId === item.id && !l.scannedAt);
+    const idx = pendingIdx >= 0 ? pendingIdx : lines.findIndex((l) => l.catalogItemId === item.id);
+    if (idx < 0) return { lines, error: "Not expected on this stop" };
+    return {
+      lines: lines.map((line, i) =>
+        i === idx ? { ...line, scannedCode, scannedAt: now } : line,
+      ),
+    };
+  }
   if (!opts?.serialMode) {
     const idx = lines.findIndex((l) => l.catalogItemId === item.id);
     if (idx >= 0) {

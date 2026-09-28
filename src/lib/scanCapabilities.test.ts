@@ -4,7 +4,9 @@ import {
   defaultScanEntitlements,
   fieldScanAllowsContext,
   fieldScanCanCargo,
+  fieldScanCanLocation,
   fieldScanCanPart,
+  fieldScanCanVehicle,
   fieldScanHasInput,
   mergeScanEntitlements,
   resolveFieldScan,
@@ -72,6 +74,22 @@ describe("scan capabilities", () => {
     );
     expect(fieldScanHasInput(caps)).toBe(true);
     expect(fieldScanCanCargo(caps)).toBe(true);
+  });
+
+  it("lets confirm-only cargo scan and gates vehicle / location", () => {
+    const confirmOnly = resolveFieldScan(
+      mergeScanEntitlements({
+        roles: { driver: { cargoAdd: false, cargoConfirm: true, vehicleOpen: true, locationSet: true } },
+      }),
+      "driver",
+    );
+    expect(fieldScanCanCargo(confirmOnly)).toBe(true);
+    expect(fieldScanAllowsContext(confirmOnly, "dispatch_cargo")).toBe(true);
+    expect(fieldScanCanVehicle(confirmOnly)).toBe(true);
+    expect(fieldScanCanLocation(confirmOnly)).toBe(true);
+    expect(fieldScanAllowsContext(confirmOnly, "vehicle")).toBe(true);
+    expect(fieldScanCanVehicle(null)).toBe(false);
+    expect(fieldScanCanLocation(undefined)).toBe(false);
   });
 
   it("hangs scan on tenant entitlements merge", () => {

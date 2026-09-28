@@ -13,7 +13,16 @@ import {
 } from "../lib/driverLocation";
 import { isNativeFieldApp } from "../lib/nativeField";
 import type { FieldScanCapabilities } from "../lib/scanCapabilities";
-import { fieldScanCanCargo } from "../lib/scanCapabilities";
+import { fieldScanCanCargo, fieldScanCanLocation, fieldScanCanVehicle } from "../lib/scanCapabilities";
+import { CatalogScanButton } from "../components/CatalogScanButton";
+import {
+  locationNameFromScan,
+  locationScanNotice,
+  lookupCatalogScan,
+  resolveVehicleJobOpen,
+  stopRequireScanBlocks,
+  vehicleIdFromScan,
+} from "../lib/catalogScan";
 import {
   calendarDayDotTones,
   DISPATCH_STATUS_LABELS,
@@ -105,6 +114,8 @@ function ymdFromParts(year: number, month: number, day: number): string {
 
 export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
   const allowCargoScan = fieldScanCanCargo(scan);
+  const allowVehicleScan = fieldScanCanVehicle(scan);
+  const allowLocationScan = fieldScanCanLocation(scan);
   const [view, setView] = useState<View>("calendar");
   const [jobs, setJobs] = useState<DispatchJob[]>([]);
   const [loading, setLoading] = useState(false);
@@ -151,6 +162,47 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
     () => selected?.stops.find((s) => s.id === activeStopId) || null,
     [selected, activeStopId],
   );
+
+  function onVehicleCode(code: string) {
+    void lookupCatalogScan(code, "vehicle", "field")
+      .then((res) => {
+        if (res.match !== "vehicle" || !res.item) {
+          onErrorRef.current(`Not in catalog: ${res.raw || code}`);
+          return;
+        }
+        const uid = vehicleIdFromScan(res.item);
+        if (!uid) {
+          onErrorRef.current(`Not in catalog: ${res.raw || code}`);
+          return;
+        }
+        const result = resolveVehicleJobOpen(jobs, uid, selectedId);
+        if ("error" in result) {
+          onErrorRef.current(result.error);
+          return;
+        }
+        onErrorRef.current("");
+        onNoticeRef.current(result.notice);
+        if (result.jobId !== selectedId) {
+          setSelectedId(result.jobId);
+          setView("orders");
+        }
+      })
+      .catch((err: Error) => onErrorRef.current(err.message));
+  }
+
+  function onLocationCode(code: string, zone?: string | null) {
+    void lookupCatalogScan(code, "location", "field")
+      .then((res) => {
+        if (res.match !== "location" || !res.item) {
+          onErrorRef.current(`Not in catalog: ${res.raw || code}`);
+          return;
+        }
+        const name = locationNameFromScan(res.item);
+        onErrorRef.current("");
+        onNoticeRef.current(locationScanNotice({ name, zone }));
+      })
+      .catch((err: Error) => onErrorRef.current(err.message));
+  }
 
   const openJobs = useMemo(
     () => jobs.filter((j) => j.status === "assigned" || j.status === "en_route" || j.status === "arrived"),
@@ -374,9 +426,27 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
       onErrorRef.current("Proof photo is required before finishing this order");
       return;
     }
+    const finishLines =
+      activeStop.orderId && cargoOrderId === activeStop.orderId
+        ? cargoDraft
+        : activeStop.lines || [];
+    if (scan?.stopRequireScan && stopRequireScanBlocks(finishLines)) {
+      onErrorRef.current("Scan every expected item before finishing this order");
+      return;
+    }
     setBusy(true);
     setGpsWarn("");
     try {
+      if (activeStop.orderId && cargoOrderId === activeStop.orderId) {
+        const saved = await fieldPutOrderLines(
+          activeStop.orderId,
+          cargoDraft.filter((l) => l.name.trim() && Number(l.qty) > 0),
+        );
+        if (saved.job) {
+          const nextJob = saved.job;
+          setJobs((prev) => prev.map((j) => (j.id === nextJob.id ? nextJob : j)));
+        }
+      }
       const phone = await readPhonePosition();
       if (!phone) setGpsWarn("Phone GPS unavailable — Armada position will still be recorded if available.");
       const { job } = await fieldPatchStop(selected.id, activeStop.id, {
@@ -645,6 +715,18 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
             <p className="muted">⏱ {formatDispatchWindow(activeStop)}</p>
           ) : null}
           {activeStop.proofRequired ? <p className="muted">Proof photo required</p> : null}
+          {allowLocationScan && !locked ? (
+            <div className="field-action-row">
+              <CatalogScanButton
+                disabled={busy}
+                label="Scan location"
+                allowCamera={scan?.camera !== false}
+                allowTyped={scan?.typed !== false}
+                allowNfc={scan?.nfc === true}
+                onCode={(code) => onLocationCode(code, activeStop.zone)}
+              />
+            </div>
+          ) : null}
           {gpsWarn ? <p className="muted">{gpsWarn}</p> : null}
           {formatCargoSummary(activeStop.lines) ? (
             <p className="muted">{formatCargoSummary(activeStop.lines)}</p>
@@ -656,9 +738,11 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
             <header className="field-panel-head">
               <h3>Cargo</h3>
               <p className="muted">
-                {scan?.cargoSerial
-                  ? "Each tap is one unit. Drop only accepts serials already on this order."
-                  : "Catalog or free text. Same list on pickup and drop."}
+                {scan?.cargoConfirm
+                  ? "Scan expected items. Extra SKUs are rejected."
+                  : scan?.cargoSerial
+                    ? "Each tap is one unit. Drop only accepts serials already on this order."
+                    : "Catalog or free text. Same list on pickup and drop."}
               </p>
             </header>
             <DispatchOrderGoodsEditor
@@ -676,6 +760,8 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
               scanNfc={scan?.nfc === true}
               scanSerial={scan?.cargoSerial === true}
               scanKnownSerialOnly={scan?.cargoSerial === true && activeStop.role === "drop"}
+              scanConfirm={scan?.cargoConfirm === true}
+              scanManualAdd={scan?.cargoAdd !== false}
               onScanError={(msg) => onErrorRef.current(msg)}
             />
             <button
@@ -879,6 +965,16 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
         {!locked ? (
           <section className="field-panel field-dispatch-job-tools">
             <div className="field-action-row">
+              {allowVehicleScan ? (
+                <CatalogScanButton
+                  disabled={busy}
+                  label="Scan vehicle"
+                  allowCamera={scan?.camera !== false}
+                  allowTyped={scan?.typed !== false}
+                  allowNfc={scan?.nfc === true}
+                  onCode={onVehicleCode}
+                />
+              ) : null}
               {selected.status === "assigned" ? (
                 <button
                   type="button"
@@ -1030,6 +1126,8 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
                                 scanNfc={scan?.nfc === true}
                                 scanSerial={scan?.cargoSerial === true}
                                 scanKnownSerialOnly={scan?.cargoSerial === true && stop.role === "drop"}
+                                scanConfirm={scan?.cargoConfirm === true}
+                                scanManualAdd={scan?.cargoAdd !== false}
                                 onScanError={(msg) => onErrorRef.current(msg)}
                               />
                               <div className="field-action-row">
@@ -1209,6 +1307,19 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
         }}
         onDuty={Boolean(dutyJobId)}
       />
+
+      {allowVehicleScan ? (
+        <div className="field-action-row" style={{ marginBottom: 8 }}>
+          <CatalogScanButton
+            disabled={busy || loading}
+            label="Scan vehicle"
+            allowCamera={scan?.camera !== false}
+            allowTyped={scan?.typed !== false}
+            allowNfc={scan?.nfc === true}
+            onCode={onVehicleCode}
+          />
+        </div>
+      ) : null}
 
       {loading && jobs.length === 0 ? <p className="muted field-loading">Loading dispatch…</p> : null}
 

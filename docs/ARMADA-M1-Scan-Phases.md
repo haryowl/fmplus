@@ -5,7 +5,7 @@ Barcode, QR, and NFC are three **inputs** for one **code**. A scan resolves thro
 Printed / NFC payload we write:
 
 `am1:v1:goods:SKU` · `am1:v1:part:SKU`  
-later: `am1:v1:vehicle:…` · `am1:v1:location:…`
+`am1:v1:vehicle:{armadaUserId}` · `am1:v1:location:{depotId}`
 
 Bare SKU and factory EAN are also accepted. Do not put tenant keys or server URLs in tags.
 
@@ -46,10 +46,9 @@ Stored on the tenant as `entitlements.scan` (Admin → Entitlements → Field sc
 ```
 scan.inputs: camera · typed · nfc      ← Field enforces now
 scan.roles.{operator|driver|dispatcher|manager}:
-  cargoAdd · partAdd · cargoSerial · partSerial  ← Field enforces now
-  cargoConfirm · stopRequireScan
-  jobRequireScan
-  vehicleOpen · locationSet             ← stored, Field ignores until built
+  cargoAdd · partAdd · cargoSerial · partSerial
+  cargoConfirm · stopRequireScan · vehicleOpen · locationSet  ← Field enforces now
+  jobRequireScan                        ← stored, Field ignores until built
 ```
 
 `/api/field/me` and login return the **resolved** flags for that user’s role. Field /m and Manager /mm hide Scan when the action or every input is off. `/api/field/scan` returns 403 for the same matrix. Desk embed scan is not gated by Field role.
@@ -62,9 +61,9 @@ scan.roles.{operator|driver|dispatcher|manager}:
 |---|---|---|---|---|
 | `cargoAdd` | on | off | off on Field | off on Field |
 | `partAdd` | off | on | off | on for /mm |
-| `cargoConfirm` / `cargoSerial` / `stopRequireScan` | when built | off | desk | desk |
-| `partSerial` / `jobRequireScan` | off | when built | — | — |
-| `vehicleOpen` / `locationSet` | when built | when built | — | — |
+| `cargoConfirm` / `cargoSerial` / `stopRequireScan` | on for delivery checklists | off | desk | desk |
+| `partSerial` / `jobRequireScan` | off | serial when needed | — | — |
+| `vehicleOpen` / `locationSet` | on when tags are issued | on when tags are issued | — | — |
 | NFC write | never | never | desk | desk |
 
 Per-user override is out of scope until a tenant needs a special driver.
@@ -95,11 +94,12 @@ Per-user override is out of scope until a tenant needs a special driver.
 - Drop only accepts a serial already on that order (“This serial is not on the order”)
 - Lot is optional on the prompt and the line
 
-## Phase 5 — Wider targets
+## Phase 5 — Wider targets (this release)
 
-- Vehicle tag → open the right maintenance job or confirm the plate (`vehicleOpen`)
-- Bin / depot tag → default zone or depot (`locationSet`)
-- Expected-vs-scanned checklist on a stop (`cargoConfirm`, optional `stopRequireScan`)
+- Vehicle tag → open the matching Field job or confirm the plate (`vehicleOpen`, default off). Desk prints / writes `am1:v1:vehicle:{armadaUserId}` on the job vehicle pane
+- Bin / depot tag → set the order zone on desk, or confirm the stop zone on Field (`locationSet`, default off). Codes live on the depot
+- Expected-vs-scanned checklist on a stop (`cargoConfirm`). Extra SKUs are rejected. Optional `stopRequireScan` blocks Finish until every catalog line has `scanned_at`
+- `jobRequireScan` stays reserved (do not require a scan to complete a whole job yet)
 
 ## Not a phase until inventory is sold
 

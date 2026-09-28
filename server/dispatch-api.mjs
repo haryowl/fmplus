@@ -74,6 +74,7 @@ import {
   deleteCatalogCode,
   listCodesForTarget,
   lookupCatalogScan,
+  syncPrimarySku,
 } from "./catalog-codes.mjs";
 import { csvBool, csvNum, parseCsv } from "./csv-parse.mjs";
 import { buildDispatchLiveSnapshot } from "./dispatch-live.mjs";
@@ -1255,6 +1256,89 @@ export async function handleDispatchRequest(req, res) {
       /^\/api\/dispatch\/goods\/([0-9a-f-]{36})\/codes\/([0-9a-f-]{36})$/i.exec(url.pathname);
     if (goodsCodeOne && req.method === "DELETE") {
       await deleteCatalogCode(dbTenant.id, goodsCodeOne[2]);
+      json(res, 200, { ok: true });
+      return true;
+    }
+
+    const vehicleCodes = /^\/api\/dispatch\/vehicles\/(\d+)\/codes$/i.exec(url.pathname);
+    if (vehicleCodes && req.method === "GET") {
+      const targetId = vehicleCodes[1];
+      const existing = await listCodesForTarget(dbTenant.id, "vehicle", targetId);
+      if (!existing.some((c) => c.codeFormat === "sku")) {
+        try {
+          await syncPrimarySku(dbTenant.id, "vehicle", targetId, targetId);
+        } catch (err) {
+          if (!err || err.status !== 409) throw err;
+        }
+      }
+      json(res, 200, { codes: await listCodesForTarget(dbTenant.id, "vehicle", targetId) });
+      return true;
+    }
+    if (vehicleCodes && req.method === "POST") {
+      const body = await readJson(req);
+      const code = await addCatalogCode(dbTenant.id, {
+        targetKind: "vehicle",
+        targetId: vehicleCodes[1],
+        code: body.code,
+        codeFormat: body.codeFormat || "other",
+        label: body.label,
+      });
+      json(res, 201, { code });
+      return true;
+    }
+    const vehicleCodeOne =
+      /^\/api\/dispatch\/vehicles\/(\d+)\/codes\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (vehicleCodeOne && req.method === "DELETE") {
+      await deleteCatalogCode(dbTenant.id, vehicleCodeOne[2]);
+      json(res, 200, { ok: true });
+      return true;
+    }
+
+    const locationCodes = /^\/api\/dispatch\/locations\/([0-9a-f-]{36})\/codes$/i.exec(url.pathname);
+    if (locationCodes && req.method === "GET") {
+      const depot = await dbQuery(
+        `SELECT id FROM dispatch_depots WHERE id = $1 AND tenant_id = $2`,
+        [locationCodes[1], dbTenant.id],
+      );
+      if (!depot.rows[0]) {
+        json(res, 404, { error: "Depot not found" });
+        return true;
+      }
+      const existing = await listCodesForTarget(dbTenant.id, "location", locationCodes[1]);
+      if (!existing.some((c) => c.codeFormat === "sku")) {
+        try {
+          await syncPrimarySku(dbTenant.id, "location", locationCodes[1], locationCodes[1]);
+        } catch (err) {
+          if (!err || err.status !== 409) throw err;
+        }
+      }
+      json(res, 200, { codes: await listCodesForTarget(dbTenant.id, "location", locationCodes[1]) });
+      return true;
+    }
+    if (locationCodes && req.method === "POST") {
+      const depot = await dbQuery(
+        `SELECT id FROM dispatch_depots WHERE id = $1 AND tenant_id = $2`,
+        [locationCodes[1], dbTenant.id],
+      );
+      if (!depot.rows[0]) {
+        json(res, 404, { error: "Depot not found" });
+        return true;
+      }
+      const body = await readJson(req);
+      const code = await addCatalogCode(dbTenant.id, {
+        targetKind: "location",
+        targetId: locationCodes[1],
+        code: body.code,
+        codeFormat: body.codeFormat || "other",
+        label: body.label,
+      });
+      json(res, 201, { code });
+      return true;
+    }
+    const locationCodeOne =
+      /^\/api\/dispatch\/locations\/([0-9a-f-]{36})\/codes\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (locationCodeOne && req.method === "DELETE") {
+      await deleteCatalogCode(dbTenant.id, locationCodeOne[2]);
       json(res, 200, { ok: true });
       return true;
     }

@@ -6,11 +6,12 @@ import {
   printCatalogLabel,
   scanPayloadFor,
   type CatalogCodeRow,
+  type CatalogTargetKind,
 } from "../lib/catalogCodes";
 import { CatalogNfcWriteButton } from "./CatalogNfcWriteButton";
 
 type Props = {
-  kind: "goods" | "maint_part";
+  kind: CatalogTargetKind;
   itemId: string;
   sku?: string;
   name: string;

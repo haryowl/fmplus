@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
-import { scanPayloadFor } from "../lib/catalogCodes";
+import { scanPayloadFor, type CatalogTargetKind } from "../lib/catalogCodes";
 import { deskNfcWriteAvailable, writeDeskNfcTag } from "../lib/nfcWrite";
 
 type Props = {
-  kind: "goods" | "maint_part";
+  kind: CatalogTargetKind;
   name: string;
   sku: string;
   disabled?: boolean;

@@ -2,10 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchGroups, fetchUsersForGroup, groupOptionLabel, userOptionLabel } from "../lib/api";
 import { BrandMark } from "../components/BrandMark";
 import { CsvImportPanel } from "../components/CsvImportPanel";
+import { CatalogCodesEditor } from "../components/CatalogCodesEditor";
+import { CatalogScanButton } from "../components/CatalogScanButton";
 import { DispatchGoodsCatalogPanel } from "../components/DispatchGoodsCatalogPanel";
 import { DispatchJobMap } from "../components/DispatchJobMap";
 import { DispatchOrderGoodsEditor } from "../components/DispatchOrderGoodsEditor";
 import { ViewNav } from "../components/ViewNav";
+import { locationNameFromScan, lookupCatalogScan } from "../lib/catalogScan";
 import {
   DISPATCH_ORDER_CSV_HEADERS,
   dispatchOrderCsvTemplate,
@@ -2540,6 +2543,17 @@ export default function DispatchBoard() {
                       />
                     </div>
                   )}
+                  {selectedDepotId && selectedDepot ? (
+                    <div className="field" style={{ gridColumn: "1 / -1" }}>
+                      <CatalogCodesEditor
+                        kind="location"
+                        itemId={selectedDepot.id}
+                        sku={selectedDepot.id}
+                        name={selectedDepot.name}
+                        disabled={busy}
+                      />
+                    </div>
+                  ) : null}
                   <div className="field">
                     <label htmlFor="dispatch-multi-depot-poi-filter">Filter POIs</label>
                     <input
@@ -3299,6 +3313,27 @@ export default function DispatchBoard() {
                       value={orderForm.zone}
                       onChange={(e) => setOrderForm((f) => ({ ...f, zone: e.target.value }))}
                       placeholder="Dago"
+                    />
+                    <CatalogScanButton
+                      disabled={busy}
+                      label="Scan location"
+                      onCode={(code) => {
+                        void lookupCatalogScan(code, "location", "desk")
+                          .then((res) => {
+                            if (res.match !== "location" || !res.item) {
+                              setError(`Not in catalog: ${res.raw || code}`);
+                              return;
+                            }
+                            const name = locationNameFromScan(res.item);
+                            if (!name) {
+                              setError(`Not in catalog: ${res.raw || code}`);
+                              return;
+                            }
+                            setError("");
+                            setOrderForm((f) => ({ ...f, zone: name }));
+                          })
+                          .catch((err: Error) => setError(err.message));
+                      }}
                     />
                   </label>
                   <label className="field">
@@ -4132,6 +4167,15 @@ export default function DispatchBoard() {
                       Save as vehicle default
                     </button>
                   </div>
+                  {selected.armadaUserId ? (
+                    <CatalogCodesEditor
+                      kind="vehicle"
+                      itemId={String(selected.armadaUserId)}
+                      sku={String(selected.armadaUserId)}
+                      name={dispatchVehicleLabel(selected)}
+                      disabled={busy || selected.status === "done" || selected.status === "cancelled"}
+                    />
+                  ) : null}
                 </div>
 
                 <div className="dispatch-detail-actions">
