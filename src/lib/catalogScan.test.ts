@@ -41,6 +41,21 @@ describe("scan payload", () => {
     expect(parseScanPayload("am1:v1:vehicle:42").targetKind).toBe("vehicle");
     expect(parseScanPayload("am1:v1:location:depot-1").targetKind).toBe("location");
   });
+
+  it("keeps bare Armada vehicle ids as the code (Code 128 print)", () => {
+    expect(parseScanPayload("1855")).toEqual({
+      version: null,
+      targetKind: null,
+      code: "1855",
+      raw: "1855",
+    });
+    expect(parseScanPayload("am1:v1:vehicle:1855")).toEqual({
+      version: 1,
+      targetKind: "vehicle",
+      code: "1855",
+      raw: "am1:v1:vehicle:1855",
+    });
+  });
 });
 
 describe("apply scan to lines", () => {

@@ -202,6 +202,41 @@ async function hydrateVehicle(tenantId, targetId) {
   };
 }
 
+/** Versioned payload, or bare Armada id when Field Scan vehicle is open. */
+async function tryImplicitVehicle(tenantId, parsed, context) {
+  if (!contextAllowsKind(context, "vehicle")) return null;
+  if (parsed.targetKind && parsed.targetKind !== "vehicle") return null;
+  const uid = Number(parsed.code);
+  if (!Number.isFinite(uid) || uid <= 0) return null;
+  if (!parsed.targetKind && context !== "vehicle") return null;
+  const implicit = await hydrateVehicle(tenantId, String(uid));
+  if (!(implicit.item.armadaUserId > 0)) return null;
+  return {
+    match: "vehicle",
+    code: parsed.code,
+    raw: parsed.raw,
+    codeFormat: "sku",
+    payload: formatScanPayload("vehicle", String(uid)),
+    item: implicit.item,
+  };
+}
+
+async function tryImplicitLocation(tenantId, parsed, context) {
+  if (!contextAllowsKind(context, "location")) return null;
+  if (parsed.targetKind && parsed.targetKind !== "location") return null;
+  if (!parsed.targetKind && context !== "location") return null;
+  const implicit = await hydrateLocation(tenantId, parsed.code);
+  if (!implicit.item.id || implicit.item.name === implicit.item.id) return null;
+  return {
+    match: "location",
+    code: parsed.code,
+    raw: parsed.raw,
+    codeFormat: "sku",
+    payload: formatScanPayload("location", parsed.code),
+    item: implicit.item,
+  };
+}
+
 async function hydrateLocation(tenantId, targetId) {
   const found = await dbQuery(
     `SELECT id, name, lat, lon FROM dispatch_depots WHERE tenant_id = $1 AND id = $2`,
@@ -331,31 +366,13 @@ export async function lookupCatalogScan(tenantId, body) {
     [tenantId, parsed.code],
   );
   const row = found.rows[0];
-  if (!row && parsed.targetKind === "vehicle") {
-    const implicit = await hydrateVehicle(tenantId, parsed.code);
-    if (implicit.item.armadaUserId > 0 && contextAllowsKind(context, "vehicle")) {
-      return {
-        match: "vehicle",
-        code: parsed.code,
-        raw: parsed.raw,
-        codeFormat: "sku",
-        payload: formatScanPayload("vehicle", parsed.code),
-        item: implicit.item,
-      };
-    }
-  }
-  if (!row && parsed.targetKind === "location") {
-    const implicit = await hydrateLocation(tenantId, parsed.code);
-    if (implicit.item.id && implicit.item.name !== implicit.item.id && contextAllowsKind(context, "location")) {
-      return {
-        match: "location",
-        code: parsed.code,
-        raw: parsed.raw,
-        codeFormat: "sku",
-        payload: formatScanPayload("location", parsed.code),
-        item: implicit.item,
-      };
-    }
+  // Vehicle / location can resolve without a catalog_codes row.
+  // Bare numeric (Code 128 print) works when Field context is vehicle.
+  if (!row) {
+    const implicitVehicle = await tryImplicitVehicle(tenantId, parsed, context);
+    if (implicitVehicle) return implicitVehicle;
+    const implicitLocation = await tryImplicitLocation(tenantId, parsed, context);
+    if (implicitLocation) return implicitLocation;
   }
   if (!row) {
     const identity = await lookupByCatalogIdentity(tenantId, parsed, context);

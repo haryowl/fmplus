@@ -51,7 +51,7 @@ export function CatalogCodesEditor({ kind, itemId, sku, name, disabled }: Props)
 
   return (
     <div className="catalog-codes-editor">
-      {error ? <p className="muted">{error}</p> : null}
+      {error ? <p className="error">{error}</p> : null}
       <div className="catalog-codes-actions">
         <button
           type="button"
