@@ -96,6 +96,10 @@ const FIELD_ROLE_OPTIONS = [
   { value: "driver", label: "Driver" },
   { value: "dispatcher", label: "Dispatcher" },
   { value: "manager", label: "Manager" },
+  { value: "worker1", label: "Worker 1" },
+  { value: "worker2", label: "Worker 2" },
+  { value: "field1", label: "Field 1" },
+  { value: "field2", label: "Field 2" },
 ];
 
 function emptyDraft(): Draft {

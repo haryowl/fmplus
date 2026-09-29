@@ -8,7 +8,16 @@ import { hashPassword, readCookies, verifyPassword } from "./admin-auth.mjs";
 
 const COOKIE = "fmplus_field_sid";
 const SESSION_DAYS = 14;
-export const FIELD_ROLES = ["operator", "driver", "dispatcher", "manager"];
+export const FIELD_ROLES = [
+  "operator",
+  "driver",
+  "dispatcher",
+  "manager",
+  "worker1",
+  "worker2",
+  "field1",
+  "field2",
+];
 
 export function fieldCookieName() {
   return COOKIE;

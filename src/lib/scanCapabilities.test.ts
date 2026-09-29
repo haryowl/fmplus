@@ -18,7 +18,16 @@ describe("scan capabilities", () => {
     expect(scan.inputs.camera).toBe(true);
     expect(scan.inputs.typed).toBe(true);
     expect(scan.inputs.nfc).toBe(false);
-    for (const role of ["operator", "driver", "dispatcher", "manager"] as const) {
+    for (const role of [
+      "operator",
+      "driver",
+      "dispatcher",
+      "manager",
+      "worker1",
+      "worker2",
+      "field1",
+      "field2",
+    ] as const) {
       expect(scan.roles[role].cargoAdd).toBe(true);
       expect(scan.roles[role].partAdd).toBe(true);
       expect(scan.roles[role].cargoConfirm).toBe(false);
@@ -39,13 +48,20 @@ describe("scan capabilities", () => {
     expect(merged.roles.driver.partAdd).toBe(false);
     expect(merged.roles.driver.cargoAdd).toBe(true);
     expect(merged.roles.operator.partAdd).toBe(true);
+    expect(merged.roles.worker1.cargoAdd).toBe(true);
+    expect(merged.roles.field2.partAdd).toBe(true);
     expect("extra" in merged.roles.driver).toBe(false);
     expect("ghost" in merged.roles).toBe(false);
   });
 
   it("resolves Field capabilities for the signed-in role", () => {
     const scan = mergeScanEntitlements({
-      roles: { driver: { partAdd: false }, operator: { cargoAdd: false } },
+      roles: {
+        driver: { partAdd: false },
+        operator: { cargoAdd: false },
+        worker1: { cargoConfirm: true },
+        field1: { vehicleOpen: true },
+      },
     });
     const driver = resolveFieldScan(scan, "driver");
     expect(driver.cargoAdd).toBe(true);
@@ -58,6 +74,13 @@ describe("scan capabilities", () => {
     const operator = resolveFieldScan(scan, "operator");
     expect(fieldScanCanCargo(operator)).toBe(false);
     expect(fieldScanCanPart(operator)).toBe(true);
+
+    const worker1 = resolveFieldScan(scan, "worker1");
+    expect(worker1.cargoConfirm).toBe(true);
+    expect(worker1.cargoAdd).toBe(true);
+
+    const field1 = resolveFieldScan(scan, "field1");
+    expect(field1.vehicleOpen).toBe(true);
   });
 
   it("treats a missing /me scan payload as Phase 1 still allowed", () => {

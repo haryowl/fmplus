@@ -45,7 +45,7 @@ Stored on the tenant as `entitlements.scan` (Admin → Entitlements → Field sc
 
 ```
 scan.inputs: camera · typed · nfc      ← Field enforces now
-scan.roles.{operator|driver|dispatcher|manager}:
+scan.roles.{operator|driver|dispatcher|manager|worker1|worker2|field1|field2}:
   cargoAdd · partAdd · cargoSerial · partSerial
   cargoConfirm · stopRequireScan · vehicleOpen · locationSet
   jobRequireScan                        ← Field enforces now

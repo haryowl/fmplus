@@ -3,7 +3,16 @@
  * Mirrors src/lib/scanCapabilities.ts.
  */
 
-export const SCAN_ROLES = ["operator", "driver", "dispatcher", "manager"];
+export const SCAN_ROLES = [
+  "operator",
+  "driver",
+  "dispatcher",
+  "manager",
+  "worker1",
+  "worker2",
+  "field1",
+  "field2",
+];
 
 export const SCAN_ACTION_KEYS = [
   "cargoAdd",
@@ -54,6 +63,10 @@ export function defaultScanEntitlements() {
       driver: defaultScanRoleActions(),
       dispatcher: defaultScanRoleActions(),
       manager: defaultScanRoleActions(),
+      worker1: defaultScanRoleActions(),
+      worker2: defaultScanRoleActions(),
+      field1: defaultScanRoleActions(),
+      field2: defaultScanRoleActions(),
     },
   };
 }

@@ -1,6 +1,15 @@
 /** Field scan switchboard. Mirrors server/scan-capabilities.mjs. */
 
-export const SCAN_ROLES = ["operator", "driver", "dispatcher", "manager"] as const;
+export const SCAN_ROLES = [
+  "operator",
+  "driver",
+  "dispatcher",
+  "manager",
+  "worker1",
+  "worker2",
+  "field1",
+  "field2",
+] as const;
 export type ScanRole = (typeof SCAN_ROLES)[number];
 
 export const SCAN_ACTION_KEYS = [
@@ -47,6 +56,10 @@ export const SCAN_ROLE_LABELS: Record<ScanRole, string> = {
   driver: "Driver",
   dispatcher: "Dispatcher",
   manager: "Manager",
+  worker1: "Worker 1",
+  worker2: "Worker 2",
+  field1: "Field 1",
+  field2: "Field 2",
 };
 
 export const SCAN_ACTION_LABELS: Record<ScanActionKey, string> = {
@@ -89,6 +102,10 @@ export function defaultScanEntitlements(): ScanEntitlements {
       driver: defaultScanRoleActions(),
       dispatcher: defaultScanRoleActions(),
       manager: defaultScanRoleActions(),
+      worker1: defaultScanRoleActions(),
+      worker2: defaultScanRoleActions(),
+      field1: defaultScanRoleActions(),
+      field2: defaultScanRoleActions(),
     },
   };
 }
