@@ -96,7 +96,7 @@ Per-user override is out of scope until a tenant needs a special driver.
 
 ## Phase 5 — Wider targets (this release)
 
-- Vehicle tag → open the matching Field job or confirm the plate (`vehicleOpen`, default off). Desk prints / writes `am1:v1:vehicle:{armadaUserId}` on the job vehicle pane
+- Vehicle tag → open the matching Field job or confirm the plate (`vehicleOpen`, default off). Desk prints / writes `am1:v1:vehicle:{armadaUserId}` on the job vehicle pane. When on, Field **blocks** Start route, opening orders, and Complete / Done until that truck is confirmed. Wrong plate → error and does **not** open another job
 - Bin / depot tag → set the order zone on desk, or confirm the stop zone on Field (`locationSet`, default off). Codes live on the depot
 - Expected-vs-scanned checklist on a stop (`cargoConfirm`). Extra SKUs are rejected. Optional `stopRequireScan` blocks Finish until every catalog line has `scanned_at`
 - Completing a whole job still does not happen from a scan (`jobRequireScan` is a gate, not auto-done)
@@ -105,7 +105,7 @@ Per-user override is out of scope until a tenant needs a special driver.
 
 - Behind `jobRequireScan` (default off). Does **not** complete the job on a beep
 - Maintenance Done: every catalog part line needs `scanned_at`. Service / Other / labor lines do not
-- If `vehicleOpen` is also on and the job has a vehicle, Field must confirm that plate first
+- If `vehicleOpen` is also on and the job has a vehicle, Field must confirm that plate first (also enforced by `vehicleOpen` alone — see Phase 5)
 - Dispatch Complete job: same vehicle gate, plus any expected cargo still pending on the stops
 - Skip / Cancel start stay available
 

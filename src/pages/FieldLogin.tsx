@@ -13,6 +13,7 @@ import {
   lookupCatalogScan,
   resolveVehicleJobOpen,
   vehicleIdFromScan,
+  vehicleScanBlocks,
 } from "../lib/catalogScan";
 import { fieldScanCanPart, fieldScanCanVehicle, type FieldScanCapabilities } from "../lib/scanCapabilities";
 import { FieldJobsChart } from "../components/FieldJobsChart";
@@ -449,11 +450,23 @@ export default function FieldLogin() {
 
   async function saveJob(extra: Record<string, unknown> = {}, opts: { quiet?: boolean } = {}) {
     if (!selectedId) return null;
+    if (extra.status === "in_progress" || extra.status === "done") {
+      const vehicleGate = vehicleScanBlocks({
+        vehicleOpen: scan?.vehicleOpen === true,
+        armadaUserId: detail?.armadaUserId,
+        vehicleConfirmed: vehicleConfirmedJobId === selectedId,
+        action: extra.status === "in_progress" ? "start" : "complete",
+      });
+      if (vehicleGate) {
+        setError(vehicleGate);
+        return null;
+      }
+    }
     if (extra.status === "done" && scan?.jobRequireScan) {
       const reason = jobRequireScanReason({
         lines,
-        requireVehicle: scan.vehicleOpen === true && Boolean(detail?.armadaUserId),
-        vehicleConfirmed: vehicleConfirmedJobId === selectedId,
+        requireVehicle: false,
+        vehicleConfirmed: true,
       });
       if (reason) {
         setError(reason);
@@ -711,6 +724,8 @@ export default function FieldLogin() {
                   />
                   {vehicleConfirmedJobId === selectedId ? (
                     <span className="field-pill">Vehicle confirmed</span>
+                  ) : detail.armadaUserId ? (
+                    <span className="muted">Scan this vehicle before Start / Done</span>
                   ) : null}
                 </div>
               ) : null}

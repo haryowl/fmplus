@@ -10,6 +10,7 @@ import {
   locationScanNotice,
   resolveVehicleJobOpen,
   stopRequireScanBlocks,
+  vehicleScanBlocks,
 } from "./catalogScan";
 import { formatScanPayload, normalizeCatalogCode, parseScanPayload } from "../../server/catalog-codes.mjs";
 
@@ -200,6 +201,41 @@ describe("vehicle and location scan helpers", () => {
     });
     expect(resolveVehicleJobOpen(jobs, 99, "a")).toEqual({ error: "Wrong vehicle" });
     expect(resolveVehicleJobOpen(jobs, 99, null)).toEqual({ error: "No open job for this vehicle" });
+  });
+
+  it("blocks Start / orders / Complete until the vehicle tag is confirmed", () => {
+    expect(
+      vehicleScanBlocks({
+        vehicleOpen: true,
+        armadaUserId: 1855,
+        vehicleConfirmed: false,
+        action: "start",
+      }),
+    ).toMatch(/before starting/);
+    expect(
+      vehicleScanBlocks({
+        vehicleOpen: true,
+        armadaUserId: 1855,
+        vehicleConfirmed: false,
+        action: "stop",
+      }),
+    ).toMatch(/before opening/);
+    expect(
+      vehicleScanBlocks({
+        vehicleOpen: true,
+        armadaUserId: 1855,
+        vehicleConfirmed: true,
+        action: "complete",
+      }),
+    ).toBeNull();
+    expect(
+      vehicleScanBlocks({
+        vehicleOpen: false,
+        armadaUserId: 1855,
+        vehicleConfirmed: false,
+        action: "complete",
+      }),
+    ).toBeNull();
   });
 
   it("blocks complete when catalog parts or the vehicle are still pending", () => {

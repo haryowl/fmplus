@@ -150,6 +150,22 @@ export function jobRequireScanReason(opts: {
   return null;
 }
 
+/** Vehicle tag on + job has a truck → Field must confirm that plate before work. */
+export function vehicleScanBlocks(opts: {
+  vehicleOpen?: boolean;
+  armadaUserId?: number | null;
+  vehicleConfirmed?: boolean;
+  action?: "start" | "stop" | "complete";
+}): string | null {
+  if (opts.vehicleOpen !== true) return null;
+  const uid = Number(opts.armadaUserId);
+  if (!Number.isFinite(uid) || uid <= 0) return null;
+  if (opts.vehicleConfirmed) return null;
+  if (opts.action === "start") return "Scan the vehicle before starting this route";
+  if (opts.action === "stop") return "Scan the vehicle before opening this order";
+  return "Scan the vehicle before completing this job";
+}
+
 export function vehicleIdFromScan(item: { id?: string; armadaUserId?: number } | undefined): number | null {
   if (!item) return null;
   const n = Number(item.armadaUserId ?? item.id);

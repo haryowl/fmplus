@@ -23,6 +23,7 @@ import {
   resolveVehicleJobOpen,
   stopRequireScanBlocks,
   vehicleIdFromScan,
+  vehicleScanBlocks,
 } from "../lib/catalogScan";
 import {
   calendarDayDotTones,
@@ -382,6 +383,16 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
   async function openActiveStop(stop: DispatchStop) {
     if (!selected) return;
     if (stop.status === "done" || stop.status === "skipped") return;
+    const vehicleGate = vehicleScanBlocks({
+      vehicleOpen: scan?.vehicleOpen === true,
+      armadaUserId: selected.armadaUserId,
+      vehicleConfirmed: vehicleConfirmedJobId === selected.id,
+      action: "stop",
+    });
+    if (vehicleGate) {
+      onErrorRef.current(vehicleGate);
+      return;
+    }
     if (dropLockedUntilPickup(stop, selected.stops)) {
       onErrorRef.current("Finish pickup before this drop");
       return;
@@ -981,6 +992,8 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
                   />
                   {vehicleConfirmedJobId === selected.id ? (
                     <span className="field-pill">Vehicle confirmed</span>
+                  ) : selected.armadaUserId ? (
+                    <span className="muted">Scan this vehicle before Start / orders</span>
                   ) : null}
                 </>
               ) : null}
@@ -989,11 +1002,21 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
                   type="button"
                   className="btn"
                   disabled={busy}
-                  onClick={() =>
+                  onClick={() => {
+                    const vehicleGate = vehicleScanBlocks({
+                      vehicleOpen: scan?.vehicleOpen === true,
+                      armadaUserId: selected.armadaUserId,
+                      vehicleConfirmed: vehicleConfirmedJobId === selected.id,
+                      action: "start",
+                    });
+                    if (vehicleGate) {
+                      onErrorRef.current(vehicleGate);
+                      return;
+                    }
                     void patchJob(selected.id, { status: "en_route" }).then(
                       (j) => j && onNoticeRef.current("En route"),
-                    )
-                  }
+                    );
+                  }}
                 >
                   Start route
                 </button>
@@ -1009,12 +1032,22 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
                       : undefined
                   }
                   onClick={() => {
+                    const vehicleGate = vehicleScanBlocks({
+                      vehicleOpen: scan?.vehicleOpen === true,
+                      armadaUserId: selected.armadaUserId,
+                      vehicleConfirmed: vehicleConfirmedJobId === selected.id,
+                      action: "complete",
+                    });
+                    if (vehicleGate) {
+                      onErrorRef.current(vehicleGate);
+                      return;
+                    }
                     if (scan?.jobRequireScan) {
                       const cargoLines = selected.stops.flatMap((s) => s.lines || []);
                       const reason = jobRequireScanReason({
                         cargoLines,
-                        requireVehicle: scan.vehicleOpen === true && Boolean(selected.armadaUserId),
-                        vehicleConfirmed: vehicleConfirmedJobId === selected.id,
+                        requireVehicle: false,
+                        vehicleConfirmed: true,
                       });
                       if (reason) {
                         onErrorRef.current(reason);
