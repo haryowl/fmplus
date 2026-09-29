@@ -1031,7 +1031,7 @@ export default function DispatchBoard() {
     setError("");
 
     if (depotMode === "depot") {
-      persistDepot(lat, lon);
+      persistDepot(lat, lon, poiName);
       return;
     }
 
@@ -1039,7 +1039,11 @@ export default function DispatchBoard() {
     setBusy(true);
     try {
       if (selectedDepotId) {
-        const updated = await patchDispatchDepot(selectedDepotId, { lat, lon });
+        const updated = await patchDispatchDepot(selectedDepotId, {
+          lat,
+          lon,
+          ...(poiName ? { name: poiName } : {}),
+        });
         setDepots((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
         if (updated.isDefault) {
           setDepotLat(String(lat));
@@ -1124,23 +1128,29 @@ export default function DispatchBoard() {
     };
   }, [ready, query.tenantKey, reload]);
 
-  function persistDepot(lat: number, lon: number) {
+  function persistDepot(lat: number, lon: number, name?: string) {
     setDepotLat(String(lat));
     setDepotLon(String(lon));
     if (query.tenantKey) {
       try {
         localStorage.setItem(
           `fmplus.dispatch.depot.${query.tenantKey}`,
-          JSON.stringify({ lat, lon }),
+          JSON.stringify({ lat, lon, name: name || undefined }),
         );
       } catch {
         /* ignore */
       }
     }
-    void saveDispatchDepot({ lat, lon })
-      .then(() => fetchDispatchDepots().then((list) => setDepots(list)))
-      .catch(() => {
-        /* migration may not be applied yet */
+    void saveDispatchDepot({ lat, lon, ...(name ? { name } : {}) })
+      .then((saved) =>
+        fetchDispatchDepots().then((list) => {
+          setDepots(list);
+          const id = saved?.id || list.find((d) => d.isDefault)?.id || list[0]?.id || "";
+          if (id) setSelectedDepotId(id);
+        }),
+      )
+      .catch((err: Error) => {
+        setError(err.message || "Save depot failed");
       });
   }
 
@@ -2342,6 +2352,14 @@ export default function DispatchBoard() {
               ) : null}
               {depotMode === "depot" ? (
                 <>
+                  <div className="field" style={{ gridColumn: "1 / -1" }}>
+                    <label>Depot name</label>
+                    <p className="dispatch-search-hint" style={{ margin: 0 }}>
+                      {depots.find((d) => d.isDefault)?.name ||
+                        depots[0]?.name ||
+                        (depotPin ? "Unnamed (pick an Armada POI to name it)" : "Not set")}
+                    </p>
+                  </div>
                   <div className="field">
                     <label htmlFor="dispatch-depot-lat">Depot lat</label>
                     <input
@@ -2427,7 +2445,9 @@ export default function DispatchBoard() {
                     Return to depot (roundtrip)
                   </label>
                   <p className="dispatch-search-hint" style={{ gridColumn: "1 / -1" }}>
-                    Pick an Armada POI, enter lat/lon, or click the map. Depot is remembered for this tenant.
+                    Pick an Armada POI to set coordinates and the depot name. Map click or lat/lon keep
+                    the current name. Depot is remembered for this tenant and appears under Home
+                    depot on the job.
                   </p>
                 </>
               ) : null}

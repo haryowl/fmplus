@@ -635,7 +635,7 @@ export async function fetchDispatchDepot(): Promise<{
 }
 
 export async function saveDispatchDepot(
-  depot: { lat: number; lon: number } | null,
+  depot: { lat: number; lon: number; name?: string } | null,
 ): Promise<{ lat: number; lon: number; id?: string; name?: string } | null> {
   const res = await fetch("/api/dispatch/depot", {
     method: "PUT",

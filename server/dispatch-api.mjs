@@ -1515,30 +1515,37 @@ export async function handleDispatchRequest(req, res) {
         return true;
       }
       await syncTenantDefaultDepot(dbTenant.id, lat, lon);
+      const name = String(body.name || body.depot?.name || "")
+        .trim()
+        .slice(0, 80);
       const existing = await dbQuery(
-        `SELECT id FROM dispatch_depots WHERE tenant_id = $1 AND is_default = true LIMIT 1`,
+        `SELECT id, name FROM dispatch_depots WHERE tenant_id = $1 AND is_default = true LIMIT 1`,
         [dbTenant.id],
       );
       let depotRow;
       if (existing.rows[0]) {
         const upd = await dbQuery(
-          `UPDATE dispatch_depots SET lat = $1, lon = $2, updated_at = now()
-           WHERE id = $3
-           RETURNING id, name, lat, lon, is_default, updated_at`,
-          [lat, lon, existing.rows[0].id],
+          name
+            ? `UPDATE dispatch_depots SET lat = $1, lon = $2, name = $4, updated_at = now()
+               WHERE id = $3
+               RETURNING id, name, lat, lon, is_default, updated_at`
+            : `UPDATE dispatch_depots SET lat = $1, lon = $2, updated_at = now()
+               WHERE id = $3
+               RETURNING id, name, lat, lon, is_default, updated_at`,
+          name ? [lat, lon, existing.rows[0].id, name] : [lat, lon, existing.rows[0].id],
         );
         depotRow = upd.rows[0];
       } else {
         const ins = await dbQuery(
           `INSERT INTO dispatch_depots (tenant_id, name, lat, lon, is_default)
-           VALUES ($1, 'Default', $2, $3, true)
+           VALUES ($1, $2, $3, $4, true)
            RETURNING id, name, lat, lon, is_default, updated_at`,
-          [dbTenant.id, lat, lon],
+          [dbTenant.id, name || "Default", lat, lon],
         );
         depotRow = ins.rows[0];
       }
       json(res, 200, {
-        depot: { lat, lon, id: depotRow.id, name: depotRow.name || "Default" },
+        depot: { lat, lon, id: depotRow.id, name: depotRow.name || name || "Default" },
       });
       return true;
     }
