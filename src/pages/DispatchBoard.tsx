@@ -347,6 +347,10 @@ export default function DispatchBoard() {
     () => depots.find((d) => d.id === selectedDepotId) || null,
     [depots, selectedDepotId],
   );
+  const singleDepot = useMemo(
+    () => depots.find((d) => d.isDefault) || depots[0] || null,
+    [depots],
+  );
   const mapDraftPin =
     showPlanDay &&
     ((depotMode === "depot" && (pinningDepot || depotPin)) ||
@@ -1183,7 +1187,12 @@ export default function DispatchBoard() {
 
   async function onMapClick(lat: number, lon: number) {
     if (showPlanDay && depotMode === "depot" && pinningDepot) {
-      persistDepot(lat, lon);
+      const currentName = (singleDepot?.name || "").trim();
+      const mapName =
+        !currentName || currentName.toLowerCase() === "default"
+          ? `Map depot ${lat.toFixed(4)}, ${lon.toFixed(4)}`
+          : undefined;
+      persistDepot(lat, lon, mapName);
       setPinningDepot(false);
       setError("");
       return;
@@ -2353,12 +2362,27 @@ export default function DispatchBoard() {
               {depotMode === "depot" ? (
                 <>
                   <div className="field" style={{ gridColumn: "1 / -1" }}>
-                    <label>Depot name</label>
-                    <p className="dispatch-search-hint" style={{ margin: 0 }}>
-                      {depots.find((d) => d.isDefault)?.name ||
-                        depots[0]?.name ||
-                        (depotPin ? "Unnamed (pick an Armada POI to name it)" : "Not set")}
-                    </p>
+                    <label htmlFor="dispatch-single-depot-name">Depot name</label>
+                    <input
+                      id="dispatch-single-depot-name"
+                      value={singleDepot?.name || ""}
+                      disabled={busy || !singleDepot}
+                      placeholder={depotPin ? "Name this depot…" : "Set depot first"}
+                      onChange={(e) => {
+                        if (!singleDepot) return;
+                        const name = e.target.value;
+                        setDepots((prev) =>
+                          prev.map((d) => (d.id === singleDepot.id ? { ...d, name } : d)),
+                        );
+                      }}
+                      onBlur={() => {
+                        if (!singleDepot) return;
+                        const name = singleDepot.name.trim() || "Default";
+                        void patchDispatchDepot(singleDepot.id, { name }).catch((err) =>
+                          setError(err instanceof Error ? err.message : "Rename depot failed"),
+                        );
+                      }}
+                    />
                   </div>
                   <div className="field">
                     <label htmlFor="dispatch-depot-lat">Depot lat</label>
@@ -2418,6 +2442,17 @@ export default function DispatchBoard() {
                       })}
                     </select>
                   </div>
+                  {singleDepot ? (
+                    <div className="field" style={{ gridColumn: "1 / -1" }}>
+                      <CatalogCodesEditor
+                        kind="location"
+                        itemId={singleDepot.id}
+                        sku={singleDepot.id}
+                        name={singleDepot.name}
+                        disabled={busy}
+                      />
+                    </div>
+                  ) : null}
                   <div className="dispatch-create-actions" style={{ gridColumn: "1 / -1" }}>
                     <button
                       type="button"
@@ -2445,9 +2480,9 @@ export default function DispatchBoard() {
                     Return to depot (roundtrip)
                   </label>
                   <p className="dispatch-search-hint" style={{ gridColumn: "1 / -1" }}>
-                    Pick an Armada POI to set coordinates and the depot name. Map click or lat/lon keep
-                    the current name. Depot is remembered for this tenant and appears under Home
-                    depot on the job.
+                    POI sets coordinates and name. Map pin names the depot if it was still Default.
+                    You can rename anytime. Print QR / barcode here for Field location tags. Depot
+                    also appears under Home depot on the job.
                   </p>
                 </>
               ) : null}
