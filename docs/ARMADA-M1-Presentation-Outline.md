@@ -42,15 +42,16 @@ Use for flyer decks, sales/demo, or internal rollout. Pair with Mermaid from the
 **Flow (horizontal):**  
 Inbox orders → Job on vehicle → Assign driver (WhatsApp) → START / FINISH stops → Complete job  
 
-**Bullets (max 4):**
-- Orders pool by date · routines · carry-over  
-- Auto-plan (CVRP) or manual assign  
-- GPS + optional POD photo per stop  
-- Skip / reschedule keeps the same order for another day  
+**Bullets (max 5):**
+- Orders pool by date · routines · carry-over · goods catalog  
+- Auto-plan (CVRP) or manual assign · capacity-aware  
+- Scan cargo: add / confirm / serial · vehicle & depot tags (Admin per role)  
+- Print QR / barcode · desk NFC write · on-hand display (no auto-consume)  
+- GPS + optional POD · Live board  
 
 **Visual:** Mermaid happy-path or 5-step strip  
 
-**Speaker note:** Demo path: create stop → assign to job → show WhatsApp → open `/m` → FINISH one stop.
+**Speaker note:** Demo path: catalog good → print/scan → assign → FINISH on `/m`.
 
 ---
 
@@ -61,15 +62,16 @@ Inbox orders → Job on vehicle → Assign driver (WhatsApp) → START / FINISH 
 **Flow (horizontal):**  
 Create due → Assign tech (WhatsApp) → Start → Done → Approve  
 
-**Bullets (max 4):**
+**Bullets (max 5):**
 - Schedule by date / km / hours  
-- Parts, labor, photos, odometer on the job  
-- Next cycle auto-created after Done  
-- Reminders: due soon / overdue / next due  
+- Parts catalog: SKU, print QR / NFC, on-hand  
+- Field scan parts · optional serial · optional require scan before Done  
+- Next cycle after Done · reminders  
+- Done waits for manager Approve  
 
 **Visual:** Status pills: due → in_progress → done → approved  
 
-**Speaker note:** Contrast with Dispatch: Maintenance is not “done” until manager Approve.
+**Speaker note:** Contrast with Dispatch: Maintenance is not “done” until manager Approve. Scan never auto-completes.
 
 ---
 
@@ -81,13 +83,15 @@ Create due → Assign tech (WhatsApp) → Start → Done → Approve
 |--|----------|-------------|
 | Unit | Job + stops | Service event |
 | Done means | Driver finished route | Tech finished; await Approve |
+| Scan | Cargo add / confirm / serial · vehicle · depot | Part add / serial · vehicle · require before Done |
+| Labels | Print QR · desk NFC | Same on parts |
 | Repeat | Routine templates | Spawn next due |
 | Incomplete | Skip / reschedule | Skip / reopen |
 | Notify | On assign | Assign + schedule reminders |
 
 **Visual:** Two-column comparison (keep text large; cut rows if printing as flyer)  
 
-**Speaker note:** Customers often buy both; field staff switch tabs on `/m`.
+**Speaker note:** One scan switchboard per Field role; camera / type / NFC (APK) share one catalog.
 
 ---
 
@@ -126,10 +130,11 @@ If collapsing to a single flyer, use:
 
 - [ ] Logo / wordmark ARMADA M.1  
 - [ ] Screenshot: `/jobs` board (map + inbox)  
+- [ ] Screenshot: goods/parts Print QR or Field Scan cargo  
 - [ ] Screenshot: `/m` Dispatch job + FINISH  
 - [ ] Screenshot: `/m` Maintenance Start/Done  
 - [ ] Screenshot: `/mm` Approve  
 - [ ] Mermaid → PNG via [mermaid.live](https://mermaid.live) for slides 3–4  
 - [ ] Avoid dense tables on printed flyer; keep comparison for digital slide 5  
 
-*Aligned with `docs/ARMADA-M1-User-Guide.md`.*
+*Aligned with `docs/ARMADA-M1-User-Guide.md` and `docs/ARMADA-M1-Scan-Phases.md`.*

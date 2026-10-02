@@ -15,7 +15,9 @@ Meja merencanakan. Lapangan mengeksekusi. Manajer menutup siklus.
 **Perencanaan**
 - Kotak masuk order harian (pin peta, pencarian alamat / POI, atau formulir)
 - Drop saja, pickup saja, atau pickup lalu drop
-- Katalog barang (SKU, satuan, volume, berat) dan baris kargo di order
+- Katalog barang (SKU, satuan, volume, berat, tampilan stok on-hand) dan baris kargo di order
+- Cetak QR / barcode dan Write NFC di meja; Field scan untuk menambah atau mengonfirmasi kargo
+- Serial / lot opsional, tag kendaraan, tag lokasi depo — Admin mengatur per peran Field
 - Impor CSV untuk order dan barang
 - Template rutin: harian, hari kerja, atau mingguan
 - Order tersisa bisa dibawa ke hari berikutnya
@@ -32,6 +34,7 @@ Meja merencanakan. Lapangan mengeksekusi. Manajer menutup siklus.
 
 **Eksekusi & bukti**
 - Pengemudi bekerja per stop: navigasi, mulai, selesai
+- Scan kargo di Field (kamera / ketik / NFC di APK) sesuai matriks Admin
 - GPS HP dan GPS kendaraan tersimpan saat mulai dan selesai
 - Foto bukti serah (POD) opsional sebelum selesai
 - Skip / reschedule memakai **nomor order yang sama** di tanggal baru
@@ -49,12 +52,13 @@ Meja merencanakan. Lapangan mengeksekusi. Manajer menutup siklus.
 **Jadwal**
 - Event servis di kendaraan: tanggal, interval kalender, km, dan/atau jam mesin
 - Jendela “akan jatuh tempo” sebelum batas
-- Katalog suku cadang / jasa / tenaga kerja
+- Katalog suku cadang / jasa / tenaga kerja (SKU, on-hand, cetak QR / Write NFC di meja)
 - Setelah teknisi menandai Selesai, siklus berikutnya bisa dibuat otomatis
 
 **Eksekusi**
 - Assign teknisi → WhatsApp
 - Field: Mulai (timer), catatan, odometer, baris katalog, foto
+- Scan suku cadang (serial opsional); wajib scan sebelum Selesai jika Admin mengaktifkannya
 - Draf bisa tersimpan di perangkat sampai dikirim
 - Skip tanpa menyelesaikan; bisa dibuka ulang
 - Selesai **bukan** penutup — menunggu manajer
@@ -71,15 +75,16 @@ Papan meja: perhatian, akan datang, jatuh tempo, terlambat, selesai. Tampilan bi
 
 Situs Field yang sama (`/m`), sebagai aplikasi HP. Tab Dispatch dan Maintenance dalam satu tempat.
 
-- Masuk sebagai pengguna lapangan
-- **Dispatch:** kalender bulan (titik pending / berjalan / selesai), job hari ini, mulai rute, navigasi, mulai/selesai tiap stop, foto POD, skip/reschedule, catatan job
-- **Maintenance:** mulai job, catatan, odometer, suku cadang/tenaga, foto, Selesai atau Skip
+- Masuk sebagai pengguna lapangan (peran: operator, driver, dispatcher, manager, worker1/2, field1/2)
+- **Dispatch:** kalender bulan (titik pending / berjalan / selesai), job hari ini, mulai rute, navigasi, mulai/selesai tiap stop, scan kargo / kendaraan / lokasi, foto POD, skip/reschedule, catatan job
+- **Maintenance:** mulai job, catatan, odometer, scan suku cadang, foto, Selesai atau Skip
+- **Scan:** kamera barcode / QR, ketik kode, atau ketuk NFC (APK) — fungsi mengikuti matriks scan Admin per peran
 - **Ambil foto** dari kamera, atau dari galeri
 - **Bagikan lokasi saat bertugas:** GPS native meski layar mati atau aplikasi lain terbuka (notifikasi tetap tampil)
 - Interval bisa diatur (bergerak vs parkir); Dispatch melihat jejak HP di Live
 - Berbagi berhenti saat job selesai, atau jika aplikasi diusap keluar
 
-Field di peramban tetap jalan. APK untuk pengemudi yang butuh kamera + GPS latar. Bukan listing Play Store / iOS, dan tidak melacak jika tidak ada job berjalan.
+Field di peramban tetap jalan. APK untuk pengemudi yang butuh kamera + GPS latar + NFC baca. Bukan listing Play Store / iOS, dan tidak melacak jika tidak ada job berjalan. Field tidak menulis NFC; stok on-hand hanya tampilan (belum dikurangi saat scan).
 
 ### Platform bersama
 
@@ -111,7 +116,9 @@ Meja merencanakan. Lapangan mengeksekusi. Manajer menutup siklus.
 Kotak masuk → job di kendaraan → WhatsApp ke pengemudi → mulai / selesai tiap stop → job lengkap
 
 - Order harian: drop, pickup, atau pickup lalu drop
-- Katalog barang, kapasitas (m³ / kg), impor CSV, rutin harian / mingguan
+- Katalog barang (SKU, on-hand), kapasitas (m³ / kg), impor CSV, rutin harian / mingguan
+- Cetak QR / barcode dan Write NFC di meja; scan kargo di Field (tambah / konfirmasi / serial opsional)
+- Tag kendaraan dan depo opsional — Admin mengatur per peran
 - Auto-plan armada (CVRP) atau assign manual
 - Papan live: siapa pending, dalam rute, atau terkirim
 - Bukti: GPS HP, GPS kendaraan, foto POD opsional
@@ -122,6 +129,8 @@ Kotak masuk → job di kendaraan → WhatsApp ke pengemudi → mulai / selesai t
 Buat jatuh tempo → assign teknisi (WhatsApp) → Mulai → Selesai → Setujui
 
 - Jadwal berdasarkan tanggal, kilometer, dan/atau jam mesin
+- Katalog suku cadang: SKU, on-hand, cetak QR / Write NFC
+- Scan suku cadang di Field; wajib scan sebelum Selesai jika diaktifkan
 - Suku cadang, tenaga kerja, foto, dan odometer di job
 - Siklus servis berikutnya bisa terbuka otomatis setelah Selesai
 - Pengingat: akan jatuh tempo, terlambat, due berikutnya — WhatsApp dan email
@@ -134,6 +143,7 @@ Satu aplikasi untuk pengemudi dan teknisi.
 - Tab Dispatch dan Maintenance
 - Kalender bulan dengan titik pending / berjalan / selesai
 - Navigasi, mulai, selesai, skip / reschedule
+- Scan: kamera barcode / QR, ketik kode, atau NFC (APK) — sesuai matriks peran Admin
 - Kamera atau galeri untuk foto bukti
 - Bagikan lokasi saat bertugas — GPS tetap jalan saat layar mati
 - Berbagi berhenti ketika job selesai
@@ -182,14 +192,14 @@ Kotak masuk → Job di kendaraan → WhatsApp → MULAI / SELESAI → Job lengka
 
 - Pool per tanggal · rutin · bawa sisa · barang · pickup/drop
 - Auto-plan atau assign manual · sadar kapasitas
-- GPS + foto POD opsional
-- Trip baru untuk sisa kerja setelah rute selesai
-- Live: pending, dalam rute, terkirim
+- Scan kargo: tambah, konfirmasi, serial opsional · tag kendaraan & depo
+- Cetak QR / barcode · Write NFC di meja · on-hand (tidak auto-kurangi)
+- GPS + foto POD opsional · Live: pending, dalam rute, terkirim
 
 **Ucapkan**  
-Dispatcher menyusun kotak masuk hari ini — pin peta, impor CSV, atau generate rutin harian. Order itu naik ke job kendaraan, dengan kapasitas kubikasi dan kilo. Assign pengemudi, mereka dapat WhatsApp berisi tautan ke Field. Di HP mereka navigasi, mulai, dan selesaikan tiap stop. GPS HP dan kendaraan tersimpan; foto bisa diwajibkan. Ketika stop terakhir selesai, job tertutup. Jika ada order baru, Anda mulai trip baru untuk pengemudi yang sama — rute yang sudah selesai tidak dibuka lagi. Ops melihat Dispatch Live: siapa masih pending, siapa dalam rute, siapa sudah terkirim.
+Dispatcher menyusun kotak masuk hari ini — pin peta, impor CSV, atau generate rutin harian. Order itu naik ke job kendaraan, dengan kapasitas kubikasi dan kilo. Barang punya SKU: cetak QR atau barcode di meja, atau tulis NFC dari Chrome Android. Di Field pengemudi bisa scan untuk menambah kargo, mengonfirmasi checklist, atau mencatat serial — Admin memilih fungsi per peran. Tag kendaraan dan depo juga tersedia. Assign pengemudi, mereka dapat WhatsApp berisi tautan ke Field. Di HP mereka navigasi, mulai, dan selesaikan tiap stop. GPS HP dan kendaraan tersimpan; foto bisa diwajibkan. Ketika stop terakhir selesai, job tertutup. Jika ada order baru, Anda mulai trip baru untuk pengemudi yang sama — rute yang sudah selesai tidak dibuka lagi. Ops melihat Dispatch Live: siapa masih pending, siapa dalam rute, siapa sudah terkirim.
 
-**Demo jika ada waktu:** tambah satu stop → assign ke job → tunjukkan WhatsApp → selesaikan stop di Field.
+**Demo jika ada waktu:** tambah satu stop dengan barang katalog → cetak atau scan SKU di Field → assign → selesaikan stop.
 
 ---
 
@@ -201,12 +211,12 @@ Jadwalkan servis. Teknisi mengerjakan. Manajer mengunci.
 Buat jatuh tempo → Assign (WhatsApp) → Mulai → Selesai → Setujui
 
 - Tanggal / km / jam mesin
-- Suku cadang, tenaga, foto, odometer
-- Siklus berikutnya setelah Selesai
-- Pengingat: akan jatuh tempo / terlambat / due berikutnya
+- Katalog suku cadang: SKU, cetak QR / NFC, on-hand
+- Scan suku cadang · serial opsional · wajib scan sebelum Selesai (opsional)
+- Siklus berikutnya setelah Selesai · pengingat jatuh tempo
 
 **Ucapkan**  
-Maintenance adalah event servis di kendaraan, bukan stop pengiriman. Anda jadwalkan lewat kalender, odometer, jam mesin, atau ketiganya. Assign teknisi — WhatsApp lagi. Mereka mulai job, isi catatan, suku cadang, tenaga, odometer, dan foto. Ketika mereka menekan Selesai, itu belum berakhir. Manajer meninjau dan menyetujui. Kunci itu adalah jejak audit. Jika job punya siklus, due berikutnya bisa dibuat otomatis, dan kami mengingatkan meja sebelum terlambat.
+Maintenance adalah event servis di kendaraan, bukan stop pengiriman. Anda jadwalkan lewat kalender, odometer, jam mesin, atau ketiganya. Suku cadang memakai fondasi scan yang sama dengan barang: cetak di meja, scan di HP. Admin bisa mewajibkan setiap suku cadang katalog di-scan sebelum Selesai — bip tidak pernah menyelesaikan job sendiri. Assign teknisi — WhatsApp lagi. Mereka mulai job, isi catatan, suku cadang, tenaga, odometer, dan foto. Ketika mereka menekan Selesai, itu belum berakhir. Manajer meninjau dan menyetujui. Kunci itu adalah jejak audit. Jika job punya siklus, due berikutnya bisa dibuat otomatis, dan kami mengingatkan meja sebelum terlambat.
 
 **Kalimat pembeda:** Dispatch selesai ketika pengemudi menyelesaikan rute. Maintenance selesai ketika manajer menyetujui.
 
@@ -220,13 +230,15 @@ Maintenance adalah event servis di kendaraan, bukan stop pengiriman. Anda jadwal
 |--|----------|-------------|
 | Satuan | Job + stop | Event servis |
 | Selesai berarti | Pengemudi menyelesaikan rute | Teknisi selesai; manajer menyetujui |
+| Scan | Tambah / konfirmasi / serial kargo · kendaraan · depo | Tambah / serial suku cadang · kendaraan · wajib sebelum Selesai |
+| Label | Cetak QR · Write NFC di meja | Sama di katalog suku cadang |
 | Pengulangan | Template rutin | Due berikutnya setelah Selesai |
 | Tidak selesai | Skip / reschedule order yang sama | Skip / buka ulang |
 | Notifikasi | Assign + update rute | Assign + pengingat jatuh tempo |
-| HP | Mulai / selesai + POD | Mulai / Selesai + foto suku cadang |
+| HP | Mulai / selesai + POD + scan | Mulai / Selesai + foto + scan |
 
 **Ucapkan**  
-Inilah alasan pelanggan membeli keduanya. Satu aplikasi Android, dua tab. Pengemudi yang mengirim dan teknisi di bengkel tidak belajar dua produk. Bedanya adalah tata kelola: pengiriman bisa ditutup di lapangan; job servis menunggu manajer. Itu kalimat yang ingin Anda tinggalkan di ruangan.
+Inilah alasan pelanggan membeli keduanya. Satu aplikasi Android, dua tab, satu matriks scan per peran — pengemudi, operator, worker, field. Pengemudi yang mengirim dan teknisi di bengkel tidak belajar dua produk. Kamera, ketik kode, atau ketuk NFC di APK menuju katalog yang sama. Bedanya adalah tata kelola: pengiriman bisa ditutup di lapangan; job servis menunggu manajer. Itu kalimat yang ingin Anda tinggalkan di ruangan.
 
 ---
 
@@ -252,3 +264,5 @@ Kami mengaktifkan Dispatch, Maintenance, atau keduanya untuk tenant Anda. Kami m
 - Flyer: wordmark + dua tangkapan layar kecil (papan Jobs, Field selesai). Jangan taruh tabel perbandingan di halaman cetak.
 - Slide: teks di slide besar; detail ada di skrip.
 - Jangan klaim Play Store, iOS, atau pelacakan saat tidak ada job berjalan.
+- Jangan klaim Field menulis NFC, scan menyelesaikan job sendiri, atau scan mengurangi stok — Write NFC hanya di meja; Require job hanya gerbang; on-hand hanya tampilan.
+- Detail teknis scan: `docs/ARMADA-M1-Scan-Phases.md`.
