@@ -61,10 +61,26 @@ export async function createFieldSession(fieldUserId) {
   return { token, expiresAt };
 }
 
+/** Cookie, Bearer, or a photo URL token for the offline APK image tags. */
+export function fieldSessionTokenFromRequest(req) {
+  const header = String(req.headers?.authorization || "");
+  const bearer = header.match(/^Bearer\s+(\S+)/i);
+  if (bearer) return bearer[1];
+  const cookie = readCookies(req)[COOKIE];
+  if (cookie) return cookie;
+  const url = String(req.url || "");
+  if (!/\/api\/field\/(?:maintenance|dispatch)\/photos\//.test(url)) return "";
+  try {
+    return new URL(url, "http://localhost").searchParams.get("fieldSid") || "";
+  } catch {
+    return "";
+  }
+}
+
 /** @param {import('node:http').IncomingMessage} req */
 export async function fieldFromRequest(req) {
   if (!databaseUrlConfigured()) return null;
-  const token = readCookies(req)[COOKIE];
+  const token = fieldSessionTokenFromRequest(req);
   if (!token) return null;
   const res = await dbQuery(
     `SELECT s.id AS session_id, u.id, u.username, u.role, u.display_name, u.enabled,

@@ -6,12 +6,11 @@ import {
   clearFieldSessionCookieHeader,
   createFieldSession,
   destroyFieldSessionByToken,
-  fieldCookieName,
   fieldFromRequest,
   fieldSessionCookieHeader,
+  fieldSessionTokenFromRequest,
   verifyPassword,
 } from "./field-auth.mjs";
-import { readCookies } from "./admin-auth.mjs";
 import {
   loadDispatchPhotoBytes,
   publicDispatchPhoto,
@@ -392,11 +391,13 @@ export async function handleFieldRequest(req, res) {
       const session = await createFieldSession(row.id);
       const maxAge = Math.floor((session.expiresAt.getTime() - Date.now()) / 1000);
       const flags = await mobileFlagsForTenant(row.tenant_id);
+      const offlineClient = String(req.headers["x-field-offline"] || "") === "1";
       json(
         res,
         200,
         {
           ok: true,
+          ...(offlineClient ? { sessionToken: session.token } : {}),
           user: publicFieldUser({
             id: row.id,
             username: row.username,
@@ -419,7 +420,7 @@ export async function handleFieldRequest(req, res) {
     }
 
     if (url.pathname === "/api/field/logout" && req.method === "POST") {
-      const token = readCookies(req)[fieldCookieName()];
+      const token = fieldSessionTokenFromRequest(req);
       if (token) await destroyFieldSessionByToken(token);
       json(res, 200, { ok: true }, { "Set-Cookie": clearFieldSessionCookieHeader() });
       return true;

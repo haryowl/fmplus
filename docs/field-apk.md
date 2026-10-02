@@ -35,6 +35,19 @@ If GPS dies on Xiaomi / Oppo / Vivo after a few minutes, exempt **ARMADA Field**
 
 The current server uses a private HTTPS cert on `81.17.100.7`. The APK trusts that host only.
 
+## Offline APK
+
+A second app, **ARMADA Field Offline** (`id.armada.field.offline`), keeps today's Dispatch and Maintenance jobs on the phone. The app above is unchanged.
+
+```bash
+npm run apk:offline:sync
+npm run apk:offline:debug
+```
+
+APK path: `android-offline/app/build/outputs/apk/debug/app-debug.apk`
+
+Sign in once while online. After that, Start, finish, notes, parts, and photos are kept on the phone and sent when the signal returns. `FIELD_APP_URL` sets the API host at sync time.
+
 ## Not in this APK
 
 Play Store listing, iOS, tracking when no job is in progress, and push notifications for new jobs.

@@ -17,6 +17,8 @@ import TripDetail from "./pages/TripDetail";
 import AdminConsole from "./pages/AdminConsole";
 import FieldLogin from "./pages/FieldLogin";
 import ManagerMaintenance from "./pages/ManagerMaintenance";
+import { OfflineFieldBar } from "./components/OfflineFieldBar";
+import { installOfflineField, offlineFieldEnabled } from "./lib/offlineField";
 import { VIEW_CHANGE, viewFromPath, type AppView } from "./lib/routing";
 import { bootTenantFromSearch } from "./lib/tenant";
 import { bootTheme } from "./lib/theme";
@@ -24,6 +26,9 @@ import "./styles.css";
 
 bootTheme();
 bootTenantFromSearch(window.location.search);
+if (offlineFieldEnabled()) {
+  void installOfflineField(window.fetch.bind(window));
+}
 
 function pageFor(view: AppView) {
   if (view === "admin") return AdminConsole;
@@ -56,7 +61,12 @@ function Root() {
     };
   }, []);
   const Page = pageFor(view);
-  return <Page />;
+  return (
+    <>
+      {offlineFieldEnabled() ? <OfflineFieldBar /> : null}
+      <Page />
+    </>
+  );
 }
 
 createRoot(document.getElementById("root")!).render(

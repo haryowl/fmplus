@@ -22,7 +22,9 @@
     "probe:armada": "node scripts/probe-armada-apis.mjs",
     "osrm:up": "docker compose --profile osrm up -d osrm",
     "apk:sync": "npm run build && npx cap sync android",
-    "apk:debug": "node scripts/apk-debug.mjs"
+    "apk:debug": "node scripts/apk-debug.mjs",
+    "apk:offline:sync": "node scripts/apk-offline-sync.mjs",
+    "apk:offline:debug": "node scripts/apk-offline-debug.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.901.0",

@@ -3068,6 +3068,18 @@ html.onesheet-root body {
 }
 
 /* —— Field login (/m, /dispatch) —— */
+.offline-field-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding: 8px 12px;
+  background: #1c2b28;
+  color: #f4f1ea;
+  font-size: 13px;
+}
+.offline-field-conflict {
+  color: #f3c1a8;
+}
 .field-app {
   min-height: 100vh;
   max-width: 100%;

@@ -4,6 +4,7 @@ data/osrm
 node_modules
 dist
 dist-ssr
+dist-offline
 *.local
 .env
 .env.local
@@ -17,3 +18,7 @@ ssl/*.pem
 .idea
 *.apk
 *.aab
+android-offline/.gradle
+android-offline/app/build
+android-offline/build
+android-offline/app/src/main/assets/public
