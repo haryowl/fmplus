@@ -7553,6 +7553,13 @@ button.dispatch-pin-chip {
   font-size: 1.1rem;
 }
 
+.maintenance-catalog-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-start;
+}
+
 .maintenance-catalog-group {
   display: grid;
   gap: 10px;

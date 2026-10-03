@@ -282,6 +282,35 @@ export async function fetchMaintenanceCatalog(signal?: AbortSignal): Promise<Cat
   return data.groups || [];
 }
 
+export async function importMaintCatalog(body: {
+  rows: Record<string, string>[];
+}): Promise<{
+  created: number;
+  updated: number;
+  errors: number;
+  errorRows: Array<{ line: number; error: string }>;
+}> {
+  const res = await fetch("/api/maintenance/catalog/import", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    created?: number;
+    updated?: number;
+    errors?: number;
+    errorRows?: Array<{ line: number; error: string }>;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Import catalog ${res.status}`);
+  return {
+    created: Number(data.created) || 0,
+    updated: Number(data.updated) || 0,
+    errors: Number(data.errors) || 0,
+    errorRows: data.errorRows || [],
+  };
+}
+
 export async function createMaintCatalogItem(body: {
   groupId: string;
   name: string;

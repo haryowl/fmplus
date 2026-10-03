@@ -1,11 +1,19 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { printCatalogLabel } from "../lib/catalogCodes";
+import {
+  downloadCsv,
+  maintenanceCatalogCsvFromGroups,
+  maintenanceCatalogCsvTemplate,
+  parseCsv,
+} from "../lib/csvImport";
 import { CatalogCodesEditor } from "./CatalogCodesEditor";
 import { CatalogNfcWriteButton } from "./CatalogNfcWriteButton";
+import { CsvImportPanel } from "./CsvImportPanel";
 import {
   createMaintCatalogItem,
   deleteMaintCatalogItem,
   fetchMaintenanceCatalog,
+  importMaintCatalog,
   LINE_KIND_LABELS,
   patchMaintCatalogItem,
   type CatalogGroup,
@@ -114,6 +122,50 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
         {onClose ? (
           <button type="button" className="btn-secondary" onClick={onClose}>
             Close
+          </button>
+        ) : null}
+      </div>
+      <div className="maintenance-catalog-tools">
+        <CsvImportPanel
+          title="Import catalog CSV"
+          disabled={busy || loading}
+          templateFilename="maintenance-catalog-template.csv"
+          hint="Required: kind (part or service) and name. Matching SKU or name in that kind updates the row. Part rows can include sku and on_hand. Optional: unit_price, unit_cost, enabled. Others stays free text. Max 500 rows."
+          onDownloadTemplate={() =>
+            downloadCsv("maintenance-catalog-template.csv", maintenanceCatalogCsvTemplate())
+          }
+          parseFile={(text) => {
+            const { headers, rows } = parseCsv(text);
+            const missing = ["kind", "name"].filter((h) => !headers.includes(h));
+            if (missing.length) return { rows: [], error: `Missing columns: ${missing.join(", ")}` };
+            if (!rows.length) return { rows: [], error: "No data rows found" };
+            if (rows.length > 500) return { rows: [], error: "Maximum 500 rows per import" };
+            return { rows };
+          }}
+          onImport={async (rows) => {
+            setBusy(true);
+            setError("");
+            try {
+              const out = await importMaintCatalog({ rows });
+              await reload();
+              return out;
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : "Import failed";
+              setError(msg);
+              throw err;
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+        {groups.some((g) => (g.key === "part" || g.key === "service") && g.items.length) ? (
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={busy}
+            onClick={() => downloadCsv("maintenance-catalog.csv", maintenanceCatalogCsvFromGroups(groups))}
+          >
+            Export catalog CSV
           </button>
         ) : null}
       </div>

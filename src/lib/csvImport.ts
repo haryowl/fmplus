@@ -196,6 +196,57 @@ export function dispatchGoodsCsvFromItems(
   );
 }
 
+export const MAINTENANCE_CATALOG_CSV_HEADERS = [
+  "kind",
+  "name",
+  "sku",
+  "unit_price",
+  "unit_cost",
+  "on_hand",
+  "enabled",
+] as const;
+
+export function maintenanceCatalogCsvTemplate(): string {
+  return toCsv(
+    [...MAINTENANCE_CATALOG_CSV_HEADERS],
+    [
+      ["part", "Brake Pad", "PAD-01", 85000, 40000, 12, "yes"],
+      ["service", "Routine service", "", 150000, 80000, "", "yes"],
+    ],
+  );
+}
+
+export function maintenanceCatalogCsvFromGroups(
+  groups: Array<{
+    key: string;
+    items: Array<{
+      name: string;
+      sku?: string;
+      unitPrice?: number | null;
+      unitCost?: number | null;
+      onHand?: number | null;
+      enabled?: boolean;
+    }>;
+  }>,
+): string {
+  const rows: Array<Array<string | number>> = [];
+  for (const group of groups) {
+    if (group.key !== "part" && group.key !== "service") continue;
+    for (const item of group.items || []) {
+      rows.push([
+        group.key,
+        item.name,
+        group.key === "part" ? item.sku || "" : "",
+        item.unitPrice ?? "",
+        item.unitCost ?? "",
+        group.key === "part" ? (item.onHand ?? "") : "",
+        item.enabled === false ? "no" : "yes",
+      ]);
+    }
+  }
+  return toCsv([...MAINTENANCE_CATALOG_CSV_HEADERS], rows);
+}
+
 export const MAINTENANCE_EVENT_CSV_HEADERS = [
   "title",
   "armada_user_id",

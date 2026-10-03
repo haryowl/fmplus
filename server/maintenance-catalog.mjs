@@ -210,6 +210,122 @@ export async function updateCatalogItem(tenantId, itemId, body) {
   return publicCatalogItem({ ...updated.rows[0], group_key: row.group_key });
 }
 
+/** CSV kind cell → catalog group key. Others stays free text and is not imported. */
+export function catalogKindFromCsv(raw) {
+  const s = String(raw || "")
+    .trim()
+    .toLowerCase();
+  if (["part", "parts"].includes(s)) return "part";
+  if (["service", "labor"].includes(s)) return "service";
+  return "";
+}
+
+function csvEnabledFlag(v) {
+  if (v == null || String(v).trim() === "") return null;
+  const s = String(v).trim().toLowerCase();
+  if (["0", "no", "false", "off", "disabled"].includes(s)) return false;
+  return true;
+}
+
+function csvNumOrNull(v) {
+  if (v == null || String(v).trim() === "") return null;
+  const n = Number(String(v).trim().replace(/,/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Create or update Part / Service catalog rows.
+ * Match an existing row in the same kind by SKU, then by name.
+ */
+export async function importCatalogItemsFromRows(tenantId, rawRows) {
+  const rows = Array.isArray(rawRows) ? rawRows : [];
+  if (rows.length > 500) {
+    const err = new Error("Maximum 500 catalog rows per import");
+    err.status = 400;
+    throw err;
+  }
+  const groups = await ensureCatalog(tenantId);
+  const groupByKey = new Map(groups.map((g) => [g.key, g]));
+  const bySku = new Map();
+  const byName = new Map();
+  for (const group of groups) {
+    for (const item of group.items || []) {
+      if (item.sku) bySku.set(`${group.key}|${String(item.sku).toLowerCase()}`, item);
+      byName.set(`${group.key}|${String(item.name).toLowerCase()}`, item);
+    }
+  }
+  const created = [];
+  const updated = [];
+  const errors = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] && typeof rows[i] === "object" ? rows[i] : {};
+    const line = i + 2;
+    const kind = catalogKindFromCsv(row.kind || row.group || row.type || row.line_kind);
+    const name = String(row.name || row.item || "").trim().slice(0, 200);
+    if (!kind) {
+      errors.push({ line, error: "kind must be part or service" });
+      continue;
+    }
+    if (!name) {
+      errors.push({ line, error: "name is required" });
+      continue;
+    }
+    const group = groupByKey.get(kind);
+    if (!group) {
+      errors.push({ line, error: "Catalog group not found" });
+      continue;
+    }
+    const sku =
+      kind === "part" ? String(row.sku || "").trim().slice(0, 80) : "";
+    const unitPrice = csvNumOrNull(row.unit_price ?? row.unitPrice ?? row.price);
+    const unitCost = csvNumOrNull(row.unit_cost ?? row.unitCost ?? row.cost);
+    const onHand = csvNumOrNull(row.on_hand ?? row.onHand ?? row.on_hand_qty);
+    const enabled = csvEnabledFlag(row.enabled);
+    try {
+      const found =
+        (sku && bySku.get(`${kind}|${sku.toLowerCase()}`)) ||
+        byName.get(`${kind}|${name.toLowerCase()}`) ||
+        null;
+      if (found) {
+        const patch = { name };
+        if (kind === "part" && sku) patch.sku = sku;
+        if (unitPrice != null) patch.unitPrice = unitPrice;
+        if (unitCost != null) patch.unitCost = unitCost;
+        if (kind === "part" && onHand != null) patch.onHand = onHand;
+        if (enabled != null) patch.enabled = enabled;
+        const item = await updateCatalogItem(tenantId, found.id, patch);
+        updated.push(item);
+        byName.delete(`${kind}|${String(found.name).toLowerCase()}`);
+        if (found.sku) bySku.delete(`${kind}|${String(found.sku).toLowerCase()}`);
+        byName.set(`${kind}|${item.name.toLowerCase()}`, item);
+        if (item.sku) bySku.set(`${kind}|${item.sku.toLowerCase()}`, item);
+      } else {
+        const item = await createCatalogItem(tenantId, {
+          groupId: group.id,
+          name,
+          sku: sku || undefined,
+          unitPrice,
+          unitCost,
+          onHand: kind === "part" ? onHand : null,
+          enabled: enabled !== false,
+        });
+        created.push(item);
+        byName.set(`${kind}|${item.name.toLowerCase()}`, item);
+        if (item.sku) bySku.set(`${kind}|${item.sku.toLowerCase()}`, item);
+      }
+    } catch (err) {
+      errors.push({ line, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return {
+    created: created.length,
+    updated: updated.length,
+    errors: errors.length,
+    items: [...created, ...updated],
+    errorRows: errors,
+  };
+}
+
 export async function deleteCatalogItem(tenantId, itemId) {
   await deleteCodesForTarget(tenantId, "maint_part", itemId);
   const res = await dbQuery(

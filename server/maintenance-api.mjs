@@ -23,6 +23,7 @@ import {
   createCatalogItem,
   deleteCatalogItem,
   ensureCatalog,
+  importCatalogItemsFromRows,
   normalizeLineKind,
   updateCatalogItem,
 } from "./maintenance-catalog.mjs";
@@ -1173,6 +1174,22 @@ export async function handleMaintenanceRequest(req, res) {
     if (url.pathname === "/api/maintenance/catalog" && req.method === "GET") {
       const groups = await ensureCatalog(dbTenant.id);
       json(res, 200, { groups });
+      return true;
+    }
+
+    if (url.pathname === "/api/maintenance/catalog/import" && req.method === "POST") {
+      const body = await readJson(req);
+      let rawRows = Array.isArray(body.rows) ? body.rows : null;
+      if (!rawRows && typeof body.csv === "string") {
+        const { parseCsv } = await import("./csv-parse.mjs");
+        rawRows = parseCsv(body.csv).rows;
+      }
+      if (!rawRows) {
+        json(res, 400, { error: "rows or csv required" });
+        return true;
+      }
+      const out = await importCatalogItemsFromRows(dbTenant.id, rawRows);
+      json(res, 200, out);
       return true;
     }
 
