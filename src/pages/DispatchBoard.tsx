@@ -25,6 +25,7 @@ import {
   cadenceLabel,
   createDispatchDepot,
   createDispatchJob,
+  createDispatchCustomer,
   createDispatchOrder,
   createDispatchOrderTemplate,
   deleteDispatchDepot,
@@ -59,6 +60,7 @@ import {
   optimizeJobStops,
   patchDispatchDepot,
   patchDispatchJob,
+  patchDispatchCustomer,
   patchDispatchOrder,
   patchDispatchOrderTemplate,
   planDispatchDay,
@@ -181,6 +183,7 @@ const emptyOrderForm = {
   pickupProofRequired: false,
   notes: "",
   customerId: null as string | null,
+  saveAsCustomer: false,
   saveAsTemplate: false,
   templateCadence: "daily" as DispatchOrderCadence,
   templateWeekday: String(new Date().getDay()),
@@ -1407,6 +1410,7 @@ export default function DispatchBoard() {
       pickupProofRequired: o.pickupProofRequired === true,
       notes: o.notes || "",
       customerId: o.customerId || null,
+      saveAsCustomer: false,
       saveAsTemplate: false,
       templateCadence: "daily",
       templateWeekday: String(new Date().getDay()),
@@ -1482,7 +1486,32 @@ export default function DispatchBoard() {
       if (editingOrderId) {
         await patchDispatchOrder(editingOrderId, payload);
       } else {
-        await createDispatchOrder(payload);
+        let customerId = orderForm.customerId;
+        if (orderForm.saveAsCustomer && !customerId && orderForm.lat != null && orderForm.lon != null) {
+          const customerBody = {
+            name: payload.customerName,
+            lat: orderForm.lat,
+            lon: orderForm.lon,
+            zone: orderForm.zone.trim(),
+            address: orderForm.address.trim(),
+            notes: orderForm.notes.trim(),
+            windowStart: normalizeClockHm(orderForm.windowStart),
+            windowEnd: normalizeClockHm(orderForm.windowEnd),
+            proofRequired: orderForm.proofRequired,
+          };
+          const match = customers.find(
+            (c) => c.name.trim().toLowerCase() === payload.customerName.toLowerCase(),
+          );
+          const saved = match
+            ? await patchDispatchCustomer(match.id, customerBody)
+            : await createDispatchCustomer(customerBody);
+          customerId = saved.id;
+          setCustomers((prev) => {
+            const rest = prev.filter((c) => c.id !== saved.id);
+            return [...rest, saved].sort((a, b) => a.name.localeCompare(b.name));
+          });
+        }
+        await createDispatchOrder({ ...payload, customerId });
         if (orderForm.saveAsTemplate) {
           await createDispatchOrderTemplate({
             ...payload,
@@ -3773,6 +3802,16 @@ export default function DispatchBoard() {
                       ? "pickup"
                       : "FINISH"}
                 </label>
+                {!editingOrderId && !orderForm.customerId ? (
+                  <label className="dispatch-plan-check" style={{ marginTop: 4 }}>
+                    <input
+                      type="checkbox"
+                      checked={orderForm.saveAsCustomer}
+                      onChange={(e) => setOrderForm((f) => ({ ...f, saveAsCustomer: e.target.checked }))}
+                    />
+                    Also save to customer list
+                  </label>
+                ) : null}
                 {!editingOrderId ? (
                   <>
                     <label className="dispatch-plan-check" style={{ marginTop: 4 }}>
