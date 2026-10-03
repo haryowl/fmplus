@@ -88,8 +88,9 @@ lint/tmp/
 # Android Profiling
 *.hprof
 
-# Cordova plugins for Capacitor
-capacitor-cordova-android-plugins
+# This project is not produced by cap sync, so the empty Cordova plugin
+# project is committed. Ignore only its build output.
+capacitor-cordova-android-plugins/build
 
 # Copied web assets (npm run apk:offline:sync)
 app/src/main/assets/public
