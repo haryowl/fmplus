@@ -21,6 +21,7 @@ export interface DutyLocationPlugin {
   flush(): Promise<NativeDutyStatus>;
   getStatus(): Promise<NativeDutyStatus>;
   ensurePermission(): Promise<{ permission: string }>;
+  getFix(): Promise<{ lat?: number; lon?: number }>;
   addListener(
     eventName: "status",
     listenerFunc: (status: NativeDutyStatus) => void,

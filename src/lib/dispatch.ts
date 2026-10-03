@@ -1386,8 +1386,29 @@ export async function fieldPatchStop(
   return { job: data.job, stop: data.stop };
 }
 
-/** Browser geolocation; null if denied/unavailable. */
+/** Phone position for a start/finish mark. Null if denied or unavailable. */
 export function readPhonePosition(timeoutMs = 12_000): Promise<{ lat: number; lon: number } | null> {
+  return readNativeFix().then((native) => native || readWebPosition(timeoutMs));
+}
+
+async function readNativeFix(): Promise<{ lat: number; lon: number } | null> {
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    if (!Capacitor.isNativePlatform()) return null;
+    const { DutyLocation } = await import("./dutyLocationNative");
+    const fix = await DutyLocation.getFix();
+    const lat = Number(fix?.lat);
+    const lon = Number(fix?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    if (lat === 0 && lon === 0) return null;
+    return { lat, lon };
+  } catch {
+    return null;
+  }
+}
+
+function readWebPosition(timeoutMs: number): Promise<{ lat: number; lon: number } | null> {
   return new Promise((resolve) => {
     if (!navigator.geolocation) {
       resolve(null);

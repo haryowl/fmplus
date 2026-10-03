@@ -307,9 +307,17 @@ export async function flushOfflineField(): Promise<void> {
   }
 }
 
+function stampActionTime(body: unknown, at: string): unknown {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return body ?? {};
+  const row = body as Record<string, unknown>;
+  if (typeof row.recordedAt === "string" && row.recordedAt) return body;
+  return { ...row, recordedAt: at };
+}
+
 async function queueWrite(method: string, pathAndQuery: string, body: unknown): Promise<Response> {
   const at = new Date().toISOString();
-  const applied = applyOfflineWrite(snap, method, pathAndQuery, body, at);
+  const stamped = stampActionTime(body, at);
+  const applied = applyOfflineWrite(snap, method, pathAndQuery, stamped, at);
   if ("error" in applied) return jsonResponse(400, { error: applied.error });
   snap = applied.snap;
   outbox = [
@@ -319,7 +327,7 @@ async function queueWrite(method: string, pathAndQuery: string, body: unknown): 
       at,
       method: method.toUpperCase(),
       path: pathAndQuery,
-      body: body ?? {},
+      body: stamped,
     },
   ];
   await persist();

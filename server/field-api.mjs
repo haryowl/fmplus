@@ -171,6 +171,16 @@ function cleanPhonePair(lat, lon) {
   return { lat: a, lon: b };
 }
 
+/** When the driver tapped Start/Finish, including a replay after the signal returns. */
+function fieldActionTime(body) {
+  const t = Date.parse(String(body?.recordedAt || "").trim());
+  if (!Number.isFinite(t)) return null;
+  const now = Date.now();
+  if (t > now + 5 * 60 * 1000) return null;
+  if (now - t > 14 * 24 * 60 * 60 * 1000) return null;
+  return new Date(t).toISOString();
+}
+
 function publicDispatchStop(row, jobServiceDate = "") {
   const dayIndex = Number(row.day_index) || 0;
   return {
@@ -1023,8 +1033,13 @@ export async function handleFieldRequest(req, res) {
         const nextStatus = carryToDayIndex != null ? "pending" : status;
         const sets = [`status = $1`];
         const params = [nextStatus];
+        const actedAt = fieldActionTime(body);
+        const actedAtSql = () => {
+          params.push(actedAt);
+          return `COALESCE($${params.length}::timestamptz, now())`;
+        };
         if (status === "arrived") {
-          sets.push(`arrived_at = COALESCE(arrived_at, now())`);
+          sets.push(`arrived_at = COALESCE(arrived_at, ${actedAtSql()})`);
           if (phone) {
             params.push(phone.lat, phone.lon);
             sets.push(`start_phone_lat = COALESCE(start_phone_lat, $${params.length - 1})`);
@@ -1037,8 +1052,8 @@ export async function handleFieldRequest(req, res) {
           }
         }
         if (status === "done" || status === "skipped") {
-          sets.push(`completed_at = COALESCE(completed_at, now())`);
-          sets.push(`arrived_at = COALESCE(arrived_at, now())`);
+          sets.push(`completed_at = COALESCE(completed_at, ${actedAtSql()})`);
+          sets.push(`arrived_at = COALESCE(arrived_at, ${actedAtSql()})`);
           if (phone) {
             params.push(phone.lat, phone.lon);
             sets.push(`complete_phone_lat = $${params.length - 1}`);
@@ -1091,7 +1106,7 @@ export async function handleFieldRequest(req, res) {
           const check = normalizePing({
             lat: phone.lat,
             lon: phone.lon,
-            recordedAt: new Date().toISOString(),
+            recordedAt: actedAt || new Date().toISOString(),
             jobId: job.id,
           });
           if (check.ok) {

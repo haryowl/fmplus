@@ -1,8 +1,15 @@
 package id.armada.field;
 
 import android.Manifest;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.os.Build;
+import android.os.Looper;
+import androidx.annotation.NonNull;
 import com.getcapacitor.JSObject;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -125,6 +132,94 @@ public class DutyLocationPlugin extends Plugin {
     @PluginMethod
     public void getStatus(PluginCall call) {
         call.resolve(DutyLocationService.snapshot().toJS());
+    }
+
+    /** One position for a start/finish mark. Works with the screen online or not. */
+    @PluginMethod
+    public void getFix(PluginCall call) {
+        if (getPermissionState("location") != PermissionState.GRANTED) {
+            requestPermissionForAlias("location", call, "onFixPerm");
+            return;
+        }
+        resolveFix(call);
+    }
+
+    @PermissionCallback
+    private void onFixPerm(PluginCall call) {
+        if (getPermissionState("location") != PermissionState.GRANTED) {
+            call.resolve(new JSObject());
+            return;
+        }
+        resolveFix(call);
+    }
+
+    private void resolveFix(PluginCall call) {
+        new Thread(() -> {
+            JSObject out = new JSObject();
+            try {
+                LocationManager lm = (LocationManager) getContext().getSystemService(android.content.Context.LOCATION_SERVICE);
+                Location best = newest(lm);
+                if (best == null || System.currentTimeMillis() - best.getTime() > 120_000L) {
+                    Location fresh = awaitOneFix(lm);
+                    if (fresh != null) best = fresh;
+                }
+                if (best != null) {
+                    out.put("lat", best.getLatitude());
+                    out.put("lon", best.getLongitude());
+                }
+            } catch (Exception ignored) {
+                // Finish still syncs; the map mark is omitted when there is no fix.
+            }
+            call.resolve(out);
+        }).start();
+    }
+
+    private static Location newest(LocationManager lm) {
+        if (lm == null) return null;
+        Location best = null;
+        for (String provider : new String[] { LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER }) {
+            Location loc;
+            try {
+                loc = lm.getLastKnownLocation(provider);
+            } catch (SecurityException e) {
+                return null;
+            }
+            if (loc == null) continue;
+            if (best == null || loc.getTime() > best.getTime()) best = loc;
+        }
+        return best;
+    }
+
+    private static Location awaitOneFix(LocationManager lm) {
+        if (lm == null) return null;
+        String provider = null;
+        try {
+            if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) provider = LocationManager.GPS_PROVIDER;
+            else if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) provider = LocationManager.NETWORK_PROVIDER;
+        } catch (Exception e) {
+            return null;
+        }
+        if (provider == null) return null;
+        Location[] box = new Location[1];
+        CountDownLatch latch = new CountDownLatch(1);
+        LocationListener listener = new LocationListener() {
+            @Override
+            public void onLocationChanged(@NonNull Location location) {
+                box[0] = location;
+                latch.countDown();
+            }
+        };
+        try {
+            lm.requestLocationUpdates(provider, 0L, 0f, listener, Looper.getMainLooper());
+            latch.await(8, TimeUnit.SECONDS);
+        } catch (Exception ignored) {
+            return box[0];
+        } finally {
+            try {
+                lm.removeUpdates(listener);
+            } catch (Exception ignored) {}
+        }
+        return box[0];
     }
 
     private static int intOr(Integer value, int fallback) {

@@ -30,6 +30,10 @@ export type Stop = {
   lines?: unknown[];
   startedAt?: string | null;
   completedAt?: string | null;
+  startPhoneLat?: number | null;
+  startPhoneLon?: number | null;
+  completePhoneLat?: number | null;
+  completePhoneLon?: number | null;
 };
 
 export type EventRow = {
@@ -312,6 +316,18 @@ export function applyOfflineWrite(
       if ("notes" in payload) stop.notes = String(payload.notes || "");
       if (status === "arrived") stop.startedAt = stop.startedAt || at;
       if (status === "done" || status === "skipped") stop.completedAt = stop.completedAt || at;
+      const lat = Number(payload.phoneLat);
+      const lon = Number(payload.phoneLon);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        if (status === "arrived") {
+          stop.startPhoneLat = stop.startPhoneLat ?? lat;
+          stop.startPhoneLon = stop.startPhoneLon ?? lon;
+        }
+        if (status === "done" || status === "skipped") {
+          stop.completePhoneLat = lat;
+          stop.completePhoneLon = lon;
+        }
+      }
     }
     stops[idx] = stop;
     let job: Job = { ...current, stops };

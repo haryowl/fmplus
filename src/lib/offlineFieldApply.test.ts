@@ -53,15 +53,17 @@ describe("offline field snapshot", () => {
       started.snap,
       "PATCH",
       "/api/field/dispatch/jobs/job-1/stops/stop-1",
-      { status: "done" },
+      { status: "done", phoneLat: -6.2, phoneLon: 106.8, recordedAt: "2026-10-02T03:00:00.000Z" },
       "2026-10-02T03:00:00.000Z",
     );
     expect("error" in finished).toBe(false);
     if ("error" in finished) return;
     const again = readOfflineGet(finished.snap, "/api/field/dispatch/jobs?date=2026-10-02");
-    const jobs = (again?.json as { jobs: Array<{ status: string; stops: Array<{ status: string }> }> }).jobs;
+    const jobs = (again?.json as { jobs: Array<{ status: string; stops: Array<{ status: string; completePhoneLat?: number; completePhoneLon?: number }> }> }).jobs;
     expect(jobs[0]?.status).toBe("done");
     expect(jobs[0]?.stops[0]?.status).toBe("done");
+    expect(jobs[0]?.stops[0]?.completePhoneLat).toBe(-6.2);
+    expect(jobs[0]?.stops[0]?.completePhoneLon).toBe(106.8);
   });
 
   it("keeps a maintenance status change on the saved event", () => {
