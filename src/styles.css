@@ -10036,6 +10036,237 @@ button.dispatch-pin-chip {
   }
 }
 
+/* Dispatch Live visual refresh — scoped so Jobs keeps its own pills. */
+.dispatch-live-page {
+  background: #f6f5f2;
+}
+
+.dispatch-live-page .dispatch-live-shell {
+  gap: 14px;
+}
+
+.dispatch-live-page .dispatch-live-toolbar {
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: #fff;
+  border: 1px solid rgba(23, 22, 20, 0.08);
+}
+
+.dispatch-live-page .dispatch-live-tabs {
+  border-radius: 999px;
+  background: #f3f1ec;
+  padding: 3px;
+}
+
+.dispatch-live-page .dispatch-live-tabs button {
+  border-radius: 999px;
+  padding: 7px 14px;
+}
+
+.dispatch-live-page .dispatch-live-tabs button.is-active {
+  background: #171614;
+  color: #fff;
+  box-shadow: none;
+}
+
+.dispatch-live-page .dispatch-live-updated::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: #16a34a;
+  vertical-align: middle;
+}
+
+.dispatch-live-page .dispatch-live-refresh .btn-secondary,
+.dispatch-live-page .dispatch-live-refresh .btn-ghost,
+.dispatch-live-page .dispatch-date-nav .btn-secondary {
+  height: 34px;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.dispatch-live-page .dispatch-live-refresh .btn-ghost {
+  background: #171614;
+  color: #fff;
+  border-color: #171614;
+}
+
+.dispatch-live-page .dispatch-live-kpis {
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.dispatch-live-page .dispatch-live-kpi {
+  padding: 14px 14px 12px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid rgba(23, 22, 20, 0.08);
+  min-height: 92px;
+}
+
+.dispatch-live-page .dispatch-live-kpi strong {
+  font-family: inherit;
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.dispatch-live-page .dispatch-live-kpi.is-featured {
+  box-shadow: inset 0 3px 0 #171614;
+}
+
+.dispatch-live-page .dispatch-live-kpi.tone-ok strong {
+  color: var(--ink);
+}
+
+.dispatch-live-page .dispatch-live-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.9fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.dispatch-live-page .fold-panel {
+  border-radius: 18px;
+  border: 1px solid rgba(23, 22, 20, 0.08);
+  background: #fff;
+  box-shadow: none;
+}
+
+.dispatch-live-page .fold-panel-titles h2 {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dispatch-live-page .fold-panel-toggle {
+  border-radius: 999px;
+}
+
+.dispatch-live-page .dispatch-live-sla-kpis {
+  grid-template-columns: repeat(5, minmax(90px, 1fr));
+}
+
+.dispatch-live-page .dispatch-live-sla-kpis .dispatch-live-kpi {
+  min-height: 0;
+  padding: 10px;
+  background: #faf9f6;
+}
+
+.dispatch-live-page .dispatch-live-clear {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 18px 12px 8px;
+  text-align: center;
+}
+
+.dispatch-live-page .dispatch-live-clear-mark {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #e8f6ee;
+  color: #15803d;
+  font-weight: 700;
+}
+
+.dispatch-live-page .dispatch-live-clear p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.84rem;
+}
+
+.dispatch-live-page .dispatch-live-clear-chips {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.dispatch-live-page .dispatch-live-clear-chips span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f3f1ec;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.dispatch-live-page .dispatch-live-driver-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 1fr);
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.dispatch-live-page .dispatch-live-driver-card {
+  border-radius: 16px;
+  border: 1px solid rgba(23, 22, 20, 0.08);
+  background: #fff;
+  text-align: left;
+}
+
+.dispatch-live-page .dispatch-live-pill.tone-delivered {
+  background: #171614;
+  color: #fff;
+  border-color: #171614;
+}
+
+.dispatch-live-page .dispatch-live-pod.pod-yes {
+  background: #e8f6ee;
+  color: #15803d;
+}
+
+.dispatch-live-page .dispatch-live-table-wrap {
+  border: 0;
+  border-radius: 0;
+}
+
+.dispatch-live-page .dispatch-live-group-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dispatch-live-page .dispatch-live-group-btn .dispatch-live-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 0.68rem;
+}
+
+.dispatch-live-page .dispatch-live-manifest-foot {
+  margin: 8px 2px 0;
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+}
+
+.dispatch-live-page .dispatch-live-search input {
+  border-radius: 999px;
+  height: 34px;
+}
+
+@media (max-width: 1100px) {
+  .dispatch-live-page .dispatch-live-kpis,
+  .dispatch-live-page .dispatch-live-sla-kpis {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+  }
+  .dispatch-live-page .dispatch-live-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .dispatch-live-page .dispatch-live-kpis,
+  .dispatch-live-page .dispatch-live-sla-kpis {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+}
+
 .dispatch-catalog-modal {
   position: fixed !important;
   inset: 0;

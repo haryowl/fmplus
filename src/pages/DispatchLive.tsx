@@ -679,61 +679,67 @@ export default function DispatchLive() {
               <article className="dispatch-live-kpi">
                 <span>Stops</span>
                 <strong>{summary?.totalStops ?? "—"}</strong>
+                <em>{summary ? `${summary.driverCount} drivers assigned` : ""}</em>
               </article>
               <article className="dispatch-live-kpi">
                 <span>In transit</span>
                 <strong>{summary?.inTransit ?? "—"}</strong>
-                <em>{summary ? `${summary.inTransitPct}%` : ""}</em>
+                <em>
+                  {summary
+                    ? summary.inTransit === 0
+                      ? "idle fleet"
+                      : `${summary.inTransitPct}% of stops`
+                    : ""}
+                </em>
               </article>
-              <article className="dispatch-live-kpi tone-ok">
+              <article className="dispatch-live-kpi tone-ok is-featured">
                 <span>Delivered</span>
                 <strong>{summary?.delivered ?? "—"}</strong>
+                <em>
+                  {summary && summary.totalStops
+                    ? `${Math.round((summary.delivered / summary.totalStops) * 100)}% of stops`
+                    : ""}
+                </em>
               </article>
               <article className="dispatch-live-kpi">
                 <span>Pending</span>
                 <strong>{summary?.pending ?? "—"}</strong>
+                <em>{summary ? "not started" : ""}</em>
               </article>
               <article className={`dispatch-live-kpi${(summary?.delayed || 0) > 0 ? " tone-warn" : ""}`}>
                 <span>Delayed</span>
                 <strong>{summary?.delayed ?? "—"}</strong>
+                <em>{summary ? (summary.delayed > 0 ? "past window" : "on schedule") : ""}</em>
               </article>
               <article className="dispatch-live-kpi">
                 <span>Avg complete</span>
                 <strong>{summary ? `${summary.avgCompletion}%` : "—"}</strong>
                 <em>
-                  {summary?.skipped
-                    ? `${summary.skipped} skipped`
-                    : `${summary?.driverCount ?? 0} drivers`}
-                </em>
-              </article>
-              <article
-                className={`dispatch-live-kpi${(exceptionSummary?.total || 0) > 0 ? " tone-warn" : ""}`}
-              >
-                <span>Exceptions</span>
-                <strong>{exceptionSummary?.total ?? 0}</strong>
-                <em>
-                  {exceptionSummary
-                    ? `${exceptionSummary.windowAtRisk} risk · ${exceptionSummary.stuck} stuck · ${exceptionSummary.failedSkip} skip`
+                  {summary
+                    ? summary.skipped
+                      ? `${summary.driverCount} drivers · ${summary.skipped} skipped`
+                      : `${summary.driverCount} drivers`
                     : ""}
-                </em>
-              </article>
-              <article className="dispatch-live-kpi tone-ok">
-                <span>OTP</span>
-                <strong>{sla?.otpPct != null ? `${sla.otpPct}%` : "—"}</strong>
-                <em>
-                  {sla?.medianPlanLagMin != null
-                    ? `plan lag ${sla.medianPlanLagMin >= 0 ? "+" : ""}${sla.medianPlanLagMin}m`
-                    : "on-window"}
                 </em>
               </article>
             </section>
 
+            <div className="dispatch-live-split">
             {sla ? (
               <FoldPanel
                 id="sla"
                 title="SLA today"
                 folded={Boolean(folded.sla)}
                 onToggle={() => toggleFold("sla")}
+                hint={
+                  <span>
+                    {sla.otpPct != null ? `OTP ${sla.otpPct}%` : "OTP —"}
+                    {sla.withWindow ? ` · ${sla.onTime}/${sla.withWindow} on window` : ""}
+                    {sla.medianPlanLagMin != null
+                      ? ` · ${sla.medianPlanLagMin >= 0 ? "+" : ""}${sla.medianPlanLagMin}m median`
+                      : ""}
+                  </span>
+                }
               >
                 <SlaPanel sla={sla} bare />
               </FoldPanel>
@@ -745,13 +751,26 @@ export default function DispatchLive() {
               folded={Boolean(folded.exceptions)}
               onToggle={() => toggleFold("exceptions")}
               hint={
-                exceptionSummary?.unacked ? (
-                  <em className="dispatch-live-pill tone-delayed">{exceptionSummary.unacked} open</em>
-                ) : null
+                <em className={`dispatch-live-pill${(exceptionSummary?.unacked || 0) > 0 ? " tone-delayed" : " tone-delivered"}`}>
+                  {exceptionSummary?.unacked ?? 0} open
+                </em>
               }
             >
-              {exceptions.length === 0 ? (
-                <p className="dispatch-live-empty">No open exceptions for this date.</p>
+              {!snapshot ? (
+                <p className="dispatch-live-empty">{loading ? "Loading exceptions…" : "Exceptions unavailable."}</p>
+              ) : exceptions.length === 0 ? (
+                <div className="dispatch-live-clear">
+                  <span className="dispatch-live-clear-mark" aria-hidden="true">
+                    ✓
+                  </span>
+                  <strong>All clear</strong>
+                  <p>No open exceptions for this date.</p>
+                  <div className="dispatch-live-clear-chips">
+                    <span>{exceptionSummary?.windowAtRisk ?? 0} risk</span>
+                    <span>{exceptionSummary?.stuck ?? 0} stuck</span>
+                    <span>{exceptionSummary?.failedSkip ?? 0} skip</span>
+                  </div>
+                </div>
               ) : (
                 <ul className="dispatch-live-exception-list">
                   {exceptions.map((ex) => (
@@ -795,6 +814,7 @@ export default function DispatchLive() {
                 </ul>
               )}
             </FoldPanel>
+            </div>
 
             {recoverPreview ? (
               <section className="dispatch-live-recover panel" aria-label="Recovery preview">
@@ -868,11 +888,22 @@ export default function DispatchLive() {
               folded={Boolean(folded.drivers)}
               onToggle={() => toggleFold("drivers")}
               hint={
-                focusJobId ? (
-                  <button type="button" className="btn-ghost" onClick={clearFocus}>
-                    Clear focus
-                  </button>
-                ) : null
+                <>
+                  <span>
+                    {drivers.length} total ·{" "}
+                    {
+                      drivers.filter(
+                        (d) => d.jobStatus === "done" || statusTone(String(d.currentStatus)) === "delivered",
+                      ).length
+                    }{" "}
+                    delivered
+                  </span>
+                  {focusJobId ? (
+                    <button type="button" className="btn-ghost" onClick={clearFocus}>
+                      Clear focus
+                    </button>
+                  ) : null}
+                </>
               }
             >
               {!loading && drivers.length === 0 ? (
@@ -1011,16 +1042,21 @@ export default function DispatchLive() {
               folded={Boolean(folded.manifest)}
               onToggle={() => toggleFold("manifest")}
               hint={
-                <label className="dispatch-live-search">
-                  <span className="visually-hidden">Search manifest</span>
-                  <input
-                    type="search"
-                    placeholder="Order, driver, vehicle, lat/lon…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </label>
+                <>
+                  <span>
+                    {filteredManifest.length} stop{filteredManifest.length === 1 ? "" : "s"}
+                  </span>
+                  <label className="dispatch-live-search">
+                    <span className="visually-hidden">Search manifest</span>
+                    <input
+                      type="search"
+                      placeholder="Order, driver, vehicle, lat/lon…"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </label>
+                </>
               }
             >
               {loading && !snapshot ? (
@@ -1057,6 +1093,11 @@ export default function DispatchLive() {
                   </table>
                 </div>
               )}
+              {!loading || snapshot ? (
+                <p className="dispatch-live-manifest-foot">
+                  Showing {filteredManifest.length} of {(snapshot?.manifest || []).length} stops
+                </p>
+              ) : null}
             </FoldPanel>
           </>
         )}
@@ -1084,15 +1125,17 @@ function SlaPanel({
       <article className={`dispatch-live-kpi${sla.late > 0 ? " tone-warn" : ""}`}>
         <span>Late</span>
         <strong>{sla.late}</strong>
+        <em>{sla.late === 1 ? "1 stop past window" : sla.late > 0 ? `${sla.late} stops past window` : "on window"}</em>
       </article>
       <article className={`dispatch-live-kpi${sla.atRiskCount > 0 ? " tone-warn" : ""}`}>
         <span>At risk</span>
         <strong>{sla.atRiskCount}</strong>
+        <em>{sla.atRiskCount > 0 ? "window at risk" : "no risk detected"}</em>
       </article>
       <article className="dispatch-live-kpi">
         <span>Skipped</span>
         <strong>{sla.skipped}</strong>
-        <em>{sla.stuckCount ? `${sla.stuckCount} stuck` : ""}</em>
+        <em>{sla.stuckCount ? `${sla.stuckCount} stuck` : sla.skipped > 0 ? "not attempted" : "all attempted"}</em>
       </article>
       <article className="dispatch-live-kpi">
         <span>Plan lag</span>
@@ -1101,7 +1144,7 @@ function SlaPanel({
             ? `${sla.medianPlanLagMin >= 0 ? "+" : ""}${sla.medianPlanLagMin}m`
             : "—"}
         </strong>
-        <em>median</em>
+        <em>median delay</em>
       </article>
     </div>
   );
@@ -1202,9 +1245,9 @@ function FragmentGroup({
   onFocusJob: (jobId: string) => void;
   onFocusStop: (jobId: string, stopId: string) => void;
 }) {
-  const label = group.driver
-    ? `${group.driver.driverName} · ${group.driver.vehicleLabel}`
-    : group.rows[0]?.driverName || "Driver";
+  const name = group.driver?.driverName || group.rows[0]?.driverName || "Driver";
+  const initials = group.driver?.driverInitials || name.slice(0, 2).toUpperCase();
+  const vehicle = group.driver?.vehicleLabel || group.rows[0]?.vehicleLabel || "";
   const jobId = group.driver?.jobId || group.rows[0]?.jobId || null;
 
   return (
@@ -1216,8 +1259,15 @@ function FragmentGroup({
             className="dispatch-live-group-btn"
             onClick={() => jobId && onFocusJob(jobId)}
           >
-            {label}
-            {group.driver ? ` · ${group.driver.pctComplete}%` : ""}
+            <span className="dispatch-live-avatar" aria-hidden="true">
+              {initials}
+            </span>
+            <strong>{name}</strong>
+            <span>
+              {vehicle ? `${vehicle} · ` : ""}
+              {group.rows.length} stop{group.rows.length === 1 ? "" : "s"}
+              {group.driver ? ` · ${group.driver.pctComplete}%` : ""}
+            </span>
           </button>
         </td>
       </tr>
