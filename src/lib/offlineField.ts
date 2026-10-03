@@ -43,7 +43,7 @@ export type OfflineFieldStatus = {
   conflicts: ConflictRow[];
 };
 
-type TransportResult = { status: number; bodyText: string };
+type TransportResult = { status: number; bodyText: string; session: string };
 
 type OfflineHttpPlugin = {
   request(options: {
@@ -51,7 +51,7 @@ type OfflineHttpPlugin = {
     method: string;
     body?: string;
     authorization?: string;
-  }): Promise<{ status: number; body: string }>;
+  }): Promise<{ status: number; body: string; session?: string }>;
 };
 
 const OfflineHttp = registerPlugin<OfflineHttpPlugin>("OfflineHttp");
@@ -198,9 +198,13 @@ async function nativeRequest(url: string, method: string, bodyText: string | und
       body: bodyText,
       authorization: sessionToken ? `Bearer ${sessionToken}` : "",
     });
-    return { status: Number(result.status) || 0, bodyText: String(result.body || "") };
+    return {
+      status: Number(result.status) || 0,
+      bodyText: String(result.body || ""),
+      session: String(result.session || ""),
+    };
   } catch {
-    return { status: 0, bodyText: "" };
+    return { status: 0, bodyText: "", session: "" };
   }
 }
 
@@ -326,8 +330,8 @@ export async function installOfflineField(nativeFetch: typeof fetch): Promise<vo
   if (!offlineFieldEnabled() || installed) return;
   installed = true;
   bootOfflineFieldPath();
-  await ensureStore();
-
+  // Patch fetch before the first await. Otherwise the login check hits the
+  // packaged page, fails, and the next launch shows the sign-in screen.
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const rawUrl = requestUrl(input);
     const { path, search } = offlineApiPath(rawUrl);
@@ -340,8 +344,9 @@ export async function installOfflineField(nativeFetch: typeof fetch): Promise<vo
     if (method === "POST" && path === "/api/field/login") {
       const result = await direct("POST", path, body);
       const json = parseJson(result.bodyText) as { sessionToken?: string };
-      if (result.status >= 200 && result.status < 300 && json.sessionToken) {
-        sessionToken = json.sessionToken;
+      const token = json.sessionToken || result.session;
+      if (result.status >= 200 && result.status < 300 && token) {
+        sessionToken = token;
         await persist();
         void prefetchOfflineField();
       }

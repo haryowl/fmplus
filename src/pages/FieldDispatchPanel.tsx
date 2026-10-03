@@ -12,6 +12,7 @@ import {
   writeLocationConsent,
 } from "../lib/driverLocation";
 import { isNativeFieldApp } from "../lib/nativeField";
+import { offlineFieldEnabled } from "../lib/offlineField";
 import type { FieldScanCapabilities } from "../lib/scanCapabilities";
 import { fieldScanCanCargo, fieldScanCanLocation, fieldScanCanVehicle } from "../lib/scanCapabilities";
 import { CatalogScanButton } from "../components/CatalogScanButton";
@@ -325,14 +326,26 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
   );
   const dutyJobId = dutyJob?.id || null;
 
+  const dutyStarted = useRef(false);
+
   useEffect(() => {
-    if (locationConsent) void registerDriverServiceWorker();
-    if (locationConsent) void prepareNativeLocation();
+    if (!locationConsent) return;
+    // The packaged WebView crashes if a service worker is registered.
+    if (!offlineFieldEnabled()) void registerDriverServiceWorker();
+    void prepareNativeLocation();
   }, [locationConsent]);
 
   useEffect(() => {
-    if (locationConsent && dutyJobId) void startDutyTracking(dutyJobId);
-    else void stopDutyTracking();
+    if (locationConsent && dutyJobId) {
+      dutyStarted.current = true;
+      void startDutyTracking(dutyJobId);
+      return;
+    }
+    // Opening Dispatch used to start the location service just to stop it.
+    // On the offline APK that start closes the app.
+    if (!dutyStarted.current && offlineFieldEnabled()) return;
+    dutyStarted.current = false;
+    void stopDutyTracking();
   }, [locationConsent, dutyJobId]);
 
   // Leaving the PWA must not leave a watch running. The APK keeps the

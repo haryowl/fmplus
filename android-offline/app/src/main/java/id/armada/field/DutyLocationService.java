@@ -47,6 +47,8 @@ public class DutyLocationService extends Service implements LocationListener {
     private static final Object LOCK = new Object();
     private static final DutyStatus STATUS = new DutyStatus();
     private static StatusListener listener;
+    /** True only after this process has started tracking. A stop before that must not launch the service. */
+    private static volatile boolean started;
 
     interface StatusListener {
         void onStatus(DutyStatus status);
@@ -84,17 +86,32 @@ public class DutyLocationService extends Service implements LocationListener {
         intent.putExtra(EXTRA_INTERVAL_MS, intervalMs);
         intent.putExtra(EXTRA_QUIET_MS, quietMs);
         intent.putExtra(EXTRA_MIN_MOVE_M, minMoveM);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent);
-        } else {
-            context.startService(intent);
+        started = true;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent);
+            } else {
+                context.startService(intent);
+            }
+        } catch (Exception e) {
+            started = false;
+            synchronized (LOCK) {
+                STATUS.active = false;
+                STATUS.error = "Location could not start";
+            }
         }
     }
 
     static void stop(Context context) {
-        Intent intent = new Intent(context, DutyLocationService.class);
-        intent.setAction(ACTION_STOP);
-        context.startService(intent);
+        if (!started) return;
+        started = false;
+        try {
+            Intent intent = new Intent(context, DutyLocationService.class);
+            intent.setAction(ACTION_STOP);
+            context.startService(intent);
+        } catch (Exception ignored) {
+            // The service may already be gone.
+        }
     }
 
     static void flush(Context context) {
@@ -135,11 +152,15 @@ public class DutyLocationService extends Service implements LocationListener {
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : ACTION_START;
         if (ACTION_STOP.equals(action)) {
-            executor.execute(() -> {
-                flushQueue();
+            started = false;
+            try {
+                stopListening();
+                releaseWake();
                 stopForeground(STOP_FOREGROUND_REMOVE);
-                stopSelf();
-            });
+            } catch (Exception ignored) {
+                // Never started in the foreground.
+            }
+            stopSelf();
             return START_NOT_STICKY;
         }
         if (intent != null) {
@@ -163,16 +184,25 @@ public class DutyLocationService extends Service implements LocationListener {
         if (origin == null || origin.isEmpty()) {
             origin = "https://81.17.100.7:4173";
         }
-        startInForeground();
-        acquireWake();
-        ensureListening();
-        patchStatus(s -> {
-            s.active = true;
-            s.permission = "granted";
-            s.error = null;
-        });
-        if (ACTION_FLUSH.equals(action) || ACTION_START.equals(action)) {
-            executor.execute(this::flushQueue);
+        try {
+            startInForeground();
+            acquireWake();
+            ensureListening();
+            patchStatus(s -> {
+                s.active = true;
+                s.permission = "granted";
+                s.error = null;
+            });
+            if (ACTION_FLUSH.equals(action) || ACTION_START.equals(action)) {
+                executor.execute(this::flushQueue);
+            }
+        } catch (Exception e) {
+            started = false;
+            patchStatus(s -> {
+                s.active = false;
+                s.error = "Location could not start";
+            });
+            stopSelf();
         }
         return START_NOT_STICKY;
     }

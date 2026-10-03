@@ -57,17 +57,29 @@ public class OfflineHttpPlugin extends Plugin {
             int status = conn.getResponseCode();
             InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
             String text = readStream(stream);
+            String session = sessionFromSetCookie(conn.getHeaderField("Set-Cookie"));
             conn.disconnect();
             JSObject result = new JSObject();
             result.put("status", status);
             result.put("body", text);
+            result.put("session", session);
             call.resolve(result);
-        } catch (Exception err) {
+        } catch (Throwable err) {
             JSObject result = new JSObject();
             result.put("status", 0);
             result.put("body", "");
             call.resolve(result);
         }
+    }
+
+    private static String sessionFromSetCookie(String header) {
+        if (header == null) return "";
+        int key = header.indexOf("fmplus_field_sid=");
+        if (key < 0) return "";
+        int start = key + "fmplus_field_sid=".length();
+        int end = header.indexOf(';', start);
+        String token = (end < 0 ? header.substring(start) : header.substring(start, end)).trim();
+        return token;
     }
 
     private static String readStream(InputStream stream) throws Exception {
