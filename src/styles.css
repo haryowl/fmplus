@@ -10637,3 +10637,210 @@ button.dispatch-pin-chip {
   color: var(--ink-soft);
   font-style: normal;
 }
+
+/* Maintenance dashboard visual refresh */
+.maintenance-page {
+  background: #f6f5f2;
+}
+
+.maintenance-page .shell {
+  gap: 14px;
+}
+
+.maintenance-page .filters {
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(23, 22, 20, 0.08);
+  background: #fff;
+  box-shadow: none;
+}
+
+.maintenance-page .filters select,
+.maintenance-page .filters .btn,
+.maintenance-page .filters .btn-ghost {
+  height: 36px;
+  border-radius: 999px;
+}
+
+.maintenance-page .maintenance-schedule-dash {
+  gap: 10px;
+}
+
+.maintenance-page .maint-dash-tile {
+  min-height: 96px;
+  padding: 14px 14px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(23, 22, 20, 0.08);
+  background: #fff;
+  align-content: start;
+}
+
+.maintenance-page .maint-dash-tile strong {
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.maintenance-page .maint-dash-label {
+  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.maintenance-page .maint-dash-tile.is-active {
+  border-color: #171614;
+  background: #fff;
+  box-shadow: inset 0 3px 0 #171614;
+}
+
+.maintenance-page .maint-dash-tile.maint-health-overdue.is-active {
+  box-shadow: inset 0 3px 0 #b45309;
+}
+
+.maintenance-page .maint-dash-tile.maint-health-completed.is-active {
+  box-shadow: inset 0 3px 0 #c4a15a;
+}
+
+.maintenance-page .maintenance-chart-panel,
+.maintenance-page .maintenance-inbox,
+.maintenance-page .maint-vehicle-group,
+.maintenance-page .maintenance-create {
+  border-radius: 18px;
+  border: 1px solid rgba(23, 22, 20, 0.08);
+  background: #fff;
+  box-shadow: none;
+}
+
+.maintenance-page .maintenance-toolbar .btn,
+.maintenance-page .maintenance-toolbar .btn-secondary,
+.maintenance-page .maintenance-inbox-tools .btn-ghost,
+.maintenance-page .maintenance-inbox-tools .btn-secondary,
+.maintenance-page .maint-filter-chip,
+.maintenance-page .maintenance-row-actions .btn,
+.maintenance-page .maintenance-row-actions .btn-ghost,
+.maintenance-page .maintenance-row-actions .btn-link {
+  border-radius: 999px;
+}
+
+.maintenance-page .maintenance-inbox-title {
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+}
+
+.maintenance-page .maint-count {
+  border-radius: 999px;
+}
+
+.maintenance-page .maintenance-inbox-table th {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.maintenance-page .maint-kind,
+.maintenance-page .maint-badge {
+  border-radius: 999px;
+}
+
+.maintenance-page .maintenance-list-search input {
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 22, 20, 0.1);
+  background: #fff;
+  padding: 0 14px;
+}
+
+.maintenance-page .maint-vehicle-head {
+  border-radius: 14px;
+}
+
+.maintenance-page .maint-row {
+  border-radius: 12px;
+}
+
+.maintenance-page .maint-job-mode-option {
+  position: relative;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.maintenance-page .maint-job-mode-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.maintenance-page .maint-job-mode-copy {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+
+.maintenance-page .maint-job-mode-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.maintenance-page .maint-mode-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #d7efe6;
+  color: #0f6b4c;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.maintenance-page .maint-job-mode-option.is-active {
+  border-color: #1f8a68;
+  background: #f4fbf8;
+  box-shadow: none;
+}
+
+.maintenance-page .maintenance-create .btn-primary {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 999px;
+}
+
+.maintenance-page .filters .btn-ghost:not(:disabled) {
+  background: #171614;
+  color: #fff;
+  border-color: #171614;
+}
+
+.maintenance-stage.is-split {
+  display: grid;
+  grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.maintenance-stage.is-split .maintenance-create {
+  grid-template-columns: 1fr;
+}
+
+.maintenance-stage.is-split .maint-job-mode {
+  grid-template-columns: 1fr 1fr;
+}
+
+.maintenance-page .maint-vehicle-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #171614;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+@media (max-width: 1100px) {
+  .maintenance-stage.is-split {
+    grid-template-columns: 1fr;
+  }
+}

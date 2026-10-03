@@ -653,6 +653,7 @@ export default function MaintenanceBoard() {
             >
               <span className="maint-dash-label">Open</span>
               <strong>{scheduleSummary?.open ?? "—"}</strong>
+              <span className="muted maint-dash-sub">active</span>
             </button>
             <button
               type="button"
@@ -661,6 +662,7 @@ export default function MaintenanceBoard() {
             >
               <span className="maint-dash-label">Upcoming</span>
               <strong>{scheduleSummary?.upcoming ?? "—"}</strong>
+              <span className="muted maint-dash-sub">scheduled</span>
             </button>
             <button
               type="button"
@@ -669,6 +671,7 @@ export default function MaintenanceBoard() {
             >
               <span className="maint-dash-label">Due</span>
               <strong>{scheduleSummary?.due ?? "—"}</strong>
+              <span className="muted maint-dash-sub">needs action</span>
             </button>
             <button
               type="button"
@@ -677,6 +680,7 @@ export default function MaintenanceBoard() {
             >
               <span className="maint-dash-label">Overdue</span>
               <strong>{scheduleSummary?.overdue ?? "—"}</strong>
+              <span className="muted maint-dash-sub">critical</span>
             </button>
             <button
               type="button"
@@ -800,6 +804,11 @@ export default function MaintenanceBoard() {
         </div>
         )}
 
+        <div
+          className={`maintenance-stage${
+            !eventId && boardPanel === "jobs" && showCreate ? " is-split" : ""
+          }`}
+        >
         {!eventId && boardPanel === "jobs" && showCreate && (
           <form className="maintenance-create" onSubmit={(e) => void onCreate(e)}>
             <label className="span-2">
@@ -857,8 +866,11 @@ export default function MaintenanceBoard() {
                     checked={createScheduleMode === "one_time"}
                     onChange={() => setCreateScheduleMode("one_time")}
                   />
-                  <span>
-                    <strong>One-time / Demand</strong>
+                  <span className="maint-job-mode-copy">
+                    <span className="maint-job-mode-title">
+                      <strong>One-time / Demand</strong>
+                      {createScheduleMode === "one_time" ? <span className="maint-mode-pill">Active</span> : null}
+                    </span>
                     <span className="muted">No next cycle after Done</span>
                   </span>
                 </label>
@@ -869,8 +881,11 @@ export default function MaintenanceBoard() {
                     checked={createScheduleMode === "scheduled"}
                     onChange={() => setCreateScheduleMode("scheduled")}
                   />
-                  <span>
-                    <strong>Scheduled / Repeat</strong>
+                  <span className="maint-job-mode-copy">
+                    <span className="maint-job-mode-title">
+                      <strong>Scheduled / Repeat</strong>
+                      {createScheduleMode === "scheduled" ? <span className="maint-mode-pill">Active</span> : null}
+                    </span>
                     <span className="muted">Done opens the next due job</span>
                   </span>
                 </label>
@@ -996,6 +1011,7 @@ export default function MaintenanceBoard() {
             </div>
           </form>
         )}
+        <div className="maintenance-stage-main">
 
         {!eventId && boardPanel === "jobs" && (
           <CsvImportPanel
@@ -1321,6 +1337,9 @@ export default function MaintenanceBoard() {
                     <span className="maint-vehicle-chevron" aria-hidden>
                       {collapsed ? "›" : "▾"}
                     </span>
+                    <span className="maint-vehicle-avatar" aria-hidden>
+                      {(group.label.trim().charAt(0) || "?").toUpperCase()}
+                    </span>
                     <strong>{group.label}</strong>
                     <span className="muted">
                       {group.events.length} job{group.events.length === 1 ? "" : "s"}
@@ -1506,6 +1525,8 @@ export default function MaintenanceBoard() {
         )}
         </>
         ) : null}
+        </div>
+        </div>
       </main>
     </div>
   );
