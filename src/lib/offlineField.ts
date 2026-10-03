@@ -75,6 +75,15 @@ export function offlineFieldEnabled(): boolean {
   return import.meta.env.VITE_OFFLINE_FIELD === "1";
 }
 
+/** Open Field before React reads the path. The packaged app starts at `/`, which is the admin console. */
+export function bootOfflineFieldPath(): void {
+  if (!offlineFieldEnabled()) return;
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  if (path === "/" || path === "/index.html") {
+    window.history.replaceState(null, "", `/m${window.location.search}`);
+  }
+}
+
 export function offlineFieldStatus(): OfflineFieldStatus {
   return {
     syncedAt: snap.syncedAt,
@@ -316,10 +325,8 @@ async function queueWrite(method: string, pathAndQuery: string, body: unknown): 
 export async function installOfflineField(nativeFetch: typeof fetch): Promise<void> {
   if (!offlineFieldEnabled() || installed) return;
   installed = true;
+  bootOfflineFieldPath();
   await ensureStore();
-  if (window.location.pathname === "/" || window.location.pathname === "/index.html") {
-    window.history.replaceState(null, "", `/m${window.location.search}`);
-  }
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const rawUrl = requestUrl(input);

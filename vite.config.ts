@@ -79,10 +79,22 @@ export default defineConfig(({ mode }) => {
     if (process.env[key] === undefined) process.env[key] = value;
   }
 
+  const offlineApk = process.env.VITE_OFFLINE_FIELD === "1";
+
   return {
     plugins: [
       react(),
       apiPlugin(),
+      offlineApk
+        ? {
+            name: "offline-apk-html",
+            transformIndexHtml(html: string) {
+              // Capacitor's local WebView serves assets without CORS headers.
+              // Vite's crossorigin attribute blocks the script, so the phone stays blank.
+              return html.replace(/ crossorigin(?:="[^"]*")?/g, "");
+            },
+          }
+        : null,
       {
         name: "fmplus-boot-vault",
         async configureServer() {
@@ -96,7 +108,7 @@ export default defineConfig(({ mode }) => {
           }
         },
       },
-    ],
+    ].filter(Boolean),
     optimizeDeps: {
       include: ["jspdf", "jspdf-autotable", "leaflet"],
     },
