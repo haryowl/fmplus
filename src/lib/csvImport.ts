@@ -106,6 +106,63 @@ export function downloadCsv(filename: string, csv: string): void {
   URL.revokeObjectURL(url);
 }
 
+export const DISPATCH_CUSTOMER_CSV_HEADERS = [
+  "name",
+  "lat",
+  "lon",
+  "zone",
+  "address",
+  "phone",
+  "contact_name",
+  "notes",
+  "window_start",
+  "window_end",
+  "proof_required",
+  "enabled",
+] as const;
+
+export function dispatchCustomerCsvTemplate(): string {
+  return toCsv(
+    [...DISPATCH_CUSTOMER_CSV_HEADERS],
+    [["Toko Contoh", -6.9147, 107.6098, "Dago", "Jl. Asia Afrika, Bandung", "08123456789", "Budi", "Gate B", "08:00", "12:00", "yes", "yes"]],
+  );
+}
+
+export function dispatchCustomerCsvFromItems(
+  items: Array<{
+    name: string;
+    lat: number;
+    lon: number;
+    zone?: string;
+    address?: string;
+    phone?: string;
+    contactName?: string;
+    notes?: string;
+    windowStart?: string;
+    windowEnd?: string;
+    proofRequired?: boolean;
+    enabled?: boolean;
+  }>,
+): string {
+  return toCsv(
+    [...DISPATCH_CUSTOMER_CSV_HEADERS],
+    items.map((c) => [
+      c.name,
+      c.lat,
+      c.lon,
+      c.zone || "",
+      c.address || "",
+      c.phone || "",
+      c.contactName || "",
+      c.notes || "",
+      c.windowStart || "",
+      c.windowEnd || "",
+      c.proofRequired ? "yes" : "no",
+      c.enabled === false ? "no" : "yes",
+    ]),
+  );
+}
+
 export const DISPATCH_ORDER_CSV_HEADERS = [
   "customer_name",
   "lat",

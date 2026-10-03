@@ -54,6 +54,13 @@ import {
   setCargoTotalsLocked,
   updateGoodsItem,
 } from "./dispatch-goods.mjs";
+import {
+  createCustomer,
+  deleteCustomer,
+  importCustomersFromRows,
+  listCustomers,
+  updateCustomer,
+} from "./dispatch-customers.mjs";
 import { normalizeZoneKey } from "./dispatch-zone.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
@@ -626,6 +633,7 @@ function publicOrder(row) {
       row.pickup_service_minutes == null ? null : Number(row.pickup_service_minutes),
     pickupProofRequired: row.pickup_proof_required === true,
     templateId: row.template_id || null,
+    customerId: row.customer_id || null,
     status: row.status || "pending",
     jobId: row.job_id || null,
     stopId: row.stop_id || null,
@@ -1177,6 +1185,40 @@ export async function handleDispatchRequest(req, res) {
     }
     if (!(await requireDispatchModule(dbTenant.id))) {
       json(res, 403, { error: "Dispatch module not enabled for this tenant" });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/customers" && req.method === "GET") {
+      json(res, 200, { customers: await listCustomers(dbTenant.id) });
+      return true;
+    }
+    if (url.pathname === "/api/dispatch/customers" && req.method === "POST") {
+      const body = await readJson(req);
+      const customer = await createCustomer(dbTenant.id, body);
+      json(res, 201, { customer });
+      return true;
+    }
+    if (url.pathname === "/api/dispatch/customers/import" && req.method === "POST") {
+      const body = await readJson(req);
+      let rawRows = Array.isArray(body.rows) ? body.rows : null;
+      if (!rawRows && typeof body.csv === "string") rawRows = parseCsv(body.csv).rows;
+      if (!rawRows) {
+        json(res, 400, { error: "rows or csv required" });
+        return true;
+      }
+      json(res, 200, await importCustomersFromRows(dbTenant.id, rawRows));
+      return true;
+    }
+    const customerOne = /^\/api\/dispatch\/customers\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (customerOne && req.method === "PATCH") {
+      const body = await readJson(req);
+      const customer = await updateCustomer(dbTenant.id, customerOne[1], body);
+      json(res, 200, { customer });
+      return true;
+    }
+    if (customerOne && req.method === "DELETE") {
+      await deleteCustomer(dbTenant.id, customerOne[1]);
+      json(res, 200, { ok: true });
       return true;
     }
 
@@ -2045,6 +2087,13 @@ export async function handleDispatchRequest(req, res) {
       } else {
         await applyCargoTotals(dbTenant.id, created.id, { locked: false });
       }
+      const customerId = /^[0-9a-f-]{36}$/i.test(String(body.customerId || "")) ? String(body.customerId) : null;
+      if (customerId) {
+        await dbQuery(
+          `UPDATE dispatch_orders SET customer_id = $1 WHERE id = $2 AND tenant_id = $3`,
+          [customerId, created.id, dbTenant.id],
+        );
+      }
       const fresh = await dbQuery(`SELECT * FROM dispatch_orders WHERE id = $1`, [created.id]);
       json(res, 201, { order: await publicOrderWithLines(dbTenant.id, fresh.rows[0] || created) });
       return true;
@@ -2246,6 +2295,10 @@ export async function handleDispatchRequest(req, res) {
         address: ["address", (v) => String(v || "").trim().slice(0, 500) || null],
         zone: ["zone", (v) => String(v || "").trim().slice(0, 80) || null],
         notes: ["notes", (v) => String(v || "").trim().slice(0, 2000) || null],
+        customerId: [
+          "customer_id",
+          (v) => (/^[0-9a-f-]{36}$/i.test(String(v || "")) ? String(v) : null),
+        ],
         windowStart: ["window_start", (v) => normalizeWindowClock(v)],
         windowEnd: ["window_end", (v) => normalizeWindowClock(v)],
       };

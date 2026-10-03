@@ -4434,7 +4434,7 @@ html.onesheet-root body {
 
 .dispatch-place-mode {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 4px;
   padding: 2px;
   border-radius: 10px;

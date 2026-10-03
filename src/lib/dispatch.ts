@@ -192,6 +192,8 @@ export type DispatchOrder = {
   lines?: DispatchOrderLine[];
   /** Set when this order was generated from a routine template */
   templateId?: string | null;
+  /** Saved customer this order was copied from. Later customer edits do not change the order. */
+  customerId?: string | null;
   status: DispatchOrderStatus;
   jobId: string | null;
   stopId: string | null;
@@ -1019,6 +1021,7 @@ export async function createDispatchOrder(body: {
   serviceMinutes?: number | null;
   proofRequired?: boolean;
   notes?: string;
+  customerId?: string | null;
   kind?: DispatchOrderKind;
   pickupAddress?: string;
   pickupLat?: number | null;
@@ -1040,6 +1043,110 @@ export async function createDispatchOrder(body: {
   if (!res.ok) throw new Error(data.error || `Create order ${res.status}`);
   if (!data.order) throw new Error("Create order failed");
   return data.order;
+}
+
+export type DispatchCustomer = {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  zone: string;
+  address: string;
+  phone: string;
+  contactName: string;
+  notes: string;
+  windowStart: string;
+  windowEnd: string;
+  proofRequired: boolean;
+  enabled: boolean;
+  updatedAt?: string | null;
+};
+
+export async function fetchDispatchCustomers(signal?: AbortSignal): Promise<DispatchCustomer[]> {
+  const res = await fetch("/api/dispatch/customers", {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as { customers?: DispatchCustomer[]; error?: string };
+  if (!res.ok) throw new Error(data.error || `Customers ${res.status}`);
+  return data.customers || [];
+}
+
+export async function createDispatchCustomer(body: {
+  name: string;
+  lat: number;
+  lon: number;
+  zone?: string;
+  address?: string;
+  phone?: string;
+  contactName?: string;
+  notes?: string;
+  windowStart?: string;
+  windowEnd?: string;
+  proofRequired?: boolean;
+}): Promise<DispatchCustomer> {
+  const res = await fetch("/api/dispatch/customers", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as { customer?: DispatchCustomer; error?: string };
+  if (!res.ok) throw new Error(data.error || `Create customer ${res.status}`);
+  if (!data.customer) throw new Error("Create customer failed");
+  return data.customer;
+}
+
+export async function patchDispatchCustomer(
+  id: string,
+  patch: Record<string, unknown>,
+): Promise<DispatchCustomer> {
+  const res = await fetch(`/api/dispatch/customers/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(patch),
+  });
+  const data = (await res.json().catch(() => ({}))) as { customer?: DispatchCustomer; error?: string };
+  if (!res.ok) throw new Error(data.error || `Update customer ${res.status}`);
+  if (!data.customer) throw new Error("Update customer failed");
+  return data.customer;
+}
+
+export async function deleteDispatchCustomer(id: string): Promise<void> {
+  const res = await fetch(`/api/dispatch/customers/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { accept: "application/json", ...tenantHeaders() },
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(data.error || `Delete customer ${res.status}`);
+}
+
+export async function importDispatchCustomers(body: {
+  rows: Record<string, string>[];
+}): Promise<{
+  created: number;
+  updated: number;
+  errors: number;
+  errorRows: Array<{ line: number; error: string }>;
+}> {
+  const res = await fetch("/api/dispatch/customers/import", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    created?: number;
+    updated?: number;
+    errors?: number;
+    errorRows?: Array<{ line: number; error: string }>;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Import customers ${res.status}`);
+  return {
+    created: Number(data.created) || 0,
+    updated: Number(data.updated) || 0,
+    errors: Number(data.errors) || 0,
+    errorRows: data.errorRows || [],
+  };
 }
 
 export async function importDispatchGoods(body: {

@@ -4,6 +4,7 @@ import { BrandMark } from "../components/BrandMark";
 import { CsvImportPanel } from "../components/CsvImportPanel";
 import { CatalogCodesEditor } from "../components/CatalogCodesEditor";
 import { CatalogScanButton } from "../components/CatalogScanButton";
+import { DispatchCustomersPanel } from "../components/DispatchCustomersPanel";
 import { DispatchGoodsCatalogPanel } from "../components/DispatchGoodsCatalogPanel";
 import { DispatchJobMap } from "../components/DispatchJobMap";
 import { DispatchOrderGoodsEditor } from "../components/DispatchOrderGoodsEditor";
@@ -45,6 +46,7 @@ import {
   fetchStopPhotos,
   fetchVehicleCapacities,
   fetchZoneDepotMap,
+  fetchDispatchCustomers,
   fetchDispatchGoods,
   formatCargoSummary,
   formatDispatchWindow,
@@ -77,6 +79,7 @@ import {
   type DispatchOpenStartMode,
   type DispatchTwMode,
   type DispatchJob,
+  type DispatchCustomer,
   type DispatchGoodsItem,
   type DispatchOrder,
   type DispatchOrderLine,
@@ -176,6 +179,8 @@ const emptyOrderForm = {
   pickupWindowEnd: "12:00",
   pickupServiceMinutes: "",
   pickupProofRequired: false,
+  notes: "",
+  customerId: null as string | null,
   saveAsTemplate: false,
   templateCadence: "daily" as DispatchOrderCadence,
   templateWeekday: String(new Date().getDay()),
@@ -232,6 +237,10 @@ export default function DispatchBoard() {
   const [templates, setTemplates] = useState<DispatchOrderTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showGoodsCatalog, setShowGoodsCatalog] = useState(false);
+  const [showCustomers, setShowCustomers] = useState(false);
+  const [customers, setCustomers] = useState<DispatchCustomer[]>([]);
+  const [customerFilter, setCustomerFilter] = useState("");
+  const [customerPickId, setCustomerPickId] = useState("");
   const [goodsCatalog, setGoodsCatalog] = useState<DispatchGoodsItem[]>([]);
   const [showOrderGoods, setShowOrderGoods] = useState(false);
   const [fieldUsers, setFieldUsers] = useState<DispatchFieldUser[]>([]);
@@ -262,7 +271,7 @@ export default function DispatchBoard() {
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
-  const [placeMode, setPlaceMode] = useState<"poi" | "search">("poi");
+  const [placeMode, setPlaceMode] = useState<"poi" | "search" | "customer">("poi");
   const [poiCatalog, setPoiCatalog] = useState<ArmadaPoi[]>([]);
   const [poiCatalogReady, setPoiCatalogReady] = useState(false);
   const [poiFilter, setPoiFilter] = useState("");
@@ -506,6 +515,15 @@ export default function DispatchBoard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional narrow trigger
   }, [overnightPromoKey, selectedId]);
 
+  const customerOptions = useMemo(() => {
+    const q = customerFilter.trim().toLowerCase();
+    return customers.filter((c) => {
+      if (!c.enabled) return false;
+      if (!q) return true;
+      return [c.name, c.zone, c.address].join(" ").toLowerCase().includes(q);
+    });
+  }, [customers, customerFilter]);
+
   const poiOptions = useMemo(
     () => listPoiDropdownOptions(poiCatalog, poiFilter),
     [poiCatalog, poiFilter],
@@ -717,6 +735,9 @@ export default function DispatchBoard() {
     void fetchDispatchGoods(ac.signal)
       .then(setGoodsCatalog)
       .catch(() => setGoodsCatalog([]));
+    void fetchDispatchCustomers(ac.signal)
+      .then(setCustomers)
+      .catch(() => setCustomers([]));
     return () => ac.abort();
   }, [ready, query.tenantKey, reload]);
 
@@ -1291,6 +1312,32 @@ export default function DispatchBoard() {
     }
   }
 
+  function applyCustomer(c: DispatchCustomer) {
+    setCustomerPickId(c.id);
+    setOrderForm((f) => ({
+      ...f,
+      customerId: c.id,
+      customerName: c.name,
+      notes: c.notes || f.notes,
+      proofRequired: c.proofRequired,
+      lat: c.lat,
+      lon: c.lon,
+      address: c.address || `${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`,
+      zone: c.zone || f.zone,
+      windowStart: c.windowStart || f.windowStart,
+      windowEnd: c.windowEnd || f.windowEnd,
+    }));
+    setPlacing(true);
+    setError("");
+  }
+
+  function closeCustomers() {
+    setShowCustomers(false);
+    void fetchDispatchCustomers()
+      .then(setCustomers)
+      .catch(() => undefined);
+  }
+
   function closeGoodsCatalog() {
     setShowGoodsCatalog(false);
     void fetchDispatchGoods()
@@ -1358,6 +1405,8 @@ export default function DispatchBoard() {
       pickupWindowEnd: normalizeClockHm(o.pickupWindowEnd || ""),
       pickupServiceMinutes: o.pickupServiceMinutes != null ? String(o.pickupServiceMinutes) : "",
       pickupProofRequired: o.pickupProofRequired === true,
+      notes: o.notes || "",
+      customerId: o.customerId || null,
       saveAsTemplate: false,
       templateCadence: "daily",
       templateWeekday: String(new Date().getDay()),
@@ -1422,6 +1471,8 @@ export default function DispatchBoard() {
           : null,
       pickupProofRequired: orderForm.kind === "pickup_drop" && orderForm.pickupProofRequired,
       cargoTotalsLocked: orderForm.cargoTotalsLocked,
+      notes: orderForm.notes.trim(),
+      customerId: orderForm.customerId,
       lines: orderForm.lines.filter((l) => l.name.trim() && Number(l.qty) > 0),
       serviceDate: planDate,
       lat: orderForm.lat,
@@ -3038,6 +3089,13 @@ export default function DispatchBoard() {
               >
                 Goods ({goodsCatalog.length})
               </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowCustomers(true)}
+              >
+                Customers ({customers.length})
+              </button>
             </div>
 
             <CsvImportPanel
@@ -3155,6 +3213,20 @@ export default function DispatchBoard() {
                 >
                   Street / other
                 </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={placeMode === "customer"}
+                  className={placeMode === "customer" ? "is-active" : undefined}
+                  onClick={() => {
+                    setPlaceMode("customer");
+                    setSearchQ("");
+                    setSearchResults([]);
+                    setPoiPickKey("");
+                  }}
+                >
+                  Customers
+                </button>
               </div>
 
               {placeMode === "poi" ? (
@@ -3199,6 +3271,48 @@ export default function DispatchBoard() {
                       })}
                     </select>
                   </div>
+                </>
+              ) : placeMode === "customer" ? (
+                <>
+                  <div className="field">
+                    <label htmlFor="dispatch-customer-filter">Filter customers</label>
+                    <input
+                      id="dispatch-customer-filter"
+                      value={customerFilter}
+                      onChange={(e) => setCustomerFilter(e.target.value)}
+                      placeholder="Name, zone, address…"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="dispatch-customer-select">Saved customer</label>
+                    <select
+                      id="dispatch-customer-select"
+                      value={customerPickId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setCustomerPickId(id);
+                        const found = customers.find((c) => c.id === id);
+                        if (found) applyCustomer(found);
+                      }}
+                    >
+                      <option value="">
+                        {customerOptions.length === 0 ? "No customers yet" : `Select customer (${customerOptions.length})`}
+                      </option>
+                      {customerOptions.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                          {c.zone ? ` · ${c.zone}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="dispatch-search-hint">
+                    Copies name, pin, zone, and notes onto this order.{" "}
+                    <button type="button" className="btn-ghost btn-compact" onClick={() => setShowCustomers(true)}>
+                      Manage the list
+                    </button>
+                  </p>
                 </>
               ) : (
                 <>
@@ -3351,6 +3465,17 @@ export default function DispatchBoard() {
                     placeholder="Toko Sari Maju"
                   />
                 </label>
+                {orderForm.notes || orderForm.customerId ? (
+                  <label className="field">
+                    Customer notes
+                    <input
+                      size={1}
+                      value={orderForm.notes}
+                      onChange={(e) => setOrderForm((f) => ({ ...f, notes: e.target.value }))}
+                      placeholder="Gate, receiving hours…"
+                    />
+                  </label>
+                ) : null}
                 <label className="field">
                   Reference
                   <input
@@ -4586,6 +4711,26 @@ export default function DispatchBoard() {
           </section>
         </div>
       </main>
+      {showCustomers ? (
+        <div
+          className="dispatch-catalog-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Customers"
+          onClick={closeCustomers}
+        >
+          <div className="dispatch-catalog-sheet" onClick={(e) => e.stopPropagation()}>
+            <DispatchCustomersPanel
+              onClose={closeCustomers}
+              onUse={(customer) => {
+                applyCustomer(customer);
+                setPlaceMode("customer");
+                closeCustomers();
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
       {showGoodsCatalog ? (
         <div
           className="dispatch-catalog-modal"
