@@ -7,9 +7,10 @@ type Props = {
   name: string;
   sku: string;
   disabled?: boolean;
+  compact?: boolean;
 };
 
-export function CatalogNfcWriteButton({ kind, name, sku, disabled }: Props) {
+export function CatalogNfcWriteButton({ kind, name, sku, disabled, compact }: Props) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
@@ -57,15 +58,28 @@ export function CatalogNfcWriteButton({ kind, name, sku, disabled }: Props) {
     <>
       <button
         type="button"
-        className="btn-ghost btn-compact"
+        className={compact ? "catalog-v2-icon-btn" : "btn-ghost btn-compact"}
         disabled={disabled || !payload}
         title={payload ? "Write the same code onto an NFC tag" : "Add a SKU to write a tag"}
+        aria-label="Write NFC"
         onClick={() => {
           setStatus("");
           setOpen(true);
         }}
       >
-        Write NFC
+        {compact ? (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M5 8.5a7 7 0 0 1 10.6-1.2M5 12a4.5 4.5 0 0 1 6.8-.7M8.5 15.5h.01M16 8.2a8 8 0 0 1 0 7.6M19 5.5a12 12 0 0 1 0 13"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+            />
+          </svg>
+        ) : (
+          "Write NFC"
+        )}
       </button>
       {open ? (
         <div className="catalog-nfc-write-modal" role="dialog" aria-label="Write NFC tag">
