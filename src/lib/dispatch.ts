@@ -859,6 +859,24 @@ export function capacityForVehicle(
   };
 }
 
+export async function fetchDispatchRunNumbers(
+  serviceDate?: string,
+  signal?: AbortSignal,
+): Promise<{ jobTitles: string[]; orderRefs: string[] }> {
+  const date = serviceDate || todayServiceDate();
+  const res = await fetch(`/api/dispatch/run-numbers?date=${encodeURIComponent(date)}`, {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    jobTitles?: string[];
+    orderRefs?: string[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Run numbers ${res.status}`);
+  return { jobTitles: data.jobTitles || [], orderRefs: data.orderRefs || [] };
+}
+
 export async function fetchDispatchOrders(
   status: "pending" | "all" | DispatchOrderStatus = "pending",
   signal?: AbortSignal,

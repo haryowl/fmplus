@@ -1992,6 +1992,25 @@ export async function handleDispatchRequest(req, res) {
       return true;
     }
 
+    if (url.pathname === "/api/dispatch/run-numbers" && req.method === "GET") {
+      const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
+      const jobs = await dbQuery(
+        `SELECT title AS value FROM dispatch_jobs
+         WHERE tenant_id = $1 AND service_date = $2::date`,
+        [dbTenant.id, date],
+      );
+      const orders = await dbQuery(
+        `SELECT external_ref AS value FROM dispatch_orders
+         WHERE tenant_id = $1 AND service_date = $2::date AND external_ref IS NOT NULL`,
+        [dbTenant.id, date],
+      );
+      json(res, 200, {
+        jobTitles: jobs.rows.map((row) => String(row.value || "")),
+        orderRefs: orders.rows.map((row) => String(row.value || "")),
+      });
+      return true;
+    }
+
     if (url.pathname === "/api/dispatch/orders" && req.method === "GET") {
       const status = String(url.searchParams.get("status") || "pending").toLowerCase();
       const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();

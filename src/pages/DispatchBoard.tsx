@@ -10,6 +10,7 @@ import { DispatchJobMap } from "../components/DispatchJobMap";
 import { DispatchOrderGoodsEditor } from "../components/DispatchOrderGoodsEditor";
 import { ViewNav } from "../components/ViewNav";
 import { locationNameFromScan, lookupCatalogScan } from "../lib/catalogScan";
+import { nextDatedCode } from "../lib/datedCode";
 import {
   DISPATCH_ORDER_CSV_HEADERS,
   dispatchOrderCsvTemplate,
@@ -40,6 +41,7 @@ import {
   fetchDispatchFieldUsers,
   fetchDispatchJobs,
   fetchDispatchOrders,
+  fetchDispatchRunNumbers,
   fetchDispatchOrderTemplates,
   fetchArmadaDayTracks,
   fetchDispatchLive,
@@ -282,6 +284,12 @@ export default function DispatchBoard() {
   const [pinBusy, setPinBusy] = useState(false);
 
   const [jobTitle, setJobTitle] = useState("");
+  const [runSeeds, setRunSeeds] = useState<{ jobTitles: string[]; orderRefs: string[] }>({
+    jobTitles: [],
+    orderRefs: [],
+  });
+  const orderRefDirty = useRef(false);
+  const jobTitleDirty = useRef(false);
   const [assigneeId, setAssigneeId] = useState("");
   const [jobVolCap, setJobVolCap] = useState("12");
   const [jobWtCap, setJobWtCap] = useState("1500");
@@ -760,11 +768,13 @@ export default function DispatchBoard() {
       fetchDispatchJobs("open", ac.signal, planDate),
       fetchDispatchOrders("pending", ac.signal, planDate),
       fetchDispatchOrderTemplates(ac.signal),
+      fetchDispatchRunNumbers(planDate, ac.signal).catch(() => ({ jobTitles: [], orderRefs: [] })),
     ])
-      .then(([jobList, orderList, templateList]) => {
+      .then(([jobList, orderList, templateList, seeds]) => {
         setJobs(jobList);
         setOrders(orderList);
         setTemplates(templateList);
+        setRunSeeds(seeds);
         setBootError("");
         if (selectedId && !jobList.some((j) => j.id === selectedId)) setSelectedId(null);
         if (!selectedId && jobList[0]) setSelectedId(jobList[0].id);
@@ -1362,8 +1372,28 @@ export default function DispatchBoard() {
     };
   }, [showGoodsCatalog]);
 
+  const jobCode = useMemo(
+    () => nextDatedCode("JOB", planDate, [...runSeeds.jobTitles, ...jobs.map((j) => j.title)]),
+    [planDate, runSeeds.jobTitles, jobs],
+  );
+  const orderCode = useMemo(
+    () => nextDatedCode("ORD", planDate, [...runSeeds.orderRefs, ...orders.map((o) => o.externalRef)]),
+    [planDate, runSeeds.orderRefs, orders],
+  );
+
+  useEffect(() => {
+    if (editingOrderId || orderRefDirty.current) return;
+    setOrderForm((f) => (f.externalRef === orderCode ? f : { ...f, externalRef: orderCode }));
+  }, [orderCode, editingOrderId]);
+
+  useEffect(() => {
+    if (!showNewJob || jobTitleDirty.current) return;
+    setJobTitle((current) => (current === jobCode ? current : jobCode));
+  }, [showNewJob, jobCode]);
+
   function clearDraft() {
-    setOrderForm(emptyOrderForm);
+    orderRefDirty.current = false;
+    setOrderForm({ ...emptyOrderForm, externalRef: orderCode });
     setEditingOrderId(null);
     setPlacing(false);
     setShowOrderGoods(false);
@@ -2119,7 +2149,19 @@ export default function DispatchBoard() {
             >
               {showPlanDay ? "Close plan" : "Auto-plan day"}
             </button>
-            <button type="button" className="btn btn-primary" onClick={() => setShowNewJob((v) => !v)}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                if (showNewJob) {
+                  setShowNewJob(false);
+                  return;
+                }
+                jobTitleDirty.current = false;
+                setJobTitle(jobCode);
+                setShowNewJob(true);
+              }}
+            >
               {showNewJob ? "Close" : "New job"}
             </button>
           </div>
@@ -3006,7 +3048,14 @@ export default function DispatchBoard() {
             <div className="dispatch-create-grid">
               <label className="field">
                 Title
-                <input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="Van B 02 · AM run" />
+                <input
+                  value={jobTitle}
+                  onChange={(e) => {
+                    jobTitleDirty.current = true;
+                    setJobTitle(e.target.value);
+                  }}
+                  placeholder="JOB-04102026-01"
+                />
               </label>
               <label className="field">
                 Assign to
@@ -3510,8 +3559,11 @@ export default function DispatchBoard() {
                   <input
                     size={1}
                     value={orderForm.externalRef}
-                    onChange={(e) => setOrderForm((f) => ({ ...f, externalRef: e.target.value }))}
-                    placeholder="#ORD-1842"
+                    onChange={(e) => {
+                      orderRefDirty.current = true;
+                      setOrderForm((f) => ({ ...f, externalRef: e.target.value }));
+                    }}
+                    placeholder="ORD-04102026-01"
                   />
                 </label>
                 <div className="dispatch-order-form-row">
