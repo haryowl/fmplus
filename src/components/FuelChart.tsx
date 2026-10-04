@@ -9,7 +9,7 @@ import {
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 import type { PeriodMetrics } from "../lib/types";
-import { axisTicks, axisTitle, baseTooltip, chartFonts } from "./chartTheme";
+import { axisTitle, chartFonts, useChartTheme } from "./chartTheme";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 
@@ -18,14 +18,15 @@ type Props = {
 };
 
 export function FuelChart({ rows }: Props) {
+  const theme = useChartTheme();
   const data: ChartData = {
     labels: rows.map((row) => row.label),
     datasets: [
       {
         label: "CAN used",
         data: rows.map((row) => Number(row.canFuelUsedL.toFixed(2))),
-        backgroundColor: "rgba(11, 107, 98, 0.88)",
-        hoverBackgroundColor: "#0b6b62",
+        backgroundColor: theme.gpsFill,
+        hoverBackgroundColor: theme.gps,
         borderRadius: 4,
         maxBarThickness: 28,
         barPercentage: 0.86,
@@ -34,8 +35,8 @@ export function FuelChart({ rows }: Props) {
       {
         label: "Tank used",
         data: rows.map((row) => Number(row.tankFuelUsedL.toFixed(2))),
-        backgroundColor: "rgba(154, 59, 18, 0.82)",
-        hoverBackgroundColor: "#9a3b12",
+        backgroundColor: theme.odoFill,
+        hoverBackgroundColor: theme.odo,
         borderRadius: 4,
         maxBarThickness: 28,
         barPercentage: 0.86,
@@ -44,8 +45,8 @@ export function FuelChart({ rows }: Props) {
       {
         label: "Refill detected",
         data: rows.map((row) => Number(row.refillL.toFixed(2))),
-        backgroundColor: "rgba(59, 76, 179, 0.82)",
-        hoverBackgroundColor: "#3b4cb3",
+        backgroundColor: theme.ignFill,
+        hoverBackgroundColor: theme.ign,
         borderRadius: 4,
         maxBarThickness: 28,
         barPercentage: 0.86,
@@ -64,7 +65,7 @@ export function FuelChart({ rows }: Props) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        ...baseTooltip,
+        ...theme.tooltip,
         callbacks: {
           label(item) {
             return ` ${item.dataset.label}: ${Number(item.parsed.y ?? 0).toFixed(2)} L`;
@@ -78,7 +79,7 @@ export function FuelChart({ rows }: Props) {
         grid: { display: false },
         border: { display: false },
         ticks: {
-          color: "#5e584f",
+          color: theme.inkSoft,
           font: { family: chartFonts.ui, size: 11 },
           maxRotation: 0,
         },
@@ -86,8 +87,8 @@ export function FuelChart({ rows }: Props) {
       y: {
         beginAtZero: true,
         border: { display: false },
-        grid: { color: "rgba(23, 22, 20, 0.07)" },
-        ticks: axisTicks,
+        grid: { color: theme.grid },
+        ticks: theme.ticks,
         title: { display: true, text: "Liters", ...axisTitle },
       },
     },

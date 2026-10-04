@@ -12,7 +12,7 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import type { BehaviorPeriod } from "../lib/behavior";
-import { axisTicks, axisTitle, baseTooltip, chartFonts } from "./chartTheme";
+import { axisTitle, chartFonts, useChartTheme } from "./chartTheme";
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Filler, Tooltip, Legend);
 
@@ -21,16 +21,17 @@ type Props = {
 };
 
 export function BehaviorTrend({ rows }: Props) {
+  const theme = useChartTheme();
   const data: ChartData<"line"> = {
     labels: rows.map((row) => row.label),
     datasets: [
       {
         label: "Harsh braking",
         data: rows.map((row) => row.harshBraking),
-        borderColor: "#0b6b62",
-        backgroundColor: "rgba(11, 107, 98, 0.08)",
-        pointBackgroundColor: "#fbf9f4",
-        pointBorderColor: "#0b6b62",
+        borderColor: theme.gps,
+        backgroundColor: theme.gpsSoft,
+        pointBackgroundColor: theme.surface,
+        pointBorderColor: theme.gps,
         tension: 0.28,
         borderWidth: 2,
         pointRadius: 3,
@@ -39,10 +40,10 @@ export function BehaviorTrend({ rows }: Props) {
       {
         label: "Harsh acceleration",
         data: rows.map((row) => row.harshAcceleration),
-        borderColor: "#3b4cb3",
+        borderColor: theme.ign,
         backgroundColor: "transparent",
-        pointBackgroundColor: "#fbf9f4",
-        pointBorderColor: "#3b4cb3",
+        pointBackgroundColor: theme.surface,
+        pointBorderColor: theme.ign,
         tension: 0.28,
         borderWidth: 2,
         pointRadius: 3,
@@ -50,10 +51,10 @@ export function BehaviorTrend({ rows }: Props) {
       {
         label: "Harsh cornering",
         data: rows.map((row) => row.harshCornering),
-        borderColor: "#c47d3a",
+        borderColor: theme.idle,
         backgroundColor: "transparent",
-        pointBackgroundColor: "#fbf9f4",
-        pointBorderColor: "#c47d3a",
+        pointBackgroundColor: theme.surface,
+        pointBorderColor: theme.idle,
         tension: 0.28,
         borderWidth: 2,
         pointRadius: 3,
@@ -61,10 +62,10 @@ export function BehaviorTrend({ rows }: Props) {
       {
         label: "Overspeed",
         data: rows.map((row) => row.overspeed),
-        borderColor: "#9a3b12",
+        borderColor: theme.odo,
         backgroundColor: "transparent",
-        pointBackgroundColor: "#fbf9f4",
-        pointBorderColor: "#9a3b12",
+        pointBackgroundColor: theme.surface,
+        pointBorderColor: theme.odo,
         tension: 0.28,
         borderWidth: 2,
         pointRadius: 3,
@@ -82,7 +83,7 @@ export function BehaviorTrend({ rows }: Props) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        ...baseTooltip,
+        ...theme.tooltip,
         callbacks: {
           label(item) {
             return ` ${item.dataset.label}: ${item.parsed.y ?? 0}`;
@@ -95,16 +96,16 @@ export function BehaviorTrend({ rows }: Props) {
         grid: { display: false },
         border: { display: false },
         ticks: {
-          color: "#5e584f",
+          color: theme.inkSoft,
           font: { family: chartFonts.ui, size: 11 },
           maxRotation: 0,
         },
       },
       y: {
         beginAtZero: true,
-        ticks: { ...axisTicks, stepSize: 1 },
+        ticks: { ...theme.ticks, stepSize: 1 },
         border: { display: false },
-        grid: { color: "rgba(23, 22, 20, 0.07)" },
+        grid: { color: theme.grid },
         title: { display: true, text: "Events", ...axisTitle },
       },
     },

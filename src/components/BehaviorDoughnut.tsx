@@ -1,17 +1,16 @@
 import { ArcElement, Chart as ChartJS, Legend, Tooltip, type ChartData, type ChartOptions } from "chart.js";
 import { Doughnut } from "react-chartjs-2";
 import type { BehaviorSummary } from "../lib/behavior";
-import { baseTooltip } from "./chartTheme";
+import { useChartTheme } from "./chartTheme";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
-
-const COLORS = ["#0b6b62", "#3b4cb3", "#c47d3a", "#9a3b12"];
 
 type Props = {
   summary: BehaviorSummary;
 };
 
 export function BehaviorDoughnut({ summary }: Props) {
+  const theme = useChartTheme();
   const data: ChartData<"doughnut"> = {
     labels: ["Harsh braking", "Harsh acceleration", "Harsh cornering", "Overspeed"],
     datasets: [
@@ -22,7 +21,7 @@ export function BehaviorDoughnut({ summary }: Props) {
           summary.harshCornering,
           summary.overspeed,
         ],
-        backgroundColor: COLORS,
+        backgroundColor: [theme.gps, theme.ign, theme.idle, theme.odo],
         borderWidth: 0,
         hoverOffset: 4,
       },
@@ -38,7 +37,7 @@ export function BehaviorDoughnut({ summary }: Props) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        ...baseTooltip,
+        ...theme.tooltip,
         callbacks: {
           label(item) {
             const value = Number(item.parsed);

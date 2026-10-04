@@ -16,6 +16,7 @@ import { movingSharePct } from "../lib/metrics";
 import { describeLoadProgress } from "../lib/dayTracks";
 import { useFleetDashboard } from "../lib/useFleetDashboard";
 import type { Period } from "../lib/types";
+import { useChartTheme } from "../components/chartTheme";
 import { BrandMark } from "../components/BrandMark";
 import { ExportExcelButton } from "../components/ExportExcelButton";
 import { FleetBarChart } from "../components/FleetBarChart";
@@ -304,6 +305,7 @@ const FleetCharts = memo(function FleetCharts({
   onCompare: (id: number) => void;
   drivers: Record<number, string>;
 }) {
+  const theme = useChartTheme();
   const live = vehicles.filter((v) => v.hasData);
   return (
     <>
@@ -329,7 +331,7 @@ const FleetCharts = memo(function FleetCharts({
             {
               label: "GPS km",
               data: live.map((v) => v.totals.gps),
-              color: "#0b6b62",
+              color: theme.gps,
             },
           ]}
           unit="km"
@@ -386,8 +388,8 @@ const FleetCharts = memo(function FleetCharts({
             labels={live.map((v) => v.label)}
             stacked
             series={[
-              { label: "Active", data: live.map((v) => v.totals.hours), color: "#0b6b62" },
-              { label: "Idle", data: live.map((v) => v.totals.idle), color: "#c47d3a" },
+              { label: "Active", data: live.map((v) => v.totals.hours), color: theme.gps },
+              { label: "Idle", data: live.map((v) => v.totals.idle), color: theme.idle },
             ]}
             unit="h"
             yTitle="Hours"
@@ -412,7 +414,7 @@ const FleetCharts = memo(function FleetCharts({
               {
                 label: "km/l",
                 data: live.map((v) => (v.totals.fuel > 0 ? v.totals.gps / v.totals.fuel : 0)),
-                color: "#3b4cb3",
+                color: theme.ign,
               },
             ]}
             unit="km/l"
@@ -438,8 +440,8 @@ const FleetCharts = memo(function FleetCharts({
           <FleetBarChart
             labels={live.map((v) => v.label)}
             series={[
-              { label: "CAN", data: live.map((v) => v.totals.canFuel), color: "#0b6b62" },
-              { label: "Tank", data: live.map((v) => v.totals.tankFuel), color: "#9a3b12" },
+              { label: "CAN", data: live.map((v) => v.totals.canFuel), color: theme.gps },
+              { label: "Tank", data: live.map((v) => v.totals.tankFuel), color: theme.odo },
             ]}
             unit="L"
             yTitle="Litres"
@@ -464,22 +466,22 @@ const FleetCharts = memo(function FleetCharts({
               {
                 label: "Braking",
                 data: live.map((v) => v.behavior?.harshBraking ?? 0),
-                color: "#9a3b12",
+                color: theme.odo,
               },
               {
                 label: "Accel",
                 data: live.map((v) => v.behavior?.harshAcceleration ?? 0),
-                color: "#c47d3a",
+                color: theme.idle,
               },
               {
                 label: "Corner",
                 data: live.map((v) => v.behavior?.harshCornering ?? 0),
-                color: "#3b4cb3",
+                color: theme.ign,
               },
               {
                 label: "Overspeed",
                 data: live.map((v) => v.behavior?.overspeed ?? 0),
-                color: "#9f2a2a",
+                color: theme.danger,
               },
             ]}
             unit="events"

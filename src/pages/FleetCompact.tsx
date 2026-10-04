@@ -14,6 +14,7 @@ import { movingSharePct } from "../lib/metrics";
 import { describeLoadProgress } from "../lib/dayTracks";
 import { useFleetDashboard } from "../lib/useFleetDashboard";
 import type { Period } from "../lib/types";
+import { useChartTheme } from "../components/chartTheme";
 import { BrandMark } from "../components/BrandMark";
 import { ExportExcelButton } from "../components/ExportExcelButton";
 import { FleetBarChart } from "../components/FleetBarChart";
@@ -33,6 +34,7 @@ export default function FleetCompact() {
   const live = d.vehicles.filter((v) => v.hasData);
   const kmPerL = d.fleetFuel > 0 ? d.fleetGps / d.fleetFuel : 0;
   const [drivers, setDrivers] = useState<Record<number, string>>({});
+  const theme = useChartTheme();
 
   useEffect(() => {
     const root = document.documentElement;
@@ -291,7 +293,7 @@ export default function FleetCompact() {
                   {
                     label: "km/l",
                     data: live.map((v) => (v.totals.fuel > 0 ? v.totals.gps / v.totals.fuel : 0)),
-                    color: "#0b6b62",
+                    color: theme.gps,
                   },
                 ]}
                 unit="km/l"

@@ -9,7 +9,7 @@ import {
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 import type { PeriodMetrics } from "../lib/types";
-import { axisTicks, axisTitle, baseTooltip, chartFonts } from "./chartTheme";
+import { axisTitle, chartFonts, useChartTheme } from "./chartTheme";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 
@@ -18,14 +18,15 @@ type Props = {
 };
 
 export function UtilizationChart({ rows }: Props) {
+  const theme = useChartTheme();
   const data: ChartData = {
     labels: rows.map((row) => row.label),
     datasets: [
       {
         label: "Active (moving)",
         data: rows.map((row) => Number(row.activeHours.toFixed(2))),
-        backgroundColor: "rgba(11, 107, 98, 0.88)",
-        hoverBackgroundColor: "#0b6b62",
+        backgroundColor: theme.gpsFill,
+        hoverBackgroundColor: theme.gps,
         borderRadius: 3,
         stack: "engine",
         maxBarThickness: 42,
@@ -35,8 +36,8 @@ export function UtilizationChart({ rows }: Props) {
       {
         label: "Idle (engine on)",
         data: rows.map((row) => Number(row.idleHours.toFixed(2))),
-        backgroundColor: "rgba(196, 125, 58, 0.88)",
-        hoverBackgroundColor: "#b56a28",
+        backgroundColor: theme.idleFill,
+        hoverBackgroundColor: theme.idle,
         borderRadius: 3,
         stack: "engine",
         maxBarThickness: 42,
@@ -56,7 +57,7 @@ export function UtilizationChart({ rows }: Props) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        ...baseTooltip,
+        ...theme.tooltip,
         callbacks: {
           label(item) {
             return ` ${item.dataset.label}: ${Number(item.parsed.y ?? 0).toFixed(2)} h`;
@@ -71,7 +72,7 @@ export function UtilizationChart({ rows }: Props) {
         grid: { display: false },
         border: { display: false },
         ticks: {
-          color: "#5e584f",
+          color: theme.inkSoft,
           font: { family: chartFonts.ui, size: 11 },
           maxRotation: 0,
         },
@@ -80,8 +81,8 @@ export function UtilizationChart({ rows }: Props) {
         stacked: true,
         beginAtZero: true,
         border: { display: false },
-        grid: { color: "rgba(23, 22, 20, 0.07)" },
-        ticks: axisTicks,
+        grid: { color: theme.grid },
+        ticks: theme.ticks,
         title: { display: true, text: "Hours", ...axisTitle },
       },
     },

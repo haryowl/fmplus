@@ -11,7 +11,7 @@ import {
   type ChartOptions,
 } from "chart.js";
 import { Bar, Line } from "react-chartjs-2";
-import { axisTicks, baseTooltip, chartFonts } from "./chartTheme";
+import { chartFonts, useChartTheme } from "./chartTheme";
 import {
   downloadAnalyzeReportExcel,
   buildUserFleetGroupMap,
@@ -51,6 +51,7 @@ export function MaintenanceAnalyzeReport({
   onOpenEvent,
   onJumpToJobs,
 }: Props) {
+  const theme = useChartTheme();
   const [days, setDays] = useState(90);
   const [group, setGroup] = useState("");
   const [data, setData] = useState<AnalyzeSummary | null>(null);
@@ -118,25 +119,25 @@ export function MaintenanceAnalyzeReport({
         {
           label: "Open",
           data: rows.map((a) => a.open),
-          backgroundColor: "#c49a5a",
+          backgroundColor: theme.due,
           borderRadius: 3,
         },
         {
           label: "Done",
           data: rows.map((a) => a.done),
-          backgroundColor: "#b7a56a",
+          backgroundColor: theme.upcoming,
           borderRadius: 3,
         },
         {
           label: "Approved",
           data: rows.map((a) => a.approved),
-          backgroundColor: "#8a9a7a",
+          backgroundColor: theme.ok,
           borderRadius: 3,
         },
       ],
     };
     return { rows, chart };
-  }, [data]);
+  }, [data, theme]);
 
   const agingData: ChartData<"bar"> = {
     labels: data?.aging.map((a) => a.label) || [],
@@ -144,7 +145,7 @@ export function MaintenanceAnalyzeReport({
       {
         label: "Open jobs",
         data: data?.aging.map((a) => a.count) || [],
-        backgroundColor: ["#8a9a7a", "#b7a56a", "#c49a5a", "#c97a7a", "#a06060"],
+        backgroundColor: theme.aging,
         borderRadius: 3,
         maxBarThickness: 40,
       },
@@ -159,13 +160,13 @@ export function MaintenanceAnalyzeReport({
       {
         label: "Cost",
         data: vehicleRows.map((v) => v.cost),
-        backgroundColor: "#c9a882",
+        backgroundColor: theme.cost,
         borderRadius: 3,
       },
       {
         label: "Price",
         data: vehicleRows.map((v) => v.price),
-        backgroundColor: "#8a9a7a",
+        backgroundColor: theme.price,
         borderRadius: 3,
       },
     ],
@@ -178,16 +179,16 @@ export function MaintenanceAnalyzeReport({
       {
         label: "Cost",
         data: cost?.byDay.map((d) => d.cost) || [],
-        borderColor: "#8a6a4a",
-        backgroundColor: "rgba(138,106,74,0.12)",
+        borderColor: theme.costLine,
+        backgroundColor: theme.costFill,
         tension: 0.25,
         pointRadius: 2,
       },
       {
         label: "Price",
         data: cost?.byDay.map((d) => d.price) || [],
-        borderColor: "#5a7a6a",
-        backgroundColor: "rgba(90,122,106,0.1)",
+        borderColor: theme.priceLine,
+        backgroundColor: theme.priceFill,
         tension: 0.25,
         pointRadius: 2,
       },
@@ -196,20 +197,20 @@ export function MaintenanceAnalyzeReport({
   const lineOpts: ChartOptions<"line"> = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { position: "bottom" }, tooltip: baseTooltip },
+    plugins: { legend: { position: "bottom" }, tooltip: theme.tooltip },
     scales: {
-      x: { ticks: { color: "#5e584f", font: { family: chartFonts.ui, size: 10 } }, grid: { display: false } },
-      y: { beginAtZero: true, ticks: axisTicks },
+      x: { ticks: { color: theme.inkSoft, font: { family: chartFonts.ui, size: 10 } }, grid: { display: false } },
+      y: { beginAtZero: true, ticks: theme.ticks },
     },
   };
 
   const barOpts: ChartOptions<"bar"> = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { position: "bottom" }, tooltip: baseTooltip },
+    plugins: { legend: { position: "bottom" }, tooltip: theme.tooltip },
     scales: {
-      x: { grid: { display: false }, ticks: { color: "#5e584f", maxRotation: 45, minRotation: 0 } },
-      y: { beginAtZero: true, ticks: axisTicks },
+      x: { grid: { display: false }, ticks: { color: theme.inkSoft, maxRotation: 45, minRotation: 0 } },
+      y: { beginAtZero: true, ticks: theme.ticks },
     },
   };
 
@@ -376,7 +377,7 @@ export function MaintenanceAnalyzeReport({
             <div className="maint-cost-chart">
               <h3>Open job aging</h3>
               <div className="maint-chart-frame">
-                <Bar data={agingData} options={{ ...barOpts, plugins: { legend: { display: false }, tooltip: baseTooltip } }} />
+                <Bar data={agingData} options={{ ...barOpts, plugins: { legend: { display: false }, tooltip: theme.tooltip } }} />
               </div>
             </div>
             <div className="maint-cost-chart">

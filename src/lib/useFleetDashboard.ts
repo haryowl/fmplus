@@ -53,6 +53,12 @@ export function useFleetDashboard() {
   const [loadError, setLoadError] = useState("");
   const [loadWarning, setLoadWarning] = useState("");
   const [progress, setProgress] = useState<LoadProgress | null>(null);
+  const [themeRev, setThemeRev] = useState(0);
+  useEffect(() => {
+    const onTheme = () => setThemeRev((n) => n + 1);
+    window.addEventListener("fmplus:theme", onTheme);
+    return () => window.removeEventListener("fmplus:theme", onTheme);
+  }, []);
   const abortRef = useRef<AbortController | null>(null);
   const autoLoaded = useRef(false);
   const allowsUserRef = useRef(allowsUser);
@@ -106,7 +112,7 @@ export function useFleetDashboard() {
         hasData: rows.length > 0,
       };
     });
-  }, [userIds, users, byUserId, period, dateFrom, dateTo, timezone]);
+  }, [userIds, users, byUserId, period, dateFrom, dateTo, timezone, themeRev]);
 
   const insights = useMemo(() => buildFleetInsights(vehicles), [vehicles]);
   const periods = useMemo(() => alignedPeriodKeys(vehicles), [vehicles]);

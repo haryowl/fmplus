@@ -11,7 +11,7 @@ import {
   type ChartOptions,
 } from "chart.js";
 import { Bar, Line } from "react-chartjs-2";
-import { axisTicks, baseTooltip, chartFonts } from "./chartTheme";
+import { chartFonts, useChartTheme } from "./chartTheme";
 import {
   fetchCostDashboard,
   formatServiceDuration,
@@ -25,6 +25,7 @@ type Props = {
 };
 
 export function MaintenanceCostDashboard({ onOpenEvent }: Props) {
+  const theme = useChartTheme();
   const [days, setDays] = useState(90);
   const [group, setGroup] = useState("");
   const [data, setData] = useState<CostDashboard | null>(null);
@@ -55,16 +56,16 @@ export function MaintenanceCostDashboard({ onOpenEvent }: Props) {
       {
         label: "Cost",
         data: data?.byDay.map((d) => d.cost) || [],
-        borderColor: "#8a6a4a",
-        backgroundColor: "rgba(138,106,74,0.12)",
+        borderColor: theme.costLine,
+        backgroundColor: theme.costFill,
         tension: 0.25,
         pointRadius: 2,
       },
       {
         label: "Price",
         data: data?.byDay.map((d) => d.price) || [],
-        borderColor: "#5a7a6a",
-        backgroundColor: "rgba(90,122,106,0.1)",
+        borderColor: theme.priceLine,
+        backgroundColor: theme.priceFill,
         tension: 0.25,
         pointRadius: 2,
       },
@@ -73,10 +74,10 @@ export function MaintenanceCostDashboard({ onOpenEvent }: Props) {
   const lineOpts: ChartOptions<"line"> = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { position: "bottom" }, tooltip: baseTooltip },
+    plugins: { legend: { position: "bottom" }, tooltip: theme.tooltip },
     scales: {
-      x: { ticks: { color: "#5e584f", font: { family: chartFonts.ui, size: 10 } }, grid: { display: false } },
-      y: { beginAtZero: true, ticks: axisTicks },
+      x: { ticks: { color: theme.inkSoft, font: { family: chartFonts.ui, size: 10 } }, grid: { display: false } },
+      y: { beginAtZero: true, ticks: theme.ticks },
     },
   };
 
@@ -87,13 +88,13 @@ export function MaintenanceCostDashboard({ onOpenEvent }: Props) {
       {
         label: "Cost",
         data: groupKeys.map((k) => data?.byGroup?.[k]?.cost || 0),
-        backgroundColor: "#c9a882",
+        backgroundColor: theme.cost,
         borderRadius: 3,
       },
       {
         label: "Price",
         data: groupKeys.map((k) => data?.byGroup?.[k]?.price || 0),
-        backgroundColor: "#8a9a7a",
+        backgroundColor: theme.price,
         borderRadius: 3,
       },
     ],
@@ -106,13 +107,13 @@ export function MaintenanceCostDashboard({ onOpenEvent }: Props) {
       {
         label: "Cost",
         data: vehicleRows.map((v) => v.cost),
-        backgroundColor: "#c9a882",
+        backgroundColor: theme.cost,
         borderRadius: 3,
       },
       {
         label: "Price",
         data: vehicleRows.map((v) => v.price),
-        backgroundColor: "#8a9a7a",
+        backgroundColor: theme.price,
         borderRadius: 3,
       },
     ],
@@ -183,10 +184,10 @@ export function MaintenanceCostDashboard({ onOpenEvent }: Props) {
                   options={{
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: "bottom" }, tooltip: baseTooltip },
+                    plugins: { legend: { position: "bottom" }, tooltip: theme.tooltip },
                     scales: {
-                      x: { grid: { display: false }, ticks: { color: "#5e584f" } },
-                      y: { beginAtZero: true, ticks: axisTicks },
+                      x: { grid: { display: false }, ticks: { color: theme.inkSoft } },
+                      y: { beginAtZero: true, ticks: theme.ticks },
                     },
                   }}
                 />
@@ -201,13 +202,13 @@ export function MaintenanceCostDashboard({ onOpenEvent }: Props) {
                     options={{
                       responsive: true,
                       maintainAspectRatio: false,
-                      plugins: { legend: { position: "bottom" }, tooltip: baseTooltip },
+                      plugins: { legend: { position: "bottom" }, tooltip: theme.tooltip },
                       scales: {
                         x: {
                           grid: { display: false },
-                          ticks: { color: "#5e584f", maxRotation: 45 },
+                          ticks: { color: theme.inkSoft, maxRotation: 45 },
                         },
-                        y: { beginAtZero: true, ticks: axisTicks },
+                        y: { beginAtZero: true, ticks: theme.ticks },
                       },
                     }}
                   />

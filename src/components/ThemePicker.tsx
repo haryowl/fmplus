@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
-import { readStoredTheme, setTheme, THEMES, type ThemeId } from "../lib/theme";
+import { isThemeId, readStoredTheme, setTheme, THEMES, type ThemeId } from "../lib/theme";
 
-/** Compact topbar control to switch between Warm (default) and Mono themes. */
+/** Compact topbar control: Warm, Mono, or Color. */
 export function ThemePicker() {
   const [theme, setLocal] = useState<ThemeId>(() => readStoredTheme());
 
   useEffect(() => {
     const onTheme = (e: Event) => {
       const next = (e as CustomEvent<ThemeId>).detail;
-      if (next === "warm" || next === "mono") setLocal(next);
+      if (isThemeId(next)) setLocal(next);
     };
     window.addEventListener("fmplus:theme", onTheme);
     return () => window.removeEventListener("fmplus:theme", onTheme);

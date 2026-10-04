@@ -1,6 +1,6 @@
 import { ArcElement, Chart as ChartJS, Tooltip, type ChartData, type ChartOptions } from "chart.js";
 import { Doughnut } from "react-chartjs-2";
-import { baseTooltip } from "./chartTheme";
+import { useChartTheme } from "./chartTheme";
 
 ChartJS.register(ArcElement, Tooltip);
 
@@ -10,20 +10,19 @@ export type FieldJobCounts = {
   completed: number;
 };
 
-const COLORS = ["#c49a5a", "#0b6b62", "#5a7a72"];
-
 type Props = {
   counts: FieldJobCounts;
 };
 
 export function FieldJobsChart({ counts }: Props) {
+  const theme = useChartTheme();
   const total = counts.due + counts.inProgress + counts.completed;
   const data: ChartData<"doughnut"> = {
     labels: ["Due", "In progress", "Completed"],
     datasets: [
       {
         data: [counts.due, counts.inProgress, counts.completed],
-        backgroundColor: COLORS,
+        backgroundColor: theme.jobs,
         borderWidth: 0,
         hoverOffset: 3,
       },
@@ -37,7 +36,7 @@ export function FieldJobsChart({ counts }: Props) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        ...baseTooltip,
+        ...theme.tooltip,
         callbacks: {
           label(item) {
             const value = Number(item.parsed);

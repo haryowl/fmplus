@@ -1,4 +1,4 @@
-/** App colour themes. `warm` is the original palette; `mono` is black & white. */
+/** App colour themes. `warm` is the original palette; `mono` is black & white; `color` is a softer jewel palette. */
 
 export const THEME_STORAGE_KEY = "fmplus.theme";
 
@@ -15,12 +15,18 @@ export const THEMES = {
     description: "Black & white",
     themeColor: "#0a0a0a",
   },
+  color: {
+    id: "color",
+    label: "Color",
+    description: "Soft colour",
+    themeColor: "#12343c",
+  },
 } as const;
 
 export type ThemeId = keyof typeof THEMES;
 
 export function isThemeId(value: unknown): value is ThemeId {
-  return value === "warm" || value === "mono";
+  return value === "warm" || value === "mono" || value === "color";
 }
 
 export function readStoredTheme(): ThemeId {

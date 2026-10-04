@@ -9,7 +9,7 @@ import {
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 import type { PeriodMetrics } from "../lib/types";
-import { axisTicks, axisTitle, baseTooltip, chartFonts } from "./chartTheme";
+import { axisTitle, chartFonts, useChartTheme } from "./chartTheme";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 
@@ -18,14 +18,15 @@ type Props = {
 };
 
 export function RoadChart({ rows }: Props) {
+  const theme = useChartTheme();
   const data: ChartData = {
     labels: rows.map((row) => row.label),
     datasets: [
       {
         label: "Smooth",
         data: rows.map((row) => Number(row.roadSmoothPct.toFixed(1))),
-        backgroundColor: "rgba(11, 107, 98, 0.88)",
-        hoverBackgroundColor: "#0b6b62",
+        backgroundColor: theme.gpsFill,
+        hoverBackgroundColor: theme.gps,
         borderRadius: 3,
         stack: "road",
         maxBarThickness: 42,
@@ -35,8 +36,8 @@ export function RoadChart({ rows }: Props) {
       {
         label: "Rough",
         data: rows.map((row) => Number(row.roadRoughPct.toFixed(1))),
-        backgroundColor: "rgba(196, 125, 58, 0.88)",
-        hoverBackgroundColor: "#b56a28",
+        backgroundColor: theme.idleFill,
+        hoverBackgroundColor: theme.idle,
         borderRadius: 3,
         stack: "road",
         maxBarThickness: 42,
@@ -46,8 +47,8 @@ export function RoadChart({ rows }: Props) {
       {
         label: "Bumpy",
         data: rows.map((row) => Number(row.roadBumpyPct.toFixed(1))),
-        backgroundColor: "rgba(159, 42, 42, 0.88)",
-        hoverBackgroundColor: "#9f2a2a",
+        backgroundColor: theme.dangerFill,
+        hoverBackgroundColor: theme.danger,
         borderRadius: 3,
         stack: "road",
         maxBarThickness: 42,
@@ -67,7 +68,7 @@ export function RoadChart({ rows }: Props) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        ...baseTooltip,
+        ...theme.tooltip,
         callbacks: {
           label(item) {
             return ` ${item.dataset.label}: ${Number(item.parsed.y ?? 0).toFixed(1)}%`;
@@ -82,7 +83,7 @@ export function RoadChart({ rows }: Props) {
         grid: { display: false },
         border: { display: false },
         ticks: {
-          color: "#5e584f",
+          color: theme.inkSoft,
           font: { family: chartFonts.ui, size: 11 },
           maxRotation: 0,
         },
@@ -92,8 +93,8 @@ export function RoadChart({ rows }: Props) {
         beginAtZero: true,
         max: 100,
         border: { display: false },
-        grid: { color: "rgba(23, 22, 20, 0.07)" },
-        ticks: axisTicks,
+        grid: { color: theme.grid },
+        ticks: theme.ticks,
         title: { display: true, text: "Share of points (%)", ...axisTitle },
       },
     },

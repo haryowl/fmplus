@@ -11,7 +11,7 @@ import {
   type ChartOptions,
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
-import { axisTicks, axisTitle, baseTooltip, chartFonts } from "./chartTheme";
+import { chartFonts, useChartTheme } from "./chartTheme";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip);
 
@@ -31,6 +31,7 @@ type Props = {
 };
 
 export function FleetBarChart({ labels, series, unit, stacked, type = "bar", yTitle }: Props) {
+  const theme = useChartTheme();
   const datasets: ChartDataset[] = series.map((item) =>
     type === "line"
       ? {
@@ -39,7 +40,7 @@ export function FleetBarChart({ labels, series, unit, stacked, type = "bar", yTi
           data: item.data.map((n) => Number(n.toFixed(2))),
           borderColor: item.color,
           backgroundColor: `${item.color}22`,
-          pointBackgroundColor: "#fbf9f4",
+          pointBackgroundColor: theme.surface,
           pointBorderColor: item.color,
           pointRadius: 3,
           borderWidth: 2,
@@ -70,7 +71,7 @@ export function FleetBarChart({ labels, series, unit, stacked, type = "bar", yTi
     plugins: {
       legend: { display: false },
       tooltip: {
-        ...baseTooltip,
+        ...theme.tooltip,
         callbacks: {
           label(item) {
             return ` ${item.dataset.label}: ${Number(item.parsed.y ?? 0).toFixed(2)} ${unit}`;
@@ -85,7 +86,7 @@ export function FleetBarChart({ labels, series, unit, stacked, type = "bar", yTi
         grid: { display: false },
         border: { display: false },
         ticks: {
-          color: "#5e584f",
+          color: theme.inkSoft,
           font: { family: chartFonts.ui, size: 11 },
           maxRotation: 0,
         },
@@ -94,9 +95,9 @@ export function FleetBarChart({ labels, series, unit, stacked, type = "bar", yTi
         stacked: Boolean(stacked),
         beginAtZero: true,
         border: { display: false },
-        grid: { color: "rgba(23, 22, 20, 0.07)" },
-        ticks: axisTicks,
-        title: { display: Boolean(yTitle), text: yTitle ?? "", ...axisTitle },
+        grid: { color: theme.grid },
+        ticks: theme.ticks,
+        title: { display: Boolean(yTitle), text: yTitle ?? "", ...theme.title },
       },
     },
   };

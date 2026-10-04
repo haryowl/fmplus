@@ -9,7 +9,7 @@ import {
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 import type { PeriodMetrics } from "../lib/types";
-import { axisTicks, axisTitle, baseTooltip, chartFonts } from "./chartTheme";
+import { axisTitle, chartFonts, useChartTheme } from "./chartTheme";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 
@@ -18,14 +18,15 @@ type Props = {
 };
 
 export function ElevationChart({ rows }: Props) {
+  const theme = useChartTheme();
   const data: ChartData = {
     labels: rows.map((row) => row.label),
     datasets: [
       {
         label: "Elevation gain",
         data: rows.map((row) => Number(row.elevationGainM.toFixed(0))),
-        backgroundColor: "rgba(154, 59, 18, 0.82)",
-        hoverBackgroundColor: "#9a3b12",
+        backgroundColor: theme.odoFill,
+        hoverBackgroundColor: theme.odo,
         borderRadius: 4,
         maxBarThickness: 28,
         barPercentage: 0.86,
@@ -34,8 +35,8 @@ export function ElevationChart({ rows }: Props) {
       {
         label: "Elevation loss",
         data: rows.map((row) => Number(row.elevationLossM.toFixed(0))),
-        backgroundColor: "rgba(11, 107, 98, 0.82)",
-        hoverBackgroundColor: "#0b6b62",
+        backgroundColor: theme.gpsFill,
+        hoverBackgroundColor: theme.gps,
         borderRadius: 4,
         maxBarThickness: 28,
         barPercentage: 0.86,
@@ -54,7 +55,7 @@ export function ElevationChart({ rows }: Props) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        ...baseTooltip,
+        ...theme.tooltip,
         callbacks: {
           label(item) {
             return ` ${item.dataset.label}: ${Math.round(Number(item.parsed.y ?? 0))} m`;
@@ -68,7 +69,7 @@ export function ElevationChart({ rows }: Props) {
         grid: { display: false },
         border: { display: false },
         ticks: {
-          color: "#5e584f",
+          color: theme.inkSoft,
           font: { family: chartFonts.ui, size: 11 },
           maxRotation: 0,
         },
@@ -76,8 +77,8 @@ export function ElevationChart({ rows }: Props) {
       y: {
         beginAtZero: true,
         border: { display: false },
-        grid: { color: "rgba(23, 22, 20, 0.07)" },
-        ticks: axisTicks,
+        grid: { color: theme.grid },
+        ticks: theme.ticks,
         title: { display: true, text: "Metres", ...axisTitle },
       },
     },

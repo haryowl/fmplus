@@ -10,7 +10,7 @@ import {
   type ChartOptions,
 } from "chart.js";
 import { Bar, Line } from "react-chartjs-2";
-import { axisTicks, baseTooltip, chartFonts } from "./chartTheme";
+import { chartFonts, useChartTheme } from "./chartTheme";
 import type { ScheduleSummary } from "../lib/maintenance";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip);
@@ -28,14 +28,6 @@ export type ScheduleTimeline = {
   opened: number[];
 };
 
-const HEALTH_COLORS: Record<string, string> = {
-  upcoming: "#b7a56a",
-  due: "#c49a5a",
-  overdue: "#c97a7a",
-  ok: "#8a9a7a",
-  none: "#c9bfae",
-};
-
 type Props = {
   summary: ScheduleSummary | null;
   healthBars?: ScheduleHealthBars | null;
@@ -44,6 +36,14 @@ type Props = {
 };
 
 export function MaintenanceScheduleCharts({ summary, healthBars, timeline, onSelectHealth }: Props) {
+  const theme = useChartTheme();
+  const healthColors: Record<string, string> = {
+    upcoming: theme.upcoming,
+    due: theme.due,
+    overdue: theme.overdue,
+    ok: theme.ok,
+    none: theme.none,
+  };
   const barLabels = healthBars?.labels || ["Upcoming", "Due", "Overdue", "On track", "Unscheduled"];
   const barKeys = healthBars?.keys || ["upcoming", "due", "overdue", "ok", "none"];
   const barValues =
@@ -58,7 +58,7 @@ export function MaintenanceScheduleCharts({ summary, healthBars, timeline, onSel
       {
         label: "Open jobs",
         data: barValues,
-        backgroundColor: barKeys.map((k) => HEALTH_COLORS[k] || "#c9bfae"),
+        backgroundColor: barKeys.map((k) => healthColors[k] || theme.none),
         borderRadius: 3,
         maxBarThickness: 36,
       },
@@ -71,7 +71,7 @@ export function MaintenanceScheduleCharts({ summary, healthBars, timeline, onSel
     plugins: {
       legend: { display: false },
       tooltip: {
-        ...baseTooltip,
+        ...theme.tooltip,
         callbacks: {
           label(item) {
             return ` ${Number(item.parsed.y ?? 0)} jobs`;
@@ -89,17 +89,17 @@ export function MaintenanceScheduleCharts({ summary, healthBars, timeline, onSel
       x: {
         grid: { display: false },
         border: { display: false },
-        ticks: { color: "#5e584f", font: { family: chartFonts.ui, size: 11 }, maxRotation: 0 },
+        ticks: { color: theme.inkSoft, font: { family: chartFonts.ui, size: 11 }, maxRotation: 0 },
       },
       y: {
         beginAtZero: true,
         ticks: {
-          ...axisTicks,
+          ...theme.ticks,
           precision: 0,
           stepSize: 1,
         },
         border: { display: false },
-        grid: { color: "rgba(23, 22, 20, 0.07)" },
+        grid: { color: theme.grid },
       },
     },
   };
@@ -110,10 +110,10 @@ export function MaintenanceScheduleCharts({ summary, healthBars, timeline, onSel
       {
         label: "Completed",
         data: timeline?.completed || [],
-        borderColor: "#2f6b45",
-        backgroundColor: "rgba(47, 107, 69, 0.12)",
-        pointBackgroundColor: "#fffdf8",
-        pointBorderColor: "#2f6b45",
+        borderColor: theme.completed,
+        backgroundColor: theme.completedFill,
+        pointBackgroundColor: theme.surface,
+        pointBorderColor: theme.completed,
         pointRadius: 3,
         borderWidth: 2,
         tension: 0.28,
@@ -122,10 +122,10 @@ export function MaintenanceScheduleCharts({ summary, healthBars, timeline, onSel
       {
         label: "Opened",
         data: timeline?.opened || [],
-        borderColor: "#6b6458",
-        backgroundColor: "rgba(107, 100, 88, 0.08)",
-        pointBackgroundColor: "#fffdf8",
-        pointBorderColor: "#6b6458",
+        borderColor: theme.opened,
+        backgroundColor: theme.openedFill,
+        pointBackgroundColor: theme.surface,
+        pointBorderColor: theme.opened,
         pointRadius: 3,
         borderWidth: 2,
         tension: 0.28,
@@ -146,12 +146,12 @@ export function MaintenanceScheduleCharts({ summary, healthBars, timeline, onSel
         labels: {
           boxWidth: 10,
           boxHeight: 10,
-          color: "#5e584f",
+          color: theme.inkSoft,
           font: { family: chartFonts.ui, size: 11 },
         },
       },
       tooltip: {
-        ...baseTooltip,
+        ...theme.tooltip,
         callbacks: {
           label(item) {
             return ` ${item.dataset.label}: ${Number(item.parsed.y ?? 0)}`;
@@ -163,13 +163,13 @@ export function MaintenanceScheduleCharts({ summary, healthBars, timeline, onSel
       x: {
         grid: { display: false },
         border: { display: false },
-        ticks: { color: "#5e584f", font: { family: chartFonts.mono, size: 10 }, maxRotation: 0 },
+        ticks: { color: theme.inkSoft, font: { family: chartFonts.mono, size: 10 }, maxRotation: 0 },
       },
       y: {
         beginAtZero: true,
-        ticks: { ...axisTicks, precision: 0, stepSize: 1 },
+        ticks: { ...theme.ticks, precision: 0, stepSize: 1 },
         border: { display: false },
-        grid: { color: "rgba(23, 22, 20, 0.07)" },
+        grid: { color: theme.grid },
       },
     },
   };

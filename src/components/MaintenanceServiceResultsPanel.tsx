@@ -9,7 +9,7 @@ import {
   type ChartOptions,
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
-import { axisTicks, baseTooltip } from "./chartTheme";
+import { useChartTheme } from "./chartTheme";
 import {
   downloadServiceResultsExcel,
   enrichServiceResultsWithFleetGroups,
@@ -37,6 +37,7 @@ export function MaintenanceServiceResultsPanel({
   excelOk = true,
   onOpenEvent,
 }: Props) {
+  const theme = useChartTheme();
   const [status, setStatus] = useState<ServiceResultsStatus>("all");
   const [catalogGroup, setCatalogGroup] = useState("");
   const [fleetGroupId, setFleetGroupId] = useState("");
@@ -106,10 +107,10 @@ export function MaintenanceServiceResultsPanel({
   const barOpts: ChartOptions<"bar"> = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { position: "bottom" }, tooltip: baseTooltip },
+    plugins: { legend: { position: "bottom" }, tooltip: theme.tooltip },
     scales: {
-      x: { grid: { display: false }, ticks: { color: "#5e584f", maxRotation: 45 } },
-      y: { beginAtZero: true, ticks: axisTicks },
+      x: { grid: { display: false }, ticks: { color: theme.inkSoft, maxRotation: 45 } },
+      y: { beginAtZero: true, ticks: theme.ticks },
     },
   };
 
@@ -119,13 +120,13 @@ export function MaintenanceServiceResultsPanel({
       {
         label: "Cost",
         data: (enriched?.byFleetGroup || []).slice(0, 12).map((g) => g.cost),
-        backgroundColor: "#c9a882",
+        backgroundColor: theme.cost,
         borderRadius: 3,
       },
       {
         label: "Price",
         data: (enriched?.byFleetGroup || []).slice(0, 12).map((g) => g.price),
-        backgroundColor: "#8a9a7a",
+        backgroundColor: theme.price,
         borderRadius: 3,
       },
     ],
@@ -137,13 +138,13 @@ export function MaintenanceServiceResultsPanel({
       {
         label: "Cost",
         data: (enriched?.byVehicle || []).slice(0, 12).map((v) => v.cost),
-        backgroundColor: "#c9a882",
+        backgroundColor: theme.cost,
         borderRadius: 3,
       },
       {
         label: "Price",
         data: (enriched?.byVehicle || []).slice(0, 12).map((v) => v.price),
-        backgroundColor: "#8a9a7a",
+        backgroundColor: theme.price,
         borderRadius: 3,
       },
     ],
@@ -155,13 +156,13 @@ export function MaintenanceServiceResultsPanel({
       {
         label: "Cost",
         data: (enriched?.byItem || []).slice(0, 12).map((i) => i.cost),
-        backgroundColor: "#c9a882",
+        backgroundColor: theme.cost,
         borderRadius: 3,
       },
       {
         label: "Price",
         data: (enriched?.byItem || []).slice(0, 12).map((i) => i.price),
-        backgroundColor: "#8a9a7a",
+        backgroundColor: theme.price,
         borderRadius: 3,
       },
     ],

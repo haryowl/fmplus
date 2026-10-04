@@ -11,28 +11,28 @@ import {
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 import type { PeriodMetrics } from "../lib/types";
-import { axisTicks, axisTitle, baseTooltip, chartFonts } from "./chartTheme";
+import { axisTitle, chartFonts, useChartTheme } from "./chartTheme";
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Filler);
-
-const SPEED = "#0b6b62";
-const RPM = "#9a3b12";
 
 type Props = {
   rows: PeriodMetrics[];
 };
 
 export function SpeedRpmChart({ rows }: Props) {
+  const theme = useChartTheme();
+  const speed = theme.gps;
+  const rpm = theme.odo;
   const data: ChartData<"line"> = {
     labels: rows.map((row) => row.label),
     datasets: [
       {
         label: "Avg speed",
         data: rows.map((row) => Number(row.avgSpeedKmh.toFixed(1))),
-        borderColor: SPEED,
-        backgroundColor: "rgba(11, 107, 98, 0.08)",
-        pointBackgroundColor: "#fbf9f4",
-        pointBorderColor: SPEED,
+        borderColor: speed,
+        backgroundColor: theme.gpsSoft,
+        pointBackgroundColor: theme.surface,
+        pointBorderColor: speed,
         pointBorderWidth: 2,
         pointRadius: 3.5,
         pointHoverRadius: 5,
@@ -44,10 +44,10 @@ export function SpeedRpmChart({ rows }: Props) {
       {
         label: "Max speed",
         data: rows.map((row) => Number(row.maxSpeedKmh.toFixed(1))),
-        borderColor: SPEED,
+        borderColor: speed,
         backgroundColor: "transparent",
-        pointBackgroundColor: SPEED,
-        pointBorderColor: SPEED,
+        pointBackgroundColor: speed,
+        pointBorderColor: speed,
         pointRadius: 3,
         pointHoverRadius: 5,
         borderWidth: 2,
@@ -59,10 +59,10 @@ export function SpeedRpmChart({ rows }: Props) {
       {
         label: "Avg RPM",
         data: rows.map((row) => Math.round(row.avgRpm)),
-        borderColor: RPM,
-        backgroundColor: "rgba(154, 59, 18, 0.07)",
-        pointBackgroundColor: "#fbf9f4",
-        pointBorderColor: RPM,
+        borderColor: rpm,
+        backgroundColor: theme.odoSoft,
+        pointBackgroundColor: theme.surface,
+        pointBorderColor: rpm,
         pointBorderWidth: 2,
         pointRadius: 3.5,
         pointHoverRadius: 5,
@@ -74,10 +74,10 @@ export function SpeedRpmChart({ rows }: Props) {
       {
         label: "Max RPM",
         data: rows.map((row) => Math.round(row.maxRpm)),
-        borderColor: RPM,
+        borderColor: rpm,
         backgroundColor: "transparent",
-        pointBackgroundColor: RPM,
-        pointBorderColor: RPM,
+        pointBackgroundColor: rpm,
+        pointBorderColor: rpm,
         pointRadius: 3,
         pointHoverRadius: 5,
         borderWidth: 2,
@@ -99,7 +99,7 @@ export function SpeedRpmChart({ rows }: Props) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        ...baseTooltip,
+        ...theme.tooltip,
         callbacks: {
           label(item) {
             const value = Number(item.parsed.y ?? 0);
@@ -115,7 +115,7 @@ export function SpeedRpmChart({ rows }: Props) {
         grid: { display: false },
         border: { display: false },
         ticks: {
-          color: "#5e584f",
+          color: theme.inkSoft,
           font: { family: chartFonts.ui, size: 11 },
           maxRotation: 0,
           autoSkipPadding: 12,
@@ -125,8 +125,8 @@ export function SpeedRpmChart({ rows }: Props) {
         beginAtZero: true,
         position: "left",
         border: { display: false },
-        grid: { color: "rgba(23, 22, 20, 0.07)" },
-        ticks: axisTicks,
+        grid: { color: theme.grid },
+        ticks: theme.ticks,
         title: { display: true, text: "Speed (km/h)", ...axisTitle },
       },
       yRpm: {
@@ -134,7 +134,7 @@ export function SpeedRpmChart({ rows }: Props) {
         position: "right",
         border: { display: false },
         grid: { drawOnChartArea: false },
-        ticks: axisTicks,
+        ticks: theme.ticks,
         title: { display: true, text: "RPM", ...axisTitle },
       },
     },

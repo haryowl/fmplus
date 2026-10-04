@@ -1,6 +1,6 @@
 import { ArcElement, Chart as ChartJS, Tooltip, type ChartData, type ChartOptions } from "chart.js";
 import { Doughnut } from "react-chartjs-2";
-import { baseTooltip } from "./chartTheme";
+import { useChartTheme } from "./chartTheme";
 
 ChartJS.register(ArcElement, Tooltip);
 
@@ -9,8 +9,6 @@ export type DispatchMonthJobCounts = {
   inProgress: number;
   completed: number;
 };
-
-const COLORS = ["#c49a5a", "#0b6b62", "#5a7a72"];
 
 type Props = {
   counts: DispatchMonthJobCounts;
@@ -23,13 +21,14 @@ function pct(n: number, total: number): string {
 }
 
 export function FieldDispatchMonthChart({ counts, periodLabel }: Props) {
+  const theme = useChartTheme();
   const total = counts.pending + counts.inProgress + counts.completed;
   const data: ChartData<"doughnut"> = {
     labels: ["Pending", "In progress", "Completed"],
     datasets: [
       {
         data: [counts.pending, counts.inProgress, counts.completed],
-        backgroundColor: COLORS,
+        backgroundColor: theme.jobs,
         borderWidth: 0,
         hoverOffset: 3,
       },
@@ -43,7 +42,7 @@ export function FieldDispatchMonthChart({ counts, periodLabel }: Props) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        ...baseTooltip,
+        ...theme.tooltip,
         callbacks: {
           label(item) {
             const value = Number(item.parsed);

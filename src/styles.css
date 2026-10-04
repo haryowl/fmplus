@@ -25,6 +25,22 @@
   --refill: #c45c16;
   --danger: #9f2a2a;
   --danger-soft: #f8e4e0;
+  --idle: #c47d3a;
+  --cost: #c9a882;
+  --cost-line: #8a6a4a;
+  --price: #8a9a7a;
+  --price-line: #5a7a6a;
+  --health-upcoming: #b7a56a;
+  --health-due: #c49a5a;
+  --health-overdue: #c97a7a;
+  --health-ok: #8a9a7a;
+  --health-none: #c9bfae;
+  --health-completed: #2f6b45;
+  --health-opened: #6b6458;
+  --health-deep: #a06060;
+  --job-pending: #c49a5a;
+  --job-active: #0b6b62;
+  --job-done: #5a7a72;
   --shadow: 0 1px 0 rgba(23, 22, 20, 0.04);
   --radius: 14px;
   --radius-sm: 8px;
@@ -60,7 +76,78 @@
   --refill: #3f3f46;
   --danger: #7f1d1d;
   --danger-soft: #f4e8e8;
+  --idle: #71717a;
+  --cost: #52525b;
+  --cost-line: #3f3f46;
+  --price: #a1a1aa;
+  --price-line: #71717a;
+  --health-upcoming: #a1a1aa;
+  --health-due: #71717a;
+  --health-overdue: #3f3f46;
+  --health-ok: #d4d4d8;
+  --health-none: #e4e4e7;
+  --health-completed: #18181b;
+  --health-opened: #71717a;
+  --health-deep: #27272a;
+  --job-pending: #a1a1aa;
+  --job-active: #3f3f46;
+  --job-done: #18181b;
   --shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+}
+
+/* Soft jewel palette — tinted page, distinct series, still quiet. */
+[data-theme="color"] {
+  --bg: #e4eef1;
+  --bg-deep: #d3e2e8;
+  --surface: #f7fbfc;
+  --surface-2: #e7f2f4;
+  --ink: #1a3140;
+  --ink-soft: #3e5966;
+  --ink-faint: #6d8794;
+  --line: #c5d6de;
+  --line-strong: #a9c0cb;
+  --nav: #12343c;
+  --nav-text: #f3fafb;
+  --nav-muted: #9db4be;
+  --nav-chip: #1b4650;
+  --nav-chip-line: #2d6270;
+  --nav-chip-hover: #3d7a88;
+  --accent: #0e8f86;
+  --accent-hover: #0b726b;
+  --accent-soft: #d2f3ee;
+  --gps: #0f9d8a;
+  --ign: #3d5ad6;
+  --odo: #e06a32;
+  --hrs: #1d4e72;
+  --refill: #e0a02e;
+  --idle: #e08a3c;
+  --danger: #c4475a;
+  --danger-soft: #fdecee;
+  --cost: #d4926a;
+  --cost-line: #b86a3a;
+  --price: #3aa88a;
+  --price-line: #1f7a68;
+  --health-upcoming: #d4a24a;
+  --health-due: #e08a3c;
+  --health-overdue: #d15d6c;
+  --health-ok: #2f9d74;
+  --health-none: #8eacb8;
+  --health-completed: #1f8a68;
+  --health-opened: #4d7394;
+  --health-deep: #a84858;
+  --job-pending: #e0a02e;
+  --job-active: #0e8f86;
+  --job-done: #2f9d74;
+  --shadow: 0 1px 0 rgba(18, 52, 60, 0.06);
+}
+
+[data-theme="color"] body {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(920px 440px at -6% -8%, rgba(14, 143, 134, 0.2), transparent 58%),
+    radial-gradient(760px 400px at 108% -4%, rgba(61, 90, 214, 0.14), transparent 54%),
+    radial-gradient(680px 380px at 92% 108%, rgba(224, 160, 46, 0.12), transparent 52%);
+  background-attachment: fixed;
 }
 
 * {
@@ -247,6 +334,10 @@ button {
 
 .theme-picker-swatch-mono {
   background: linear-gradient(135deg, #ffffff 45%, #0a0a0a 45%);
+}
+
+.theme-picker-swatch-color {
+  background: linear-gradient(135deg, #0e8f86 0 34%, #3d5ad6 34% 67%, #e0a02e 67%);
 }
 
 .btn-ghost {
@@ -10843,4 +10934,80 @@ button.dispatch-pin-chip {
   .maintenance-stage.is-split {
     grid-template-columns: 1fr;
   }
+}
+
+/* Color theme: let the page wash show, and tint the black accents. */
+[data-theme="color"] .maintenance-page,
+[data-theme="color"] .dispatch-live-page {
+  background: transparent;
+}
+
+[data-theme="color"] .kpis .kpi:nth-child(4n + 1),
+[data-theme="color"] .dispatch-live-page .dispatch-live-kpi:nth-child(4n + 1),
+[data-theme="color"] .maintenance-page .maint-dash-tile:nth-child(4n + 1) {
+  box-shadow: inset 0 3px 0 var(--gps);
+}
+
+[data-theme="color"] .kpis .kpi:nth-child(4n + 2),
+[data-theme="color"] .dispatch-live-page .dispatch-live-kpi:nth-child(4n + 2),
+[data-theme="color"] .maintenance-page .maint-dash-tile:nth-child(4n + 2) {
+  box-shadow: inset 0 3px 0 var(--ign);
+}
+
+[data-theme="color"] .kpis .kpi:nth-child(4n + 3),
+[data-theme="color"] .dispatch-live-page .dispatch-live-kpi:nth-child(4n + 3),
+[data-theme="color"] .maintenance-page .maint-dash-tile:nth-child(4n + 3) {
+  box-shadow: inset 0 3px 0 var(--odo);
+}
+
+[data-theme="color"] .kpis .kpi:nth-child(4n),
+[data-theme="color"] .dispatch-live-page .dispatch-live-kpi:nth-child(4n),
+[data-theme="color"] .maintenance-page .maint-dash-tile:nth-child(4n) {
+  box-shadow: inset 0 3px 0 var(--refill);
+}
+
+[data-theme="color"] .maintenance-page .maint-dash-tile.is-active,
+[data-theme="color"] .dispatch-live-page .dispatch-live-kpi.is-featured {
+  box-shadow: inset 0 3px 0 var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+[data-theme="color"] .catalog-v2-tabs button.is-on,
+[data-theme="color"] .catalog-v2-mark,
+[data-theme="color"] .catalog-v2-avatar,
+[data-theme="color"] .catalog-v2-add-btn,
+[data-theme="color"] .dispatch-live-page .dispatch-live-refresh .btn-ghost,
+[data-theme="color"] .maintenance-page .filters .btn-ghost:not(:disabled),
+[data-theme="color"] .maintenance-page .maint-vehicle-avatar {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+[data-theme="color"] .maint-dash-tile.maint-health-upcoming.is-active,
+[data-theme="color"] .maint-badge.maint-health-upcoming {
+  border-color: var(--health-upcoming);
+  background: color-mix(in srgb, var(--health-upcoming) 18%, white);
+  color: #6a4e12;
+}
+
+[data-theme="color"] .maint-dash-tile.maint-health-due.is-active,
+[data-theme="color"] .maint-badge.maint-health-due {
+  border-color: var(--health-due);
+  background: color-mix(in srgb, var(--health-due) 18%, white);
+  color: #7a4512;
+}
+
+[data-theme="color"] .maint-dash-tile.maint-health-overdue.is-active,
+[data-theme="color"] .maint-badge.maint-health-overdue {
+  border-color: var(--health-overdue);
+  background: color-mix(in srgb, var(--health-overdue) 16%, white);
+  color: #7a2430;
+}
+
+[data-theme="color"] .maint-dash-tile.maint-health-completed.is-active,
+[data-theme="color"] .maint-badge.maint-health-completed {
+  border-color: var(--health-ok);
+  background: color-mix(in srgb, var(--health-ok) 16%, white);
+  color: #146046;
 }
