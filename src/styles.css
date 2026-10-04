@@ -10918,6 +10918,14 @@ button.dispatch-pin-chip {
   grid-template-columns: 1fr 1fr;
 }
 
+.maintenance-stage.is-split .maint-schedule-rule-grid {
+  grid-template-columns: 1fr;
+}
+
+.maintenance-stage.is-split .maint-schedule-rule-grid label {
+  min-width: 0;
+}
+
 .maintenance-page .maint-vehicle-avatar {
   display: inline-grid;
   place-items: center;
