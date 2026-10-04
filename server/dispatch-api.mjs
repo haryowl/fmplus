@@ -2137,6 +2137,13 @@ export async function handleDispatchRequest(req, res) {
       const created = [];
       const skipped = [];
       const errors = [];
+      const customers = await listCustomers(dbTenant.id);
+      const customersByName = new Map();
+      for (const customer of customers) {
+        if (customer.enabled === false) continue;
+        const key = customer.name.trim().toLowerCase();
+        if (key && !customersByName.has(key)) customersByName.set(key, customer);
+      }
 
       for (let i = 0; i < rawRows.length; i++) {
         const row = rawRows[i] && typeof rawRows[i] === "object" ? rawRows[i] : {};
@@ -2146,11 +2153,16 @@ export async function handleDispatchRequest(req, res) {
         )
           .trim()
           .slice(0, 200);
-        const lat = csvNum(row.lat);
-        const lon = csvNum(row.lon ?? row.lng);
         if (!customerName) {
           errors.push({ line, error: "customer_name is required" });
           continue;
+        }
+        const known = customersByName.get(customerName.toLowerCase()) || null;
+        let lat = csvNum(row.lat);
+        let lon = csvNum(row.lon ?? row.lng);
+        if (known) {
+          if (lat == null) lat = known.lat;
+          if (lon == null) lon = known.lon;
         }
         if (
           lat == null ||
@@ -2158,7 +2170,12 @@ export async function handleDispatchRequest(req, res) {
           Math.abs(lat) > 90 ||
           Math.abs(lon) > 180
         ) {
-          errors.push({ line, error: "valid lat and lon are required" });
+          errors.push({
+            line,
+            error: known
+              ? "valid lat and lon are required"
+              : `No customer named "${customerName}", so lat and lon are required`,
+          });
           continue;
         }
         const serviceDate = parseServiceDate(row.service_date || row.serviceDate) || defaultDate;
@@ -2183,6 +2200,26 @@ export async function handleDispatchRequest(req, res) {
             continue;
           }
         }
+        const csvText = (value, max) => String(value || "").trim().slice(0, max);
+        const address =
+          csvText(row.address, 500) ||
+          (known ? csvText(known.address, 500) : "") ||
+          null;
+        const zone = csvText(row.zone, 80) || (known ? csvText(known.zone, 80) : "") || null;
+        const notes = csvText(row.notes, 2000) || (known ? csvText(known.notes, 2000) : "") || null;
+        const windowStart =
+          csvText(row.window_start || row.windowStart, 16) ||
+          (known ? csvText(known.windowStart, 16) : "") ||
+          null;
+        const windowEnd =
+          csvText(row.window_end || row.windowEnd, 16) ||
+          (known ? csvText(known.windowEnd, 16) : "") ||
+          null;
+        const proofCell = row.proof_required ?? row.proofRequired;
+        const proofRequired =
+          proofCell == null || String(proofCell).trim() === ""
+            ? Boolean(known?.proofRequired)
+            : csvBool(proofCell);
         try {
           const inserted = await dbQuery(
             `INSERT INTO dispatch_orders (
@@ -2195,20 +2232,26 @@ export async function handleDispatchRequest(req, res) {
               dbTenant.id,
               externalRef || null,
               customerName,
-              String(row.address || "").trim().slice(0, 500) || null,
+              address,
               lat,
               lon,
-              String(row.zone || "").trim().slice(0, 80) || null,
+              zone,
               csvNum(row.volume_m3 ?? row.volumeM3),
               csvNum(row.weight_kg ?? row.weightKg),
-              String(row.window_start || row.windowStart || "").trim().slice(0, 16) || null,
-              String(row.window_end || row.windowEnd || "").trim().slice(0, 16) || null,
-              String(row.notes || "").trim().slice(0, 2000) || null,
+              windowStart,
+              windowEnd,
+              notes,
               serviceDate,
               serviceMinutesOrNull(row.service_minutes ?? row.serviceMinutes),
-              csvBool(row.proof_required ?? row.proofRequired),
+              proofRequired,
             ],
           );
+          if (known?.id) {
+            await dbQuery(
+              `UPDATE dispatch_orders SET customer_id = $1 WHERE id = $2 AND tenant_id = $3`,
+              [known.id, inserted.rows[0].id, dbTenant.id],
+            );
+          }
           const goodsCell = row.goods || row.cargo || "";
           const lines = await resolveCsvGoodsLines(dbTenant.id, goodsCell, row);
           if (lines.length) {
