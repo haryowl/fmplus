@@ -46,10 +46,10 @@ type FoldId =
 
 const LIVE_MOBILE_PANES: { id: LiveMobilePane; label: string }[] = [
   { id: "summary", label: "Sum" },
-  { id: "alerts", label: "Alerts" },
+  { id: "alerts", label: "Alert" },
   { id: "map", label: "Map" },
   { id: "progress", label: "Prog" },
-  { id: "drivers", label: "Drivers" },
+  { id: "drivers", label: "Drive" },
   { id: "list", label: "List" },
 ];
 
@@ -762,24 +762,6 @@ export default function DispatchLive() {
           </>
         ) : (
           <div className={`dispatch-live-mobile is-pane-${livePane}`}>
-            <nav className="dispatch-live-mobile-nav" role="tablist" aria-label="Live sections">
-              {LIVE_MOBILE_PANES.map((pane) => (
-                <button
-                  key={pane.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={livePane === pane.id}
-                  className={`dispatch-live-mobile-tab${livePane === pane.id ? " is-active" : ""}`}
-                  onClick={() => openLivePane(pane.id)}
-                >
-                  {pane.label}
-                  {pane.id === "alerts" && (exceptionSummary?.unacked || 0) > 0 ? (
-                    <em>{exceptionSummary?.unacked}</em>
-                  ) : null}
-                </button>
-              ))}
-            </nav>
-
             {fetchError ? <div className="dispatch-alert">{fetchError}</div> : null}
             {recoverError ? <div className="dispatch-alert">{recoverError}</div> : null}
             {actionNote ? <p className="dispatch-search-hint">{actionNote}</p> : null}
@@ -1277,6 +1259,26 @@ export default function DispatchLive() {
             </div>
           </div>
         )}
+
+        {tab === "live" ? (
+          <nav className="dispatch-live-bottom-nav" role="tablist" aria-label="Live sections">
+            {LIVE_MOBILE_PANES.map((pane) => (
+              <button
+                key={pane.id}
+                type="button"
+                role="tab"
+                aria-selected={livePane === pane.id}
+                className={`dispatch-live-bottom-tab${livePane === pane.id ? " is-active" : ""}`}
+                onClick={() => openLivePane(pane.id)}
+              >
+                <span>{pane.label}</span>
+                {pane.id === "alerts" && (exceptionSummary?.unacked || 0) > 0 ? (
+                  <em>{exceptionSummary?.unacked}</em>
+                ) : null}
+              </button>
+            ))}
+          </nav>
+        ) : null}
       </main>
     </div>
   );

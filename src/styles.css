@@ -10352,7 +10352,8 @@ button.dispatch-pin-chip {
 }
 
 .dispatch-live-mobile-nav,
-.dispatch-live-mobile-actions {
+.dispatch-live-mobile-actions,
+.dispatch-live-bottom-nav {
   display: none;
 }
 
@@ -10469,60 +10470,87 @@ button.dispatch-pin-chip {
     flex-wrap: wrap;
   }
 
-  .dispatch-live-mobile-nav {
-    display: flex;
-    gap: 6px;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    position: sticky;
-    top: var(--app-topbar-h, 4.75rem);
-    z-index: 30;
-    margin: 0 0 10px;
-    padding: 6px 2px;
-    background: color-mix(in srgb, var(--bg, #f6f5f2) 94%, transparent);
-    backdrop-filter: blur(8px);
-    max-width: 100%;
+  /* Sticky Live toolbar was covering section tabs — keep it in document flow on phone. */
+  .dispatch-live-page .dispatch-toolbar,
+  .dispatch-live-page.is-phone-ui .dispatch-toolbar {
+    position: static;
+    top: auto;
+    z-index: auto;
+    backdrop-filter: none;
   }
 
-  .dispatch-live-mobile-tab {
-    flex: 0 0 auto;
-    border: 1px solid var(--line, #d8d4cb);
-    background: #fff;
-    border-radius: 999px;
-    padding: 6px 10px;
+  .dispatch-live-page .dispatch-live-shell {
+    padding-bottom: calc(4.25rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .dispatch-live-bottom-nav {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 2px;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 80;
+    margin: 0;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in srgb, var(--surface, #fff) 96%, transparent);
+    border-top: 1px solid var(--line, #d8d4cb);
+    box-shadow: 0 -4px 16px rgba(23, 22, 20, 0.08);
+    backdrop-filter: blur(10px);
+    max-width: 100vw;
+    box-sizing: border-box;
+  }
+
+  .dispatch-live-bottom-tab {
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    border-radius: 10px;
+    padding: 8px 2px;
     font: inherit;
-    font-size: 0.78rem;
-    line-height: 1.2;
-    white-space: nowrap;
+    font-size: 0.68rem;
+    font-weight: 650;
+    line-height: 1.15;
+    color: var(--muted, #6b6560);
     cursor: pointer;
     display: inline-flex;
+    flex-direction: column;
     align-items: center;
-    gap: 5px;
+    justify-content: center;
+    gap: 2px;
   }
 
-  .dispatch-live-mobile-tab.is-active {
-    background: var(--accent, #1f6f5b);
-    border-color: var(--accent, #1f6f5b);
-    color: #fff;
+  .dispatch-live-bottom-tab.is-active {
+    background: color-mix(in srgb, var(--accent, #1f6f5b) 14%, #fff);
+    color: var(--accent, #1f6f5b);
   }
 
-  .dispatch-live-mobile-tab em {
+  .dispatch-live-bottom-tab em {
     font-style: normal;
-    min-width: 1.1rem;
-    padding: 0 5px;
+    min-width: 1.05rem;
+    padding: 0 4px;
     border-radius: 999px;
     background: #c4475a;
     color: #fff;
-    font-size: 0.68rem;
+    font-size: 0.62rem;
     font-weight: 700;
     text-align: center;
-    line-height: 1.4;
+    line-height: 1.35;
   }
 
-  .dispatch-live-mobile-tab.is-active em {
-    background: #fff;
-    color: #c4475a;
+  .dispatch-live-bottom-tab.is-active em {
+    background: #c4475a;
+    color: #fff;
+  }
+
+  /* Legacy class kept for map-pane rules; unused in markup. */
+  .dispatch-live-mobile-nav {
+    display: none;
+  }
+
+  .dispatch-live-mobile-tab {
+    display: none;
   }
 
   /* Hide inactive panes without forcing display:block (that killed CSS grids). */
@@ -10860,7 +10888,7 @@ button.dispatch-pin-chip {
     height: calc(100dvh - env(safe-area-inset-top, 0px));
     max-height: 100dvh;
     overflow: hidden;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: calc(4.25rem + env(safe-area-inset-bottom, 0px));
     box-sizing: border-box;
   }
 
@@ -10876,9 +10904,8 @@ button.dispatch-pin-chip {
     overflow: hidden;
   }
 
-  .dispatch-live-page.is-live-map-pane .dispatch-live-mobile-nav {
-    position: static;
-    flex-shrink: 0;
+  .dispatch-live-page.is-live-map-pane .dispatch-live-bottom-nav {
+    display: grid;
   }
 
   .dispatch-live-page.is-live-map-pane [data-live-pane="map"] {
