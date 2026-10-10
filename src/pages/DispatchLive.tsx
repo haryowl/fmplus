@@ -33,7 +33,7 @@ const FOLD_STORAGE_KEY = "fmplus.dispatchLive.folded";
 
 type TabId = "live" | "history";
 /** Phone Live: one section at a time (desktop still shows the full stack). */
-type LiveMobilePane = "summary" | "alerts" | "map" | "drivers" | "list";
+type LiveMobilePane = "summary" | "alerts" | "map" | "progress" | "drivers" | "list";
 type FoldId =
   | "sla"
   | "exceptions"
@@ -48,6 +48,7 @@ const LIVE_MOBILE_PANES: { id: LiveMobilePane; label: string }[] = [
   { id: "summary", label: "Summary" },
   { id: "alerts", label: "Alerts" },
   { id: "map", label: "Map" },
+  { id: "progress", label: "Progress" },
   { id: "drivers", label: "Drivers" },
   { id: "list", label: "List" },
 ];
@@ -187,11 +188,13 @@ export default function DispatchLive() {
           ? ["exceptions"]
           : pane === "map"
             ? ["map"]
-            : pane === "drivers"
-              ? ["drivers"]
-              : pane === "list"
-                ? ["manifest"]
-                : [];
+            : pane === "progress"
+              ? ["progress"]
+              : pane === "drivers"
+                ? ["drivers"]
+                : pane === "list"
+                  ? ["manifest"]
+                  : [];
     if (!unfold.length) return;
     setFolded((prev) => {
       const next = { ...prev };
@@ -1106,6 +1109,9 @@ export default function DispatchLive() {
               </FoldPanel>
             ) : null}
 
+            </div>
+
+            <div data-live-pane="progress">
             {!loading || snapshot ? (
               <FoldPanel
                 id="progress"
@@ -1125,7 +1131,9 @@ export default function DispatchLive() {
                   embedded
                 />
               </FoldPanel>
-            ) : null}
+            ) : (
+              <p className="dispatch-live-empty">Loading progress…</p>
+            )}
             </div>
 
             <div data-live-pane="list">
@@ -1144,7 +1152,7 @@ export default function DispatchLive() {
                     <span className="visually-hidden">Search manifest</span>
                     <input
                       type="search"
-                      placeholder="Order, driver, vehicle, lat/lon…"
+                      placeholder="Order, driver, vehicle…"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
@@ -1158,34 +1166,50 @@ export default function DispatchLive() {
               ) : groupedManifest.length === 0 ? (
                 <p className="dispatch-live-empty">No stops match this filter.</p>
               ) : (
-                <div className="dispatch-live-table-wrap">
-                  <table className="dispatch-live-table">
-                    <thead>
-                      <tr>
-                        <th>#</th>
-                        <th>Order / stop</th>
-                        <th>Status</th>
-                        <th>Start</th>
-                        <th>End</th>
-                        <th>POD</th>
-                        <th>Plan</th>
-                        <th>Phone</th>
-                        <th>Vehicle</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {groupedManifest.map((group) => (
-                        <FragmentGroup
-                          key={group.driver?.jobId || group.rows[0]?.jobId || "g"}
-                          group={group}
-                          focusStopId={focusStopId}
-                          onFocusJob={selectJob}
-                          onFocusStop={selectStop}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <>
+                  <div className="dispatch-live-manifest-cards" aria-label="Stop cards">
+                    {groupedManifest.map((group) => (
+                      <ManifestCardGroup
+                        key={group.driver?.jobId || group.rows[0]?.jobId || "g"}
+                        group={group}
+                        focusStopId={focusStopId}
+                        onFocusJob={selectJob}
+                        onFocusStop={(jobId, stopId) => {
+                          selectStop(jobId, stopId);
+                          openLivePane("map");
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <div className="dispatch-live-table-wrap">
+                    <table className="dispatch-live-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Order / stop</th>
+                          <th>Status</th>
+                          <th>Start</th>
+                          <th>End</th>
+                          <th>POD</th>
+                          <th>Plan</th>
+                          <th>Phone</th>
+                          <th>Vehicle</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupedManifest.map((group) => (
+                          <FragmentGroup
+                            key={group.driver?.jobId || group.rows[0]?.jobId || "g"}
+                            group={group}
+                            focusStopId={focusStopId}
+                            onFocusJob={selectJob}
+                            onFocusStop={selectStop}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
               {!loading || snapshot ? (
                 <p className="dispatch-live-manifest-foot">
@@ -1327,6 +1351,82 @@ function formatStraightDist(km: number | null | undefined): string {
   if (km == null || !Number.isFinite(km)) return "";
   if (km < 1) return `${Math.round(km * 1000)} m from plan`;
   return `${km.toFixed(2)} km from plan`;
+}
+
+function ManifestCardGroup({
+  group,
+  focusStopId,
+  onFocusJob,
+  onFocusStop,
+}: {
+  group: { driver: DispatchLiveDriver | null; rows: DispatchLiveStop[] };
+  focusStopId: string | null;
+  onFocusJob: (jobId: string) => void;
+  onFocusStop: (jobId: string, stopId: string) => void;
+}) {
+  const name = group.driver?.driverName || group.rows[0]?.driverName || "Driver";
+  const initials = group.driver?.driverInitials || name.slice(0, 2).toUpperCase();
+  const vehicle = group.driver?.vehicleLabel || group.rows[0]?.vehicleLabel || "";
+  const jobId = group.driver?.jobId || group.rows[0]?.jobId || null;
+
+  return (
+    <section className="dispatch-live-card-group">
+      <button
+        type="button"
+        className="dispatch-live-card-driver"
+        onClick={() => jobId && onFocusJob(jobId)}
+      >
+        <span className="dispatch-live-avatar" aria-hidden="true">
+          {initials}
+        </span>
+        <div>
+          <strong>{name}</strong>
+          <span>
+            {vehicle ? `${vehicle} · ` : ""}
+            {group.rows.length} stop{group.rows.length === 1 ? "" : "s"}
+            {group.driver ? ` · ${group.driver.pctComplete}%` : ""}
+          </span>
+        </div>
+      </button>
+      <ul className="dispatch-live-card-list">
+        {group.rows.map((row) => {
+          const tone = statusTone(row.status);
+          const selected = focusStopId === row.stopId;
+          return (
+            <li key={row.stopId}>
+              <button
+                type="button"
+                className={`dispatch-live-stop-card tone-${tone}${selected ? " is-selected" : ""}`}
+                onClick={() => onFocusStop(row.jobId, row.stopId)}
+              >
+                <div className="dispatch-live-stop-card-top">
+                  <em>#{row.stopNumber}</em>
+                  <strong>{row.externalRef || row.name}</strong>
+                  <span className={`dispatch-live-pill tone-${tone}`}>{statusLabel(tone)}</span>
+                </div>
+                {row.address || (row.externalRef && row.name !== row.externalRef) ? (
+                  <p className="dispatch-live-stop-card-addr">
+                    {row.externalRef && row.name !== row.externalRef ? row.name : null}
+                    {row.externalRef && row.name !== row.externalRef && row.address ? " · " : null}
+                    {row.address || null}
+                  </p>
+                ) : null}
+                <div className="dispatch-live-stop-card-meta">
+                  <span>
+                    Start <b>{row.arrivedLabel || "—"}</b>
+                  </span>
+                  <span>
+                    End <b>{row.completedLabel || "—"}</b>
+                  </span>
+                  <span className={`dispatch-live-pod pod-${row.pod}`}>POD {podLabel(row.pod)}</span>
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
 }
 
 function FragmentGroup({

@@ -10355,6 +10355,10 @@ button.dispatch-pin-chip {
   display: none;
 }
 
+.dispatch-live-manifest-cards {
+  display: none;
+}
+
 @media (max-width: 700px) {
   .dispatch-live-page,
   .dispatch-live-page .dispatch-live-shell {
@@ -10469,9 +10473,130 @@ button.dispatch-pin-chip {
   .dispatch-live-mobile.is-pane-summary > [data-live-pane="summary"],
   .dispatch-live-mobile.is-pane-alerts > [data-live-pane="alerts"],
   .dispatch-live-mobile.is-pane-map > [data-live-pane="map"],
+  .dispatch-live-mobile.is-pane-progress > [data-live-pane="progress"],
   .dispatch-live-mobile.is-pane-drivers > [data-live-pane="drivers"],
   .dispatch-live-mobile.is-pane-list > [data-live-pane="list"] {
     display: block;
+  }
+
+  .dispatch-live-page .dispatch-live-manifest-cards {
+    display: grid;
+    gap: 12px;
+  }
+
+  .dispatch-live-page .dispatch-live-manifest .dispatch-live-table-wrap {
+    display: none;
+  }
+
+  .dispatch-live-card-group {
+    display: grid;
+    gap: 8px;
+  }
+
+  .dispatch-live-card-driver {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: #eef6f4;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .dispatch-live-card-driver strong {
+    display: block;
+    font-size: 0.95rem;
+  }
+
+  .dispatch-live-card-driver span:last-child {
+    display: block;
+    color: var(--ink-soft);
+    font-size: 0.78rem;
+  }
+
+  .dispatch-live-card-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+  }
+
+  .dispatch-live-stop-card {
+    width: 100%;
+    text-align: left;
+    border: 1px solid rgba(23, 22, 20, 0.1);
+    background: #fff;
+    border-radius: 14px;
+    padding: 12px;
+    font: inherit;
+    cursor: pointer;
+    display: grid;
+    gap: 6px;
+  }
+
+  .dispatch-live-stop-card.is-selected {
+    border-color: var(--accent, #1f6f5b);
+    box-shadow: inset 0 0 0 1px var(--accent, #1f6f5b);
+  }
+
+  .dispatch-live-stop-card-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dispatch-live-stop-card-top em {
+    font-style: normal;
+    font-weight: 700;
+    color: var(--ink-faint);
+    font-size: 0.8rem;
+  }
+
+  .dispatch-live-stop-card-top strong {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.95rem;
+  }
+
+  .dispatch-live-stop-card-addr {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+
+  .dispatch-live-stop-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+  }
+
+  .dispatch-live-stop-card-meta b {
+    color: var(--ink);
+    font-weight: 650;
+  }
+
+  .dispatch-live-page [data-live-pane="progress"] .dispatch-live-gantt {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+
+  .dispatch-live-page .fold-panel-hint .dispatch-live-search {
+    max-width: min(100%, 11rem);
+  }
+
+  .dispatch-live-page .fold-panel-hint .dispatch-live-search input {
+    width: 100%;
+    max-width: 100%;
   }
 
   .dispatch-live-page .dispatch-live-kpis {
@@ -10571,9 +10696,6 @@ button.dispatch-pin-chip {
     flex-direction: column;
   }
 
-  .dispatch-live-page.is-live-map-pane .dispatch-live-timeline {
-    display: none;
-  }
 }
 
 .dispatch-catalog-modal {
