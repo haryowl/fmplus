@@ -45,10 +45,10 @@ type FoldId =
   | "historyMap";
 
 const LIVE_MOBILE_PANES: { id: LiveMobilePane; label: string }[] = [
-  { id: "summary", label: "Summary" },
+  { id: "summary", label: "Sum" },
   { id: "alerts", label: "Alerts" },
   { id: "map", label: "Map" },
-  { id: "progress", label: "Progress" },
+  { id: "progress", label: "Prog" },
   { id: "drivers", label: "Drivers" },
   { id: "list", label: "List" },
 ];
@@ -178,6 +178,17 @@ export default function DispatchLive() {
   const [phoneTracks, setPhoneTracks] = useState<Map<string, TimedMapPoint[]>>(new Map());
   const [folded, setFolded] = useState<FoldState>(() => loadFoldState());
   const [livePane, setLivePane] = useState<LiveMobilePane>("summary");
+  const [phoneUi, setPhoneUi] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 700px)").matches : false,
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 700px)");
+    const sync = () => setPhoneUi(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   function openLivePane(pane: LiveMobilePane) {
     setLivePane(pane);
@@ -551,7 +562,7 @@ export default function DispatchLive() {
 
   return (
     <div
-      className={`app dispatch-page dispatch-live-page${
+      className={`app dispatch-page dispatch-live-page${phoneUi ? " is-phone-ui" : ""}${
         tab === "live" && livePane === "map" ? " is-live-map-pane" : ""
       }`}
     >
@@ -652,7 +663,9 @@ export default function DispatchLive() {
           {tab === "live" ? (
             <div className="dispatch-live-refresh">
               <span className="dispatch-live-updated">
-                Updated {formatUpdatedAt(snapshot?.updatedAt)} · auto {POLL_MS / 1000}s
+                {phoneUi
+                  ? `Updated ${formatUpdatedAt(snapshot?.updatedAt)}`
+                  : `Updated ${formatUpdatedAt(snapshot?.updatedAt)} · auto ${POLL_MS / 1000}s`}
               </span>
               <button
                 type="button"
@@ -662,26 +675,30 @@ export default function DispatchLive() {
               >
                 Refresh
               </button>
-              <button
-                type="button"
-                className="btn-secondary dispatch-live-recover-btn"
-                disabled={recoverBusy}
-                onClick={() => {
-                  openLivePane("alerts");
-                  void runRecoverPreview();
-                }}
-              >
-                Recover…
-              </button>
-              <button
-                type="button"
-                className="btn-ghost dispatch-live-safe-auto-btn"
-                disabled={recoverBusy}
-                title="Auto-apply only same-vehicle remaining reorders"
-                onClick={() => void applyRecover({ autoSafe: true })}
-              >
-                Safe auto
-              </button>
+              {!phoneUi ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn-secondary dispatch-live-recover-btn"
+                    disabled={recoverBusy}
+                    onClick={() => {
+                      openLivePane("alerts");
+                      void runRecoverPreview();
+                    }}
+                  >
+                    Recover…
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost dispatch-live-safe-auto-btn"
+                    disabled={recoverBusy}
+                    title="Auto-apply only same-vehicle remaining reorders"
+                    onClick={() => void applyRecover({ autoSafe: true })}
+                  >
+                    Safe auto
+                  </button>
+                </>
+              ) : null}
             </div>
           ) : null}
         </section>
@@ -1134,24 +1151,43 @@ export default function DispatchLive() {
 
             <div data-live-pane="progress">
             {!loading || snapshot ? (
-              <FoldPanel
-                id="progress"
-                className="dispatch-live-timeline"
-                title="Progress"
-                folded={Boolean(folded.progress)}
-                onToggle={() => toggleFold("progress")}
-                hint="faded plan · green actual"
-              >
-                <DispatchLiveTimeline
-                  drivers={drivers}
-                  serviceDate={serviceDate}
-                  focusJobId={focusJobId}
-                  focusStopId={focusStopId}
-                  onSelectJob={selectJob}
-                  onSelectStop={selectStop}
-                  embedded
-                />
-              </FoldPanel>
+              phoneUi ? (
+                <section className="dispatch-live-progress-phone panel" aria-label="Progress">
+                  <header className="dispatch-pane-head">
+                    <h2>Progress</h2>
+                    <span className="muted">{drivers.length} drivers</span>
+                  </header>
+                  <MobileProgressList
+                    drivers={drivers}
+                    focusJobId={focusJobId}
+                    focusStopId={focusStopId}
+                    onSelectJob={selectJob}
+                    onSelectStop={(jobId, stopId) => {
+                      selectStop(jobId, stopId);
+                      openLivePane("map");
+                    }}
+                  />
+                </section>
+              ) : (
+                <FoldPanel
+                  id="progress"
+                  className="dispatch-live-timeline"
+                  title="Progress"
+                  folded={Boolean(folded.progress)}
+                  onToggle={() => toggleFold("progress")}
+                  hint="faded plan · green actual"
+                >
+                  <DispatchLiveTimeline
+                    drivers={drivers}
+                    serviceDate={serviceDate}
+                    focusJobId={focusJobId}
+                    focusStopId={focusStopId}
+                    onSelectJob={selectJob}
+                    onSelectStop={selectStop}
+                    embedded
+                  />
+                </FoldPanel>
+              )
             ) : (
               <p className="dispatch-live-empty">Loading progress…</p>
             )}
@@ -1372,6 +1408,86 @@ function formatStraightDist(km: number | null | undefined): string {
   if (km == null || !Number.isFinite(km)) return "";
   if (km < 1) return `${Math.round(km * 1000)} m from plan`;
   return `${km.toFixed(2)} km from plan`;
+}
+
+function MobileProgressList({
+  drivers,
+  focusJobId,
+  focusStopId,
+  onSelectJob,
+  onSelectStop,
+}: {
+  drivers: DispatchLiveDriver[];
+  focusJobId: string | null;
+  focusStopId: string | null;
+  onSelectJob: (jobId: string) => void;
+  onSelectStop: (jobId: string, stopId: string) => void;
+}) {
+  if (!drivers.length) {
+    return <p className="dispatch-live-empty">No routes to plot for this date.</p>;
+  }
+  return (
+    <div className="dispatch-live-progress-phone-list">
+      {drivers.map((d) => {
+        const tone = statusTone(String(d.currentStatus));
+        const focused = focusJobId === d.jobId;
+        const stops = [...(d.stops || [])].sort((a, b) => (a.stopNumber || 0) - (b.stopNumber || 0));
+        return (
+          <section
+            key={d.jobId}
+            className={`dispatch-live-progress-phone-group${focused ? " is-focused" : ""}`}
+          >
+            <button
+              type="button"
+              className="dispatch-live-card-driver"
+              onClick={() => onSelectJob(d.jobId)}
+            >
+              <span className="dispatch-live-avatar" aria-hidden>
+                {d.driverInitials}
+              </span>
+              <div>
+                <strong>{d.driverName}</strong>
+                <span>
+                  {d.vehicleLabel} · {d.doneCount}/{d.stopCount} · {d.pctComplete}%
+                </span>
+              </div>
+              <em className={`dispatch-live-pill tone-${tone}`}>{statusLabel(tone)}</em>
+            </button>
+            <ol className="dispatch-live-progress-phone-stops">
+              {stops.map((stop) => {
+                const stopTone = statusTone(String(stop.status));
+                const selected = focusStopId === stop.stopId;
+                return (
+                  <li key={stop.stopId}>
+                    <button
+                      type="button"
+                      className={`dispatch-live-progress-phone-stop tone-${stopTone}${
+                        selected ? " is-selected" : ""
+                      }`}
+                      onClick={() => onSelectStop(d.jobId, stop.stopId)}
+                    >
+                      <em>#{stop.stopNumber}</em>
+                      <div>
+                        <strong>{stop.externalRef || stop.name}</strong>
+                        <span>
+                          {[stop.arrivedLabel || null, stop.completedLabel || null]
+                            .filter(Boolean)
+                            .join(" → ") || "Not started"}
+                        </span>
+                      </div>
+                      <span className={`dispatch-live-pill tone-${stopTone}`}>
+                        {statusLabel(stopTone)}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+        );
+      })}
+    </div>
+  );
 }
 
 function ManifestCardGroup({
