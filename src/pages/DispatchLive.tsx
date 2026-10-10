@@ -1133,43 +1133,27 @@ export default function DispatchLive() {
 
             <div data-live-pane="progress">
             {!loading || snapshot ? (
-              phoneUi ? (
-                <section className="dispatch-live-progress-phone panel" aria-label="Progress">
-                  <header className="dispatch-pane-head">
-                    <h2>Progress</h2>
-                    <span className="muted">{drivers.length} drivers</span>
-                  </header>
-                  <MobileProgressList
-                    drivers={drivers}
-                    focusJobId={focusJobId}
-                    focusStopId={focusStopId}
-                    onSelectJob={selectJob}
-                    onSelectStop={(jobId, stopId) => {
-                      selectStop(jobId, stopId);
-                      openLivePane("map");
-                    }}
-                  />
-                </section>
-              ) : (
-                <FoldPanel
-                  id="progress"
-                  className="dispatch-live-timeline"
-                  title="Progress"
-                  folded={Boolean(folded.progress)}
-                  onToggle={() => toggleFold("progress")}
-                  hint="faded plan · green actual"
-                >
-                  <DispatchLiveTimeline
-                    drivers={drivers}
-                    serviceDate={serviceDate}
-                    focusJobId={focusJobId}
-                    focusStopId={focusStopId}
-                    onSelectJob={selectJob}
-                    onSelectStop={selectStop}
-                    embedded
-                  />
-                </FoldPanel>
-              )
+              <FoldPanel
+                id="progress"
+                className="dispatch-live-timeline"
+                title="Progress"
+                folded={Boolean(folded.progress)}
+                onToggle={() => toggleFold("progress")}
+                hint={phoneUi ? "swipe sideways · plan · actual" : "faded plan · green actual"}
+              >
+                <DispatchLiveTimeline
+                  drivers={drivers}
+                  serviceDate={serviceDate}
+                  focusJobId={focusJobId}
+                  focusStopId={focusStopId}
+                  onSelectJob={selectJob}
+                  onSelectStop={(jobId, stopId) => {
+                    selectStop(jobId, stopId);
+                    if (phoneUi) openLivePane("map");
+                  }}
+                  embedded
+                />
+              </FoldPanel>
             ) : (
               <p className="dispatch-live-empty">Loading progress…</p>
             )}
@@ -1410,86 +1394,6 @@ function formatStraightDist(km: number | null | undefined): string {
   if (km == null || !Number.isFinite(km)) return "";
   if (km < 1) return `${Math.round(km * 1000)} m from plan`;
   return `${km.toFixed(2)} km from plan`;
-}
-
-function MobileProgressList({
-  drivers,
-  focusJobId,
-  focusStopId,
-  onSelectJob,
-  onSelectStop,
-}: {
-  drivers: DispatchLiveDriver[];
-  focusJobId: string | null;
-  focusStopId: string | null;
-  onSelectJob: (jobId: string) => void;
-  onSelectStop: (jobId: string, stopId: string) => void;
-}) {
-  if (!drivers.length) {
-    return <p className="dispatch-live-empty">No routes to plot for this date.</p>;
-  }
-  return (
-    <div className="dispatch-live-progress-phone-list">
-      {drivers.map((d) => {
-        const tone = statusTone(String(d.currentStatus));
-        const focused = focusJobId === d.jobId;
-        const stops = [...(d.stops || [])].sort((a, b) => (a.stopNumber || 0) - (b.stopNumber || 0));
-        return (
-          <section
-            key={d.jobId}
-            className={`dispatch-live-progress-phone-group${focused ? " is-focused" : ""}`}
-          >
-            <button
-              type="button"
-              className="dispatch-live-card-driver"
-              onClick={() => onSelectJob(d.jobId)}
-            >
-              <span className="dispatch-live-avatar" aria-hidden>
-                {d.driverInitials}
-              </span>
-              <div>
-                <strong>{d.driverName}</strong>
-                <span>
-                  {d.vehicleLabel} · {d.doneCount}/{d.stopCount} · {d.pctComplete}%
-                </span>
-              </div>
-              <em className={`dispatch-live-pill tone-${tone}`}>{statusLabel(tone)}</em>
-            </button>
-            <ol className="dispatch-live-progress-phone-stops">
-              {stops.map((stop) => {
-                const stopTone = statusTone(String(stop.status));
-                const selected = focusStopId === stop.stopId;
-                return (
-                  <li key={stop.stopId}>
-                    <button
-                      type="button"
-                      className={`dispatch-live-progress-phone-stop tone-${stopTone}${
-                        selected ? " is-selected" : ""
-                      }`}
-                      onClick={() => onSelectStop(d.jobId, stop.stopId)}
-                    >
-                      <em>#{stop.stopNumber}</em>
-                      <div>
-                        <strong>{stop.externalRef || stop.name}</strong>
-                        <span>
-                          {[stop.arrivedLabel || null, stop.completedLabel || null]
-                            .filter(Boolean)
-                            .join(" → ") || "Not started"}
-                        </span>
-                      </div>
-                      <span className={`dispatch-live-pill tone-${stopTone}`}>
-                        {statusLabel(stopTone)}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ol>
-          </section>
-        );
-      })}
-    </div>
-  );
 }
 
 function ManifestCardGroup({

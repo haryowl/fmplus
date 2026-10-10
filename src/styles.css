@@ -10804,6 +10804,13 @@ button.dispatch-pin-chip {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     max-width: 100%;
+    max-height: min(58dvh, 520px);
+    min-height: 180px;
+  }
+
+  .dispatch-live-page [data-live-pane="progress"] .dispatch-live-gantt-hours,
+  .dispatch-live-page [data-live-pane="progress"] .dispatch-live-gantt-rows {
+    min-width: 640px;
   }
 
   .dispatch-live-page .fold-panel-hint .dispatch-live-search {
