@@ -10344,17 +10344,235 @@ button.dispatch-pin-chip {
 @media (max-width: 1100px) {
   .dispatch-live-page .dispatch-live-kpis,
   .dispatch-live-page .dispatch-live-sla-kpis {
-    grid-template-columns: repeat(3, minmax(120px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .dispatch-live-page .dispatch-live-split {
     grid-template-columns: 1fr;
   }
 }
 
+.dispatch-live-mobile-nav {
+  display: none;
+}
+
 @media (max-width: 700px) {
-  .dispatch-live-page .dispatch-live-kpis,
+  .dispatch-live-page,
+  .dispatch-live-page .dispatch-live-shell {
+    overflow-x: clip;
+    max-width: 100%;
+  }
+
+  .dispatch-live-page .dispatch-live-shell {
+    padding-left: 10px;
+    padding-right: 10px;
+    box-sizing: border-box;
+  }
+
+  .dispatch-live-page .dispatch-live-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 10px;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .dispatch-live-page .dispatch-live-tabs {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .dispatch-live-page .dispatch-live-tabs button {
+    flex: 1;
+  }
+
+  .dispatch-live-page .dispatch-date-nav {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .dispatch-live-page .dispatch-live-refresh {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .dispatch-live-page .dispatch-live-updated {
+    width: 100%;
+    font-size: 0.75rem;
+  }
+
+  .dispatch-live-page .dispatch-live-refresh .btn-ghost {
+    display: none;
+  }
+
+  .dispatch-live-mobile-nav {
+    display: flex;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    position: sticky;
+    top: var(--app-topbar-h, 4.75rem);
+    z-index: 30;
+    margin: 0 0 10px;
+    padding: 6px 0;
+    background: color-mix(in srgb, var(--bg, #f6f5f2) 94%, transparent);
+    backdrop-filter: blur(8px);
+  }
+
+  .dispatch-live-mobile-tab {
+    flex: 0 0 auto;
+    border: 1px solid var(--line, #d8d4cb);
+    background: #fff;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font: inherit;
+    font-size: 0.8rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dispatch-live-mobile-tab.is-active {
+    background: var(--accent, #1f6f5b);
+    border-color: var(--accent, #1f6f5b);
+    color: #fff;
+  }
+
+  .dispatch-live-mobile-tab em {
+    font-style: normal;
+    min-width: 1.1rem;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #c4475a;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .dispatch-live-mobile-tab.is-active em {
+    background: #fff;
+    color: #c4475a;
+  }
+
+  .dispatch-live-mobile > [data-live-pane] {
+    display: none;
+  }
+
+  .dispatch-live-mobile.is-pane-summary > [data-live-pane="summary"],
+  .dispatch-live-mobile.is-pane-alerts > [data-live-pane="alerts"],
+  .dispatch-live-mobile.is-pane-map > [data-live-pane="map"],
+  .dispatch-live-mobile.is-pane-drivers > [data-live-pane="drivers"],
+  .dispatch-live-mobile.is-pane-list > [data-live-pane="list"] {
+    display: block;
+  }
+
+  .dispatch-live-page .dispatch-live-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .dispatch-live-page .dispatch-live-kpi {
+    min-width: 0;
+    min-height: 0;
+    padding: 8px 8px 6px;
+    border-radius: 12px;
+  }
+
+  .dispatch-live-page .dispatch-live-kpi strong {
+    font-size: 1.2rem;
+  }
+
+  .dispatch-live-page .dispatch-live-kpi em {
+    font-size: 0.68rem;
+    line-height: 1.2;
+  }
+
   .dispatch-live-page .dispatch-live-sla-kpis {
-    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .dispatch-live-page .dispatch-live-driver-row {
+    display: flex;
+    flex-direction: column;
+    grid-auto-flow: unset;
+    grid-auto-columns: unset;
+    overflow-x: visible;
+    gap: 8px;
+  }
+
+  .dispatch-live-page .dispatch-live-driver-card {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dispatch-live-page .dispatch-live-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+
+  .dispatch-live-page.is-live-map-pane .dispatch-live-shell {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - env(safe-area-inset-top, 0px));
+    max-height: 100dvh;
+    overflow: hidden;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
+  }
+
+  .dispatch-live-page.is-live-map-pane .dispatch-live-toolbar {
+    display: none;
+  }
+
+  .dispatch-live-page.is-live-map-pane .dispatch-live-mobile {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .dispatch-live-page.is-live-map-pane .dispatch-live-mobile-nav {
+    position: static;
+    flex-shrink: 0;
+  }
+
+  .dispatch-live-page.is-live-map-pane [data-live-pane="map"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex !important;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .dispatch-live-page.is-live-map-pane .dispatch-live-map-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin: 0;
+  }
+
+  .dispatch-live-page.is-live-map-pane .dispatch-live-map-panel .fold-panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .dispatch-live-page.is-live-map-pane .dispatch-live-timeline {
+    display: none;
   }
 }
 
@@ -11303,20 +11521,6 @@ button.dispatch-pin-chip {
   .dispatch-kpi-actions .btn,
   .dispatch-kpi-actions .btn-primary,
   .dispatch-kpi-actions .btn-secondary {
-    width: 100%;
-  }
-
-  .dispatch-live-page .dispatch-live-kpi {
-    min-height: 0;
-    padding: 10px 12px;
-  }
-
-  .dispatch-live-page .dispatch-live-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .dispatch-live-page .dispatch-live-tabs {
     width: 100%;
   }
 

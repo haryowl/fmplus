@@ -250,6 +250,10 @@ export function DispatchLiveMap({ drivers, focusJobId, fitKey, onSelectJob }: Pr
         /* empty */
       }
     }
+    const sync = () => map.invalidateSize({ animate: false });
+    sync();
+    const t = window.setTimeout(sync, 80);
+    return () => window.clearTimeout(t);
   }, [drivers, focusJobId, fitKey]);
 
   return (

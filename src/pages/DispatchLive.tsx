@@ -32,6 +32,8 @@ const POLL_MS = 20_000;
 const FOLD_STORAGE_KEY = "fmplus.dispatchLive.folded";
 
 type TabId = "live" | "history";
+/** Phone Live: one section at a time (desktop still shows the full stack). */
+type LiveMobilePane = "summary" | "alerts" | "map" | "drivers" | "list";
 type FoldId =
   | "sla"
   | "exceptions"
@@ -41,6 +43,14 @@ type FoldId =
   | "manifest"
   | "historySla"
   | "historyMap";
+
+const LIVE_MOBILE_PANES: { id: LiveMobilePane; label: string }[] = [
+  { id: "summary", label: "Summary" },
+  { id: "alerts", label: "Alerts" },
+  { id: "map", label: "Map" },
+  { id: "drivers", label: "Drivers" },
+  { id: "list", label: "List" },
+];
 
 type FoldState = Partial<Record<FoldId, boolean>>;
 
@@ -166,6 +176,41 @@ export default function DispatchLive() {
   const [armadaTracksLoading, setArmadaTracksLoading] = useState(false);
   const [phoneTracks, setPhoneTracks] = useState<Map<string, TimedMapPoint[]>>(new Map());
   const [folded, setFolded] = useState<FoldState>(() => loadFoldState());
+  const [livePane, setLivePane] = useState<LiveMobilePane>("summary");
+
+  function openLivePane(pane: LiveMobilePane) {
+    setLivePane(pane);
+    const unfold: FoldId[] =
+      pane === "summary"
+        ? ["sla"]
+        : pane === "alerts"
+          ? ["exceptions"]
+          : pane === "map"
+            ? ["map"]
+            : pane === "drivers"
+              ? ["drivers"]
+              : pane === "list"
+                ? ["manifest"]
+                : [];
+    if (!unfold.length) return;
+    setFolded((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const id of unfold) {
+        if (next[id]) {
+          next[id] = false;
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
+      try {
+        localStorage.setItem(FOLD_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   function toggleFold(id: FoldId) {
     setFolded((prev) => {
@@ -502,7 +547,11 @@ export default function DispatchLive() {
   }
 
   return (
-    <div className="app dispatch-page dispatch-live-page">
+    <div
+      className={`app dispatch-page dispatch-live-page${
+        tab === "live" && livePane === "map" ? " is-live-map-pane" : ""
+      }`}
+    >
       <header className="topbar">
         <div className="brand">
           <BrandMark />
@@ -689,12 +738,30 @@ export default function DispatchLive() {
             </FoldPanel>
           </>
         ) : (
-          <>
+          <div className={`dispatch-live-mobile is-pane-${livePane}`}>
+            <nav className="dispatch-live-mobile-nav" role="tablist" aria-label="Live sections">
+              {LIVE_MOBILE_PANES.map((pane) => (
+                <button
+                  key={pane.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={livePane === pane.id}
+                  className={`dispatch-live-mobile-tab${livePane === pane.id ? " is-active" : ""}`}
+                  onClick={() => openLivePane(pane.id)}
+                >
+                  {pane.label}
+                  {pane.id === "alerts" && (exceptionSummary?.unacked || 0) > 0 ? (
+                    <em>{exceptionSummary?.unacked}</em>
+                  ) : null}
+                </button>
+              ))}
+            </nav>
+
             {fetchError ? <div className="dispatch-alert">{fetchError}</div> : null}
             {recoverError ? <div className="dispatch-alert">{recoverError}</div> : null}
             {actionNote ? <p className="dispatch-search-hint">{actionNote}</p> : null}
 
-            <section className="dispatch-live-kpis" aria-label="Live summary">
+            <section className="dispatch-live-kpis" data-live-pane="summary" aria-label="Live summary">
               <article className="dispatch-live-kpi">
                 <span>Stops</span>
                 <strong>{summary?.totalStops ?? "—"}</strong>
@@ -743,7 +810,7 @@ export default function DispatchLive() {
               </article>
             </section>
 
-            <div className="dispatch-live-split">
+            <div className="dispatch-live-split" data-live-pane="summary">
             {sla ? (
               <FoldPanel
                 id="sla"
@@ -763,7 +830,9 @@ export default function DispatchLive() {
                 <SlaPanel sla={sla} bare />
               </FoldPanel>
             ) : null}
+            </div>
 
+            <div data-live-pane="alerts">
             <FoldPanel
               id="exceptions"
               title="Exceptions"
@@ -811,6 +880,7 @@ export default function DispatchLive() {
                             onClick={() => {
                               selectJob(ex.jobId!);
                               if (ex.stopId) selectStop(ex.jobId!, ex.stopId);
+                              openLivePane("map");
                             }}
                           >
                             Focus
@@ -833,7 +903,6 @@ export default function DispatchLive() {
                 </ul>
               )}
             </FoldPanel>
-            </div>
 
             {recoverPreview ? (
               <section className="dispatch-live-recover panel" aria-label="Recovery preview">
@@ -899,7 +968,9 @@ export default function DispatchLive() {
                 )}
               </section>
             ) : null}
+            </div>
 
+            <div data-live-pane="drivers">
             <FoldPanel
               id="drivers"
               className="dispatch-live-drivers"
@@ -1004,7 +1075,9 @@ export default function DispatchLive() {
                 </div>
               )}
             </FoldPanel>
+            </div>
 
+            <div data-live-pane="map">
             {!loading || snapshot ? (
               <FoldPanel
                 id="map"
@@ -1026,7 +1099,7 @@ export default function DispatchLive() {
                   <DispatchLiveMap
                     drivers={drivers}
                     focusJobId={focusJobId}
-                    fitKey={mapFitKey}
+                    fitKey={`${mapFitKey}:${livePane}`}
                     onSelectJob={selectJob}
                   />
                 )}
@@ -1053,7 +1126,9 @@ export default function DispatchLive() {
                 />
               </FoldPanel>
             ) : null}
+            </div>
 
+            <div data-live-pane="list">
             <FoldPanel
               id="manifest"
               className="dispatch-live-manifest"
@@ -1118,7 +1193,8 @@ export default function DispatchLive() {
                 </p>
               ) : null}
             </FoldPanel>
-          </>
+            </div>
+          </div>
         )}
       </main>
     </div>
