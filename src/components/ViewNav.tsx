@@ -16,6 +16,7 @@ import {
   type AppView,
 } from "../lib/routing";
 import { moduleKeyForView } from "../lib/entitlements";
+import { isNativeDispatchApp } from "../lib/nativeField";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import { ThemePicker } from "./ThemePicker";
 
@@ -35,6 +36,10 @@ const LINKS: { view: AppView; label: string; href: (search: string) => string }[
   { view: "maintenance", label: "Maintenance", href: maintenanceHref },
 ];
 
+const DISPATCH_APP_LINKS = LINKS.filter(
+  (link) => link.view === "dispatchDesk" || link.view === "dispatchLive",
+);
+
 type Props = {
   current: AppView;
 };
@@ -42,9 +47,10 @@ type Props = {
 export function ViewNav({ current }: Props) {
   const search = typeof window !== "undefined" ? window.location.search : "";
   const { ready, moduleAllowed } = useEmbedTenant();
+  const base = isNativeDispatchApp() ? DISPATCH_APP_LINKS : LINKS;
   const links = ready
-    ? LINKS.filter((link) => moduleAllowed(moduleKeyForView(link.view)))
-    : LINKS;
+    ? base.filter((link) => moduleAllowed(moduleKeyForView(link.view)))
+    : base;
 
   return (
     <>

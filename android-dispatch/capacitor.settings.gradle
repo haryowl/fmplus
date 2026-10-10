@@ -1,0 +1,3 @@
+// Desk Dispatch APK — Capacitor core only (no Field camera / duty plugins).
+include ':capacitor-android'
+project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/android/capacitor')

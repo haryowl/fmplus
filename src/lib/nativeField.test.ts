@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isNativeFieldApp } from "./nativeField";
+import { isNativeDispatchApp, isNativeFieldApp } from "./nativeField";
 
-describe("isNativeFieldApp", () => {
+describe("native app detection", () => {
   it("is false in the browser / test runner", () => {
     expect(isNativeFieldApp()).toBe(false);
+    expect(isNativeDispatchApp()).toBe(false);
   });
 });

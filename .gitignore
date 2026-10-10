@@ -22,3 +22,7 @@ android-offline/.gradle
 android-offline/app/build
 android-offline/build
 android-offline/app/src/main/assets/public
+android-dispatch/.gradle
+android-dispatch/app/build
+android-dispatch/build
+android-dispatch/app/src/main/assets/public

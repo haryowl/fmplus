@@ -11019,3 +11019,134 @@ button.dispatch-pin-chip {
   background: color-mix(in srgb, var(--health-ok) 16%, white);
   color: #146046;
 }
+
+/* —— Dispatch APK / phone Jobs board —— */
+.dispatch-app-setup {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background: var(--bg, #f6f5f2);
+}
+
+.dispatch-app-setup-card {
+  width: min(420px, 100%);
+  background: #fff;
+  border: 1px solid var(--line, #e4e1da);
+  border-radius: 16px;
+  padding: 22px 20px 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.dispatch-app-setup-card h1 {
+  margin: 0;
+  font-size: 1.45rem;
+}
+
+.dispatch-app-setup-form {
+  display: grid;
+  gap: 12px;
+}
+
+.dispatch-mobile-rails {
+  display: none;
+}
+
+.dispatch-map-pane-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (max-width: 800px) {
+  .dispatch-mobile-rails {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 0 0 10px;
+    position: sticky;
+    top: calc(var(--app-topbar-h, 4.75rem) + 4px);
+    z-index: 5;
+    padding: 6px 0;
+    background: color-mix(in srgb, var(--bg, #f6f5f2) 92%, transparent);
+    backdrop-filter: blur(6px);
+  }
+
+  .dispatch-mobile-rail-tab {
+    border: 1px solid var(--line, #d8d4cb);
+    background: #fff;
+    border-radius: 999px;
+    padding: 7px 14px;
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+
+  .dispatch-mobile-rail-tab.is-active {
+    background: var(--accent, #1f6f5b);
+    border-color: var(--accent, #1f6f5b);
+    color: #fff;
+  }
+
+  .dispatch-mobile-rail-tab.is-pin {
+    border-color: var(--accent, #1f6f5b);
+    color: var(--accent, #1f6f5b);
+  }
+
+  .dispatch-board-3col.is-rail-inbox > .dispatch-map-pane,
+  .dispatch-board-3col.is-rail-inbox > .dispatch-vehicle-pane,
+  .dispatch-board-3col.is-rail-map > .dispatch-pool,
+  .dispatch-board-3col.is-rail-map > .dispatch-vehicle-pane,
+  .dispatch-board-3col.is-rail-job > .dispatch-pool,
+  .dispatch-board-3col.is-rail-job > .dispatch-map-pane {
+    display: none;
+  }
+
+  .dispatch-board-3col.is-map-sheet > .dispatch-map-pane {
+    display: flex !important;
+    position: fixed;
+    inset: auto 0 0;
+    top: 12vh;
+    z-index: 40;
+    background: #fff;
+    border-radius: 16px 16px 0 0;
+    border: 1px solid var(--line, #d8d4cb);
+    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.16);
+    max-height: 88vh;
+    overflow: auto;
+    padding: 12px;
+  }
+
+  .dispatch-board-3col.is-map-sheet > .dispatch-map-pane .dispatch-job-map,
+  .dispatch-board-3col.is-map-sheet > .dispatch-map-pane .dispatch-map-frame {
+    min-height: min(48vh, 360px);
+  }
+
+  .dispatch-order-draft .dispatch-order-form-row,
+  .dispatch-order-draft .dispatch-order-form-row-2 {
+    grid-template-columns: 1fr;
+  }
+
+  html[data-dispatch-app="1"] .dispatch-page .topbar,
+  html[data-dispatch-app="1"] .dispatch-live-page .topbar {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+}
+
+@media (max-width: 480px) {
+  .dispatch-live-page .dispatch-live-kpi {
+    min-height: 0;
+    padding: 10px 12px;
+  }
+
+  .dispatch-place-mode {
+    grid-template-columns: 1fr;
+  }
+
+  .dispatch-routine-bar {
+    grid-template-columns: 1fr 1fr;
+  }
+}

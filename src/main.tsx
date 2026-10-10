@@ -17,7 +17,10 @@ import TripDetail from "./pages/TripDetail";
 import AdminConsole from "./pages/AdminConsole";
 import FieldLogin from "./pages/FieldLogin";
 import ManagerMaintenance from "./pages/ManagerMaintenance";
+import { DispatchTenantSetup } from "./components/DispatchTenantSetup";
 import { OfflineFieldBar } from "./components/OfflineFieldBar";
+import { bootDispatchAppSearch, dispatchAppNeedsSetup } from "./lib/dispatchApp";
+import { isNativeDispatchApp } from "./lib/nativeField";
 import { bootOfflineFieldPath, installOfflineField, offlineFieldEnabled } from "./lib/offlineField";
 import { VIEW_CHANGE, viewFromPath, type AppView } from "./lib/routing";
 import { bootTenantFromSearch } from "./lib/tenant";
@@ -25,10 +28,14 @@ import { bootTheme } from "./lib/theme";
 import "./styles.css";
 
 bootTheme();
+bootDispatchAppSearch();
 bootTenantFromSearch(window.location.search);
 if (offlineFieldEnabled()) {
   bootOfflineFieldPath();
   void installOfflineField(window.fetch.bind(window));
+}
+if (isNativeDispatchApp()) {
+  document.documentElement.dataset.dispatchApp = "1";
 }
 
 function pageFor(view: AppView) {
@@ -61,6 +68,9 @@ function Root() {
       window.removeEventListener(VIEW_CHANGE, sync);
     };
   }, []);
+  if (dispatchAppNeedsSetup()) {
+    return <DispatchTenantSetup />;
+  }
   const Page = pageFor(view);
   return (
     <>

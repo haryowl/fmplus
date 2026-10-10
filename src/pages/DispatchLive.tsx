@@ -44,14 +44,33 @@ type FoldId =
 
 type FoldState = Partial<Record<FoldId, boolean>>;
 
+function defaultPhoneFoldState(): FoldState {
+  if (typeof window === "undefined") return {};
+  try {
+    if (!window.matchMedia("(max-width: 700px)").matches) return {};
+  } catch {
+    return {};
+  }
+  return {
+    sla: true,
+    drivers: true,
+    progress: true,
+    manifest: true,
+    historySla: true,
+    exceptions: false,
+    map: false,
+    historyMap: false,
+  };
+}
+
 function loadFoldState(): FoldState {
   try {
     const raw = localStorage.getItem(FOLD_STORAGE_KEY);
-    if (!raw) return {};
+    if (!raw) return defaultPhoneFoldState();
     const parsed = JSON.parse(raw) as FoldState;
-    return parsed && typeof parsed === "object" ? parsed : {};
+    return parsed && typeof parsed === "object" ? parsed : defaultPhoneFoldState();
   } catch {
-    return {};
+    return defaultPhoneFoldState();
   }
 }
 

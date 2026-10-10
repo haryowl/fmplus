@@ -24,7 +24,9 @@
     "apk:sync": "npm run build && npx cap sync android",
     "apk:debug": "node scripts/apk-debug.mjs",
     "apk:offline:sync": "node scripts/apk-offline-sync.mjs",
-    "apk:offline:debug": "node scripts/apk-offline-debug.mjs"
+    "apk:offline:debug": "node scripts/apk-offline-debug.mjs",
+    "apk:dispatch:sync": "node scripts/apk-dispatch-sync.mjs",
+    "apk:dispatch:debug": "node scripts/apk-dispatch-debug.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.901.0",

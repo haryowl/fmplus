@@ -273,6 +273,9 @@ export default function DispatchBoard() {
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const orderDraftRef = useRef<HTMLDivElement | null>(null);
   const [placing, setPlacing] = useState(false);
+  /** Phone Jobs board: which rail is visible under ~800px. */
+  const [mobileRail, setMobileRail] = useState<"inbox" | "map" | "job">("inbox");
+  const [mapSheetOpen, setMapSheetOpen] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
@@ -1396,10 +1399,18 @@ export default function DispatchBoard() {
     setOrderForm({ ...emptyOrderForm, externalRef: orderCode });
     setEditingOrderId(null);
     setPlacing(false);
+    setMapSheetOpen(false);
     setShowOrderGoods(false);
     setSearchQ("");
     setSearchResults([]);
   }
+
+  useEffect(() => {
+    if (placing || editingOrderId) {
+      setMapSheetOpen(true);
+      setMobileRail("inbox");
+    }
+  }, [placing, editingOrderId]);
 
   function applyOrderLines(lines: DispatchOrderLine[]) {
     setOrderForm((f) => {
@@ -3134,7 +3145,46 @@ export default function DispatchBoard() {
           </section>
         )}
 
-        <div className={`dispatch-board-3col${placing || draftPin || editingOrderId ? " is-drafting" : ""}`}>
+        <div
+          className="dispatch-mobile-rails"
+          role="tablist"
+          aria-label="Jobs board sections"
+        >
+          {(
+            [
+              ["inbox", "Inbox"],
+              ["map", "Map"],
+              ["job", "Job"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={mobileRail === id}
+              className={`dispatch-mobile-rail-tab${mobileRail === id ? " is-active" : ""}`}
+              onClick={() => {
+                setMobileRail(id);
+                if (id === "map") setMapSheetOpen(false);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+          {(placing || draftPin || editingOrderId) && !mapSheetOpen ? (
+            <button
+              type="button"
+              className="dispatch-mobile-rail-tab is-pin"
+              onClick={() => setMapSheetOpen(true)}
+            >
+              Pin map
+            </button>
+          ) : null}
+        </div>
+
+        <div
+          className={`dispatch-board-3col${placing || draftPin || editingOrderId ? " is-drafting" : ""} is-rail-${mobileRail}${mapSheetOpen && (placing || draftPin || editingOrderId) ? " is-map-sheet" : ""}`}
+        >
           <section
             className={`dispatch-rail dispatch-pool${placing || draftPin || editingOrderId ? " is-drafting" : ""}`}
           >
@@ -4189,7 +4239,18 @@ export default function DispatchBoard() {
                 <p className="dispatch-eyebrow">Live board · {formatServiceDateLabel(planDate)}</p>
                 <h2>{selected ? selected.title : "Route map"}</h2>
               </div>
-              <span className="dispatch-map-badge">{selected?.stops.length || 0} stops</span>
+              <div className="dispatch-map-pane-actions">
+                {mapSheetOpen && (placing || draftPin || editingOrderId) ? (
+                  <button
+                    type="button"
+                    className="btn-secondary dispatch-map-sheet-close"
+                    onClick={() => setMapSheetOpen(false)}
+                  >
+                    Done pinning
+                  </button>
+                ) : null}
+                <span className="dispatch-map-badge">{selected?.stops.length || 0} stops</span>
+              </div>
             </header>
             <div className="dispatch-map-frame">
               <DispatchJobMap
