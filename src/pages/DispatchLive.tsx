@@ -664,15 +664,18 @@ export default function DispatchLive() {
               </button>
               <button
                 type="button"
-                className="btn-secondary"
+                className="btn-secondary dispatch-live-recover-btn"
                 disabled={recoverBusy}
-                onClick={() => void runRecoverPreview()}
+                onClick={() => {
+                  openLivePane("alerts");
+                  void runRecoverPreview();
+                }}
               >
                 Recover…
               </button>
               <button
                 type="button"
-                className="btn-ghost"
+                className="btn-ghost dispatch-live-safe-auto-btn"
                 disabled={recoverBusy}
                 title="Auto-apply only same-vehicle remaining reorders"
                 onClick={() => void applyRecover({ autoSafe: true })}
@@ -836,6 +839,24 @@ export default function DispatchLive() {
             </div>
 
             <div data-live-pane="alerts">
+            <div className="dispatch-live-mobile-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={recoverBusy}
+                onClick={() => void runRecoverPreview()}
+              >
+                Recover…
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={recoverBusy}
+                onClick={() => void applyRecover({ autoSafe: true })}
+              >
+                Safe auto
+              </button>
+            </div>
             <FoldPanel
               id="exceptions"
               title="Exceptions"

@@ -68,7 +68,10 @@ export function DispatchLiveTimeline({
       <p className="dispatch-live-empty">No routes to plot for this date.</p>
     ) : (
       <div className="dispatch-live-gantt" ref={scrollerRef}>
-        <div className="dispatch-live-gantt-hours" style={{ gridTemplateColumns: `160px 1fr` }}>
+        <div
+          className="dispatch-live-gantt-hours"
+          style={{ gridTemplateColumns: `var(--live-gantt-label, 160px) minmax(0, 1fr)` }}
+        >
           <div className="dispatch-live-gantt-corner" aria-hidden />
           <div className="dispatch-live-gantt-scale" aria-hidden>
             {axis.ticks.map((t, i) => (
