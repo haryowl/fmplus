@@ -11,6 +11,8 @@ type DraftPin = { lat: number; lon: number };
 type Props = {
   stops: DispatchStop[];
   fitKey: string;
+  /** Bumps when the map pane is shown/hidden (e.g. mobile Inbox|Map|Job tabs). */
+  remapKey?: string | number;
   draftPin?: DraftPin | null;
   draftPickupPin?: DraftPin | null;
   onMapClick?: (lat: number, lon: number) => void;
@@ -65,6 +67,7 @@ function liveIcon(color: string): L.DivIcon {
 export function DispatchJobMap({
   stops,
   fitKey,
+  remapKey = "",
   draftPin = null,
   draftPickupPin = null,
   onMapClick,
@@ -118,7 +121,12 @@ export function DispatchJobMap({
   useEffect(() => {
     const el = elRef.current;
     if (!el || mapRef.current) return;
-    const map = L.map(el, { scrollWheelZoom: true }).setView([-6.9175, 107.6191], 12);
+    const map = L.map(el, {
+      scrollWheelZoom: true,
+      dragging: true,
+      tapHold: false,
+      touchZoom: true,
+    }).setView([-6.9175, 107.6191], 12);
     L.tileLayer(STREET_TILE.url, streetTileOptions()).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
     map.on("click", (e) => {
@@ -145,6 +153,19 @@ export function DispatchJobMap({
       layerRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const sync = () => map.invalidateSize({ animate: false });
+    sync();
+    const t1 = window.setTimeout(sync, 60);
+    const t2 = window.setTimeout(sync, 220);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [remapKey]);
 
   useEffect(() => {
     const map = mapRef.current;

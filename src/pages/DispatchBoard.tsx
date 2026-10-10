@@ -2038,8 +2038,10 @@ export default function DispatchBoard() {
       : orderForm.address
     : "";
 
+  const mobileMapMode = mobileRail === "map" || mapSheetOpen;
+
   return (
-    <div className="app dispatch-page">
+    <div className={`app dispatch-page${mobileMapMode ? " is-mobile-map-mode" : ""}`}>
       <header className="topbar">
         <div className="brand">
           <BrandMark />
@@ -4256,6 +4258,7 @@ export default function DispatchBoard() {
               <DispatchJobMap
                 stops={selected?.stops || []}
                 fitKey={fitKey}
+                remapKey={`${mobileRail}:${mapSheetOpen ? "sheet" : "dock"}`}
                 draftPin={mapDraftPin}
                 draftPickupPin={showPlanDay ? null : draftPickupPin}
                 routeGeometry={jobRoute?.geometry || []}
