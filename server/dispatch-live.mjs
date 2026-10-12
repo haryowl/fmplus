@@ -250,6 +250,7 @@ async function attachPlannedEtaChain(driver) {
   try {
     const route = await buildRouteForPoints(points);
     // Prefer Auto-plan / stored Day start over the old hardcoded 08:00 fallback.
+    const jobDayStart = parseClockToMinutes(driver.planDayStart);
     const storedDayStart = driver.stops
       .map((s) => parseClockToMinutes(s.storedPlannedEta))
       .find((n) => n != null);
@@ -267,11 +268,11 @@ async function attachPlannedEtaChain(driver) {
       {
         hasRouteStart: hasStart,
         hasRouteEnd: hasEnd,
-        // Open tours: first stored ETA is the Day start clock. Depot tours keep
-        // window / configured start (stored stop ETA already includes drive time).
-        ...(windowDayStart == null && !hasStart && storedDayStart != null
-          ? { dayStartMin: storedDayStart }
-          : {}),
+        ...(jobDayStart != null
+          ? { dayStartMin: jobDayStart }
+          : windowDayStart == null && !hasStart && storedDayStart != null
+            ? { dayStartMin: storedDayStart }
+            : {}),
       },
     );
 
@@ -656,6 +657,7 @@ export async function buildDispatchLiveSnapshot(opts) {
       routeAnchorMode,
       routeStart,
       routeEnd,
+      planDayStart: job.plan_day_start || null,
       plannedEtaReady: false,
       plannedDepotDepart: null,
       plannedReturnEta: null,

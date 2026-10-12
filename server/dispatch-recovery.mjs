@@ -6,7 +6,7 @@ import { dbQuery } from "./db.mjs";
 import { optimizeOpenTour, haversineKm } from "./route-optimize.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
-import { buildStopRouteMeta } from "./stop-route-meta.mjs";
+import { buildStopRouteMeta, parseClockToMinutes } from "./stop-route-meta.mjs";
 import { recentPingTrail } from "./driver-pings.mjs";
 import { dayIndexForDate, recomputeJobSpan } from "./dispatch-span.mjs";
 import { restorePairPrecedence } from "./dispatch-pickup-drop.mjs";
@@ -217,12 +217,24 @@ export async function refreshAndPersistPlannedEtas(
     const route = await buildRouteForPoints(points);
     // Continuous clock so an arrival after midnight stays 03:32 and can promote
     // that stop onto the next day of the tour automatically.
+    let resolvedDayStart = dayStart || job.plan_day_start || null;
+    let resolvedDayStartMin =
+      dayStartMin != null && Number.isFinite(Number(dayStartMin)) ? Number(dayStartMin) : null;
+    if (resolvedDayStartMin == null && !resolvedDayStart) {
+      // Keep the job's existing plan clock across Optimize (avoid hard reset to 08:00).
+      const stored = stops
+        .map((s) => parseClockToMinutes(s.planned_eta || s.plannedEta))
+        .filter((n) => n != null);
+      if (stored.length && !hasStart) {
+        resolvedDayStartMin = Math.min(...stored);
+      }
+    }
     const metaOpts = {
       hasRouteStart: hasStart,
       hasRouteEnd: hasEnd,
       continuousAcrossDays: true,
-      ...(dayStartMin != null ? { dayStartMin } : {}),
-      ...(dayStart ? { dayStart } : {}),
+      ...(resolvedDayStartMin != null ? { dayStartMin: resolvedDayStartMin } : {}),
+      ...(resolvedDayStart ? { dayStart: resolvedDayStart } : {}),
     };
     let meta = buildStopRouteMeta(
       stops.map((s) => ({

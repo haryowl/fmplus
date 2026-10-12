@@ -581,6 +581,7 @@ function publicJob(row, stops = []) {
     routeAnchorMode: pathMode === "map" || pathMode === "sequence" ? pathMode : null,
     routeStart,
     routeEnd,
+    planDayStart: row.plan_day_start || null,
     ...cap,
     stops: stops.map((s) => publicStop(s, serviceDate)),
   };
@@ -3088,7 +3089,23 @@ export async function handleDispatchRequest(req, res) {
         dayIndex: spanDays > 1 ? requestedDay : null,
       });
       const orderedStops = await loadStops(job.id);
-      await refreshAndPersistPlannedEtas(job, orderedStops, { persist: true });
+      let planDayStart = job.plan_day_start || null;
+      if (body.dayStart || body.day_start) {
+        const raw = String(body.dayStart || body.day_start).trim();
+        const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(raw);
+        if (m) {
+          planDayStart = `${String(Number(m[1])).padStart(2, "0")}:${m[2]}`;
+          await dbQuery(`UPDATE dispatch_jobs SET plan_day_start = $1, updated_at = now() WHERE id = $2`, [
+            planDayStart,
+            job.id,
+          ]);
+          job.plan_day_start = planDayStart;
+        }
+      }
+      await refreshAndPersistPlannedEtas(job, orderedStops, {
+        persist: true,
+        dayStart: planDayStart,
+      });
       const customerPoints = withCoords.map((s) => ({ lat: Number(s.lat), lon: Number(s.lon) }));
       const geomPts = geometryPointsFromStopsAndAnchors(
         orderedStops,
@@ -4212,10 +4229,23 @@ export async function handleDispatchRequest(req, res) {
         await reorderJobStopsRoad(jobId, routeDepot, routing);
         const row = await loadJob(dbTenant.id, jobId);
         const stops = await loadStops(jobId);
+        const planDayStartHm = (() => {
+          const raw = String(body.dayStart || "").trim();
+          const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(raw);
+          if (!m) return null;
+          return `${String(Number(m[1])).padStart(2, "0")}:${m[2]}`;
+        })();
+        if (planDayStartHm) {
+          await dbQuery(`UPDATE dispatch_jobs SET plan_day_start = $1, updated_at = now() WHERE id = $2`, [
+            planDayStartHm,
+            jobId,
+          ]);
+          row.plan_day_start = planDayStartHm;
+        }
         await refreshAndPersistPlannedEtas(row, stops, {
           persist: true,
           dayStartMin,
-          dayStart: body.dayStart || null,
+          dayStart: planDayStartHm || body.dayStart || null,
         });
         // Prefer Auto-plan schedule clock (uses Day start) over OSRM recompute defaults.
         const planStops = Array.isArray(route.stops) ? route.stops : [];

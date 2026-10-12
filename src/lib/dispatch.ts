@@ -153,6 +153,8 @@ export type DispatchJob = {
   routeAnchorMode?: "map" | "sequence" | null;
   routeStart?: DispatchRouteAnchor | null;
   routeEnd?: DispatchRouteAnchor | null;
+  /** HH:MM Auto-plan / Optimize day start used for planned ETA recompute. */
+  planDayStart?: string | null;
   volumeCapacityM3?: number;
   weightCapacityKg?: number;
   volumeUsed?: number;
@@ -500,6 +502,7 @@ export async function optimizeJobStops(
   jobId: string,
   routing?: import("./routePlan").RoutingOptions | null,
   dayIndex?: number | null,
+  opts?: { dayStart?: string | null },
 ): Promise<{
   job: DispatchJob;
   route: import("./routePlan").RouteGeometryResult | null;
@@ -509,6 +512,7 @@ export async function optimizeJobStops(
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify({
       ...(dayIndex != null ? { dayIndex } : {}),
+      ...(opts?.dayStart ? { dayStart: opts.dayStart } : {}),
       routing: {
         avoidTolls: Boolean(routing?.avoidTolls),
         avoidMotorways: Boolean(routing?.avoidMotorways),

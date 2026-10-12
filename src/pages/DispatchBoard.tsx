@@ -1943,6 +1943,7 @@ export default function DispatchBoard() {
         },
         // Each day of a tour resequences on its own; day 1 is the single-day case.
         jobDayCount > 1 ? activeDay : null,
+        { dayStart: normalizeClockHm(planDayStart) || "08:00" },
       );
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
       if (route && route.distanceKm && route.distanceKm > 0) {
