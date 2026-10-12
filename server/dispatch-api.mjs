@@ -4212,7 +4212,34 @@ export async function handleDispatchRequest(req, res) {
         await reorderJobStopsRoad(jobId, routeDepot, routing);
         const row = await loadJob(dbTenant.id, jobId);
         const stops = await loadStops(jobId);
-        await refreshAndPersistPlannedEtas(row, stops, { persist: true });
+        await refreshAndPersistPlannedEtas(row, stops, {
+          persist: true,
+          dayStartMin,
+          dayStart: body.dayStart || null,
+        });
+        // Prefer Auto-plan schedule clock (uses Day start) over OSRM recompute defaults.
+        const planStops = Array.isArray(route.stops) ? route.stops : [];
+        if (planStops.length) {
+          const byOrderRole = new Map();
+          for (const ps of planStops) {
+            const oid = String(ps.orderId || "");
+            const role = ps.role === "pickup" ? "pickup" : "drop";
+            if (!oid || !ps.arriveAt) continue;
+            byOrderRole.set(`${oid}:${role}`, String(ps.arriveAt).slice(0, 5));
+          }
+          for (const s of stops) {
+            const oid = String(s.order_id || "");
+            const role = String(s.role || "drop") === "pickup" ? "pickup" : "drop";
+            const eta = byOrderRole.get(`${oid}:${role}`);
+            if (!eta) continue;
+            await dbQuery(`UPDATE dispatch_stops SET planned_eta = $1 WHERE id = $2 AND job_id = $3`, [
+              eta,
+              s.id,
+              jobId,
+            ]);
+            s.planned_eta = eta;
+          }
+        }
         const geomPts = geometryPointsFromStopsAndAnchors(
           stops,
           depotPathMode === "calc" ? null : startAnchor,

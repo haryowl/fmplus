@@ -175,7 +175,11 @@ export async function persistPlannedEtas(jobId, stopEtas) {
 /**
  * Compute planned ETA chain for a job's stops (same rules as Live) and optionally persist.
  */
-export async function refreshAndPersistPlannedEtas(job, stops, { persist = true } = {}) {
+export async function refreshAndPersistPlannedEtas(
+  job,
+  stops,
+  { persist = true, dayStartMin = null, dayStart = null } = {},
+) {
   const pathMode = String(job.route_anchor_mode || "").toLowerCase();
   const hasAnchors = pathMode === "map" || pathMode === "sequence";
   const hasStart =
@@ -213,6 +217,13 @@ export async function refreshAndPersistPlannedEtas(job, stops, { persist = true 
     const route = await buildRouteForPoints(points);
     // Continuous clock so an arrival after midnight stays 03:32 and can promote
     // that stop onto the next day of the tour automatically.
+    const metaOpts = {
+      hasRouteStart: hasStart,
+      hasRouteEnd: hasEnd,
+      continuousAcrossDays: true,
+      ...(dayStartMin != null ? { dayStartMin } : {}),
+      ...(dayStart ? { dayStart } : {}),
+    };
     let meta = buildStopRouteMeta(
       stops.map((s) => ({
         windowStart: s.window_start || s.windowStart,
@@ -221,7 +232,7 @@ export async function refreshAndPersistPlannedEtas(job, stops, { persist = true 
       })),
       route.legs || [],
       DEFAULT_SERVICE_MIN,
-      { hasRouteStart: hasStart, hasRouteEnd: hasEnd, continuousAcrossDays: true },
+      metaOpts,
     );
 
     let spanChanged = false;
@@ -253,7 +264,7 @@ export async function refreshAndPersistPlannedEtas(job, stops, { persist = true 
         })),
         route.legs || [],
         DEFAULT_SERVICE_MIN,
-        { hasRouteStart: hasStart, hasRouteEnd: hasEnd, continuousAcrossDays: true },
+        metaOpts,
       );
     }
 

@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { buildStopRouteMeta } from "./routePlan";
 
 describe("buildStopRouteMeta", () => {
+  it("uses configured dayStart when stops have no window", () => {
+    const meta = buildStopRouteMeta(
+      [{ serviceMinutes: 8 }, { serviceMinutes: 8 }],
+      [{ distanceKm: 1.5, durationSec: 180 }],
+      8,
+      { dayStart: "06:30" },
+    );
+    expect(meta.stops[0]?.eta).toBe("06:30");
+    expect(meta.stops[1]?.eta).toBe("06:41");
+  });
+
   it("treats stop 1 as start when there is no depot", () => {
     const meta = buildStopRouteMeta(
       [{ windowStart: "08:00", serviceMinutes: 8 }, { serviceMinutes: 8 }],

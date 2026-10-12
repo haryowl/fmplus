@@ -4,7 +4,7 @@
 import { dbQuery } from "./db.mjs";
 import { fetchVehiclePositions } from "./vehicle-positions.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
-import { buildStopRouteMeta } from "./stop-route-meta.mjs";
+import { buildStopRouteMeta, parseClockToMinutes } from "./stop-route-meta.mjs";
 import { haversineKm } from "./route-optimize.mjs";
 import { enrichLiveSnapshot } from "./dispatch-recovery.mjs";
 import {
@@ -249,6 +249,13 @@ async function attachPlannedEtaChain(driver) {
 
   try {
     const route = await buildRouteForPoints(points);
+    // Prefer Auto-plan / stored Day start over the old hardcoded 08:00 fallback.
+    const storedDayStart = driver.stops
+      .map((s) => parseClockToMinutes(s.storedPlannedEta))
+      .find((n) => n != null);
+    const windowDayStart = driver.stops
+      .map((s) => parseClockToMinutes(s.windowStart))
+      .find((n) => n != null);
     const meta = buildStopRouteMeta(
       driver.stops.map((s) => ({
         windowStart: s.windowStart,
@@ -257,7 +264,15 @@ async function attachPlannedEtaChain(driver) {
       })),
       route.legs || [],
       DEFAULT_SERVICE_MIN,
-      { hasRouteStart: hasStart, hasRouteEnd: hasEnd },
+      {
+        hasRouteStart: hasStart,
+        hasRouteEnd: hasEnd,
+        // Open tours: first stored ETA is the Day start clock. Depot tours keep
+        // window / configured start (stored stop ETA already includes drive time).
+        ...(windowDayStart == null && !hasStart && storedDayStart != null
+          ? { dayStartMin: storedDayStart }
+          : {}),
+      },
     );
 
     driver.plannedDepotDepart = meta.depotDepart;
@@ -277,7 +292,9 @@ async function attachPlannedEtaChain(driver) {
     for (let i = 0; i < driver.stops.length; i++) {
       const m = meta.stops[i];
       if (!m) continue;
-      driver.stops[i].plannedEta = m.eta;
+      const stored = String(driver.stops[i].storedPlannedEta || "").trim();
+      // Keep Auto-plan Day start clock when persisted; only fill gaps from the chain.
+      driver.stops[i].plannedEta = stored || m.eta;
       driver.stops[i].plannedLegDistanceKm = m.legDistanceKm;
       driver.stops[i].plannedLegDurationSec = m.legDurationSec;
     }

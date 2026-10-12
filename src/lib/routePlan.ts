@@ -178,12 +178,26 @@ export function formatClockMinutes(totalMinutes: number): string {
 
 /** Parse "HH:MM" → minutes since midnight; null if invalid. */
 export function parseClockToMinutes(value: string | undefined | null): number | null {
-  const m = String(value || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  const m = String(value || "")
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
   if (!m) return null;
   const h = Number(m[1]);
   const min = Number(m[2]);
   if (!Number.isFinite(h) || !Number.isFinite(min) || h > 23 || min > 59) return null;
   return h * 60 + min;
+}
+
+function resolveFallbackDayStart(opts?: {
+  dayStartMin?: number;
+  dayStart?: string;
+}): number {
+  if (opts?.dayStartMin != null && Number.isFinite(Number(opts.dayStartMin))) {
+    return Math.max(0, Math.min(24 * 60 - 1, Math.round(Number(opts.dayStartMin))));
+  }
+  const fromHm = parseClockToMinutes(opts?.dayStart);
+  if (fromHm != null) return fromHm;
+  return 8 * 60;
 }
 
 /**
@@ -193,7 +207,7 @@ export function parseClockToMinutes(value: string | undefined | null): number | 
  * `hasRouteStart` / `hasRouteEnd` so legs align:
  *   [depot→stop0, stop0→stop1, …, last→return]
  *
- * Departure clock = earliest windowStart among stops, else 08:00.
+ * Departure clock = earliest windowStart among stops, else opts.dayStart / dayStartMin, else 08:00.
  * With a depot start that clock is depot departure; without it, first-stop arrival.
  * Service (dwell) is added after each stop arrival before the next leg.
  */
@@ -223,7 +237,7 @@ export type SequenceRouteMeta = {
   returnLeg: StopRouteMeta | null;
 };
 
-/** Earliest declared window start per day index; days with none fall back to 08:00. */
+/** Earliest declared window start per day index; days with none use configured day start. */
 function dayStartMinutes(
   stops: Array<{ windowStart?: string; dayIndex?: number }>,
 ): Map<number, number> {
@@ -242,7 +256,13 @@ export function buildStopRouteMeta(
   stops: Array<{ windowStart?: string; serviceMinutes?: number | null; dayIndex?: number }>,
   legs: RouteLeg[],
   defaultServiceMinutes = 0,
-  opts?: { hasRouteStart?: boolean; hasRouteEnd?: boolean; continuousAcrossDays?: boolean },
+  opts?: {
+    hasRouteStart?: boolean;
+    hasRouteEnd?: boolean;
+    continuousAcrossDays?: boolean;
+    dayStartMin?: number;
+    dayStart?: string;
+  },
 ): SequenceRouteMeta {
   const hasRouteStart = Boolean(opts?.hasRouteStart);
   const hasRouteEnd = Boolean(opts?.hasRouteEnd);
@@ -250,8 +270,9 @@ export function buildStopRouteMeta(
   // stays truthful (03:32) even when those stops are later filed on Day 2.
   const continuousAcrossDays = Boolean(opts?.continuousAcrossDays);
   const startsByDay = dayStartMinutes(stops);
+  const configuredStart = resolveFallbackDayStart(opts);
   const fallbackStart =
-    stops.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ?? 8 * 60;
+    stops.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ?? configuredStart;
   const firstDay = stops.length ? Math.max(0, Math.trunc(Number(stops[0].dayIndex) || 0)) : 0;
   let currentDay = firstDay;
   let start = startsByDay.get(firstDay) ?? fallbackStart;
@@ -265,7 +286,7 @@ export function buildStopRouteMeta(
     if (newDay) {
       currentDay = day;
       if (!continuousAcrossDays) {
-        start = startsByDay.get(day) ?? 8 * 60;
+        start = startsByDay.get(day) ?? configuredStart;
         elapsedMin = 0;
       }
     }

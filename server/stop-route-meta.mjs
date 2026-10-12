@@ -9,7 +9,7 @@
 export function parseClockToMinutes(value) {
   const m = String(value || "")
     .trim()
-    .match(/^(\d{1,2}):(\d{2})$/);
+    .match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
   if (!m) return null;
   const h = Number(m[1]);
   const min = Number(m[2]);
@@ -33,7 +33,7 @@ function dayIndexOf(stop) {
 
 /**
  * First clock a day's work is anchored to: the earliest declared window start on
- * that day, falling back to 08:00.
+ * that day, falling back to opts.dayStartMin / opts.dayStart or 08:00.
  */
 function dayStartMinutes(list) {
   /** @type {Map<number, number>} */
@@ -48,11 +48,20 @@ function dayStartMinutes(list) {
   return byDay;
 }
 
+function resolveFallbackDayStart(opts) {
+  if (opts.dayStartMin != null && Number.isFinite(Number(opts.dayStartMin))) {
+    return Math.max(0, Math.min(24 * 60 - 1, Math.round(Number(opts.dayStartMin))));
+  }
+  const fromHm = parseClockToMinutes(opts.dayStart);
+  if (fromHm != null) return fromHm;
+  return DEFAULT_DAY_START_MIN;
+}
+
 /**
  * @param {Array<{ windowStart?: string, serviceMinutes?: number | null, dayIndex?: number }>} stops
  * @param {Array<{ distanceKm?: number, durationSec?: number }>} legs
  * @param {number} [defaultServiceMinutes=8]
- * @param {{ hasRouteStart?: boolean, hasRouteEnd?: boolean, continuousAcrossDays?: boolean }} [opts]
+ * @param {{ hasRouteStart?: boolean, hasRouteEnd?: boolean, continuousAcrossDays?: boolean, dayStartMin?: number, dayStart?: string }} [opts]
  */
 export function buildStopRouteMeta(stops, legs, defaultServiceMinutes = 8, opts = {}) {
   const hasRouteStart = Boolean(opts.hasRouteStart);
@@ -62,9 +71,9 @@ export function buildStopRouteMeta(stops, legs, defaultServiceMinutes = 8, opts 
   const legList = Array.isArray(legs) ? legs : [];
   const startsByDay = dayStartMinutes(list);
   const firstDay = list.length ? dayIndexOf(list[0]) : 0;
+  const configuredStart = resolveFallbackDayStart(opts);
   const fallbackStart =
-    list.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ??
-    DEFAULT_DAY_START_MIN;
+    list.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ?? configuredStart;
 
   let currentDay = firstDay;
   let start = startsByDay.get(firstDay) ?? fallbackStart;
@@ -78,7 +87,7 @@ export function buildStopRouteMeta(stops, legs, defaultServiceMinutes = 8, opts 
     if (newDay) {
       currentDay = day;
       if (!continuousAcrossDays) {
-        start = startsByDay.get(day) ?? DEFAULT_DAY_START_MIN;
+        start = startsByDay.get(day) ?? configuredStart;
         elapsedMin = 0;
       }
     }

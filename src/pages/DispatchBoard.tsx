@@ -402,8 +402,9 @@ export default function DispatchBoard() {
       hasRouteStart,
       hasRouteEnd,
       continuousAcrossDays: true,
+      dayStart: normalizeClockHm(planDayStart) || "08:00",
     });
-  }, [selected, jobRoute, planServiceMin]);
+  }, [selected, jobRoute, planServiceMin, planDayStart]);
 
   const jobDayCount = Math.max(1, Number(selected?.dayCount) || 1);
   // "Add day" opens an empty tab one past the span; the day only becomes real once
