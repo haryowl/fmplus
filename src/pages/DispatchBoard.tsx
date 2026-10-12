@@ -402,7 +402,7 @@ export default function DispatchBoard() {
       hasRouteStart,
       hasRouteEnd,
       continuousAcrossDays: true,
-      dayStart: normalizeClockHm(planDayStart) || "08:00",
+      dayStart: normalizeClockHm(selected.planDayStart || planDayStart) || "08:00",
     });
   }, [selected, jobRoute, planServiceMin, planDayStart]);
 
@@ -1943,7 +1943,7 @@ export default function DispatchBoard() {
         },
         // Each day of a tour resequences on its own; day 1 is the single-day case.
         jobDayCount > 1 ? activeDay : null,
-        { dayStart: normalizeClockHm(planDayStart) || "08:00" },
+        { dayStart: normalizeClockHm(selected.planDayStart || planDayStart) || "08:00" },
       );
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
       if (route && route.distanceKm && route.distanceKm > 0) {

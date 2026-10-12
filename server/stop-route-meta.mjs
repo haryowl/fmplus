@@ -48,13 +48,11 @@ function dayStartMinutes(list) {
   return byDay;
 }
 
-function resolveFallbackDayStart(opts) {
+function explicitDayStartMin(opts) {
   if (opts.dayStartMin != null && Number.isFinite(Number(opts.dayStartMin))) {
     return Math.max(0, Math.min(24 * 60 - 1, Math.round(Number(opts.dayStartMin))));
   }
-  const fromHm = parseClockToMinutes(opts.dayStart);
-  if (fromHm != null) return fromHm;
-  return DEFAULT_DAY_START_MIN;
+  return parseClockToMinutes(opts.dayStart);
 }
 
 /**
@@ -71,12 +69,16 @@ export function buildStopRouteMeta(stops, legs, defaultServiceMinutes = 8, opts 
   const legList = Array.isArray(legs) ? legs : [];
   const startsByDay = dayStartMinutes(list);
   const firstDay = list.length ? dayIndexOf(list[0]) : 0;
-  const configuredStart = resolveFallbackDayStart(opts);
+  // Auto-plan / job Day start must win over order windows (e.g. 08:00–21:00 soft TW).
+  const forcedStart = explicitDayStartMin(opts);
   const fallbackStart =
-    list.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ?? configuredStart;
+    forcedStart != null
+      ? forcedStart
+      : list.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ??
+        DEFAULT_DAY_START_MIN;
 
   let currentDay = firstDay;
-  let start = startsByDay.get(firstDay) ?? fallbackStart;
+  let start = forcedStart != null ? forcedStart : startsByDay.get(firstDay) ?? fallbackStart;
   const tourStart = start;
   let elapsedMin = 0;
   const depotDepart = hasRouteStart ? formatClockMinutes(start) : null;
@@ -87,7 +89,8 @@ export function buildStopRouteMeta(stops, legs, defaultServiceMinutes = 8, opts 
     if (newDay) {
       currentDay = day;
       if (!continuousAcrossDays) {
-        start = startsByDay.get(day) ?? configuredStart;
+        start =
+          forcedStart != null ? forcedStart : startsByDay.get(day) ?? DEFAULT_DAY_START_MIN;
         elapsedMin = 0;
       }
     }

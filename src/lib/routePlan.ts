@@ -188,16 +188,14 @@ export function parseClockToMinutes(value: string | undefined | null): number | 
   return h * 60 + min;
 }
 
-function resolveFallbackDayStart(opts?: {
+function explicitDayStartMin(opts?: {
   dayStartMin?: number;
   dayStart?: string;
-}): number {
+}): number | null {
   if (opts?.dayStartMin != null && Number.isFinite(Number(opts.dayStartMin))) {
     return Math.max(0, Math.min(24 * 60 - 1, Math.round(Number(opts.dayStartMin))));
   }
-  const fromHm = parseClockToMinutes(opts?.dayStart);
-  if (fromHm != null) return fromHm;
-  return 8 * 60;
+  return parseClockToMinutes(opts?.dayStart);
 }
 
 /**
@@ -207,7 +205,8 @@ function resolveFallbackDayStart(opts?: {
  * `hasRouteStart` / `hasRouteEnd` so legs align:
  *   [depot→stop0, stop0→stop1, …, last→return]
  *
- * Departure clock = earliest windowStart among stops, else opts.dayStart / dayStartMin, else 08:00.
+ * Departure clock = opts.dayStart / dayStartMin when set (wins over windows),
+ * else earliest windowStart among stops, else 08:00.
  * With a depot start that clock is depot departure; without it, first-stop arrival.
  * Service (dwell) is added after each stop arrival before the next leg.
  */
@@ -270,12 +269,15 @@ export function buildStopRouteMeta(
   // stays truthful (03:32) even when those stops are later filed on Day 2.
   const continuousAcrossDays = Boolean(opts?.continuousAcrossDays);
   const startsByDay = dayStartMinutes(stops);
-  const configuredStart = resolveFallbackDayStart(opts);
+  // Auto-plan / job Day start must win over order windows (e.g. 08:00–21:00 soft TW).
+  const forcedStart = explicitDayStartMin(opts);
   const fallbackStart =
-    stops.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ?? configuredStart;
+    forcedStart != null
+      ? forcedStart
+      : stops.map((s) => parseClockToMinutes(s.windowStart)).find((n) => n != null) ?? 8 * 60;
   const firstDay = stops.length ? Math.max(0, Math.trunc(Number(stops[0].dayIndex) || 0)) : 0;
   let currentDay = firstDay;
-  let start = startsByDay.get(firstDay) ?? fallbackStart;
+  let start = forcedStart != null ? forcedStart : startsByDay.get(firstDay) ?? fallbackStart;
   const tourStart = start;
   let elapsedMin = 0;
   const depotDepart = hasRouteStart ? formatClockMinutes(start) : null;
@@ -286,7 +288,7 @@ export function buildStopRouteMeta(
     if (newDay) {
       currentDay = day;
       if (!continuousAcrossDays) {
-        start = startsByDay.get(day) ?? configuredStart;
+        start = forcedStart != null ? forcedStart : startsByDay.get(day) ?? 8 * 60;
         elapsedMin = 0;
       }
     }

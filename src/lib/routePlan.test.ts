@@ -13,6 +13,20 @@ describe("buildStopRouteMeta", () => {
     expect(meta.stops[1]?.eta).toBe("06:41");
   });
 
+  it("keeps Auto-plan dayStart even when order windows start at 08:00", () => {
+    const meta = buildStopRouteMeta(
+      [
+        { windowStart: "08:00", windowEnd: "21:00", serviceMinutes: 8 },
+        { windowStart: "08:00", serviceMinutes: 8 },
+      ],
+      [{ distanceKm: 1.5, durationSec: 180 }],
+      8,
+      { dayStart: "06:00" },
+    );
+    expect(meta.stops[0]?.eta).toBe("06:00");
+    expect(meta.stops[1]?.eta).toBe("06:11");
+  });
+
   it("treats stop 1 as start when there is no depot", () => {
     const meta = buildStopRouteMeta(
       [{ windowStart: "08:00", serviceMinutes: 8 }, { serviceMinutes: 8 }],
