@@ -1887,8 +1887,8 @@ export default function DispatchBoard() {
         persistDepot: depotMode === "depot" && dLat != null && dLon != null,
         twMode: planTwMode,
         serviceMinutes: Number(planServiceMin) || 8,
-        dayStart: planDayStart || "08:00",
-        dayEnd: planDayEnd || "18:00",
+        dayStart: normalizeClockHm(planDayStart) || "08:00",
+        dayEnd: normalizeClockHm(planDayEnd) || "18:00",
         maxStopsPerVehicle: planMaxStops.trim() ? Number(planMaxStops) : 0,
         onlyEmptyJobs: planOnlyEmpty,
         preferZoneDepot,
@@ -2277,8 +2277,13 @@ export default function DispatchBoard() {
                 <input
                   id="dispatch-day-start"
                   type="time"
+                  step={60}
                   value={planDayStart}
-                  onChange={(e) => setPlanDayStart(e.target.value)}
+                  onChange={(e) => {
+                    const v = normalizeClockHm(e.target.value);
+                    if (v) setPlanDayStart(v);
+                  }}
+                  title="Clock start for planned ETAs (vehicle leaves / first stop clock)"
                 />
               </div>
               <div className="field">
@@ -2286,16 +2291,13 @@ export default function DispatchBoard() {
                 <input
                   id="dispatch-day-end"
                   type="time"
+                  step={60}
                   value={planDayEnd}
-                  onChange={(e) => setPlanDayEnd(e.target.value)}
-                  disabled={depotMode === "open" || multiTripMode === "off"}
-                  title={
-                    depotMode === "open"
-                      ? "Multi-trip needs a depot so vehicles can return and reload"
-                      : multiTripMode === "off"
-                        ? "Used when multi-trip is enabled"
-                        : "Shift end — no new trip starts after this"
-                  }
+                  onChange={(e) => {
+                    const v = normalizeClockHm(e.target.value);
+                    if (v) setPlanDayEnd(v);
+                  }}
+                  title="Shift end — last stop must finish by this time; multi-trip also uses it for return/reload"
                 />
               </div>
               {(depotMode === "depot" || depotMode === "multi") && (

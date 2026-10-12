@@ -35,10 +35,10 @@ function fits(residual, demand) {
   return residual.vol + 1e-9 >= demand.vol && residual.wt + 1e-9 >= demand.wt;
 }
 
-/** Parse "HH:MM" / "H:MM" → minutes from midnight, or null. */
+/** Parse "HH:MM" / "H:MM" / "HH:MM:SS" → minutes from midnight, or null. */
 export function parseWindowMinutes(v) {
   const s = String(v || "").trim();
-  const m = /^(\d{1,2}):(\d{2})$/.exec(s);
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(s);
   if (!m) return null;
   const hh = Number(m[1]);
   const mm = Number(m[2]);
@@ -529,7 +529,7 @@ export function assignVehiclesToDepots(vehicles, depots, demandByDepot) {
  * @param {"off"|"soft"|"hard"} [input.twMode]
  * @param {number} [input.serviceMinutes]
  * @param {number} [input.dayStartMin]
- * @param {number} [input.dayEndMin] — shift end for multi-trip (default 18:00)
+ * @param {number} [input.dayEndMin] — shift end: last stop must finish by this; multi-trip also uses it for return/reload
  * @param {number} [input.maxStopsPerVehicle]
  * @param {boolean} [input.preferSameZone]
  * @param {"off"|"max2"|"unlimited"} [input.multiTripMode]
@@ -678,16 +678,19 @@ export function planCvrp({
             if (!twD.feasible) continue;
             const tentativeRoute = routeAfterP.slice();
             tentativeRoute.splice(ins.dPos, 0, dNode);
-            if (maxTrips > 1 && depotIndex != null) {
-              const ret = estimateReturnMin({
+            if (
+              routeExceedsDayEnd({
                 route: tentativeRoute,
                 ordersByMatrixIdx,
                 matrix: matrixKm,
                 depotIdx: depotIndex,
                 dayStartMin: vs.dayStartMin,
                 serviceMinutes: svcMin,
-              });
-              if (ret != null && ret > endMin) continue;
+                endMin,
+                requireReturn: maxTrips > 1 && depotIndex != null,
+              })
+            ) {
+              continue;
             }
             const score =
               ins.cost +
@@ -734,18 +737,23 @@ export function planCvrp({
           if (!routeLoadFeasible(tentativeIdx, orders, vs.volumeCapacityM3, vs.weightCapacityKg)) {
             continue;
           }
-          if (maxTrips > 1 && depotIndex != null) {
+          {
             const tentative = vs.route.slice();
             tentative.splice(ins.pos, 0, nodeIdx);
-            const ret = estimateReturnMin({
-              route: tentative,
-              ordersByMatrixIdx,
-              matrix: matrixKm,
-              depotIdx: depotIndex,
-              dayStartMin: vs.dayStartMin,
-              serviceMinutes: svcMin,
-            });
-            if (ret != null && ret > endMin) continue;
+            if (
+              routeExceedsDayEnd({
+                route: tentative,
+                ordersByMatrixIdx,
+                matrix: matrixKm,
+                depotIdx: depotIndex,
+                dayStartMin: vs.dayStartMin,
+                serviceMinutes: svcMin,
+                endMin,
+                requireReturn: maxTrips > 1 && depotIndex != null,
+              })
+            ) {
+              continue;
+            }
           }
           const score =
             ins.cost +
@@ -930,6 +938,41 @@ export function planCvrp({
     reloadMinutes: reloadMin,
     maxTrips,
   };
+}
+
+/** True when the tentative route finishes (or returns) after the shift end. */
+function routeExceedsDayEnd({
+  route,
+  ordersByMatrixIdx,
+  matrix,
+  depotIdx,
+  dayStartMin,
+  serviceMinutes,
+  endMin,
+  requireReturn = false,
+}) {
+  if (!route.length) return false;
+  if (requireReturn && depotIdx != null) {
+    const ret = estimateReturnMin({
+      route,
+      ordersByMatrixIdx,
+      matrix,
+      depotIdx,
+      dayStartMin,
+      serviceMinutes,
+    });
+    return ret != null && ret > endMin;
+  }
+  const stops = simulateRouteSchedule({
+    route,
+    ordersByMatrixIdx,
+    matrix,
+    depotIdx,
+    dayStartMin,
+    serviceMinutes,
+  });
+  if (!stops.length) return false;
+  return stops[stops.length - 1].departMin > endMin;
 }
 
 /** Last-stop depart + drive back to depot (or last depart if open). */

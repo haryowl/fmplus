@@ -3483,7 +3483,8 @@ export async function handleDispatchRequest(req, res) {
       let dayStartMin = 8 * 60;
       if (body.dayStart) {
         const parsed = String(body.dayStart).trim();
-        const m = /^(\d{1,2}):(\d{2})$/.exec(parsed);
+        // Browsers often send HH:MM:SS from <input type="time">.
+        const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(parsed);
         if (m) dayStartMin = Number(m[1]) * 60 + Number(m[2]);
       } else if (body.dayStartMin != null && Number.isFinite(Number(body.dayStartMin))) {
         dayStartMin = Number(body.dayStartMin);
@@ -3491,7 +3492,7 @@ export async function handleDispatchRequest(req, res) {
       let dayEndMin = 18 * 60;
       if (body.dayEnd) {
         const parsed = String(body.dayEnd).trim();
-        const m = /^(\d{1,2}):(\d{2})$/.exec(parsed);
+        const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(parsed);
         if (m) dayEndMin = Number(m[1]) * 60 + Number(m[2]);
       } else if (body.dayEndMin != null && Number.isFinite(Number(body.dayEndMin))) {
         dayEndMin = Number(body.dayEndMin);
