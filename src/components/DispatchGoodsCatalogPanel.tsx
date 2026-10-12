@@ -7,8 +7,8 @@ import {
   downloadCsv,
   parseCsv,
 } from "../lib/csvImport";
-import { printCatalogLabel } from "../lib/catalogCodes";
 import { CatalogCodesEditor } from "./CatalogCodesEditor";
+import { CatalogLabelPrintButton } from "./CatalogLabelPrintButton";
 import { CatalogNfcWriteButton } from "./CatalogNfcWriteButton";
 import {
   createDispatchGoodsItem,
@@ -297,15 +297,12 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                 >
                   Delete
                 </button>
-                <button
-                  type="button"
-                  className="btn-ghost btn-compact"
-                  disabled={busy || !item.sku}
-                  title={item.sku ? "Print QR and barcode" : "Add a SKU to print"}
-                  onClick={() => printCatalogLabel("goods", item.name, item.sku)}
-                >
-                  Print QR / barcode
-                </button>
+                <CatalogLabelPrintButton
+                  kind="goods"
+                  name={item.name}
+                  sku={item.sku || ""}
+                  disabled={busy}
+                />
                 <CatalogNfcWriteButton kind="goods" name={item.name} sku={item.sku || ""} disabled={busy} />
                 <button
                   type="button"

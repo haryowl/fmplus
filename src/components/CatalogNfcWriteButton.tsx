@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { scanPayloadFor, type CatalogTargetKind } from "../lib/catalogCodes";
+import { isNativeDispatchApp } from "../lib/nativeField";
 import { deskNfcWriteAvailable, writeDeskNfcTag } from "../lib/nfcWrite";
 
 type Props = {
@@ -17,6 +18,7 @@ export function CatalogNfcWriteButton({ kind, name, sku, disabled, compact }: Pr
   const abortRef = useRef<AbortController | null>(null);
   const payload = scanPayloadFor(kind, sku);
   const canWrite = deskNfcWriteAvailable();
+  const dispatchApk = isNativeDispatchApp();
 
   function close() {
     abortRef.current?.abort();
@@ -84,16 +86,20 @@ export function CatalogNfcWriteButton({ kind, name, sku, disabled, compact }: Pr
       {open ? (
         <div className="catalog-nfc-write-modal" role="dialog" aria-label="Write NFC tag">
           <div className="catalog-nfc-write-sheet">
-            <p className="dispatch-eyebrow">Desk only</p>
+            <p className="dispatch-eyebrow">{dispatchApk ? "Dispatch app" : "Desk only"}</p>
             <h3>Write NFC</h3>
             <p className="muted">{name || sku}</p>
             <code className="catalog-nfc-write-payload">{payload}</code>
             {canWrite ? (
-              <p className="muted">Chrome on Android. Hold a writable tag to this device, then tap Write tag.</p>
+              <p className="muted">
+                {dispatchApk
+                  ? "Hold a writable tag to this phone, then tap Write tag."
+                  : "Chrome on Android. Hold a writable tag to this device, then tap Write tag."}
+              </p>
             ) : (
               <p className="muted">
-                NFC write needs Chrome on Android (HTTPS). Copy the payload, or add the chip UID under Codes after a
-                Field tap.
+                NFC write needs Chrome on Android (HTTPS) or the Dispatch app. Copy the payload, or add the chip UID
+                under Codes after a Field tap.
               </p>
             )}
             {status ? <p className="muted">{status}</p> : null}

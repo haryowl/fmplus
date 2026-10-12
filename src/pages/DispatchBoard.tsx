@@ -10,6 +10,7 @@ import { DispatchJobMap } from "../components/DispatchJobMap";
 import { DispatchOrderGoodsEditor } from "../components/DispatchOrderGoodsEditor";
 import { ViewNav } from "../components/ViewNav";
 import { locationNameFromScan, lookupCatalogScan } from "../lib/catalogScan";
+import { isNativeDispatchApp } from "../lib/nativeField";
 import { nextDatedCode } from "../lib/datedCode";
 import {
   DISPATCH_ORDER_CSV_HEADERS,
@@ -3630,6 +3631,7 @@ export default function DispatchBoard() {
                     <CatalogScanButton
                       disabled={busy}
                       label="Scan location"
+                      allowNfc={isNativeDispatchApp()}
                       onCode={(code) => {
                         void lookupCatalogScan(code, "location", "desk")
                           .then((res) => {
@@ -3701,6 +3703,7 @@ export default function DispatchBoard() {
                       lines={orderForm.lines}
                       onChange={applyOrderLines}
                       scanSource="desk"
+                      scanNfc={isNativeDispatchApp()}
                       onScanError={setError}
                       totalsLocked={orderForm.cargoTotalsLocked}
                       onToggleLock={(locked) => {

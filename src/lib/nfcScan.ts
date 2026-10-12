@@ -1,5 +1,9 @@
 import { registerPlugin, type PluginListenerHandle } from "@capacitor/core";
-import { isNativeFieldApp } from "./nativeField";
+import { isNativeDispatchApp, isNativeFieldApp } from "./nativeField";
+
+function nativeNfcScanSupported(): boolean {
+  return isNativeFieldApp() || isNativeDispatchApp();
+}
 
 export type NfcTagEvent = {
   code?: string;
@@ -45,7 +49,7 @@ export type NfcListenResult = {
 };
 
 export async function startNfcScan(onCode: (code: string) => void): Promise<NfcListenResult> {
-  if (!isNativeFieldApp()) {
+  if (!nativeNfcScanSupported()) {
     return { stop: async () => undefined, ready: false, reason: "apk" };
   }
   try {

@@ -3,11 +3,10 @@ import {
   addCatalogCodeRow,
   deleteCatalogCodeRow,
   fetchCatalogCodes,
-  printCatalogLabel,
-  scanPayloadFor,
   type CatalogCodeRow,
   type CatalogTargetKind,
 } from "../lib/catalogCodes";
+import { CatalogLabelPrintButton } from "./CatalogLabelPrintButton";
 import { CatalogNfcWriteButton } from "./CatalogNfcWriteButton";
 
 type Props = {
@@ -23,7 +22,6 @@ export function CatalogCodesEditor({ kind, itemId, sku, name, disabled }: Props)
   const [extra, setExtra] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const payload = scanPayloadFor(kind, sku || "");
 
   async function reload() {
     setCodes(await fetchCatalogCodes(kind, itemId));
@@ -53,14 +51,7 @@ export function CatalogCodesEditor({ kind, itemId, sku, name, disabled }: Props)
     <div className="catalog-codes-editor">
       {error ? <p className="error">{error}</p> : null}
       <div className="catalog-codes-actions">
-        <button
-          type="button"
-          className="btn-ghost btn-compact"
-          disabled={disabled || !payload}
-          onClick={() => printCatalogLabel(kind, name, sku || "")}
-        >
-          Print QR / barcode
-        </button>
+        <CatalogLabelPrintButton kind={kind} name={name} sku={sku || ""} disabled={disabled} />
         <CatalogNfcWriteButton kind={kind} name={name} sku={sku || ""} disabled={disabled} />
       </div>
       {codes.length ? (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { printCatalogLabel } from "../lib/catalogCodes";
+import { buildCatalogLabel, type CatalogLabelPreview } from "../lib/catalogCodes";
 import {
   downloadCsv,
   maintenanceCatalogCsvFromGroups,
@@ -8,6 +8,7 @@ import {
 } from "../lib/csvImport";
 import { formatIdr } from "../lib/format";
 import { CatalogCodesEditor } from "./CatalogCodesEditor";
+import { CatalogLabelPrintSheet } from "./CatalogLabelPrintButton";
 import { CatalogNfcWriteButton } from "./CatalogNfcWriteButton";
 import { CsvImportPanel } from "./CsvImportPanel";
 import {
@@ -119,6 +120,7 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
   const [openCodes, setOpenCodes] = useState<string | null>(null);
+  const [labelPreview, setLabelPreview] = useState<CatalogLabelPreview | null>(null);
   const [newName, setNewName] = useState("");
   const [newSku, setNewSku] = useState("");
   const [newPrice, setNewPrice] = useState("");
@@ -454,7 +456,7 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
                         <IconButton
                           label={item.sku ? "Print QR / barcode" : "Add a SKU to print"}
                           disabled={busy || !item.sku}
-                          onClick={() => printCatalogLabel("maint_part", item.name, item.sku || "")}
+                          onClick={() => setLabelPreview(buildCatalogLabel("maint_part", item.name, item.sku || ""))}
                         >
                           <svg viewBox="0 0 24 24" aria-hidden="true">
                             <path
@@ -562,7 +564,7 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
                       <IconButton
                         label={item.sku ? "Print QR / barcode" : "Add a SKU to print"}
                         disabled={busy || !item.sku}
-                        onClick={() => printCatalogLabel("maint_part", item.name, item.sku || "")}
+                        onClick={() => setLabelPreview(buildCatalogLabel("maint_part", item.name, item.sku || ""))}
                       >
                         <svg viewBox="0 0 24 24" aria-hidden="true">
                           <path
@@ -636,6 +638,10 @@ export function MaintenanceCatalogPanel({ onClose }: Props) {
           {tab === "part" ? ` · ${skuCount} with SKU` : ""}
           <span>Changes save when you leave a field. CSV import updates a matching SKU or name.</span>
         </p>
+      ) : null}
+
+      {labelPreview ? (
+        <CatalogLabelPrintSheet preview={labelPreview} onClose={() => setLabelPreview(null)} />
       ) : null}
     </section>
   );

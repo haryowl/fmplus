@@ -25,40 +25,33 @@ function codesBasePath(kind: CatalogTargetKind, itemId: string): string {
   return `/api/dispatch/locations/${itemId}/codes`;
 }
 
-function escapePrintHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
+export type CatalogLabelPreview = {
+  kind: CatalogTargetKind;
+  label: string;
+  code: string;
+  payload: string;
+  qrSrc: string;
+  barSrc: string;
+};
 
-/** Opens a print sheet with QR (versioned payload) and Code 128 (SKU). */
-export function printCatalogLabel(kind: CatalogTargetKind, name: string, sku: string): void {
+/** Builds QR + Code 128 preview assets for a catalog SKU (null if SKU missing). */
+export function buildCatalogLabel(
+  kind: CatalogTargetKind,
+  name: string,
+  sku: string,
+): CatalogLabelPreview | null {
   const payload = scanPayloadFor(kind, sku);
   const label = String(name || "").trim() || "Catalog item";
   const code = String(sku || "").trim();
-  if (!payload || !code) return;
-  const win = window.open("", "_blank", "width=420,height=640");
-  if (!win) return;
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payload)}`;
-  const barSrc = `https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(code)}&scale=2&height=12&includetext`;
-  win.document.write(`<!doctype html><html><head><title>${escapePrintHtml(label)}</title>
-<style>
-  body { font-family: sans-serif; padding: 24px; text-align: center; }
-  h1 { font-size: 18px; margin: 0 0 8px; }
-  .sku { font-size: 14px; color: #444; margin: 0 0 16px; }
-  .payload { font-family: ui-monospace, monospace; font-size: 11px; margin-top: 16px; word-break: break-all; color: #555; }
-  img { display: block; margin: 12px auto; }
-  .qr { width: 220px; height: 220px; }
-  .bar { max-width: 280px; height: auto; }
-  @media print { button { display: none; } }
-</style></head><body>
-  <h1>${escapePrintHtml(label)}</h1>
-  <p class="sku">${escapePrintHtml(code)}</p>
-  <img class="qr" alt="QR" src="${qrSrc}" />
-  <img class="bar" alt="Barcode" src="${barSrc}" />
-  <p class="payload">${escapePrintHtml(payload)}</p>
-  <button type="button" onclick="window.print()">Print</button>
-</body></html>`);
-  win.document.close();
-  win.focus();
+  if (!payload || !code) return null;
+  return {
+    kind,
+    label,
+    code,
+    payload,
+    qrSrc: `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payload)}`,
+    barSrc: `https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(code)}&scale=2&height=12&includetext`,
+  };
 }
 
 async function readJson<T>(res: Response): Promise<T & { error?: string }> {

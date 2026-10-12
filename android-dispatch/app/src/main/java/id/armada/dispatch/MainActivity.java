@@ -5,11 +5,13 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
 
-/** Desk Jobs + Dispatch Live shell. No Field duty GPS or NFC plugins. */
+/** Desk Jobs + Dispatch Live shell. NFC write/scan + camera for catalog labels. */
 public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(NfcScanPlugin.class);
+        registerPlugin(NfcWritePlugin.class);
         super.onCreate(savedInstanceState);
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebView webView = getBridge().getWebView();
