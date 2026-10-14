@@ -350,7 +350,8 @@ export async function buildDispatchLiveSnapshot(opts) {
 
   if (jobIds.length) {
     const stopsRes = await dbQuery(
-      `SELECT s.*, o.external_ref AS order_external_ref, o.customer_name AS order_customer_name
+      `SELECT s.*, o.external_ref AS order_external_ref, o.customer_name AS order_customer_name,
+              o.profile AS order_profile, COALESCE(s.visit_outcome, o.visit_outcome) AS visit_outcome
        FROM dispatch_stops s
        LEFT JOIN dispatch_orders o ON o.id = s.order_id
        WHERE s.job_id = ANY($1::uuid[])
@@ -511,6 +512,8 @@ export async function buildDispatchLiveSnapshot(opts) {
         proofRequired: s.proof_required === true,
         pctComplete: stopPct(uiStatus),
         skipReason: s.skip_reason || "",
+        visitOutcome: s.visit_outcome || null,
+        orderProfile: s.order_profile || null,
       };
       return row;
     });

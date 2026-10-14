@@ -232,10 +232,26 @@ function publicDispatchStop(row, jobServiceDate = "") {
 }
 
 function fieldCapacityFrom(row, stops) {
+  const seatCapacity =
+    row.seat_capacity != null && Number.isFinite(Number(row.seat_capacity))
+      ? Math.max(1, Math.floor(Number(row.seat_capacity)))
+      : null;
+  const luggageCapacityKg =
+    row.luggage_capacity_kg != null && Number.isFinite(Number(row.luggage_capacity_kg))
+      ? Math.max(0, Number(row.luggage_capacity_kg))
+      : null;
   const volumeCapacityM3 =
-    row.volume_capacity_m3 == null ? 12 : Number(row.volume_capacity_m3) || 12;
+    seatCapacity != null
+      ? seatCapacity
+      : row.volume_capacity_m3 == null
+        ? 12
+        : Number(row.volume_capacity_m3) || 12;
   const weightCapacityKg =
-    row.weight_capacity_kg == null ? 1500 : Number(row.weight_capacity_kg) || 1500;
+    luggageCapacityKg != null
+      ? luggageCapacityKg
+      : row.weight_capacity_kg == null
+        ? 1500
+        : Number(row.weight_capacity_kg) || 1500;
   let volumeUsed = 0;
   let weightUsed = 0;
   const seenPair = new Set();
@@ -252,6 +268,10 @@ function fieldCapacityFrom(row, stops) {
   return {
     volumeCapacityM3,
     weightCapacityKg,
+    seatCapacity,
+    luggageCapacityKg,
+    seatsUsed: seatCapacity != null ? Math.round(volumeUsed) : null,
+    luggageUsedKg: luggageCapacityKg != null ? Math.round(weightUsed * 10) / 10 : null,
     volumeUsed: Math.round(volumeUsed * 1000) / 1000,
     weightUsed: Math.round(weightUsed * 10) / 10,
     utilizationPct: Math.round(Math.max(utilV, utilW) * 10) / 10,

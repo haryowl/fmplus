@@ -2126,6 +2126,8 @@ export type DispatchLiveStop = {
   proofRequired: boolean;
   pctComplete: number;
   skipReason: string;
+  visitOutcome?: string | null;
+  orderProfile?: "cargo" | "passenger" | "sales" | null;
   driverName?: string;
   driverInitials?: string;
   vehicleLabel?: string;

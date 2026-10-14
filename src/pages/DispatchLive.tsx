@@ -14,6 +14,7 @@ import {
   replanDispatchRemaining,
   shiftServiceDate,
   todayServiceDate,
+  VISIT_OUTCOME_LABELS,
   type DispatchLiveDriver,
   type DispatchLiveSnapshot,
   type DispatchLiveStop,
@@ -21,6 +22,7 @@ import {
   type DispatchOpsException,
   type DispatchReplanSuggestion,
   type DispatchSlaScorecard,
+  type VisitOutcome,
 } from "../lib/dispatch";
 import { livePositionLabel } from "../lib/dispatchLiveLabel";
 import { clipTimedTrackToWindow, type TimedMapPoint } from "../lib/dispatchTrackClip";
@@ -1462,6 +1464,15 @@ function ManifestCardGroup({
                     End <b>{row.completedLabel || "—"}</b>
                   </span>
                   <span className={`dispatch-live-pod pod-${row.pod}`}>POD {podLabel(row.pod)}</span>
+                  {row.orderProfile === "sales" || row.visitOutcome ? (
+                    <span>
+                      {row.visitOutcome && row.visitOutcome in VISIT_OUTCOME_LABELS
+                        ? VISIT_OUTCOME_LABELS[row.visitOutcome as VisitOutcome]
+                        : row.visitOutcome
+                          ? row.visitOutcome.replace(/_/g, " ")
+                          : "Sales visit"}
+                    </span>
+                  ) : null}
                 </div>
               </button>
             </li>
@@ -1526,6 +1537,15 @@ function FragmentGroup({
               <strong>{row.externalRef || row.name}</strong>
               {row.externalRef && row.name !== row.externalRef ? <span>{row.name}</span> : null}
               {row.address ? <span className="dispatch-live-sub">{row.address}</span> : null}
+              {row.orderProfile === "sales" || row.visitOutcome ? (
+                <span className="dispatch-live-sub">
+                  {row.visitOutcome && row.visitOutcome in VISIT_OUTCOME_LABELS
+                    ? VISIT_OUTCOME_LABELS[row.visitOutcome as VisitOutcome]
+                    : row.visitOutcome
+                      ? row.visitOutcome.replace(/_/g, " ")
+                      : "Sales visit"}
+                </span>
+              ) : null}
             </td>
             <td>
               <em className={`dispatch-live-pill tone-${tone}`}>{statusLabel(tone)}</em>

@@ -1027,14 +1027,26 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
         <section className="field-panel field-dispatch-capacity">
           <div className="field-dispatch-cap-row">
             <div>
-              <p className="field-kicker">CAPACITY TODAY</p>
+              <p className="field-kicker">
+                {selected.stops.some((s) => s.orderProfile === "sales")
+                  ? "VISITS TODAY"
+                  : selected.seatCapacity != null ||
+                      selected.stops.some((s) => s.orderProfile === "passenger")
+                    ? "SEATS TODAY"
+                    : "CAPACITY TODAY"}
+              </p>
               <p className="field-dispatch-cap-main">
-                {selected.volumeUsed ?? 0} / {selected.volumeCapacityM3 ?? 12} m³ ·{" "}
-                {selected.utilizationPct ?? 0}%
+                {selected.stops.some((s) => s.orderProfile === "sales")
+                  ? `${selected.stops.filter((s) => s.status === "done" || s.status === "skipped").length} / ${selected.stops.length} done · ${selected.utilizationPct ?? 0}%`
+                  : selected.seatCapacity != null ||
+                      selected.stops.some((s) => s.orderProfile === "passenger")
+                    ? `${selected.seatsUsed ?? selected.volumeUsed ?? 0} / ${selected.seatCapacity ?? selected.volumeCapacityM3 ?? 4} seats · ${selected.utilizationPct ?? 0}%`
+                    : `${selected.volumeUsed ?? 0} / ${selected.volumeCapacityM3 ?? 12} m³ · ${selected.utilizationPct ?? 0}%`}
               </p>
               <p className="muted">
                 {stopsLeft} order{stopsLeft === 1 ? "" : "s"} left
                 {selectedDayCount > 1 ? " today" : ""} · {dispatchVehicleLabel(selected)}
+                {!selected.armadaUserId ? " · phone GPS" : ""}
               </p>
             </div>
             <span className={`field-status dispatch-status-${selected.status}`}>
@@ -1253,14 +1265,27 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
                       ) : null}
                       {stop.address ? <p className="field-dispatch-stop-addr">{stop.address}</p> : null}
                       <p className="field-dispatch-stop-meta">
-                        {[stop.zone || null, stop.volumeM3 != null ? `${stop.volumeM3} m³` : null]
+                        {[
+                          stop.zone || null,
+                          stop.orderProfile === "sales"
+                            ? stop.visitOutcome && stop.visitOutcome in VISIT_OUTCOME_LABELS
+                              ? VISIT_OUTCOME_LABELS[stop.visitOutcome as VisitOutcome]
+                              : stop.visitOutcome
+                                ? stop.visitOutcome.replace(/_/g, " ")
+                                : "Sales visit"
+                            : stop.orderProfile === "passenger" && stop.volumeM3 != null
+                              ? `${Math.round(stop.volumeM3)} seats`
+                              : stop.volumeM3 != null
+                                ? `${stop.volumeM3} m³`
+                                : null,
+                        ]
                           .filter(Boolean)
                           .join(" · ") || "—"}
                       </p>
-                      {formatCargoSummary(stop.lines) ? (
+                      {stop.orderProfile !== "sales" && formatCargoSummary(stop.lines) ? (
                         <p className="field-goods-summary">{formatCargoSummary(stop.lines)}</p>
                       ) : null}
-                      {stop.orderId && !closed ? (
+                      {stop.orderId && !closed && stop.orderProfile !== "sales" ? (
                         <div className="dispatch-goods-block">
                           {cargoOrderId === stop.orderId ? (
                             <>

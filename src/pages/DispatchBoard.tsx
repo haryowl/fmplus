@@ -646,6 +646,15 @@ export default function DispatchBoard() {
 
   const filteredOrders = useMemo(() => {
     let list = orders;
+    // Keep inbox aligned to the active desk profile when several are enabled.
+    if (deskModes.length > 1) {
+      list = list.filter((o) => {
+        const p = o.profile || "cargo";
+        if (deskMode === "sales") return p === "sales";
+        if (deskMode === "passenger") return p === "passenger";
+        return p === "cargo" || !o.profile;
+      });
+    }
     if (orderZoneFilter === ZONE_FILTER_NONE) {
       list = list.filter((o) => !String(o.zone || "").trim());
     } else if (orderZoneFilter) {
@@ -664,6 +673,7 @@ export default function DispatchBoard() {
         o.windowEnd,
         o.volumeM3 != null ? String(o.volumeM3) : "",
         o.weightKg != null ? String(o.weightKg) : "",
+        o.visitOutcome || "",
         o.proofRequired ? "pod" : "",
       ]
         .filter(Boolean)
@@ -671,7 +681,7 @@ export default function DispatchBoard() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [orders, orderQuery, orderZoneFilter]);
+  }, [orders, orderQuery, orderZoneFilter, deskMode, deskModes.length]);
 
   const inboxZoneOptions = useMemo(() => {
     const fromOrders = zoneCounts.zones.map((z) => ({
