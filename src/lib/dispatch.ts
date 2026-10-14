@@ -1352,9 +1352,34 @@ export type DispatchTruckStock = {
   jobId: string;
   catalogItemId: string;
   jobTitle: string;
+  itemName?: string;
+  itemSku?: string;
+  unit?: string;
   qty: number;
   updatedAt?: string | null;
 };
+
+/** Group in-transit lines by job for day-close / Goods desk. */
+export function groupTruckStockByJob(truck: DispatchTruckStock[]): Array<{
+  jobId: string;
+  jobTitle: string;
+  lines: DispatchTruckStock[];
+  totalQty: number;
+}> {
+  const byJob = new Map<string, { jobId: string; jobTitle: string; lines: DispatchTruckStock[] }>();
+  for (const row of truck || []) {
+    if (!(row.qty > 0)) continue;
+    const cur = byJob.get(row.jobId);
+    if (cur) cur.lines.push(row);
+    else byJob.set(row.jobId, { jobId: row.jobId, jobTitle: row.jobTitle || "Job", lines: [row] });
+  }
+  return [...byJob.values()]
+    .map((g) => ({
+      ...g,
+      totalQty: g.lines.reduce((s, l) => s + (Number(l.qty) || 0), 0),
+    }))
+    .sort((a, b) => a.jobTitle.localeCompare(b.jobTitle));
+}
 
 export type DispatchStockMovement = {
   id: string;
@@ -1382,6 +1407,7 @@ export async function fetchDispatchGoods(signal?: AbortSignal): Promise<Dispatch
 export async function fetchDispatchStock(opts?: {
   itemId?: string;
   depotId?: string;
+  jobId?: string;
   signal?: AbortSignal;
 }): Promise<{
   balances: DispatchStockBalance[];
@@ -1391,6 +1417,7 @@ export async function fetchDispatchStock(opts?: {
   const q = new URLSearchParams();
   if (opts?.itemId) q.set("itemId", opts.itemId);
   if (opts?.depotId) q.set("depotId", opts.depotId);
+  if (opts?.jobId) q.set("jobId", opts.jobId);
   const res = await fetch(`/api/dispatch/stock${q.toString() ? `?${q}` : ""}`, {
     headers: { accept: "application/json", ...tenantHeaders() },
     signal: opts?.signal,

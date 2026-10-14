@@ -5688,6 +5688,24 @@ button.dispatch-pin-chip {
   color: var(--ink);
 }
 
+.dispatch-job-truck-stock {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  display: grid;
+  gap: 8px;
+}
+
+.dispatch-job-truck-stock .dispatch-eyebrow {
+  margin: 0;
+}
+
+.dispatch-job-truck-stock .dispatch-cap-edit-actions {
+  margin-top: 4px;
+}
+
 .dispatch-profile-toggle {
   display: flex;
   flex-wrap: wrap;
@@ -11282,6 +11300,22 @@ button.dispatch-pin-chip {
 
 .dispatch-goods-stock .dispatch-goods-catalog-add {
   margin-top: 4px;
+}
+
+.dispatch-goods-truck-close {
+  margin: 12px 0 16px;
+}
+
+.dispatch-goods-truck-close .field {
+  display: grid;
+  gap: 4px;
+  max-width: 20rem;
+}
+
+.dispatch-goods-truck-close .dispatch-cap-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .dispatch-goods-suggest li button span,

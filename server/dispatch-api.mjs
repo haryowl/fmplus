@@ -1401,8 +1401,9 @@ export async function handleDispatchRequest(req, res) {
     if (url.pathname === "/api/dispatch/stock" && req.method === "GET") {
       const catalogItemId = String(url.searchParams.get("itemId") || url.searchParams.get("catalogItemId") || "").trim() || null;
       const depotId = String(url.searchParams.get("depotId") || "").trim() || null;
+      const jobId = String(url.searchParams.get("jobId") || "").trim() || null;
       const balances = await listStockBalances(dbTenant.id, { catalogItemId, depotId });
-      const truck = await listTruckStock(dbTenant.id, { catalogItemId });
+      const truck = await listTruckStock(dbTenant.id, { catalogItemId, jobId });
       const settings = parseStockSettings(dbTenant.entitlements);
       json(res, 200, { balances, truck, settings });
       return true;

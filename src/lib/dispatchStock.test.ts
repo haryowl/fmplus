@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   parseStockSettings,
   checkDepotStockForLines,
+  publicTruckStock,
   STOCK_MOVE_KINDS,
 } from "../../server/dispatch-stock.mjs";
+import { groupTruckStockByJob, type DispatchTruckStock } from "./dispatch";
 
 describe("parseStockSettings", () => {
   it("defaults to warn + Finish-enough", () => {
@@ -40,5 +42,65 @@ describe("checkDepotStockForLines", () => {
     );
     expect(out.ok).toBe(true);
     expect(out.errors).toEqual([]);
+  });
+});
+
+describe("publicTruckStock", () => {
+  it("includes catalog labels from the goods join", () => {
+    expect(
+      publicTruckStock({
+        id: "t1",
+        job_id: "j1",
+        catalog_item_id: "c1",
+        job_title: "JOB-1",
+        item_name: "Water",
+        item_sku: "W-1",
+        item_unit: "crate",
+        qty: 3,
+        updated_at: null,
+      }),
+    ).toMatchObject({
+      jobId: "j1",
+      itemName: "Water",
+      itemSku: "W-1",
+      unit: "crate",
+      qty: 3,
+    });
+  });
+});
+
+describe("groupTruckStockByJob", () => {
+  it("groups positive qty lines and skips empty", () => {
+    const rows: DispatchTruckStock[] = [
+      {
+        id: "1",
+        jobId: "j-b",
+        catalogItemId: "c1",
+        jobTitle: "Beta",
+        qty: 2,
+        itemName: "A",
+        unit: "pcs",
+      },
+      {
+        id: "2",
+        jobId: "j-a",
+        catalogItemId: "c2",
+        jobTitle: "Alpha",
+        qty: 1,
+        itemName: "B",
+        unit: "pcs",
+      },
+      {
+        id: "3",
+        jobId: "j-b",
+        catalogItemId: "c3",
+        jobTitle: "Beta",
+        qty: 0,
+      },
+    ];
+    const groups = groupTruckStockByJob(rows);
+    expect(groups.map((g) => g.jobTitle)).toEqual(["Alpha", "Beta"]);
+    expect(groups[1].totalQty).toBe(2);
+    expect(groups[1].lines).toHaveLength(1);
   });
 });

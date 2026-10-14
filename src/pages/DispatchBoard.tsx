@@ -78,6 +78,8 @@ import {
   patchDispatchOrder,
   patchDispatchOrderTemplate,
   planDispatchDay,
+  fetchDispatchStock,
+  returnDispatchJobStock,
   returnStopToInbox,
   saveDispatchDepot,
   saveZoneDepotMap,
@@ -105,6 +107,7 @@ import {
   type DispatchPhoto,
   type DispatchPlanDayResult,
   type DispatchStatus,
+  type DispatchTruckStock,
   type DispatchZoneDepotMapping,
   type VehicleCapacity,
 } from "../lib/dispatch";
@@ -348,6 +351,9 @@ export default function DispatchBoard() {
   const [depotPoiFilter, setDepotPoiFilter] = useState("");
   const [depotPoiPickKey, setDepotPoiPickKey] = useState("");
   const [editDepotId, setEditDepotId] = useState("");
+  const [jobTruck, setJobTruck] = useState<DispatchTruckStock[]>([]);
+  const [jobTruckBusy, setJobTruckBusy] = useState(false);
+  const [returnDepotId, setReturnDepotId] = useState("");
   const [planRoundtrip, setPlanRoundtrip] = useState(false);
   const [planTwMode, setPlanTwMode] = useState<DispatchTwMode>("soft");
   const [planServiceMin, setPlanServiceMin] = useState("8");
@@ -827,6 +833,28 @@ export default function DispatchBoard() {
     vehicleCaps,
     isPassenger,
   ]);
+
+  useEffect(() => {
+    if (!returnDepotId && depots.length) {
+      const def = depots.find((d) => d.isDefault) || depots[0];
+      if (def) setReturnDepotId(def.id);
+    }
+  }, [depots, returnDepotId]);
+
+  useEffect(() => {
+    if (!selected || isPassenger || isSales) {
+      setJobTruck([]);
+      return;
+    }
+    const ac = new AbortController();
+    void fetchDispatchStock({ jobId: selected.id, signal: ac.signal })
+      .then((stock) => setJobTruck(stock.truck))
+      .catch((err: Error) => {
+        if (err.name === "AbortError") return;
+        setJobTruck([]);
+      });
+    return () => ac.abort();
+  }, [selected?.id, isPassenger, isSales, reload]);
 
   useEffect(() => {
     if (!ready || !query.tenantKey) return;
@@ -1942,6 +1970,39 @@ export default function DispatchBoard() {
       setError(err instanceof Error ? err.message : "Save vehicle capacity failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleReturnJobStock(writeOff: boolean) {
+    if (!selected || isPassenger || isSales) return;
+    if (!jobTruck.length) {
+      setError("No truck / in-transit stock on this job");
+      return;
+    }
+    if (writeOff) {
+      const ok = window.confirm(
+        "Write off all in-transit stock on this job? Qty leaves the truck and is not returned to sellable depot stock.",
+      );
+      if (!ok) return;
+    } else if (!returnDepotId && !depots.length) {
+      setError("Add a depot before returning truck stock");
+      return;
+    }
+    setJobTruckBusy(true);
+    setError("");
+    try {
+      const out = await returnDispatchJobStock(selected.id, {
+        depotId: writeOff ? undefined : returnDepotId || undefined,
+        writeOff,
+        note: writeOff ? "Desk write-off truck stock" : "Desk return truck → depot",
+      });
+      setJobTruck([]);
+      setReload((n) => n + 1);
+      if (!out.returned) setError(writeOff ? "Nothing to write off" : "Nothing to return");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Truck stock update failed");
+    } finally {
+      setJobTruckBusy(false);
     }
   }
 
@@ -4756,6 +4817,73 @@ export default function DispatchBoard() {
                     </div>
                   );
                 })()}
+
+                {!isPassenger && !isSales ? (
+                  <div className="dispatch-job-truck-stock">
+                    <p className="dispatch-eyebrow">Truck / in-transit</p>
+                    {!jobTruck.length ? (
+                      <p className="dispatch-search-hint">
+                        No stock on this job. After pickup, qty sits here until delivery, return, or write-off.
+                      </p>
+                    ) : (
+                      <>
+                        <ul className="dispatch-job-money-list">
+                          {jobTruck.map((t) => {
+                            const item = goodsCatalog.find((g) => g.id === t.catalogItemId);
+                            const label = t.itemName || item?.name || t.itemSku || t.catalogItemId.slice(0, 8);
+                            const unit = t.unit || item?.unit || "pcs";
+                            return (
+                              <li key={t.id}>
+                                <span>{label}</span>
+                                <strong>
+                                  {t.qty} {unit}
+                                </strong>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        <div className="dispatch-cap-edit-fields" style={{ marginTop: 8 }}>
+                          <div className="field" style={{ gridColumn: "1 / -1" }}>
+                            <label htmlFor="dispatch-return-depot">Return depot</label>
+                            <select
+                              id="dispatch-return-depot"
+                              value={returnDepotId}
+                              disabled={jobTruckBusy || busy || !depots.length}
+                              onChange={(e) => setReturnDepotId(e.target.value)}
+                            >
+                              {!depots.length ? <option value="">No depots</option> : null}
+                              {depots.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.name}
+                                  {d.isDefault ? " · default" : ""}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="dispatch-cap-edit-actions">
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            disabled={jobTruckBusy || busy || !depots.length}
+                            onClick={() => void handleReturnJobStock(false)}
+                          >
+                            Return to depot
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            disabled={jobTruckBusy || busy}
+                            title="Damaged / lost — not returned to sellable stock"
+                            onClick={() => void handleReturnJobStock(true)}
+                          >
+                            Write off
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : null}
 
                 {!isSales ? (
                 <div className="dispatch-cap-edit">

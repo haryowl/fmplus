@@ -43,6 +43,9 @@ export function publicTruckStock(row) {
     jobId: row.job_id,
     catalogItemId: row.catalog_item_id,
     jobTitle: row.job_title || "",
+    itemName: row.item_name || "",
+    itemSku: row.item_sku || "",
+    unit: row.item_unit || "pcs",
     qty: Number(row.qty) || 0,
     updatedAt: row.updated_at || null,
   };
@@ -98,9 +101,11 @@ export async function listTruckStock(tenantId, { catalogItemId = null, jobId = n
     filter += ` AND t.job_id = $${params.length}`;
   }
   const rows = await dbQuery(
-    `SELECT t.*, j.title AS job_title
+    `SELECT t.*, j.title AS job_title,
+            g.name AS item_name, g.sku AS item_sku, g.unit AS item_unit
      FROM dispatch_truck_stock t
      JOIN dispatch_jobs j ON j.id = t.job_id AND j.tenant_id = t.tenant_id
+     LEFT JOIN dispatch_goods_items g ON g.id = t.catalog_item_id AND g.tenant_id = t.tenant_id
      WHERE t.tenant_id = $1 AND t.qty > 0 ${filter}
      ORDER BY j.service_date DESC NULLS LAST, t.updated_at DESC
      LIMIT 1000`,

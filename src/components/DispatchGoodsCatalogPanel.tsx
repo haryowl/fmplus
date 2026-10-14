@@ -22,8 +22,10 @@ import {
   fetchDispatchStock,
   formatGoodsPackHint,
   goodsUnitIsPackable,
+  groupTruckStockByJob,
   importDispatchGoods,
   patchDispatchGoodsItem,
+  returnDispatchJobStock,
   saveDispatchCostRates,
   type DispatchCostRates,
   type DispatchDepot,
@@ -67,6 +69,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
   const [adjustQty, setAdjustQty] = useState("");
   const [adjustNote, setAdjustNote] = useState("");
   const [adjustKind, setAdjustKind] = useState<"receive" | "adjust" | "write_off">("receive");
+  const [returnDepotId, setReturnDepotId] = useState("");
   const [costRates, setCostRates] = useState<DispatchCostRates[]>([]);
   const [rateDepotId, setRateDepotId] = useState("");
   const [rateKm, setRateKm] = useState("0");
@@ -99,7 +102,34 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
       const def = depotList.find((d) => d.isDefault) || depotList[0];
       if (def) setAdjustDepotId(def.id);
     }
+    if (!returnDepotId) {
+      const def = depotList.find((d) => d.isDefault) || depotList[0];
+      if (def) setReturnDepotId(def.id);
+    }
     applyRateForm(rates, rateDepotId);
+  }
+
+  async function closeJobTruck(jobId: string, writeOff: boolean) {
+    if (writeOff) {
+      const ok = window.confirm(
+        "Write off all in-transit stock on this job? Qty is not returned to sellable depot stock.",
+      );
+      if (!ok) return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await returnDispatchJobStock(jobId, {
+        depotId: writeOff ? undefined : returnDepotId || undefined,
+        writeOff,
+        note: writeOff ? "Goods desk write-off" : "Goods desk return truck → depot",
+      });
+      await reloadStock();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Truck stock update failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function reload(signal?: AbortSignal) {
@@ -211,6 +241,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
     if (!q) return true;
     return [it.name, it.sku, it.unit].join(" ").toLowerCase().includes(q);
   });
+  const truckByJob = groupTruckStockByJob(truck);
 
   return (
     <section className={`dispatch-goods-catalog${onClose ? " is-dialog" : ""}`}>
@@ -243,6 +274,68 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
         <p className="dispatch-window-warn" role="alert">
           {error}
         </p>
+      ) : null}
+      {truckByJob.length ? (
+        <div className="dispatch-goods-stock dispatch-goods-truck-close">
+          <p className="dispatch-eyebrow">Day-close · truck by job</p>
+          <p className="dispatch-search-hint">
+            Return leftover in-transit qty to a depot, or write off damaged/lost stock.
+          </p>
+          {depots.length ? (
+            <label className="field">
+              Return depot
+              <select
+                value={returnDepotId}
+                disabled={busy}
+                onChange={(e) => setReturnDepotId(e.target.value)}
+              >
+                {depots.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                    {d.isDefault ? " · default" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <p className="dispatch-search-hint">Add a depot before returning truck stock.</p>
+          )}
+          <ul className="dispatch-goods-stock-list">
+            {truckByJob.map((g) => (
+              <li key={g.jobId}>
+                <strong>{g.jobTitle}</strong>
+                <span>
+                  {g.lines
+                    .map((t) => {
+                      const item = items.find((it) => it.id === t.catalogItemId);
+                      const name = t.itemName || item?.name || t.itemSku || "SKU";
+                      const unit = t.unit || item?.unit || "pcs";
+                      return `${t.qty} ${unit} ${name}`;
+                    })
+                    .join(" · ")}
+                </span>
+                <span className="dispatch-cap-edit-actions">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={busy || !depots.length}
+                    onClick={() => void closeJobTruck(g.jobId, false)}
+                  >
+                    Return
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={busy}
+                    onClick={() => void closeJobTruck(g.jobId, true)}
+                  >
+                    Write off
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
       <form className="dispatch-goods-catalog-add" onSubmit={addItem}>
         <input
