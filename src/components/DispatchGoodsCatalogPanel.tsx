@@ -16,6 +16,7 @@ import {
   createDispatchGoodsItem,
   deleteDispatchGoodsItem,
   DISPATCH_GOODS_UNITS,
+  fetchDispatchCostRates,
   fetchDispatchDepots,
   fetchDispatchGoods,
   fetchDispatchStock,
@@ -23,6 +24,8 @@ import {
   goodsUnitIsPackable,
   importDispatchGoods,
   patchDispatchGoodsItem,
+  saveDispatchCostRates,
+  type DispatchCostRates,
   type DispatchDepot,
   type DispatchGoodsItem,
   type DispatchGoodsUnit,
@@ -64,25 +67,65 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
   const [adjustQty, setAdjustQty] = useState("");
   const [adjustNote, setAdjustNote] = useState("");
   const [adjustKind, setAdjustKind] = useState<"receive" | "adjust" | "write_off">("receive");
+  const [costRates, setCostRates] = useState<DispatchCostRates[]>([]);
+  const [rateDepotId, setRateDepotId] = useState("");
+  const [rateKm, setRateKm] = useState("0");
+  const [rateStop, setRateStop] = useState("0");
+  const [rateHour, setRateHour] = useState("0");
+  const [rateFixed, setRateFixed] = useState("0");
+
+  function applyRateForm(rates: DispatchCostRates[], depotId: string) {
+    const row =
+      rates.find((r) => (depotId ? r.depotId === depotId : !r.depotId)) ||
+      (!depotId ? rates.find((r) => !r.depotId) : null);
+    setRateKm(String(row?.rateKm ?? 0));
+    setRateStop(String(row?.rateStop ?? 0));
+    setRateHour(String(row?.rateHour ?? 0));
+    setRateFixed(String(row?.fixedTrip ?? 0));
+  }
 
   async function reloadStock(signal?: AbortSignal) {
-    const [depotList, stock] = await Promise.all([
+    const [depotList, stock, rates] = await Promise.all([
       fetchDispatchDepots(),
       fetchDispatchStock({ signal }),
+      fetchDispatchCostRates(signal).catch(() => [] as DispatchCostRates[]),
     ]);
     setDepots(depotList);
     setBalances(stock.balances);
     setTruck(stock.truck);
     setStockSettings(stock.settings);
+    setCostRates(rates);
     if (!adjustDepotId) {
       const def = depotList.find((d) => d.isDefault) || depotList[0];
       if (def) setAdjustDepotId(def.id);
     }
+    applyRateForm(rates, rateDepotId);
   }
 
   async function reload(signal?: AbortSignal) {
     setItems(await fetchDispatchGoods(signal));
     await reloadStock(signal).catch(() => undefined);
+  }
+
+  async function saveRates(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const { rates } = await saveDispatchCostRates({
+        depotId: rateDepotId || null,
+        rateKm: Number(rateKm) || 0,
+        rateStop: Number(rateStop) || 0,
+        rateHour: Number(rateHour) || 0,
+        fixedTrip: Number(rateFixed) || 0,
+      });
+      setCostRates(rates);
+      applyRateForm(rates, rateDepotId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save cost rates failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -187,6 +230,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           <p className="dispatch-search-hint">
             Stock policy: {stockSettings.stockHardBlock ? "hard-block" : "warn"} when short ·{" "}
             {stockSettings.stockRequireScan ? "scan required to move" : "Finish can move stock"} (Admin entitlements).
+            Trip opex = km×rate + stops×rate + fixed + hours×rate (depot rates, global fallback).
           </p>
         </div>
         {onClose ? (
@@ -616,6 +660,105 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           })}
         </ul>
       )}
+
+      {asPage ? (
+        <div className="dispatch-opex-rates">
+          <p className="dispatch-eyebrow">Operating cost rates</p>
+          <p className="dispatch-search-hint">
+            Global rates apply when a depot has none. Used for job opex estimate (after plan/optimize) and actual
+            (after job done).
+          </p>
+          <form className="dispatch-opex-rates-form" onSubmit={(e) => void saveRates(e)}>
+            <div className="field">
+              <label htmlFor="opex-rate-depot">Scope</label>
+              <select
+                id="opex-rate-depot"
+                value={rateDepotId}
+                disabled={busy}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setRateDepotId(id);
+                  applyRateForm(costRates, id);
+                }}
+              >
+                <option value="">Global (all depots)</option>
+                {depots.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                    {d.isDefault ? " · default" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="opex-rate-km">Rp / km</label>
+              <input
+                id="opex-rate-km"
+                type="number"
+                min="0"
+                step="1"
+                value={rateKm}
+                disabled={busy}
+                onChange={(e) => setRateKm(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="opex-rate-stop">Rp / stop</label>
+              <input
+                id="opex-rate-stop"
+                type="number"
+                min="0"
+                step="1"
+                value={rateStop}
+                disabled={busy}
+                onChange={(e) => setRateStop(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="opex-rate-hour">Rp / hour</label>
+              <input
+                id="opex-rate-hour"
+                type="number"
+                min="0"
+                step="1"
+                value={rateHour}
+                disabled={busy}
+                onChange={(e) => setRateHour(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="opex-rate-fixed">Fixed / trip</label>
+              <input
+                id="opex-rate-fixed"
+                type="number"
+                min="0"
+                step="1"
+                value={rateFixed}
+                disabled={busy}
+                onChange={(e) => setRateFixed(e.target.value)}
+              />
+            </div>
+            <button type="submit" className="btn-primary" disabled={busy}>
+              Save rates
+            </button>
+          </form>
+          {costRates.length ? (
+            <ul className="dispatch-opex-rates-list">
+              {costRates.map((r) => (
+                <li key={r.id || r.depotId || "global"}>
+                  <span>{r.depotId ? r.depotName || "Depot" : "Global"}</span>
+                  <span>
+                    {formatIdr(r.rateKm)}/km · {formatIdr(r.rateStop)}/stop · {formatIdr(r.rateHour)}/h ·{" "}
+                    {formatIdr(r.fixedTrip)} fixed
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="dispatch-search-hint">No rates saved yet — estimate/actual stay 0 until you set them.</p>
+          )}
+        </div>
+      ) : null}
     </section>
   );
 }

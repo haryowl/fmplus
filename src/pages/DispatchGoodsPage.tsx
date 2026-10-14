@@ -19,7 +19,7 @@ export default function DispatchGoodsPage() {
           <BrandMark />
           <div>
             <h1>Goods &amp; Stock</h1>
-            <p>Catalog · SKU · print / NFC · stock (next)</p>
+            <p>Catalog · price · stock · operating cost rates</p>
           </div>
         </div>
         <div className="topbar-actions">

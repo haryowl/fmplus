@@ -1,4 +1,5 @@
 import { dbQuery } from "./db.mjs";
+import { refreshJobOpexActual } from "./dispatch-opex.mjs";
 
 const OPENABLE = new Set(["assigned", "en_route", "arrived"]);
 
@@ -39,7 +40,13 @@ export async function markJobDoneIfNoOpenStops(jobId, knownStops) {
      RETURNING *`,
     [jobId],
   );
-  return updated.rows[0] || null;
+  const row = updated.rows[0] || null;
+  if (row?.tenant_id) {
+    await refreshJobOpexActual(row.tenant_id, jobId).catch(() => null);
+    const fresh = await dbQuery(`SELECT * FROM dispatch_jobs WHERE id = $1`, [jobId]);
+    return fresh.rows[0] || row;
+  }
+  return row;
 }
 
 /** Live card status when there is no current stop. */

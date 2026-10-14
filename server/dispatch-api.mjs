@@ -71,6 +71,13 @@ import {
   resolveSourceDepotId,
   returnTruckStockToDepot,
 } from "./dispatch-stock.mjs";
+import {
+  contributionMargin,
+  listCostRates,
+  refreshJobOpexActual,
+  refreshJobOpexEstimate,
+  upsertCostRates,
+} from "./dispatch-opex.mjs";
 import { normalizeZoneKey } from "./dispatch-zone.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
@@ -592,6 +599,13 @@ function publicJob(row, stops = []) {
     routeStart,
     routeEnd,
     planDayStart: row.plan_day_start || null,
+    plannedDistanceKm: row.planned_distance_km == null ? null : Number(row.planned_distance_km),
+    plannedDurationSec: row.planned_duration_sec == null ? null : Number(row.planned_duration_sec),
+    actualDistanceKm: row.actual_distance_km == null ? null : Number(row.actual_distance_km),
+    actualDurationSec: row.actual_duration_sec == null ? null : Number(row.actual_duration_sec),
+    opexEstimate: row.opex_estimate == null ? null : Number(row.opex_estimate),
+    opexActual: row.opex_actual == null ? null : Number(row.opex_actual),
+    opexDepotId: row.opex_depot_id || null,
     ...cap,
     stops: stops.map((s) => publicStop(s, serviceDate)),
   };
@@ -1308,6 +1322,17 @@ export async function handleDispatchRequest(req, res) {
         job: body.job || null,
       });
       json(res, 200, { depotId, settings: parseStockSettings(dbTenant.entitlements) });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/cost-rates" && req.method === "GET") {
+      json(res, 200, { rates: await listCostRates(dbTenant.id) });
+      return true;
+    }
+    if (url.pathname === "/api/dispatch/cost-rates" && (req.method === "PUT" || req.method === "POST")) {
+      const body = await readJson(req);
+      const rate = await upsertCostRates(dbTenant.id, body);
+      json(res, 200, { rate, rates: await listCostRates(dbTenant.id) });
       return true;
     }
 
@@ -3204,6 +3229,11 @@ export async function handleDispatchRequest(req, res) {
         geomPts.length >= 2 ? geomPts : customerPoints,
         routing,
       );
+      await refreshJobOpexEstimate(dbTenant.id, job.id, {
+        distanceKm: route.distanceKm,
+        durationSec: route.durationSec,
+        stopCount: orderedStops.length,
+      }).catch(() => null);
       const row = await loadJob(dbTenant.id, job.id);
       json(res, 200, {
         job: await publicJobWithLines(dbTenant.id, row, orderedStops),
@@ -3369,6 +3399,14 @@ export async function handleDispatchRequest(req, res) {
            WHERE id = $${params.length - 1} AND tenant_id = $${params.length}`,
           params,
         );
+      }
+
+      const becameDone =
+        "status" in body &&
+        String(body.status || "").toLowerCase() === "done" &&
+        existing.status !== "done";
+      if (becameDone) {
+        await refreshJobOpexActual(dbTenant.id, existing.id).catch(() => null);
       }
 
       const row = await loadJob(dbTenant.id, existing.id);
@@ -4377,10 +4415,16 @@ export async function handleDispatchRequest(req, res) {
           depotPathMode,
         );
         const routeGeom = await buildRouteForPoints(geomPts, routing);
+        await refreshJobOpexEstimate(dbTenant.id, jobId, {
+          distanceKm: routeGeom.distanceKm,
+          durationSec: routeGeom.durationSec,
+          stopCount: stops.length,
+        }).catch(() => null);
+        const jobRow = (await loadJob(dbTenant.id, jobId)) || row;
         applied.push({
           ...route,
           jobId,
-          job: await publicJobWithLines(dbTenant.id, row, await loadStops(jobId)),
+          job: await publicJobWithLines(dbTenant.id, jobRow, await loadStops(jobId)),
           route: routeGeom,
         });
       }

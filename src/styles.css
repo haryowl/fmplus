@@ -5642,6 +5642,78 @@ button.dispatch-pin-chip {
   gap: 10px;
 }
 
+.dispatch-job-money {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  display: grid;
+  gap: 8px;
+}
+
+.dispatch-job-money .dispatch-eyebrow {
+  margin: 0;
+}
+
+.dispatch-job-money-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.dispatch-job-money-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.85rem;
+}
+
+.dispatch-job-money-list li span {
+  color: var(--ink-faint);
+}
+
+.dispatch-job-money-margin strong {
+  color: var(--ink);
+}
+
+.dispatch-opex-rates {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+}
+
+.dispatch-opex-rates-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+
+.dispatch-opex-rates-form .field {
+  min-width: 0;
+}
+
+.dispatch-opex-rates-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 0.82rem;
+}
+
+.dispatch-opex-rates-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .dispatch-cap-edit {
   display: grid;
   gap: 10px;

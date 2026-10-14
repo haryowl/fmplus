@@ -55,6 +55,7 @@ import {
   formatDispatchWindow,
   formatDispatchServiceMinutes,
   formatServiceDateLabel,
+  jobContributionMargin,
   generateDispatchOrdersFromTemplates,
   importDispatchOrders,
   moveStopToDay,
@@ -115,6 +116,7 @@ import {
   formatRouteDuration,
   type RouteGeometryResult,
 } from "../lib/routePlan";
+import { formatIdr } from "../lib/format";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
 
@@ -4403,6 +4405,65 @@ export default function DispatchBoard() {
                     </div>
                   </div>
                 </div>
+
+                {(() => {
+                  const money = jobContributionMargin(selected);
+                  const hasOpex =
+                    selected.opexEstimate != null || selected.opexActual != null;
+                  if (!hasOpex && money.goodsSubtotal == null) return null;
+                  return (
+                    <div className="dispatch-job-money">
+                      <p className="dispatch-eyebrow">Trip economics</p>
+                      <ul className="dispatch-job-money-list">
+                        {money.goodsSubtotal != null ? (
+                          <li>
+                            <span>Goods sell</span>
+                            <strong>{formatIdr(money.goodsSubtotal)}</strong>
+                          </li>
+                        ) : null}
+                        {money.goodsCostSubtotal != null ? (
+                          <li>
+                            <span>COGS</span>
+                            <strong>{formatIdr(money.goodsCostSubtotal)}</strong>
+                          </li>
+                        ) : null}
+                        {selected.opexEstimate != null ? (
+                          <li>
+                            <span>Opex estimate</span>
+                            <strong>{formatIdr(selected.opexEstimate)}</strong>
+                          </li>
+                        ) : null}
+                        {selected.opexActual != null ? (
+                          <li>
+                            <span>Opex actual</span>
+                            <strong>{formatIdr(selected.opexActual)}</strong>
+                          </li>
+                        ) : null}
+                        {money.margin != null ? (
+                          <li className="dispatch-job-money-margin">
+                            <span>
+                              Margin
+                              {selected.opexActual != null
+                                ? " (actual)"
+                                : selected.opexEstimate != null
+                                  ? " (est.)"
+                                  : ""}
+                            </span>
+                            <strong>{formatIdr(money.margin)}</strong>
+                          </li>
+                        ) : null}
+                      </ul>
+                      {selected.plannedDistanceKm != null ? (
+                        <p className="dispatch-search-hint">
+                          Plan {selected.plannedDistanceKm.toFixed(1)} km
+                          {selected.plannedDurationSec != null
+                            ? ` · ${formatRouteDuration(selected.plannedDurationSec)}`
+                            : ""}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })()}
 
                 <div className="dispatch-cap-edit">
                   <p className="dispatch-eyebrow">Vehicle capacity</p>

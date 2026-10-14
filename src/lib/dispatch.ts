@@ -227,12 +227,32 @@ export type DispatchJob = {
   routeEnd?: DispatchRouteAnchor | null;
   /** HH:MM Auto-plan / Optimize day start used for planned ETA recompute. */
   planDayStart?: string | null;
+  plannedDistanceKm?: number | null;
+  plannedDurationSec?: number | null;
+  actualDistanceKm?: number | null;
+  actualDurationSec?: number | null;
+  /** Trip operating cost estimate (IDR) after plan/optimize. */
+  opexEstimate?: number | null;
+  /** Trip operating cost actual (IDR) after job done. */
+  opexActual?: number | null;
+  opexDepotId?: string | null;
   volumeCapacityM3?: number;
   weightCapacityKg?: number;
   volumeUsed?: number;
   weightUsed?: number;
   utilizationPct?: number;
   stops: DispatchStop[];
+};
+
+export type DispatchCostRates = {
+  id?: string;
+  depotId: string | null;
+  depotName?: string;
+  rateKm: number;
+  rateStop: number;
+  rateHour: number;
+  fixedTrip: number;
+  updatedAt?: string | null;
 };
 
 export type DispatchOrder = {
@@ -1056,6 +1076,99 @@ export function sumOrderMoneyTotals(lines: DispatchOrderLine[] | undefined): {
   const margin =
     goodsSubtotal != null && goodsCostSubtotal != null ? goodsSubtotal - goodsCostSubtotal : null;
   return { goodsSubtotal, goodsCostSubtotal, margin };
+}
+
+/** Unique order lines on a job (pickup+drop share the same cargo). */
+export function sumJobGoodsMoney(job: Pick<DispatchJob, "stops">): {
+  goodsSubtotal: number | null;
+  goodsCostSubtotal: number | null;
+} {
+  const seen = new Set<string>();
+  let sell = 0;
+  let cost = 0;
+  let anySell = false;
+  let anyCost = false;
+  for (const stop of job.stops || []) {
+    const key = stop.orderId || stop.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const money = sumOrderMoneyTotals(stop.lines);
+    if (money.goodsSubtotal != null) {
+      sell += money.goodsSubtotal;
+      anySell = true;
+    }
+    if (money.goodsCostSubtotal != null) {
+      cost += money.goodsCostSubtotal;
+      anyCost = true;
+    }
+  }
+  return {
+    goodsSubtotal: anySell ? Math.round(sell) : null,
+    goodsCostSubtotal: anyCost ? Math.round(cost) : null,
+  };
+}
+
+/** contribution = goods sell − cogs − opex (estimate or actual). */
+export function jobContributionMargin(
+  job: Pick<DispatchJob, "stops" | "opexEstimate" | "opexActual">,
+): {
+  goodsSubtotal: number | null;
+  goodsCostSubtotal: number | null;
+  opex: number | null;
+  margin: number | null;
+} {
+  const goods = sumJobGoodsMoney(job);
+  const opexRaw =
+    job.opexActual != null && Number.isFinite(Number(job.opexActual))
+      ? Number(job.opexActual)
+      : job.opexEstimate != null && Number.isFinite(Number(job.opexEstimate))
+        ? Number(job.opexEstimate)
+        : null;
+  if (goods.goodsSubtotal == null) {
+    return { ...goods, opex: opexRaw, margin: null };
+  }
+  const cogs = goods.goodsCostSubtotal ?? 0;
+  const op = opexRaw ?? 0;
+  return {
+    ...goods,
+    opex: opexRaw,
+    margin: Math.round(goods.goodsSubtotal - cogs - op),
+  };
+}
+
+export async function fetchDispatchCostRates(signal?: AbortSignal): Promise<DispatchCostRates[]> {
+  const res = await fetch("/api/dispatch/cost-rates", {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    rates?: DispatchCostRates[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Cost rates ${res.status}`);
+  return data.rates || [];
+}
+
+export async function saveDispatchCostRates(body: {
+  depotId?: string | null;
+  rateKm?: number;
+  rateStop?: number;
+  rateHour?: number;
+  fixedTrip?: number;
+}): Promise<{ rate: DispatchCostRates; rates: DispatchCostRates[] }> {
+  const res = await fetch("/api/dispatch/cost-rates", {
+    method: "PUT",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    rate?: DispatchCostRates;
+    rates?: DispatchCostRates[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Cost rates ${res.status}`);
+  if (!data.rate) throw new Error("Cost rates save failed");
+  return { rate: data.rate, rates: data.rates || [] };
 }
 
 export function formatCargoSummary(lines: DispatchOrderLine[] | undefined, maxItems = 3): string {
