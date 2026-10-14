@@ -63,6 +63,8 @@ import {
   formatDispatchServiceMinutes,
   formatServiceDateLabel,
   jobContributionMargin,
+  jobMatchesDeskMode,
+  orderMatchesDeskMode,
   VISIT_OUTCOME_LABELS,
   type VisitOutcome,
   generateDispatchOrdersFromTemplates,
@@ -582,15 +584,27 @@ export default function DispatchBoard() {
     [poiCatalog, depotPoiFilter],
   );
 
+  const multiDesk = deskModes.length > 1;
+
+  const deskOrders = useMemo(() => {
+    if (!multiDesk) return orders;
+    return orders.filter((o) => orderMatchesDeskMode(o, deskMode));
+  }, [orders, deskMode, multiDesk]);
+
+  const deskJobs = useMemo(() => {
+    if (!multiDesk) return jobs;
+    return jobs.filter((j) => jobMatchesDeskMode(j, deskMode));
+  }, [jobs, deskMode, multiDesk]);
+
   const planDayJobs = useMemo(
     () =>
-      jobs.filter(
+      deskJobs.filter(
         (j) =>
           j.serviceDate === planDate &&
           j.status !== "done" &&
           j.status !== "cancelled",
       ),
-    [jobs, planDate],
+    [deskJobs, planDate],
   );
   const planDayUnassignedJobs = useMemo(
     () => planDayJobs.filter((j) => !j.assignedFieldUserId),
@@ -610,9 +624,9 @@ export default function DispatchBoard() {
   }, [selected]);
 
   const kpis = useMemo(() => {
-    const openOrders = orders.length;
-    const openJobs = jobs.filter((j) => j.status !== "done" && j.status !== "cancelled").length;
-    const utilJobs = jobs.filter(
+    const openOrders = deskOrders.length;
+    const openJobs = deskJobs.filter((j) => j.status !== "done" && j.status !== "cancelled").length;
+    const utilJobs = deskJobs.filter(
       (j) => j.status !== "done" && j.status !== "cancelled" && (j.stops?.length || 0) > 0,
     );
     const avgUtil =
@@ -622,12 +636,12 @@ export default function DispatchBoard() {
             (utilJobs.reduce((s, j) => s + (j.utilizationPct || 0), 0) / utilJobs.length) * 10,
           ) / 10;
     return { openOrders, openJobs, avgUtil };
-  }, [orders, jobs]);
+  }, [deskOrders, deskJobs]);
 
   const zoneCounts = useMemo(() => {
     const byKey = new Map<string, { label: string; count: number }>();
     let none = 0;
-    for (const o of orders) {
+    for (const o of deskOrders) {
       const label = String(o.zone || "").trim();
       if (!label) {
         none += 1;
@@ -642,19 +656,10 @@ export default function DispatchBoard() {
       .map(([key, v]) => ({ key, label: v.label, count: v.count }))
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
     return { none, zones };
-  }, [orders]);
+  }, [deskOrders]);
 
   const filteredOrders = useMemo(() => {
-    let list = orders;
-    // Keep inbox aligned to the active desk profile when several are enabled.
-    if (deskModes.length > 1) {
-      list = list.filter((o) => {
-        const p = o.profile || "cargo";
-        if (deskMode === "sales") return p === "sales";
-        if (deskMode === "passenger") return p === "passenger";
-        return p === "cargo" || !o.profile;
-      });
-    }
+    let list = deskOrders;
     if (orderZoneFilter === ZONE_FILTER_NONE) {
       list = list.filter((o) => !String(o.zone || "").trim());
     } else if (orderZoneFilter) {
@@ -681,7 +686,7 @@ export default function DispatchBoard() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [orders, orderQuery, orderZoneFilter, deskMode, deskModes.length]);
+  }, [deskOrders, orderQuery, orderZoneFilter]);
 
   const inboxZoneOptions = useMemo(() => {
     const fromOrders = zoneCounts.zones.map((z) => ({
@@ -779,6 +784,14 @@ export default function DispatchBoard() {
       /* ignore */
     }
   }, [deskMode]);
+
+  useEffect(() => {
+    if (!multiDesk || !selectedId) return;
+    const hit = jobs.find((j) => j.id === selectedId);
+    if (hit && !jobMatchesDeskMode(hit, deskMode)) {
+      setSelectedId(null);
+    }
+  }, [deskMode, multiDesk, selectedId, jobs]);
 
   useEffect(() => {
     const id = userId ? Number(userId) : null;
@@ -1824,19 +1837,26 @@ export default function DispatchBoard() {
         title: jobTitle.trim(),
         serviceDate: planDate,
         assignedFieldUserId: assigneeId || null,
-        armadaUserId: selectedUser ? Number(selectedUser.id) : null,
-        armadaUsername: selectedUser?.username || "",
-        userDisplayName: selectedUser ? userOptionLabel(selectedUser) : "",
+        armadaUserId: isSales ? null : selectedUser ? Number(selectedUser.id) : null,
+        armadaUsername: isSales ? "" : selectedUser?.username || "",
+        userDisplayName: isSales ? "" : selectedUser ? userOptionLabel(selectedUser) : "",
         ...(isPassenger
           ? {
               profile: "passenger" as const,
               seatCapacity: Number.isFinite(vol) && vol > 0 ? vol : 4,
               luggageCapacityKg: Number.isFinite(wt) && wt > 0 ? wt : 50,
             }
-          : {
-              volumeCapacityM3: Number.isFinite(vol) && vol > 0 ? vol : null,
-              weightCapacityKg: Number.isFinite(wt) && wt > 0 ? wt : null,
-            }),
+          : isSales
+            ? {
+                // Soft caps so visit routes are not blocked by cargo capacity.
+                profile: "sales" as const,
+                volumeCapacityM3: 999,
+                weightCapacityKg: 9999,
+              }
+            : {
+                volumeCapacityM3: Number.isFinite(vol) && vol > 0 ? vol : null,
+                weightCapacityKg: Number.isFinite(wt) && wt > 0 ? wt : null,
+              }),
       });
       setJobTitle("");
       setShowNewJob(false);
@@ -2000,6 +2020,7 @@ export default function DispatchBoard() {
         reloadMinutes: Number(planReloadMin) || 15,
         jobIds: planJobIds,
         depotIds: depotMode === "multi" ? planDepotIds : undefined,
+        ...(multiDesk ? { profile: deskMode } : {}),
         routing: {
           avoidTolls,
           avoidMotorways,
@@ -3229,67 +3250,75 @@ export default function DispatchBoard() {
                   ))}
                 </select>
               </label>
-              <label className="field">
-                Group
-                <select
-                  value={groupId}
-                  onChange={(e) => {
-                    setGroupId(e.target.value);
-                    setUserId("");
-                  }}
-                >
-                  <option value="">None</option>
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {groupOptionLabel(g)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                Vehicle
-                <select value={userId} onChange={(e) => setUserId(e.target.value)} disabled={!selectedGroup}>
-                  <option value="">{selectedGroup ? "Select vehicle" : "Pick group first"}</option>
-                  {users.map((u) => {
-                    const cap = capacityForVehicle(vehicleCaps, Number(u.id));
-                    return (
-                      <option key={u.id} value={u.id}>
-                        {userOptionLabel(u)} · {cap.volumeCapacityM3} m³ / {cap.weightCapacityKg} kg
-                      </option>
-                    );
-                  })}
-                </select>
-              </label>
-              <div className="field">
-                <label htmlFor="dispatch-new-cap-vol">
-                  {isPassenger ? "Seat capacity" : "Volume capacity (m³)"}
-                </label>
-                <input
-                  id="dispatch-new-cap-vol"
-                  type="number"
-                  min={isPassenger ? "1" : "0.1"}
-                  step={isPassenger ? "1" : "0.1"}
-                  value={jobVolCap}
-                  onChange={(e) => setJobVolCap(e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="dispatch-new-cap-wt">
-                  {isPassenger ? "Luggage capacity (kg)" : "Weight capacity (kg)"}
-                </label>
-                <input
-                  id="dispatch-new-cap-wt"
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={jobWtCap}
-                  onChange={(e) => setJobWtCap(e.target.value)}
-                />
-              </div>
+              {!isSales ? (
+                <>
+                  <label className="field">
+                    Group
+                    <select
+                      value={groupId}
+                      onChange={(e) => {
+                        setGroupId(e.target.value);
+                        setUserId("");
+                      }}
+                    >
+                      <option value="">None</option>
+                      {groups.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {groupOptionLabel(g)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    Vehicle
+                    <select value={userId} onChange={(e) => setUserId(e.target.value)} disabled={!selectedGroup}>
+                      <option value="">{selectedGroup ? "Select vehicle" : "Pick group first"}</option>
+                      {users.map((u) => {
+                        const cap = capacityForVehicle(vehicleCaps, Number(u.id));
+                        return (
+                          <option key={u.id} value={u.id}>
+                            {userOptionLabel(u)} ·{" "}
+                            {isPassenger
+                              ? `${cap.seatCapacity ?? cap.volumeCapacityM3 ?? 4} seats / ${cap.luggageCapacityKg ?? cap.weightCapacityKg ?? 50} kg`
+                              : `${cap.volumeCapacityM3} m³ / ${cap.weightCapacityKg} kg`}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                  <div className="field">
+                    <label htmlFor="dispatch-new-cap-vol">
+                      {isPassenger ? "Seat capacity" : "Volume capacity (m³)"}
+                    </label>
+                    <input
+                      id="dispatch-new-cap-vol"
+                      type="number"
+                      min={isPassenger ? "1" : "0.1"}
+                      step={isPassenger ? "1" : "0.1"}
+                      value={jobVolCap}
+                      onChange={(e) => setJobVolCap(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="dispatch-new-cap-wt">
+                      {isPassenger ? "Luggage capacity (kg)" : "Weight capacity (kg)"}
+                    </label>
+                    <input
+                      id="dispatch-new-cap-wt"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={jobWtCap}
+                      onChange={(e) => setJobWtCap(e.target.value)}
+                    />
+                  </div>
+                </>
+              ) : null}
             </div>
             <p className="dispatch-search-hint">
-              Caps follow the vehicle preset when you pick a vehicle. Change them here for this job only, or save as
-              default from the vehicle pane after create.
+              {isSales
+                ? "Sales runs are visit routes — assign a field user, then drop visits from the inbox. No vehicle capacity needed."
+                : "Caps follow the vehicle preset when you pick a vehicle. Change them here for this job only, or save as default from the vehicle pane after create."}
             </p>
             <div className="dispatch-create-actions">
               <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void handleCreateJob()}>
@@ -4520,7 +4549,7 @@ export default function DispatchBoard() {
               </p>
             ) : null}
             <ul className="dispatch-job-tabs">
-              {jobs.map((j) => (
+              {deskJobs.map((j) => (
                 <li key={j.id} className="dispatch-job-tab-wrap">
                   <button
                     type="button"
@@ -4532,7 +4561,8 @@ export default function DispatchBoard() {
                     </span>
                     <strong>{j.title}</strong>
                     <span>
-                      {j.stops.length} stops · {j.utilizationPct ?? 0}%
+                      {j.stops.length} stops
+                      {isSales ? "" : ` · ${j.utilizationPct ?? 0}%`}
                     </span>
                   </button>
                   {j.status === "draft" || j.status === "assigned" ? (
@@ -4566,7 +4596,7 @@ export default function DispatchBoard() {
               <>
                 <header className="dispatch-pane-head">
                   <div>
-                    <p className="dispatch-eyebrow">Vehicle load</p>
+                    <p className="dispatch-eyebrow">{isSales ? "Sales run" : "Vehicle load"}</p>
                     <h2>{selected.title}</h2>
                   </div>
                   <span className={`dispatch-status dispatch-status-${selected.status}`}>
@@ -4575,8 +4605,12 @@ export default function DispatchBoard() {
                 </header>
                 <p className="dispatch-vehicle-meta">
                   <span>{dispatchAssigneeLabel(selected)}</span>
-                  <span aria-hidden>·</span>
-                  <span>{dispatchVehicleLabel(selected)}</span>
+                  {!isSales ? (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span>{dispatchVehicleLabel(selected)}</span>
+                    </>
+                  ) : null}
                   {jobDayCount > 1 ? (
                     <>
                       <span aria-hidden>·</span>
@@ -4588,6 +4622,7 @@ export default function DispatchBoard() {
                   ) : null}
                 </p>
 
+                {!isSales ? (
                 <div
                   className="dispatch-capacity"
                   style={{ ["--fill" as string]: Math.min(100, selected.utilizationPct ?? 0) }}
@@ -4645,6 +4680,7 @@ export default function DispatchBoard() {
                     </div>
                   </div>
                 </div>
+                ) : null}
 
                 {(() => {
                   const money = jobContributionMargin(selected);
@@ -4721,6 +4757,7 @@ export default function DispatchBoard() {
                   );
                 })()}
 
+                {!isSales ? (
                 <div className="dispatch-cap-edit">
                   <p className="dispatch-eyebrow">
                     {isPassenger ? "Vehicle seats / luggage" : "Vehicle capacity"}
@@ -4824,6 +4861,7 @@ export default function DispatchBoard() {
                     />
                   ) : null}
                 </div>
+                ) : null}
 
                 <div className="dispatch-detail-actions">
                   <label className="field">

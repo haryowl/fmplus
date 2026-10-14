@@ -522,7 +522,7 @@ export async function createDispatchJob(body: {
   armadaUsername?: string;
   userDisplayName?: string;
   assignedFieldUserId?: string | null;
-  profile?: "cargo" | "passenger";
+  profile?: "cargo" | "passenger" | "sales";
   volumeCapacityM3?: number | null;
   weightCapacityKg?: number | null;
   seatCapacity?: number | null;
@@ -927,6 +927,8 @@ export async function planDispatchDay(body: {
   multiTripMode?: DispatchMultiTripMode;
   /** Minutes at depot between trips when multi-trip is on. */
   reloadMinutes?: number;
+  /** When set, only plan orders/jobs for this desk profile. */
+  profile?: DispatchProfileKind;
   routing?: {
     avoidTolls?: boolean;
     avoidMotorways?: boolean;
@@ -1273,6 +1275,61 @@ export function formatCargoSummary(lines: DispatchOrderLine[] | undefined, maxIt
   });
   const extra = list.length > maxItems ? ` +${list.length - maxItems}` : "";
   return `${parts.join(" · ")}${extra}`;
+}
+
+export type DispatchProfileKind = "cargo" | "passenger" | "sales";
+
+/** cargo | passenger | sales — null/unknown → cargo. */
+export function normalizeDispatchProfile(
+  raw?: string | null,
+): DispatchProfileKind {
+  const v = String(raw || "")
+    .trim()
+    .toLowerCase();
+  if (v === "sales" || v === "passenger" || v === "cargo") return v;
+  return "cargo";
+}
+
+/**
+ * Infer a job's desk profile. Empty shells (no stops, no seats) are "open"
+ * and match both cargo and sales desks until the first assign.
+ */
+export function inferJobProfile(
+  job: Pick<DispatchJob, "seatCapacity" | "stops">,
+): DispatchProfileKind | "open" {
+  let hasSales = false;
+  let hasPassenger = false;
+  let hasCargo = false;
+  for (const s of job.stops || []) {
+    const p = normalizeDispatchProfile(s.orderProfile);
+    if (p === "sales") hasSales = true;
+    else if (p === "passenger") hasPassenger = true;
+    else hasCargo = true;
+  }
+  if (job.seatCapacity != null && Number.isFinite(Number(job.seatCapacity))) {
+    hasPassenger = true;
+  }
+  if (hasSales) return "sales";
+  if (hasPassenger) return "passenger";
+  if (hasCargo) return "cargo";
+  return "open";
+}
+
+export function orderMatchesDeskMode(
+  order: Pick<DispatchOrder, "profile">,
+  deskMode: DispatchProfileKind,
+): boolean {
+  return normalizeDispatchProfile(order.profile) === normalizeDispatchProfile(deskMode);
+}
+
+export function jobMatchesDeskMode(
+  job: Pick<DispatchJob, "seatCapacity" | "stops">,
+  deskMode: DispatchProfileKind,
+): boolean {
+  const mode = normalizeDispatchProfile(deskMode);
+  const p = inferJobProfile(job);
+  if (p === "open") return mode === "cargo" || mode === "sales";
+  return p === mode;
 }
 
 export type DispatchStockSettings = {

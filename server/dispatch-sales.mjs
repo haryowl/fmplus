@@ -37,6 +37,45 @@ export function parseOrderProfile(raw) {
   return null;
 }
 
+/** cargo | passenger | sales — null/unknown → cargo. */
+export function normalizeDispatchProfile(raw) {
+  return parseOrderProfile(raw) || "cargo";
+}
+
+/**
+ * Infer a job's desk profile from seat capacity + linked stop order profiles.
+ * Returns "open" for empty shells (no stops, no seats) so they can sit on
+ * cargo or sales desks until the first assign sets the profile.
+ */
+export function inferJobProfile(jobRow, stops = []) {
+  let hasSales = false;
+  let hasPassenger = false;
+  let hasCargo = false;
+  for (const s of stops || []) {
+    const p = normalizeDispatchProfile(s.order_profile || s.orderProfile || s.profile);
+    if (p === "sales") hasSales = true;
+    else if (p === "passenger") hasPassenger = true;
+    else hasCargo = true;
+  }
+  const seatRaw = jobRow?.seat_capacity ?? jobRow?.seatCapacity;
+  if (seatRaw != null && Number.isFinite(Number(seatRaw))) hasPassenger = true;
+  if (hasSales) return "sales";
+  if (hasPassenger) return "passenger";
+  if (hasCargo) return "cargo";
+  return "open";
+}
+
+export function jobMatchesDeskMode(jobRow, stops, deskMode) {
+  const mode = normalizeDispatchProfile(deskMode);
+  const p = inferJobProfile(jobRow, stops);
+  if (p === "open") return mode === "cargo" || mode === "sales";
+  return p === mode;
+}
+
+export function orderMatchesDeskMode(orderRow, deskMode) {
+  return normalizeDispatchProfile(orderRow?.profile) === normalizeDispatchProfile(deskMode);
+}
+
 /** True when Finish must collect a visit outcome. */
 export function salesVisitRequiresOutcome(orderProfile, tenantSalesEnabled) {
   return tenantSalesEnabled === true && orderProfile === "sales";

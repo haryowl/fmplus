@@ -86,7 +86,12 @@ import {
   upsertFareRates,
 } from "./dispatch-fare.mjs";
 import { parseDispatchProfiles } from "./dispatch-profiles.mjs";
-import { parseOrderProfile } from "./dispatch-sales.mjs";
+import {
+  inferJobProfile,
+  jobMatchesDeskMode,
+  normalizeDispatchProfile,
+  parseOrderProfile,
+} from "./dispatch-sales.mjs";
 import { normalizeZoneKey } from "./dispatch-zone.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
@@ -910,6 +915,32 @@ async function assignPendingOrdersToJob(dbTenant, job, orderIds, { rejectOverCap
   }
   const ids = (Array.isArray(orderIds) ? orderIds : []).map(String).filter(Boolean).slice(0, 50);
   const existingStops = await loadStops(job.id);
+  const jobProf = inferJobProfile(job, existingStops);
+  const pendingProfiles = new Set();
+  for (const oid of ids) {
+    const ord = await dbQuery(
+      `SELECT profile FROM dispatch_orders
+       WHERE id = $1 AND tenant_id = $2 AND status = 'pending'`,
+      [oid, dbTenant.id],
+    );
+    if (!ord.rows[0]) continue;
+    pendingProfiles.add(normalizeDispatchProfile(ord.rows[0].profile));
+  }
+  if (pendingProfiles.size > 1) {
+    return {
+      error: "Cannot assign mixed cargo / passenger / sales orders to one job",
+      status: 409,
+      addedNames: [],
+    };
+  }
+  const orderProf = pendingProfiles.size ? [...pendingProfiles][0] : null;
+  if (orderProf && jobProf !== "open" && jobProf !== orderProf) {
+    return {
+      error: `This job is ${jobProf}; cannot assign ${orderProf} orders`,
+      status: 409,
+      addedNames: [],
+    };
+  }
   const cap = capacityFrom(job, existingStops);
   let pendingVol = 0;
   let pendingWt = 0;
@@ -3935,6 +3966,7 @@ export async function handleDispatchRequest(req, res) {
         }
       }
 
+      const planProfile = parseOrderProfile(body.profile || body.deskMode);
       const orderRows = await dbQuery(
         `SELECT * FROM dispatch_orders
          WHERE tenant_id = $1 AND status = 'pending' AND service_date = $2::date
@@ -3945,6 +3977,10 @@ export async function handleDispatchRequest(req, res) {
       const orders = [];
       const skipped = [];
       for (const o of orderRows.rows) {
+        if (planProfile && normalizeDispatchProfile(o.profile) !== planProfile) {
+          skipped.push({ orderId: o.id, reason: "profile_mismatch" });
+          continue;
+        }
         const planOrder = rowToPlanOrder(o);
         const dropOk =
           planOrder.lat != null &&
@@ -4015,6 +4051,7 @@ export async function handleDispatchRequest(req, res) {
         }
         for (const j of jobs.rows) {
           const stops = await loadStops(j.id);
+          if (planProfile && !jobMatchesDeskMode(j, stops, planProfile)) continue;
           // Prefer empty / light jobs for day planning; still allow jobs with stops (residual capacity)
           const cap = capacityFrom(j, stops);
           const residualVol = Math.max(0, cap.volumeCapacityM3 - cap.volumeUsed);

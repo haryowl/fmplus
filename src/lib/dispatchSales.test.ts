@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  inferJobProfile,
+  jobMatchesDeskMode,
+  orderMatchesDeskMode,
   parseVisitOutcome,
   salesVisitRequiresOutcome,
   VISIT_OUTCOMES,
@@ -11,6 +14,12 @@ import {
   mergeEntitlements,
   resolveDispatchDeskMode as clientResolveMode,
 } from "./entitlements";
+import {
+  inferJobProfile as clientInferJob,
+  jobMatchesDeskMode as clientJobMatches,
+  orderMatchesDeskMode as clientOrderMatches,
+} from "./dispatch";
+import type { DispatchJob } from "./dispatch";
 
 describe("visit outcomes", () => {
   it("parses known outcomes", () => {
@@ -55,5 +64,28 @@ describe("desk mode with sales", () => {
     const profiles = dispatchProfiles(ent);
     expect(clientEnabledModes(profiles)).toEqual(["cargo", "passenger", "sales"]);
     expect(clientResolveMode(profiles, "sales")).toBe("sales");
+  });
+});
+
+describe("job / order desk matching", () => {
+  it("classifies empty shells as open (cargo + sales)", () => {
+    expect(inferJobProfile({ seat_capacity: null }, [])).toBe("open");
+    expect(jobMatchesDeskMode({ seat_capacity: null }, [], "sales")).toBe(true);
+    expect(jobMatchesDeskMode({ seat_capacity: null }, [], "cargo")).toBe(true);
+    expect(jobMatchesDeskMode({ seat_capacity: null }, [], "passenger")).toBe(false);
+  });
+
+  it("prefers sales / passenger from stops or seats", () => {
+    expect(inferJobProfile({}, [{ order_profile: "sales" }])).toBe("sales");
+    expect(inferJobProfile({ seat_capacity: 4 }, [])).toBe("passenger");
+    expect(orderMatchesDeskMode({ profile: "passenger" }, "passenger")).toBe(true);
+    expect(orderMatchesDeskMode({ profile: null }, "cargo")).toBe(true);
+  });
+
+  it("mirrors client helpers", () => {
+    const empty = { seatCapacity: null, stops: [] } as Pick<DispatchJob, "seatCapacity" | "stops">;
+    expect(clientInferJob(empty)).toBe("open");
+    expect(clientJobMatches(empty, "sales")).toBe(true);
+    expect(clientOrderMatches({ profile: "sales" }, "sales")).toBe(true);
   });
 });
