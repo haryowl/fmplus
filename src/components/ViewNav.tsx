@@ -17,7 +17,7 @@ import {
   tripsHref,
   type AppView,
 } from "../lib/routing";
-import { moduleKeyForView } from "../lib/entitlements";
+import { dispatchProfiles, moduleKeyForView } from "../lib/entitlements";
 import { isNativeDispatchApp } from "../lib/nativeField";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import { ThemePicker } from "./ThemePicker";
@@ -51,10 +51,16 @@ type Props = {
 
 export function ViewNav({ current }: Props) {
   const search = typeof window !== "undefined" ? window.location.search : "";
-  const { ready, moduleAllowed } = useEmbedTenant();
+  const { ready, moduleAllowed, entitlements } = useEmbedTenant();
+  const profiles = dispatchProfiles(entitlements);
   const base = isNativeDispatchApp() ? DISPATCH_APP_LINKS : LINKS;
   const links = ready
-    ? base.filter((link) => moduleAllowed(moduleKeyForView(link.view)))
+    ? base.filter((link) => {
+        if (!moduleAllowed(moduleKeyForView(link.view))) return false;
+        // Goods & Stock is cargo-only admin
+        if (link.view === "dispatchGoods" && !profiles.cargo) return false;
+        return true;
+      })
     : base;
 
   return (

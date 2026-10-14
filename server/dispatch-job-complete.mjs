@@ -1,4 +1,5 @@
 import { dbQuery } from "./db.mjs";
+import { refreshJobFareActual } from "./dispatch-fare.mjs";
 import { refreshJobOpexActual } from "./dispatch-opex.mjs";
 
 const OPENABLE = new Set(["assigned", "en_route", "arrived"]);
@@ -43,6 +44,7 @@ export async function markJobDoneIfNoOpenStops(jobId, knownStops) {
   const row = updated.rows[0] || null;
   if (row?.tenant_id) {
     await refreshJobOpexActual(row.tenant_id, jobId).catch(() => null);
+    await refreshJobFareActual(row.tenant_id, jobId).catch(() => null);
     const fresh = await dbQuery(`SELECT * FROM dispatch_jobs WHERE id = $1`, [jobId]);
     return fresh.rows[0] || row;
   }

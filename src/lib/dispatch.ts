@@ -236,8 +236,14 @@ export type DispatchJob = {
   /** Trip operating cost actual (IDR) after job done. */
   opexActual?: number | null;
   opexDepotId?: string | null;
+  fareEstimate?: number | null;
+  fareActual?: number | null;
   volumeCapacityM3?: number;
   weightCapacityKg?: number;
+  seatCapacity?: number | null;
+  luggageCapacityKg?: number | null;
+  seatsUsed?: number | null;
+  luggageUsedKg?: number | null;
   volumeUsed?: number;
   weightUsed?: number;
   utilizationPct?: number;
@@ -270,6 +276,10 @@ export type DispatchOrder = {
   goodsSubtotal?: number | null;
   /** Sum of qty × snapshotted cost (IDR). */
   goodsCostSubtotal?: number | null;
+  /** Passenger profile: seats demanded (also mirrored to volumeM3 for CVRP). */
+  passengerCount?: number | null;
+  /** Passenger profile: luggage kg (mirrored to weightKg for CVRP). */
+  luggageKg?: number | null;
   windowStart: string;
   windowEnd: string;
   /** Promised / plan day YYYY-MM-DD */
@@ -339,10 +349,21 @@ export type VehicleCapacity = {
   armadaUserId: number;
   volumeCapacityM3: number;
   weightCapacityKg: number;
+  seatCapacity?: number | null;
+  luggageCapacityKg?: number | null;
   label?: string;
   depotId?: string | null;
   plateParity?: "odd" | "even" | "unknown" | "exempt";
   updatedAt?: string;
+};
+
+export type DispatchFareRates = {
+  id?: string;
+  depotId: string | null;
+  depotName?: string;
+  rateKm: number;
+  fixedBooking: number;
+  updatedAt?: string | null;
 };
 
 export type DispatchDepot = {
@@ -475,8 +496,11 @@ export async function createDispatchJob(body: {
   armadaUsername?: string;
   userDisplayName?: string;
   assignedFieldUserId?: string | null;
+  profile?: "cargo" | "passenger";
   volumeCapacityM3?: number | null;
   weightCapacityKg?: number | null;
+  seatCapacity?: number | null;
+  luggageCapacityKg?: number | null;
   stops?: Array<{
     name?: string;
     address?: string;
@@ -923,8 +947,10 @@ export async function fetchVehicleCapacities(signal?: AbortSignal): Promise<Vehi
 
 export async function upsertVehicleCapacity(body: {
   armadaUserId: number;
-  volumeCapacityM3: number;
-  weightCapacityKg: number;
+  volumeCapacityM3?: number;
+  weightCapacityKg?: number;
+  seatCapacity?: number | null;
+  luggageCapacityKg?: number | null;
   label?: string;
   depotId?: string | null;
   plateParity?: "odd" | "even" | "unknown" | "exempt" | null;
@@ -1168,6 +1194,39 @@ export async function saveDispatchCostRates(body: {
   };
   if (!res.ok) throw new Error(data.error || `Cost rates ${res.status}`);
   if (!data.rate) throw new Error("Cost rates save failed");
+  return { rate: data.rate, rates: data.rates || [] };
+}
+
+export async function fetchDispatchFareRates(signal?: AbortSignal): Promise<DispatchFareRates[]> {
+  const res = await fetch("/api/dispatch/fare-rates", {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    rates?: DispatchFareRates[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Fare rates ${res.status}`);
+  return data.rates || [];
+}
+
+export async function saveDispatchFareRates(body: {
+  depotId?: string | null;
+  rateKm?: number;
+  fixedBooking?: number;
+}): Promise<{ rate: DispatchFareRates; rates: DispatchFareRates[] }> {
+  const res = await fetch("/api/dispatch/fare-rates", {
+    method: "PUT",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    rate?: DispatchFareRates;
+    rates?: DispatchFareRates[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Fare rates ${res.status}`);
+  if (!data.rate) throw new Error("Fare rates save failed");
   return { rate: data.rate, rates: data.rates || [] };
 }
 

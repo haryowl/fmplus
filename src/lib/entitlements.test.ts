@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { defaultEntitlements, mergeEntitlements, moduleKeyForView } from "./entitlements";
+import {
+  defaultEntitlements,
+  dispatchProfiles,
+  mergeEntitlements,
+  moduleKeyForView,
+} from "./entitlements";
 
 describe("entitlements", () => {
   it("merges overrides onto defaults", () => {
@@ -42,5 +47,12 @@ describe("entitlements", () => {
     expect(moduleKeyForView("dispatchGoods")).toBe("dispatch");
     expect(moduleKeyForView("dispatchCustomers")).toBe("dispatch");
     expect(moduleKeyForView("dispatchLive")).toBe("dispatch");
+  });
+
+  it("exposes cargo/passenger/sales profile flags", () => {
+    expect(dispatchProfiles(defaultEntitlements()).cargo).toBe(true);
+    expect(
+      dispatchProfiles(mergeEntitlements({ features: { dispatchPassenger: true } })).passenger,
+    ).toBe(true);
   });
 });

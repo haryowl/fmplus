@@ -5679,12 +5679,30 @@ button.dispatch-pin-chip {
   color: var(--ink);
 }
 
+.dispatch-profile-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.dispatch-profile-toggle .btn-secondary.is-active {
+  border-color: var(--ink);
+  font-weight: 600;
+}
+
 .dispatch-opex-rates {
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
   display: grid;
   gap: 10px;
+}
+
+.dispatch-rail.dispatch-create > .dispatch-opex-rates {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
 }
 
 .dispatch-opex-rates-form {

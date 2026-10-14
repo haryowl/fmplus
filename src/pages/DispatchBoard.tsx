@@ -5,8 +5,14 @@ import { CsvImportPanel } from "../components/CsvImportPanel";
 import { CatalogCodesEditor } from "../components/CatalogCodesEditor";
 import { CatalogScanButton } from "../components/CatalogScanButton";
 import { DispatchJobMap } from "../components/DispatchJobMap";
+import { DispatchFareRatesPanel } from "../components/DispatchFareRatesPanel";
 import { DispatchOrderGoodsEditor } from "../components/DispatchOrderGoodsEditor";
 import { ViewNav } from "../components/ViewNav";
+import {
+  dispatchProfiles,
+  resolveDispatchDeskMode,
+  type DispatchDeskMode,
+} from "../lib/entitlements";
 import { locationNameFromScan, lookupCatalogScan } from "../lib/catalogScan";
 import { isNativeDispatchApp } from "../lib/nativeField";
 import { customersHref, goodsHref, navigateView } from "../lib/routing";
@@ -195,6 +201,8 @@ const emptyOrderForm = {
   lon: null as number | null,
   lines: [] as DispatchOrderLine[],
   cargoTotalsLocked: false,
+  passengerCount: "1",
+  luggageKg: "",
 };
 
 const WINDOW_PRESETS: { id: string; label: string; start: string; end: string }[] = [
@@ -237,8 +245,27 @@ function planUnassignedReasonLabel(reason: string): string {
 }
 
 export default function DispatchBoard() {
-  const { ready, error: tenantError, query, allowedUserIds, allowedGroupIds, allowsUser, allowsGroup } =
-    useEmbedTenant();
+  const {
+    ready,
+    error: tenantError,
+    query,
+    allowedUserIds,
+    allowedGroupIds,
+    allowsUser,
+    allowsGroup,
+    entitlements,
+  } = useEmbedTenant();
+  const profiles = useMemo(() => dispatchProfiles(entitlements), [entitlements]);
+  const [deskModePref, setDeskModePref] = useState<DispatchDeskMode>(() => {
+    try {
+      const raw = localStorage.getItem("dispatchDeskMode");
+      return raw === "passenger" ? "passenger" : "cargo";
+    } catch {
+      return "cargo";
+    }
+  });
+  const deskMode = resolveDispatchDeskMode(profiles, deskModePref);
+  const isPassenger = deskMode === "passenger";
   const [jobs, setJobs] = useState<DispatchJob[]>([]);
   const [orders, setOrders] = useState<DispatchOrder[]>([]);
   const [templates, setTemplates] = useState<DispatchOrderTemplate[]>([]);
@@ -729,20 +756,47 @@ export default function DispatchBoard() {
   }, [ready, query.tenantKey, reload]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem("dispatchDeskMode", deskMode);
+    } catch {
+      /* ignore */
+    }
+  }, [deskMode]);
+
+  useEffect(() => {
     const id = userId ? Number(userId) : null;
     const cap = capacityForVehicle(vehicleCaps, id);
-    setJobVolCap(String(cap.volumeCapacityM3));
-    setJobWtCap(String(cap.weightCapacityKg));
-  }, [userId, vehicleCaps]);
+    if (isPassenger) {
+      setJobVolCap(String(cap.seatCapacity ?? cap.volumeCapacityM3 ?? 4));
+      setJobWtCap(String(cap.luggageCapacityKg ?? cap.weightCapacityKg ?? 50));
+    } else {
+      setJobVolCap(String(cap.volumeCapacityM3));
+      setJobWtCap(String(cap.weightCapacityKg));
+    }
+  }, [userId, vehicleCaps, isPassenger]);
 
   useEffect(() => {
     if (!selected) return;
-    setEditVolCap(String(selected.volumeCapacityM3 ?? 12));
-    setEditWtCap(String(selected.weightCapacityKg ?? 1500));
+    if (isPassenger) {
+      setEditVolCap(String(selected.seatCapacity ?? selected.volumeCapacityM3 ?? 4));
+      setEditWtCap(String(selected.luggageCapacityKg ?? selected.weightCapacityKg ?? 50));
+    } else {
+      setEditVolCap(String(selected.volumeCapacityM3 ?? 12));
+      setEditWtCap(String(selected.weightCapacityKg ?? 1500));
+    }
     const cap = vehicleCaps.find((c) => c.armadaUserId === selected.armadaUserId);
     setEditDepotId(cap?.depotId || "");
     setEditPlateParity((cap?.plateParity as typeof editPlateParity) || "unknown");
-  }, [selected?.id, selected?.volumeCapacityM3, selected?.weightCapacityKg, selected?.armadaUserId, vehicleCaps]);
+  }, [
+    selected?.id,
+    selected?.volumeCapacityM3,
+    selected?.weightCapacityKg,
+    selected?.seatCapacity,
+    selected?.luggageCapacityKg,
+    selected?.armadaUserId,
+    vehicleCaps,
+    isPassenger,
+  ]);
 
   useEffect(() => {
     if (!ready || !query.tenantKey) return;
@@ -1369,7 +1423,13 @@ export default function DispatchBoard() {
 
   function clearDraft() {
     orderRefDirty.current = false;
-    setOrderForm({ ...emptyOrderForm, externalRef: orderCode });
+    setOrderForm({
+      ...emptyOrderForm,
+      externalRef: orderCode,
+      ...(isPassenger
+        ? { kind: "pickup_drop" as DispatchOrderKind, pinTarget: "pickup" as const, passengerCount: "1" }
+        : {}),
+    });
     setEditingOrderId(null);
     setPlacing(false);
     setMapSheetOpen(false);
@@ -1410,6 +1470,14 @@ export default function DispatchBoard() {
       zone: o.zone || "",
       volumeM3: o.volumeM3 != null ? String(o.volumeM3) : "",
       weightKg: o.weightKg != null ? String(o.weightKg) : "",
+      passengerCount:
+        o.passengerCount != null
+          ? String(o.passengerCount)
+          : o.volumeM3 != null
+            ? String(Math.round(o.volumeM3))
+            : "1",
+      luggageKg:
+        o.luggageKg != null ? String(o.luggageKg) : o.weightKg != null ? String(o.weightKg) : "",
       windowStart: normalizeClockHm(o.windowStart),
       windowEnd: normalizeClockHm(o.windowEnd),
       serviceMinutes: o.serviceMinutes != null ? String(o.serviceMinutes) : "",
@@ -1458,12 +1526,31 @@ export default function DispatchBoard() {
     setError("");
     const payload = {
       kind: orderForm.kind,
+      profile: isPassenger ? ("passenger" as const) : ("cargo" as const),
       customerName: orderForm.customerName.trim(),
       externalRef: orderForm.externalRef.trim() || undefined,
       address: orderForm.address.trim() || undefined,
       zone: orderForm.zone.trim() || undefined,
-      volumeM3: orderForm.volumeM3 === "" ? null : Number(orderForm.volumeM3),
-      weightKg: orderForm.weightKg === "" ? null : Number(orderForm.weightKg),
+      volumeM3: isPassenger
+        ? null
+        : orderForm.volumeM3 === ""
+          ? null
+          : Number(orderForm.volumeM3),
+      weightKg: isPassenger
+        ? null
+        : orderForm.weightKg === ""
+          ? null
+          : Number(orderForm.weightKg),
+      passengerCount: isPassenger
+        ? orderForm.passengerCount === ""
+          ? 1
+          : Number(orderForm.passengerCount)
+        : null,
+      luggageKg: isPassenger
+        ? orderForm.luggageKg === ""
+          ? null
+          : Number(orderForm.luggageKg)
+        : null,
       // null (not undefined) so "Any time" clears the DB columns; undefined is
       // dropped by JSON.stringify and the PATCH would leave the old window.
       windowStart: normalizeClockHm(orderForm.windowStart) || null,
@@ -1719,8 +1806,16 @@ export default function DispatchBoard() {
         armadaUserId: selectedUser ? Number(selectedUser.id) : null,
         armadaUsername: selectedUser?.username || "",
         userDisplayName: selectedUser ? userOptionLabel(selectedUser) : "",
-        volumeCapacityM3: Number.isFinite(vol) && vol > 0 ? vol : null,
-        weightCapacityKg: Number.isFinite(wt) && wt > 0 ? wt : null,
+        ...(isPassenger
+          ? {
+              profile: "passenger" as const,
+              seatCapacity: Number.isFinite(vol) && vol > 0 ? vol : 4,
+              luggageCapacityKg: Number.isFinite(wt) && wt > 0 ? wt : 50,
+            }
+          : {
+              volumeCapacityM3: Number.isFinite(vol) && vol > 0 ? vol : null,
+              weightCapacityKg: Number.isFinite(wt) && wt > 0 ? wt : null,
+            }),
       });
       setJobTitle("");
       setShowNewJob(false);
@@ -1744,10 +1839,12 @@ export default function DispatchBoard() {
     setBusy(true);
     setError("");
     try {
-      const job = await patchDispatchJob(selected.id, {
-        volumeCapacityM3: vol,
-        weightCapacityKg: wt,
-      });
+      const job = await patchDispatchJob(
+        selected.id,
+        isPassenger
+          ? { profile: "passenger", seatCapacity: vol, luggageCapacityKg: wt }
+          : { volumeCapacityM3: vol, weightCapacityKg: wt },
+      );
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update capacity failed");
@@ -1770,19 +1867,32 @@ export default function DispatchBoard() {
     setBusy(true);
     setError("");
     try {
-      const job = await patchDispatchJob(selected.id, {
-        volumeCapacityM3: vol,
-        weightCapacityKg: wt,
-      });
+      const job = await patchDispatchJob(
+        selected.id,
+        isPassenger
+          ? { profile: "passenger", seatCapacity: vol, luggageCapacityKg: wt }
+          : { volumeCapacityM3: vol, weightCapacityKg: wt },
+      );
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
-      const saved = await upsertVehicleCapacity({
-        armadaUserId: selected.armadaUserId,
-        volumeCapacityM3: vol,
-        weightCapacityKg: wt,
-        label: dispatchVehicleLabel(selected),
-        depotId: editDepotId || null,
-        plateParity: editPlateParity,
-      });
+      const saved = await upsertVehicleCapacity(
+        isPassenger
+          ? {
+              armadaUserId: selected.armadaUserId,
+              seatCapacity: vol,
+              luggageCapacityKg: wt,
+              label: dispatchVehicleLabel(selected),
+              depotId: editDepotId || null,
+              plateParity: editPlateParity,
+            }
+          : {
+              armadaUserId: selected.armadaUserId,
+              volumeCapacityM3: vol,
+              weightCapacityKg: wt,
+              label: dispatchVehicleLabel(selected),
+              depotId: editDepotId || null,
+              plateParity: editPlateParity,
+            },
+      );
       setVehicleCaps((prev) => {
         const rest = prev.filter((c) => c.armadaUserId !== saved.armadaUserId);
         return [...rest, saved].sort((a, b) => a.armadaUserId - b.armadaUserId);
@@ -2100,6 +2210,26 @@ export default function DispatchBoard() {
               <strong className={`dispatch-util-${utilizationTone(kpis.avgUtil)}`}>{kpis.avgUtil}%</strong>
             </div>
           </div>
+          {profiles.cargo && profiles.passenger ? (
+            <div className="dispatch-profile-toggle" role="group" aria-label="Dispatch profile">
+              <button
+                type="button"
+                className={`btn-secondary${deskMode === "cargo" ? " is-active" : ""}`}
+                onClick={() => setDeskModePref("cargo")}
+              >
+                Cargo
+              </button>
+              <button
+                type="button"
+                className={`btn-secondary${deskMode === "passenger" ? " is-active" : ""}`}
+                onClick={() => setDeskModePref("passenger")}
+              >
+                Passenger
+              </button>
+            </div>
+          ) : isPassenger ? (
+            <p className="dispatch-search-hint">Passenger profile</p>
+          ) : null}
           <div className="dispatch-kpi-actions">
             <button type="button" className="btn-secondary" disabled={loading} onClick={() => setReload((n) => n + 1)}>
               Refresh
@@ -2159,6 +2289,12 @@ export default function DispatchBoard() {
             {error || bootError}
           </p>
         )}
+
+        {isPassenger ? (
+          <section className="dispatch-rail dispatch-create">
+            <DispatchFareRatesPanel />
+          </section>
+        ) : null}
 
         {showPlanDay && (
           <section className="dispatch-rail dispatch-create dispatch-plan-day">
@@ -3089,18 +3225,22 @@ export default function DispatchBoard() {
                 </select>
               </label>
               <div className="field">
-                <label htmlFor="dispatch-new-cap-vol">Volume capacity (m³)</label>
+                <label htmlFor="dispatch-new-cap-vol">
+                  {isPassenger ? "Seat capacity" : "Volume capacity (m³)"}
+                </label>
                 <input
                   id="dispatch-new-cap-vol"
                   type="number"
-                  min="0.1"
-                  step="0.1"
+                  min={isPassenger ? "1" : "0.1"}
+                  step={isPassenger ? "1" : "0.1"}
                   value={jobVolCap}
                   onChange={(e) => setJobVolCap(e.target.value)}
                 />
               </div>
               <div className="field">
-                <label htmlFor="dispatch-new-cap-wt">Weight capacity (kg)</label>
+                <label htmlFor="dispatch-new-cap-wt">
+                  {isPassenger ? "Luggage capacity (kg)" : "Weight capacity (kg)"}
+                </label>
                 <input
                   id="dispatch-new-cap-wt"
                   type="number"
@@ -3639,78 +3779,110 @@ export default function DispatchBoard() {
                       }}
                     />
                   </label>
-                  <label className="field">
-                    m³
-                    <input
-                      size={1}
-                      value={orderForm.volumeM3}
-                      onChange={(e) =>
-                        setOrderForm((f) => ({
-                          ...f,
-                          volumeM3: e.target.value,
-                          cargoTotalsLocked: f.lines.length > 0 ? true : f.cargoTotalsLocked,
-                        }))
-                      }
-                      inputMode="decimal"
-                    />
-                  </label>
-                  <label className="field">
-                    kg
-                    <input
-                      size={1}
-                      value={orderForm.weightKg}
-                      onChange={(e) =>
-                        setOrderForm((f) => ({
-                          ...f,
-                          weightKg: e.target.value,
-                          cargoTotalsLocked: f.lines.length > 0 ? true : f.cargoTotalsLocked,
-                        }))
-                      }
-                      inputMode="decimal"
-                    />
-                  </label>
+                  {isPassenger ? (
+                    <>
+                      <label className="field">
+                        Passengers
+                        <input
+                          size={1}
+                          value={orderForm.passengerCount}
+                          onChange={(e) =>
+                            setOrderForm((f) => ({ ...f, passengerCount: e.target.value }))
+                          }
+                          inputMode="numeric"
+                          min={1}
+                        />
+                      </label>
+                      <label className="field">
+                        Luggage kg
+                        <input
+                          size={1}
+                          value={orderForm.luggageKg}
+                          onChange={(e) =>
+                            setOrderForm((f) => ({ ...f, luggageKg: e.target.value }))
+                          }
+                          inputMode="decimal"
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <>
+                      <label className="field">
+                        m³
+                        <input
+                          size={1}
+                          value={orderForm.volumeM3}
+                          onChange={(e) =>
+                            setOrderForm((f) => ({
+                              ...f,
+                              volumeM3: e.target.value,
+                              cargoTotalsLocked: f.lines.length > 0 ? true : f.cargoTotalsLocked,
+                            }))
+                          }
+                          inputMode="decimal"
+                        />
+                      </label>
+                      <label className="field">
+                        kg
+                        <input
+                          size={1}
+                          value={orderForm.weightKg}
+                          onChange={(e) =>
+                            setOrderForm((f) => ({
+                              ...f,
+                              weightKg: e.target.value,
+                              cargoTotalsLocked: f.lines.length > 0 ? true : f.cargoTotalsLocked,
+                            }))
+                          }
+                          inputMode="decimal"
+                        />
+                      </label>
+                    </>
+                  )}
                 </div>
-                {orderForm.cargoTotalsLocked && orderForm.lines.length > 0 ? (
+                {!isPassenger && orderForm.cargoTotalsLocked && orderForm.lines.length > 0 ? (
                   <p className="dispatch-window-warn">
                     Totals are overridden and may differ from the goods sum.
                   </p>
                 ) : null}
-                <div className="dispatch-goods-block">
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => setShowOrderGoods((v) => !v)}
-                  >
-                    {showOrderGoods || orderForm.lines.length
-                      ? `Goods (${orderForm.lines.length})`
-                      : "Goods (optional)"}
-                  </button>
-                  {showOrderGoods || orderForm.lines.length ? (
-                    <DispatchOrderGoodsEditor
-                      catalog={goodsCatalog}
-                      lines={orderForm.lines}
-                      onChange={applyOrderLines}
-                      scanSource="desk"
-                      scanNfc={isNativeDispatchApp()}
-                      onScanError={setError}
-                      totalsLocked={orderForm.cargoTotalsLocked}
-                      onToggleLock={(locked) => {
-                        setOrderForm((f) => {
-                          if (!locked) {
-                            const totals = sumOrderCargoTotals(f.lines);
-                            return {
-                              ...f,
-                              cargoTotalsLocked: false,
-                              volumeM3: totals.volumeM3 != null ? String(totals.volumeM3) : f.volumeM3,
-                              weightKg: totals.weightKg != null ? String(totals.weightKg) : f.weightKg,
-                            };
-                          }
-                          return { ...f, cargoTotalsLocked: true };
-                        });
-                      }}
-                    />
-                  ) : null}
-                </div>
+                {!isPassenger ? (
+                  <div className="dispatch-goods-block">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setShowOrderGoods((v) => !v)}
+                    >
+                      {showOrderGoods || orderForm.lines.length
+                        ? `Goods (${orderForm.lines.length})`
+                        : "Goods (optional)"}
+                    </button>
+                    {showOrderGoods || orderForm.lines.length ? (
+                      <DispatchOrderGoodsEditor
+                        catalog={goodsCatalog}
+                        lines={orderForm.lines}
+                        onChange={applyOrderLines}
+                        scanSource="desk"
+                        scanNfc={isNativeDispatchApp()}
+                        onScanError={setError}
+                        totalsLocked={orderForm.cargoTotalsLocked}
+                        onToggleLock={(locked) => {
+                          setOrderForm((f) => {
+                            if (!locked) {
+                              const totals = sumOrderCargoTotals(f.lines);
+                              return {
+                                ...f,
+                                cargoTotalsLocked: false,
+                                volumeM3: totals.volumeM3 != null ? String(totals.volumeM3) : f.volumeM3,
+                                weightKg: totals.weightKg != null ? String(totals.weightKg) : f.weightKg,
+                              };
+                            }
+                            return { ...f, cargoTotalsLocked: true };
+                          });
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
                 {orderForm.kind === "pickup_drop" ? (
                   <div className="dispatch-window-block">
                     <div className="dispatch-window-head">
@@ -4106,7 +4278,15 @@ export default function DispatchBoard() {
                             <span className="dispatch-order-addr">{formatCargoSummary(o.lines)}</span>
                           ) : null}
                           <span className="dispatch-order-meta">
-                            {o.volumeM3 != null ? `${o.volumeM3} m³` : "—"}
+                            {isPassenger
+                              ? o.passengerCount != null
+                                ? `${o.passengerCount} pax`
+                                : o.volumeM3 != null
+                                  ? `${Math.round(o.volumeM3)} pax`
+                                  : "—"
+                              : o.volumeM3 != null
+                                ? `${o.volumeM3} m³`
+                                : "—"}
                             <span aria-hidden>·</span>
                             {o.weightKg != null ? `${o.weightKg} kg` : "—"}
                             <span aria-hidden>·</span>
@@ -4363,9 +4543,11 @@ export default function DispatchBoard() {
                   <div className="dispatch-capacity-metrics">
                     <div>
                       <div className="dispatch-cap-label">
-                        <span>Volume</span>
+                        <span>{isPassenger ? "Seats" : "Volume"}</span>
                         <span>
-                          {selected.volumeUsed ?? 0} / {selected.volumeCapacityM3 ?? 12} m³
+                          {isPassenger
+                            ? `${selected.seatsUsed ?? selected.volumeUsed ?? 0} / ${selected.seatCapacity ?? selected.volumeCapacityM3 ?? 4}`
+                            : `${selected.volumeUsed ?? 0} / ${selected.volumeCapacityM3 ?? 12} m³`}
                         </span>
                       </div>
                       <div className="dispatch-cap-bar">
@@ -4384,9 +4566,11 @@ export default function DispatchBoard() {
                     </div>
                     <div>
                       <div className="dispatch-cap-label">
-                        <span>Weight</span>
+                        <span>{isPassenger ? "Luggage" : "Weight"}</span>
                         <span>
-                          {selected.weightUsed ?? 0} / {selected.weightCapacityKg ?? 1500} kg
+                          {isPassenger
+                            ? `${selected.luggageUsedKg ?? selected.weightUsed ?? 0} / ${selected.luggageCapacityKg ?? selected.weightCapacityKg ?? 50} kg`
+                            : `${selected.weightUsed ?? 0} / ${selected.weightCapacityKg ?? 1500} kg`}
                         </span>
                       </div>
                       <div className="dispatch-cap-bar">
@@ -4408,9 +4592,13 @@ export default function DispatchBoard() {
 
                 {(() => {
                   const money = jobContributionMargin(selected);
-                  const hasOpex =
-                    selected.opexEstimate != null || selected.opexActual != null;
-                  if (!hasOpex && money.goodsSubtotal == null) return null;
+                  const hasMoney =
+                    selected.opexEstimate != null ||
+                    selected.opexActual != null ||
+                    selected.fareEstimate != null ||
+                    selected.fareActual != null ||
+                    money.goodsSubtotal != null;
+                  if (!hasMoney) return null;
                   return (
                     <div className="dispatch-job-money">
                       <p className="dispatch-eyebrow">Trip economics</p>
@@ -4437,6 +4625,18 @@ export default function DispatchBoard() {
                           <li>
                             <span>Opex actual</span>
                             <strong>{formatIdr(selected.opexActual)}</strong>
+                          </li>
+                        ) : null}
+                        {selected.fareEstimate != null ? (
+                          <li>
+                            <span>Fare estimate</span>
+                            <strong>{formatIdr(selected.fareEstimate)}</strong>
+                          </li>
+                        ) : null}
+                        {selected.fareActual != null ? (
+                          <li>
+                            <span>Fare actual</span>
+                            <strong>{formatIdr(selected.fareActual)}</strong>
                           </li>
                         ) : null}
                         {money.margin != null ? (
@@ -4466,22 +4666,28 @@ export default function DispatchBoard() {
                 })()}
 
                 <div className="dispatch-cap-edit">
-                  <p className="dispatch-eyebrow">Vehicle capacity</p>
+                  <p className="dispatch-eyebrow">
+                    {isPassenger ? "Vehicle seats / luggage" : "Vehicle capacity"}
+                  </p>
                   <div className="dispatch-cap-edit-fields">
                     <div className="field">
-                      <label htmlFor="dispatch-cap-vol">Volume (m³)</label>
+                      <label htmlFor="dispatch-cap-vol">
+                        {isPassenger ? "Seats" : "Volume (m³)"}
+                      </label>
                       <input
                         id="dispatch-cap-vol"
                         type="number"
-                        min="0.1"
-                        step="0.1"
+                        min={isPassenger ? "1" : "0.1"}
+                        step={isPassenger ? "1" : "0.1"}
                         value={editVolCap}
                         disabled={busy || selected.status === "done" || selected.status === "cancelled"}
                         onChange={(e) => setEditVolCap(e.target.value)}
                       />
                     </div>
                     <div className="field">
-                      <label htmlFor="dispatch-cap-wt">Weight (kg)</label>
+                      <label htmlFor="dispatch-cap-wt">
+                        {isPassenger ? "Luggage (kg)" : "Weight (kg)"}
+                      </label>
                       <input
                         id="dispatch-cap-wt"
                         type="number"

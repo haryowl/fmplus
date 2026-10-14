@@ -29,6 +29,10 @@ export const FEATURE_KEYS = [
   "dispatchStockHardBlock",
   /** When true, cargo scan is required before stock moves (Finish alone is not enough) */
   "dispatchStockRequireScan",
+  /** Dispatch profiles — cargo default on; passenger/sales opt-in */
+  "dispatchCargo",
+  "dispatchPassenger",
+  "dispatchSales",
 ];
 
 export const ACTION_KEYS = [
@@ -63,6 +67,9 @@ export function defaultEntitlements() {
       deleteMaintenance: false,
       dispatchStockHardBlock: false,
       dispatchStockRequireScan: false,
+      dispatchCargo: true,
+      dispatchPassenger: false,
+      dispatchSales: false,
     },
     actions: {
       ackException: false,

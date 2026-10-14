@@ -37,6 +37,9 @@ export const FEATURE_LABELS: Record<string, string> = {
   deleteMaintenance: "Delete maintenance jobs (manager)",
   dispatchStockHardBlock: "Dispatch: hard-block when depot stock is short",
   dispatchStockRequireScan: "Dispatch: require cargo scan to move stock",
+  dispatchCargo: "Dispatch: cargo / goods profile",
+  dispatchPassenger: "Dispatch: passenger profile",
+  dispatchSales: "Dispatch: sales visit profile",
 };
 
 export function defaultEntitlements(): Entitlements {
@@ -63,6 +66,9 @@ export function defaultEntitlements(): Entitlements {
       deleteMaintenance: false,
       dispatchStockHardBlock: false,
       dispatchStockRequireScan: false,
+      dispatchCargo: true,
+      dispatchPassenger: false,
+      dispatchSales: false,
     },
     actions: {
       ackException: false,
@@ -108,4 +114,32 @@ export function moduleKeyForView(view: string): string {
     return "dispatch";
   }
   return view;
+}
+
+export type DispatchProfiles = {
+  cargo: boolean;
+  passenger: boolean;
+  sales: boolean;
+};
+
+/** Cargo default on; passenger/sales opt-in. */
+export function dispatchProfiles(ent: Entitlements): DispatchProfiles {
+  return {
+    cargo: ent.features.dispatchCargo !== false,
+    passenger: ent.features.dispatchPassenger === true,
+    sales: ent.features.dispatchSales === true,
+  };
+}
+
+export type DispatchDeskMode = "cargo" | "passenger";
+
+export function resolveDispatchDeskMode(
+  profiles: DispatchProfiles,
+  requested?: string | null,
+): DispatchDeskMode {
+  const req = String(requested || "").toLowerCase();
+  if (req === "passenger" && profiles.passenger) return "passenger";
+  if (req === "cargo" && profiles.cargo) return "cargo";
+  if (profiles.passenger && !profiles.cargo) return "passenger";
+  return "cargo";
 }

@@ -50,6 +50,7 @@ import {
   replaceOrderLines,
 } from "./dispatch-goods.mjs";
 import { applyFieldStopStock, returnTruckStockToDepot } from "./dispatch-stock.mjs";
+import { refreshJobFareActual } from "./dispatch-fare.mjs";
 import { refreshJobOpexActual } from "./dispatch-opex.mjs";
 
 const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
@@ -907,6 +908,7 @@ export async function handleFieldRequest(req, res) {
           "status" in body && String(body.status || "").toLowerCase() === "done";
         if (becameDone) {
           await refreshJobOpexActual(user.tenantId, existing.id).catch(() => null);
+          await refreshJobFareActual(user.tenantId, existing.id).catch(() => null);
         }
         const row = await loadAssignedDispatchJob(user.tenantId, existing.id, user.id);
         json(res, 200, { job: await fieldJobWithLines(user.tenantId, row, todayServiceDate()) });

@@ -72,12 +72,20 @@ import {
   returnTruckStockToDepot,
 } from "./dispatch-stock.mjs";
 import {
-  contributionMargin,
   listCostRates,
   refreshJobOpexActual,
   refreshJobOpexEstimate,
   upsertCostRates,
 } from "./dispatch-opex.mjs";
+import {
+  listFareRates,
+  passengerCapsToCargo,
+  passengerDemandToCargo,
+  refreshJobFareActual,
+  refreshJobFareEstimate,
+  upsertFareRates,
+} from "./dispatch-fare.mjs";
+import { parseDispatchProfiles } from "./dispatch-profiles.mjs";
 import { normalizeZoneKey } from "./dispatch-zone.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
@@ -526,11 +534,34 @@ function publicStop(row, jobServiceDate = "") {
   };
 }
 
+function intOrNull(v) {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+}
+
 function capacityFrom(row, stops) {
+  const seatCapacity =
+    row.seat_capacity != null && Number.isFinite(Number(row.seat_capacity))
+      ? Math.max(1, Math.floor(Number(row.seat_capacity)))
+      : null;
+  const luggageCapacityKg =
+    row.luggage_capacity_kg != null && Number.isFinite(Number(row.luggage_capacity_kg))
+      ? Math.max(0, Number(row.luggage_capacity_kg))
+      : null;
   const volumeCapacityM3 =
-    row.volume_capacity_m3 == null ? 12 : Number(row.volume_capacity_m3) || 12;
+    seatCapacity != null
+      ? seatCapacity
+      : row.volume_capacity_m3 == null
+        ? 12
+        : Number(row.volume_capacity_m3) || 12;
   const weightCapacityKg =
-    row.weight_capacity_kg == null ? 1500 : Number(row.weight_capacity_kg) || 1500;
+    luggageCapacityKg != null
+      ? luggageCapacityKg
+      : row.weight_capacity_kg == null
+        ? 1500
+        : Number(row.weight_capacity_kg) || 1500;
   let volumeUsed = 0;
   let weightUsed = 0;
   // Pair drop legs store cargo too — count pickup (or drop-only) once.
@@ -551,9 +582,40 @@ function capacityFrom(row, stops) {
   return {
     volumeCapacityM3,
     weightCapacityKg,
+    seatCapacity,
+    luggageCapacityKg,
+    seatsUsed: seatCapacity != null ? Math.round(volumeUsed) : null,
+    luggageUsedKg: luggageCapacityKg != null ? Math.round(weightUsed * 10) / 10 : null,
     volumeUsed: Math.round(volumeUsed * 1000) / 1000,
     weightUsed: Math.round(weightUsed * 10) / 10,
     utilizationPct,
+  };
+}
+
+/** When passenger fields are present, mirror onto volume/weight for CVRP. */
+function orderCargoFromBody(body) {
+  const hasPax =
+    body.passengerCount != null ||
+    body.passenger_count != null ||
+    body.luggageKg != null ||
+    body.luggage_kg != null;
+  if (hasPax || String(body.profile || "").toLowerCase() === "passenger") {
+    const mapped = passengerDemandToCargo({
+      passengerCount: body.passengerCount ?? body.passenger_count,
+      luggageKg: body.luggageKg ?? body.luggage_kg,
+    });
+    return {
+      volumeM3: mapped.volumeM3,
+      weightKg: mapped.weightKg,
+      passengerCount: mapped.passengerCount,
+      luggageKg: mapped.luggageKg,
+    };
+  }
+  return {
+    volumeM3: numOrNull(body.volumeM3),
+    weightKg: numOrNull(body.weightKg),
+    passengerCount: intOrNull(body.passengerCount ?? body.passenger_count),
+    luggageKg: numOrNull(body.luggageKg ?? body.luggage_kg),
   };
 }
 
@@ -606,6 +668,8 @@ function publicJob(row, stops = []) {
     opexEstimate: row.opex_estimate == null ? null : Number(row.opex_estimate),
     opexActual: row.opex_actual == null ? null : Number(row.opex_actual),
     opexDepotId: row.opex_depot_id || null,
+    fareEstimate: row.fare_estimate == null ? null : Number(row.fare_estimate),
+    fareActual: row.fare_actual == null ? null : Number(row.fare_actual),
     ...cap,
     stops: stops.map((s) => publicStop(s, serviceDate)),
   };
@@ -643,6 +707,8 @@ function publicOrder(row) {
     zone: row.zone || "",
     volumeM3: row.volume_m3 == null ? null : Number(row.volume_m3),
     weightKg: row.weight_kg == null ? null : Number(row.weight_kg),
+    passengerCount: row.passenger_count == null ? null : Number(row.passenger_count),
+    luggageKg: row.luggage_kg == null ? null : Number(row.luggage_kg),
     goodsSubtotal: row.goods_subtotal == null ? null : Number(row.goods_subtotal),
     goodsCostSubtotal: row.goods_cost_subtotal == null ? null : Number(row.goods_cost_subtotal),
     windowStart: row.window_start || "",
@@ -1336,6 +1402,20 @@ export async function handleDispatchRequest(req, res) {
       return true;
     }
 
+    if (url.pathname === "/api/dispatch/fare-rates" && req.method === "GET") {
+      json(res, 200, {
+        rates: await listFareRates(dbTenant.id),
+        profiles: parseDispatchProfiles(dbTenant.entitlements),
+      });
+      return true;
+    }
+    if (url.pathname === "/api/dispatch/fare-rates" && (req.method === "PUT" || req.method === "POST")) {
+      const body = await readJson(req);
+      const rate = await upsertFareRates(dbTenant.id, body);
+      json(res, 200, { rate, rates: await listFareRates(dbTenant.id) });
+      return true;
+    }
+
     if (url.pathname === "/api/dispatch/scan" && req.method === "POST") {
       const body = await readJson(req);
       json(res, 200, await lookupCatalogScan(dbTenant.id, { ...body, context: body.context || "dispatch_cargo" }));
@@ -1482,7 +1562,8 @@ export async function handleDispatchRequest(req, res) {
     // —— Vehicle capacity presets (keyed by Armada user id) ——
     if (url.pathname === "/api/dispatch/vehicle-capacities" && req.method === "GET") {
       const rows = await dbQuery(
-        `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, plate_parity, updated_at
+        `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, seat_capacity, luggage_capacity_kg,
+                label, depot_id, plate_parity, updated_at
          FROM vehicle_capacities
          WHERE tenant_id = $1
          ORDER BY armada_user_id ASC
@@ -1494,6 +1575,9 @@ export async function handleDispatchRequest(req, res) {
           armadaUserId: Number(r.armada_user_id),
           volumeCapacityM3: Number(r.volume_capacity_m3) || 12,
           weightCapacityKg: Number(r.weight_capacity_kg) || 1500,
+          seatCapacity: r.seat_capacity == null ? null : Number(r.seat_capacity),
+          luggageCapacityKg:
+            r.luggage_capacity_kg == null ? null : Number(r.luggage_capacity_kg),
           label: r.label || "",
           depotId: r.depot_id || null,
           plateParity: normalizePlateParity(r.plate_parity || "unknown"),
@@ -1511,10 +1595,28 @@ export async function handleDispatchRequest(req, res) {
         return true;
       }
       const body = await readJson(req);
-      const vol = numOrNull(body.volumeCapacityM3);
-      const wt = numOrNull(body.weightCapacityKg);
+      const hasSeats =
+        body.seatCapacity != null ||
+        body.seat_capacity != null ||
+        body.luggageCapacityKg != null ||
+        body.luggage_capacity_kg != null;
+      let vol = numOrNull(body.volumeCapacityM3);
+      let wt = numOrNull(body.weightCapacityKg);
+      let seatCapacity = intOrNull(body.seatCapacity ?? body.seat_capacity);
+      let luggageCapacityKg = numOrNull(body.luggageCapacityKg ?? body.luggage_capacity_kg);
+      if (hasSeats) {
+        const mapped = passengerCapsToCargo({ seatCapacity, luggageCapacityKg });
+        seatCapacity = mapped.seatCapacity;
+        luggageCapacityKg = mapped.luggageCapacityKg;
+        if (mapped.volumeCapacityM3 != null) vol = mapped.volumeCapacityM3;
+        if (mapped.weightCapacityKg != null) wt = mapped.weightCapacityKg;
+      }
       if (vol == null || vol <= 0 || wt == null || wt <= 0) {
-        json(res, 400, { error: "volumeCapacityM3 and weightCapacityKg must be > 0" });
+        json(res, 400, {
+          error: hasSeats
+            ? "seatCapacity and luggageCapacityKg must be > 0"
+            : "volumeCapacityM3 and weightCapacityKg must be > 0",
+        });
         return true;
       }
       const label = String(body.label || "").trim().slice(0, 200) || null;
@@ -1540,21 +1642,27 @@ export async function handleDispatchRequest(req, res) {
         : null;
       const upserted = await dbQuery(
         `INSERT INTO vehicle_capacities (
-           tenant_id, armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, plate_parity, updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+           tenant_id, armada_user_id, volume_capacity_m3, weight_capacity_kg,
+           seat_capacity, luggage_capacity_kg, label, depot_id, plate_parity, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
          ON CONFLICT (tenant_id, armada_user_id) DO UPDATE SET
            volume_capacity_m3 = EXCLUDED.volume_capacity_m3,
            weight_capacity_kg = EXCLUDED.weight_capacity_kg,
+           seat_capacity = EXCLUDED.seat_capacity,
+           luggage_capacity_kg = EXCLUDED.luggage_capacity_kg,
            label = COALESCE(EXCLUDED.label, vehicle_capacities.label),
-           depot_id = CASE WHEN $8 THEN EXCLUDED.depot_id ELSE vehicle_capacities.depot_id END,
-           plate_parity = CASE WHEN $9 THEN EXCLUDED.plate_parity ELSE vehicle_capacities.plate_parity END,
+           depot_id = CASE WHEN $10 THEN EXCLUDED.depot_id ELSE vehicle_capacities.depot_id END,
+           plate_parity = CASE WHEN $11 THEN EXCLUDED.plate_parity ELSE vehicle_capacities.plate_parity END,
            updated_at = now()
-         RETURNING armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, plate_parity, updated_at`,
+         RETURNING armada_user_id, volume_capacity_m3, weight_capacity_kg, seat_capacity,
+                   luggage_capacity_kg, label, depot_id, plate_parity, updated_at`,
         [
           dbTenant.id,
           armadaUserId,
           vol,
           wt,
+          seatCapacity,
+          luggageCapacityKg,
           label,
           depotId,
           plateParity === "unknown" ? null : plateParity,
@@ -1568,6 +1676,9 @@ export async function handleDispatchRequest(req, res) {
           armadaUserId: Number(r.armada_user_id),
           volumeCapacityM3: Number(r.volume_capacity_m3) || 12,
           weightCapacityKg: Number(r.weight_capacity_kg) || 1500,
+          seatCapacity: r.seat_capacity == null ? null : Number(r.seat_capacity),
+          luggageCapacityKg:
+            r.luggage_capacity_kg == null ? null : Number(r.luggage_capacity_kg),
           label: r.label || "",
           depotId: r.depot_id || null,
           plateParity: normalizePlateParity(r.plate_parity || "unknown"),
@@ -2133,14 +2244,16 @@ export async function handleDispatchRequest(req, res) {
           return true;
         }
       }
+      const cargo = orderCargoFromBody(body);
       const inserted = await dbQuery(
         `INSERT INTO dispatch_orders (
            tenant_id, external_ref, customer_name, address, lat, lon, zone,
-           volume_m3, weight_kg, window_start, window_end, notes, service_date, service_minutes, proof_required,
+           volume_m3, weight_kg, passenger_count, luggage_kg,
+           window_start, window_end, notes, service_date, service_minutes, proof_required,
            kind, pickup_address, pickup_lat, pickup_lon, pickup_zone,
            pickup_window_start, pickup_window_end, pickup_service_minutes, pickup_proof_required,
            cargo_totals_locked
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
          RETURNING *`,
         [
           dbTenant.id,
@@ -2150,8 +2263,10 @@ export async function handleDispatchRequest(req, res) {
           lat,
           lon,
           String(body.zone || "").trim().slice(0, 80) || null,
-          numOrNull(body.volumeM3),
-          numOrNull(body.weightKg),
+          cargo.volumeM3,
+          cargo.weightKg,
+          cargo.passengerCount,
+          cargo.luggageKg,
           normalizeWindowClock(body.windowStart),
           normalizeWindowClock(body.windowEnd),
           String(body.notes || "").trim().slice(0, 2000) || null,
@@ -2486,13 +2601,31 @@ export async function handleDispatchRequest(req, res) {
         params.push(numOrNull(body.lon ?? body.lng));
         sets.push(`lon = $${params.length}`);
       }
-      if ("volumeM3" in body) {
-        params.push(numOrNull(body.volumeM3));
+      if (
+        "passengerCount" in body ||
+        "passenger_count" in body ||
+        "luggageKg" in body ||
+        "luggage_kg" in body ||
+        String(body.profile || "").toLowerCase() === "passenger"
+      ) {
+        const cargo = orderCargoFromBody(body);
+        params.push(cargo.volumeM3);
         sets.push(`volume_m3 = $${params.length}`);
-      }
-      if ("weightKg" in body) {
-        params.push(numOrNull(body.weightKg));
+        params.push(cargo.weightKg);
         sets.push(`weight_kg = $${params.length}`);
+        params.push(cargo.passengerCount);
+        sets.push(`passenger_count = $${params.length}`);
+        params.push(cargo.luggageKg);
+        sets.push(`luggage_kg = $${params.length}`);
+      } else {
+        if ("volumeM3" in body) {
+          params.push(numOrNull(body.volumeM3));
+          sets.push(`volume_m3 = $${params.length}`);
+        }
+        if ("weightKg" in body) {
+          params.push(numOrNull(body.weightKg));
+          sets.push(`weight_kg = $${params.length}`);
+        }
       }
       if ("serviceMinutes" in body) {
         params.push(serviceMinutesOrNull(body.serviceMinutes));
@@ -2906,9 +3039,25 @@ export async function handleDispatchRequest(req, res) {
       if (assigneeId && status === "draft") status = "assigned";
       let volCap = numOrNull(body.volumeCapacityM3);
       let wtCap = numOrNull(body.weightCapacityKg);
-      if ((volCap == null || wtCap == null) && armadaUserId != null) {
+      let seatCap = intOrNull(body.seatCapacity ?? body.seat_capacity);
+      let luggageCap = numOrNull(body.luggageCapacityKg ?? body.luggage_capacity_kg);
+      if (
+        seatCap != null ||
+        luggageCap != null ||
+        String(body.profile || "").toLowerCase() === "passenger"
+      ) {
+        const mapped = passengerCapsToCargo({
+          seatCapacity: seatCap,
+          luggageCapacityKg: luggageCap,
+        });
+        seatCap = mapped.seatCapacity;
+        luggageCap = mapped.luggageCapacityKg;
+        if (mapped.volumeCapacityM3 != null) volCap = mapped.volumeCapacityM3;
+        if (mapped.weightCapacityKg != null) wtCap = mapped.weightCapacityKg;
+      }
+      if ((volCap == null || wtCap == null || seatCap == null || luggageCap == null) && armadaUserId != null) {
         const preset = await dbQuery(
-          `SELECT volume_capacity_m3, weight_capacity_kg
+          `SELECT volume_capacity_m3, weight_capacity_kg, seat_capacity, luggage_capacity_kg
            FROM vehicle_capacities
            WHERE tenant_id = $1 AND armada_user_id = $2`,
           [dbTenant.id, armadaUserId],
@@ -2917,6 +3066,10 @@ export async function handleDispatchRequest(req, res) {
         if (p) {
           if (volCap == null) volCap = Number(p.volume_capacity_m3);
           if (wtCap == null) wtCap = Number(p.weight_capacity_kg);
+          if (seatCap == null && p.seat_capacity != null) seatCap = Number(p.seat_capacity);
+          if (luggageCap == null && p.luggage_capacity_kg != null) {
+            luggageCap = Number(p.luggage_capacity_kg);
+          }
         }
       }
       const serviceDate = parseServiceDate(body.serviceDate) || todayYmd();
@@ -2926,11 +3079,11 @@ export async function handleDispatchRequest(req, res) {
            tenant_id, status, title, notes,
            armada_user_id, armada_username, user_display_name,
            assigned_field_user_id, assigned_at,
-           volume_capacity_m3, weight_capacity_kg, service_date
+           volume_capacity_m3, weight_capacity_kg, seat_capacity, luggage_capacity_kg, service_date
          ) VALUES (
            $1,$2,$3,$4,$5,$6,$7,$8,
            CASE WHEN $8::uuid IS NULL THEN NULL ELSE now() END,
-           COALESCE($9, 12), COALESCE($10, 1500), $11
+           COALESCE($9, 12), COALESCE($10, 1500), $11, $12, $13
          )
          RETURNING id`,
         [
@@ -2944,6 +3097,8 @@ export async function handleDispatchRequest(req, res) {
           assigneeId,
           volCap,
           wtCap,
+          seatCap,
+          luggageCap,
           serviceDate,
         ],
       );
@@ -3234,6 +3389,9 @@ export async function handleDispatchRequest(req, res) {
         durationSec: route.durationSec,
         stopCount: orderedStops.length,
       }).catch(() => null);
+      await refreshJobFareEstimate(dbTenant.id, job.id, {
+        distanceKm: route.distanceKm,
+      }).catch(() => null);
       const row = await loadJob(dbTenant.id, job.id);
       json(res, 200, {
         job: await publicJobWithLines(dbTenant.id, row, orderedStops),
@@ -3370,13 +3528,34 @@ export async function handleDispatchRequest(req, res) {
         params.push(String(body.fieldNote || "").trim().slice(0, 2000) || null);
         sets.push(`field_note = $${params.length}`);
       }
-      if ("volumeCapacityM3" in body) {
-        params.push(numOrNull(body.volumeCapacityM3) ?? 12);
+      if (
+        "seatCapacity" in body ||
+        "seat_capacity" in body ||
+        "luggageCapacityKg" in body ||
+        "luggage_capacity_kg" in body ||
+        String(body.profile || "").toLowerCase() === "passenger"
+      ) {
+        const mapped = passengerCapsToCargo({
+          seatCapacity: body.seatCapacity ?? body.seat_capacity,
+          luggageCapacityKg: body.luggageCapacityKg ?? body.luggage_capacity_kg,
+        });
+        params.push(mapped.volumeCapacityM3 ?? numOrNull(body.volumeCapacityM3) ?? 12);
         sets.push(`volume_capacity_m3 = $${params.length}`);
-      }
-      if ("weightCapacityKg" in body) {
-        params.push(numOrNull(body.weightCapacityKg) ?? 1500);
+        params.push(mapped.weightCapacityKg ?? numOrNull(body.weightCapacityKg) ?? 1500);
         sets.push(`weight_capacity_kg = $${params.length}`);
+        params.push(mapped.seatCapacity);
+        sets.push(`seat_capacity = $${params.length}`);
+        params.push(mapped.luggageCapacityKg);
+        sets.push(`luggage_capacity_kg = $${params.length}`);
+      } else {
+        if ("volumeCapacityM3" in body) {
+          params.push(numOrNull(body.volumeCapacityM3) ?? 12);
+          sets.push(`volume_capacity_m3 = $${params.length}`);
+        }
+        if ("weightCapacityKg" in body) {
+          params.push(numOrNull(body.weightCapacityKg) ?? 1500);
+          sets.push(`weight_capacity_kg = $${params.length}`);
+        }
       }
       if ("serviceDate" in body) {
         const sd = parseServiceDate(body.serviceDate);
@@ -3407,6 +3586,7 @@ export async function handleDispatchRequest(req, res) {
         existing.status !== "done";
       if (becameDone) {
         await refreshJobOpexActual(dbTenant.id, existing.id).catch(() => null);
+        await refreshJobFareActual(dbTenant.id, existing.id).catch(() => null);
       }
 
       const row = await loadJob(dbTenant.id, existing.id);
@@ -4419,6 +4599,9 @@ export async function handleDispatchRequest(req, res) {
           distanceKm: routeGeom.distanceKm,
           durationSec: routeGeom.durationSec,
           stopCount: stops.length,
+        }).catch(() => null);
+        await refreshJobFareEstimate(dbTenant.id, jobId, {
+          distanceKm: routeGeom.distanceKm,
         }).catch(() => null);
         const jobRow = (await loadJob(dbTenant.id, jobId)) || row;
         applied.push({
