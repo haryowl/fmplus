@@ -19,7 +19,17 @@ export const MODULE_KEYS = [
   "routePlan",
 ];
 
-export const FEATURE_KEYS = ["excel", "pdf", "ai", "reverseGeocode", "deleteMaintenance"];
+export const FEATURE_KEYS = [
+  "excel",
+  "pdf",
+  "ai",
+  "reverseGeocode",
+  "deleteMaintenance",
+  /** When true, insufficient depot stock hard-blocks assign/plan stock checks */
+  "dispatchStockHardBlock",
+  /** When true, cargo scan is required before stock moves (Finish alone is not enough) */
+  "dispatchStockRequireScan",
+];
 
 export const ACTION_KEYS = [
   "ackException",
@@ -51,6 +61,8 @@ export function defaultEntitlements() {
       ai: true,
       reverseGeocode: true,
       deleteMaintenance: false,
+      dispatchStockHardBlock: false,
+      dispatchStockRequireScan: false,
     },
     actions: {
       ackException: false,

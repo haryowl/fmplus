@@ -69,6 +69,21 @@ export function numOrNullGoods(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Money amounts are IDR; store whole rupiah. */
+export function moneyOrNullGoods(v) {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n);
+}
+
+export function lineAmountFrom(qty, unitPrice) {
+  const q = Number(qty);
+  const p = unitPrice == null ? null : Number(unitPrice);
+  if (!Number.isFinite(q) || q <= 0 || p == null || !Number.isFinite(p)) return null;
+  return Math.round(q * p);
+}
+
 export function publicGoodsItem(row) {
   const unit = parseGoodsUnit(row.unit);
   return {
@@ -79,6 +94,8 @@ export function publicGoodsItem(row) {
     volumeM3Each: row.volume_m3_each == null ? null : Number(row.volume_m3_each),
     weightKgEach: row.weight_kg_each == null ? null : Number(row.weight_kg_each),
     unitsPerPack: parseUnitsPerPack(row.units_per_pack, unit),
+    sellPrice: row.sell_price == null ? null : Number(row.sell_price),
+    costPrice: row.cost_price == null ? null : Number(row.cost_price),
     onHand: row.on_hand_qty == null ? null : Number(row.on_hand_qty),
     reservedQty: Number(row.reserved_qty) || 0,
     enabled: row.enabled !== false,
@@ -88,15 +105,23 @@ export function publicGoodsItem(row) {
 }
 
 export function publicOrderLine(row) {
+  const qty = Number(row.qty) || 0;
+  const unitPrice = row.unit_price == null ? null : Number(row.unit_price);
+  const costPrice = row.cost_price == null ? null : Number(row.cost_price);
+  const lineAmount =
+    row.line_amount == null ? lineAmountFrom(qty, unitPrice) : Number(row.line_amount);
   return {
     id: row.id,
     orderId: row.order_id,
     catalogItemId: row.catalog_item_id || null,
     name: row.name || "",
-    qty: Number(row.qty) || 0,
+    qty,
     unit: parseGoodsUnit(row.unit),
     volumeM3Each: row.volume_m3_each == null ? null : Number(row.volume_m3_each),
     weightKgEach: row.weight_kg_each == null ? null : Number(row.weight_kg_each),
+    unitPrice,
+    costPrice,
+    lineAmount,
     sortOrder: Number(row.sort_order) || 0,
     scannedCode: row.scanned_code || "",
     serial: row.serial || "",
@@ -126,6 +151,33 @@ export function sumCargoTotals(lines) {
   return {
     volumeM3: anyVol ? Math.round(volumeM3 * 1000) / 1000 : null,
     weightKg: anyWt ? Math.round(weightKg * 10) / 10 : null,
+  };
+}
+
+/** Goods sell/cost rollups for an order (IDR). */
+export function sumMoneyTotals(lines) {
+  let sell = 0;
+  let cost = 0;
+  let anySell = false;
+  let anyCost = false;
+  for (const line of lines || []) {
+    const qty = Math.max(0, Number(line.qty) || 0);
+    const unitPrice = line.unitPrice ?? line.unit_price;
+    const costPrice = line.costPrice ?? line.cost_price;
+    const lineAmount =
+      line.lineAmount ?? line.line_amount ?? lineAmountFrom(qty, unitPrice);
+    if (lineAmount != null && Number.isFinite(Number(lineAmount))) {
+      sell += Number(lineAmount);
+      anySell = true;
+    }
+    if (costPrice != null && Number.isFinite(Number(costPrice))) {
+      cost += qty * Number(costPrice);
+      anyCost = true;
+    }
+  }
+  return {
+    goodsSubtotal: anySell ? Math.round(sell) : null,
+    goodsCostSubtotal: anyCost ? Math.round(cost) : null,
   };
 }
 
@@ -252,6 +304,18 @@ export async function importGoodsItemsFromRows(tenantId, rawRows) {
       );
     }
     if (
+      Object.prototype.hasOwnProperty.call(row, "sell_price") ||
+      Object.prototype.hasOwnProperty.call(row, "sellPrice")
+    ) {
+      body.sellPrice = moneyOrNullGoods(row.sell_price ?? row.sellPrice);
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(row, "cost_price") ||
+      Object.prototype.hasOwnProperty.call(row, "costPrice")
+    ) {
+      body.costPrice = moneyOrNullGoods(row.cost_price ?? row.costPrice);
+    }
+    if (
       Object.prototype.hasOwnProperty.call(row, "on_hand") ||
       Object.prototype.hasOwnProperty.call(row, "onHand") ||
       Object.prototype.hasOwnProperty.call(row, "on_hand_qty")
@@ -322,11 +386,14 @@ export async function createGoodsItem(tenantId, body) {
     body.unitsPerPack ?? body.units_per_pack,
     unit,
   );
+  const sellPrice = moneyOrNullGoods(body.sellPrice ?? body.sell_price);
+  const costPrice = moneyOrNullGoods(body.costPrice ?? body.cost_price);
   const inserted = await dbQuery(
     `INSERT INTO dispatch_goods_items (
        tenant_id, name, sku, unit, volume_m3_each, weight_kg_each, units_per_pack,
+       sell_price, cost_price,
        on_hand_qty, reserved_qty, enabled, sort_order
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      RETURNING *`,
     [
       tenantId,
@@ -336,6 +403,8 @@ export async function createGoodsItem(tenantId, body) {
       numOrNullGoods(body.volumeM3Each ?? body.volume_m3_each),
       numOrNullGoods(body.weightKgEach ?? body.weight_kg_each),
       unitsPerPack,
+      sellPrice,
+      costPrice,
       numOrNullGoods(body.onHand ?? body.on_hand ?? body.on_hand_qty),
       numOrNullGoods(body.reservedQty ?? body.reserved_qty) ?? 0,
       body.enabled === false ? false : true,
@@ -344,6 +413,32 @@ export async function createGoodsItem(tenantId, body) {
   );
   const item = inserted.rows[0];
   await syncPrimarySku(tenantId, "goods", item.id, sku);
+  const initialOnHand = numOrNullGoods(body.onHand ?? body.on_hand ?? body.on_hand_qty);
+  if (initialOnHand != null && initialOnHand > 0) {
+    try {
+      const { adjustDepotStock } = await import("./dispatch-stock.mjs");
+      const def = await dbQuery(
+        `SELECT id FROM dispatch_depots
+         WHERE tenant_id = $1
+         ORDER BY is_default DESC, lower(name) ASC
+         LIMIT 1`,
+        [tenantId],
+      );
+      if (def.rows[0]?.id) {
+        await adjustDepotStock(tenantId, {
+          catalogItemId: item.id,
+          depotId: def.rows[0].id,
+          setOnHand: initialOnHand,
+          kind: "receive",
+          note: "Initial on-hand",
+        });
+        const fresh = await dbQuery(`SELECT * FROM dispatch_goods_items WHERE id = $1`, [item.id]);
+        return publicGoodsItem(fresh.rows[0] || item);
+      }
+    } catch {
+      /* stock tables may not exist mid-migrate */
+    }
+  }
   return publicGoodsItem(item);
 }
 
@@ -384,6 +479,14 @@ export async function updateGoodsItem(tenantId, itemId, body) {
       unit,
     );
   }
+  let sellPrice = row.sell_price;
+  if (body.sellPrice !== undefined || body.sell_price !== undefined) {
+    sellPrice = moneyOrNullGoods(body.sellPrice ?? body.sell_price);
+  }
+  let costPrice = row.cost_price;
+  if (body.costPrice !== undefined || body.cost_price !== undefined) {
+    costPrice = moneyOrNullGoods(body.costPrice ?? body.cost_price);
+  }
   const enabled = body.enabled !== undefined ? Boolean(body.enabled) : row.enabled !== false;
   const sortOrder =
     body.sortOrder !== undefined && Number.isFinite(Number(body.sortOrder))
@@ -400,8 +503,9 @@ export async function updateGoodsItem(tenantId, itemId, body) {
   const updated = await dbQuery(
     `UPDATE dispatch_goods_items
      SET name = $3, sku = $4, unit = $5, volume_m3_each = $6, weight_kg_each = $7,
-         units_per_pack = $8, on_hand_qty = $9, reserved_qty = $10, enabled = $11,
-         sort_order = $12, updated_at = now()
+         units_per_pack = $8, sell_price = $9, cost_price = $10,
+         on_hand_qty = $11, reserved_qty = $12, enabled = $13,
+         sort_order = $14, updated_at = now()
      WHERE id = $1 AND tenant_id = $2
      RETURNING *`,
     [
@@ -413,6 +517,8 @@ export async function updateGoodsItem(tenantId, itemId, body) {
       volume,
       weight,
       unitsPerPack,
+      sellPrice,
+      costPrice,
       onHand,
       reservedQty || 0,
       enabled,
@@ -421,6 +527,31 @@ export async function updateGoodsItem(tenantId, itemId, body) {
   );
   if (body.sku !== undefined) {
     await syncPrimarySku(tenantId, "goods", itemId, sku);
+  }
+  if (body.onHand !== undefined || body.on_hand !== undefined || body.on_hand_qty !== undefined) {
+    try {
+      const { adjustDepotStock } = await import("./dispatch-stock.mjs");
+      const def = await dbQuery(
+        `SELECT id FROM dispatch_depots
+         WHERE tenant_id = $1
+         ORDER BY is_default DESC, lower(name) ASC
+         LIMIT 1`,
+        [tenantId],
+      );
+      if (def.rows[0]?.id) {
+        await adjustDepotStock(tenantId, {
+          catalogItemId: itemId,
+          depotId: def.rows[0].id,
+          setOnHand: onHand ?? 0,
+          kind: "adjust",
+          note: "Catalog on-hand sync",
+        });
+        const fresh = await dbQuery(`SELECT * FROM dispatch_goods_items WHERE id = $1`, [itemId]);
+        return publicGoodsItem(fresh.rows[0] || updated.rows[0]);
+      }
+    } catch {
+      /* stock tables may not exist mid-migrate */
+    }
   }
   return publicGoodsItem(updated.rows[0]);
 }
@@ -509,6 +640,9 @@ async function resolveLineSnapshots(tenantId, rawLines) {
     const name = String(raw.name || item?.name || "").trim().slice(0, 200);
     const qty = Number(raw.qty);
     if (!name || !Number.isFinite(qty) || qty <= 0) continue;
+    // Locked: no client unit-price override — always catalog sell/cost when linked.
+    const unitPrice = item ? moneyOrNullGoods(item.sell_price) : null;
+    const costPrice = item ? moneyOrNullGoods(item.cost_price) : null;
     out.push({
       catalogItemId: item ? item.id : null,
       name,
@@ -526,6 +660,9 @@ async function resolveLineSnapshots(tenantId, rawLines) {
           : item
             ? numOrNullGoods(item.weight_kg_each)
             : null,
+      unitPrice,
+      costPrice,
+      lineAmount: lineAmountFrom(qty, unitPrice),
       sortOrder: i,
       scannedCode: String(raw.scannedCode || raw.scanned_code || "").trim().slice(0, 120) || null,
       serial: String(raw.serial || "").trim().slice(0, 80) || null,
@@ -534,6 +671,17 @@ async function resolveLineSnapshots(tenantId, rawLines) {
     });
   }
   return out;
+}
+
+async function applyGoodsMoneyTotals(tenantId, orderId, lines) {
+  const money = sumMoneyTotals(lines);
+  await dbQuery(
+    `UPDATE dispatch_orders
+     SET goods_subtotal = $3, goods_cost_subtotal = $4, updated_at = now()
+     WHERE id = $1 AND tenant_id = $2`,
+    [orderId, tenantId, money.goodsSubtotal, money.goodsCostSubtotal],
+  );
+  return money;
 }
 
 export async function replaceOrderLines(tenantId, orderId, rawLines) {
@@ -547,9 +695,9 @@ export async function replaceOrderLines(tenantId, orderId, rawLines) {
     const inserted = await dbQuery(
       `INSERT INTO dispatch_order_lines (
          tenant_id, order_id, catalog_item_id, name, qty, unit,
-         volume_m3_each, weight_kg_each, sort_order,
+         volume_m3_each, weight_kg_each, unit_price, cost_price, line_amount, sort_order,
          scanned_code, serial, lot, scanned_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        RETURNING *`,
       [
         tenantId,
@@ -560,6 +708,9 @@ export async function replaceOrderLines(tenantId, orderId, rawLines) {
         line.unit,
         line.volumeM3Each,
         line.weightKgEach,
+        line.unitPrice,
+        line.costPrice,
+        line.lineAmount,
         line.sortOrder,
         line.scannedCode,
         line.serial,
@@ -569,6 +720,7 @@ export async function replaceOrderLines(tenantId, orderId, rawLines) {
     );
     saved.push(publicOrderLine(inserted.rows[0]));
   }
+  await applyGoodsMoneyTotals(tenantId, orderId, saved);
   return saved;
 }
 

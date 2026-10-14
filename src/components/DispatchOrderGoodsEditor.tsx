@@ -11,10 +11,14 @@ import {
   lookupCatalogScan,
 } from "../lib/catalogScan";
 import type { CatalogScanResult } from "../lib/catalogScan";
+import { formatIdr } from "../lib/format";
 import {
   DISPATCH_GOODS_UNITS,
   formatGoodsPackHint,
+  lineAmountIdr,
+  pricedOrderLineFromCatalog,
   sumOrderCargoTotals,
+  sumOrderMoneyTotals,
   type DispatchGoodsItem,
   type DispatchGoodsUnit,
   type DispatchOrderLine,
@@ -88,9 +92,19 @@ export function DispatchOrderGoodsEditor({
     );
   }, [enabled, query]);
   const totals = sumOrderCargoTotals(lines);
+  const money = sumOrderMoneyTotals(lines);
 
   function patchLine(index: number, patch: Partial<DispatchOrderLine>) {
-    onChange(lines.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+    onChange(
+      lines.map((line, i) => {
+        if (i !== index) return line;
+        const next = { ...line, ...patch };
+        if (patch.qty !== undefined) {
+          next.lineAmount = lineAmountIdr(next.qty, next.unitPrice);
+        }
+        return next;
+      }),
+    );
   }
 
   function applyHit(item: DispatchGoodsItem, scannedCode: string, extra?: { serial?: string; lot?: string; codeFormat?: string }) {
@@ -138,6 +152,7 @@ export function DispatchOrderGoodsEditor({
         unit: item.unit,
         volumeM3Each: item.volumeM3Each,
         weightKgEach: item.weightKgEach,
+        ...pricedOrderLineFromCatalog(item, 1),
       },
     ]);
     setQuery("");
@@ -221,6 +236,7 @@ export function DispatchOrderGoodsEditor({
                     {formatGoodsPackHint(item.unit, item.unitsPerPack)
                       ? ` · ${formatGoodsPackHint(item.unit, item.unitsPerPack)}`
                       : ""}
+                    {item.sellPrice != null ? ` · ${formatIdr(item.sellPrice)}` : ""}
                     {item.volumeM3Each != null ? ` · ${item.volumeM3Each} m³/unit` : ""}
                     {item.weightKgEach != null ? ` · ${item.weightKgEach} kg/unit` : ""}
                     {formatOnHand(item) ? ` · ${formatOnHand(item)}` : ""}
@@ -279,6 +295,11 @@ export function DispatchOrderGoodsEditor({
                 onChange={(e) => patchLine(i, { qty: Number(e.target.value) || 0 })}
                 size={1}
               />
+              <span className="dispatch-goods-catalog-meta" title="Unit price (catalog snapshot)">
+                {line.unitPrice != null
+                  ? `${formatIdr(line.unitPrice)}${line.lineAmount != null ? ` · ${formatIdr(line.lineAmount)}` : ""}`
+                  : "—"}
+              </span>
               <select
                 aria-label="Unit (qty)"
                 title="Unit (qty)"
@@ -358,6 +379,9 @@ export function DispatchOrderGoodsEditor({
         <p className="dispatch-goods-totals">
           Goods sum {totals.volumeM3 != null ? `${totals.volumeM3} m³` : "— m³"} ·{" "}
           {totals.weightKg != null ? `${totals.weightKg} kg` : "— kg"}
+          {money.goodsSubtotal != null ? ` · Sell ${formatIdr(money.goodsSubtotal)}` : ""}
+          {money.goodsCostSubtotal != null ? ` · Cost ${formatIdr(money.goodsCostSubtotal)}` : ""}
+          {money.margin != null ? ` · Margin ${formatIdr(money.margin)}` : ""}
           {onToggleLock ? (
             <label className="dispatch-plan-check">
               <input

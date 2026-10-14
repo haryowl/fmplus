@@ -11149,6 +11149,42 @@ button.dispatch-pin-chip {
   grid-column: 1 / -1;
 }
 
+.dispatch-goods-stock {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel, #f6f7f8) 80%, transparent);
+}
+
+.dispatch-goods-stock-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.dispatch-goods-stock-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: baseline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.dispatch-goods-stock-list li strong {
+  min-width: 8rem;
+}
+
+.dispatch-goods-stock .dispatch-goods-catalog-add {
+  margin-top: 4px;
+}
+
 .dispatch-goods-suggest li button span,
 .dispatch-goods-catalog-list li span,
 .dispatch-goods-totals {

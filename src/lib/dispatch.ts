@@ -102,6 +102,10 @@ export type DispatchGoodsItem = {
   weightKgEach: number | null;
   /** Pcs contained in one catalog unit when unit is packable (box/carton/…). */
   unitsPerPack?: number | null;
+  /** IDR sell price per catalog unit. */
+  sellPrice?: number | null;
+  /** IDR cost (COGS) per catalog unit. */
+  costPrice?: number | null;
   onHand?: number | null;
   reservedQty?: number;
   enabled: boolean;
@@ -117,6 +121,11 @@ export type DispatchOrderLine = {
   unit: DispatchGoodsUnit;
   volumeM3Each?: number | null;
   weightKgEach?: number | null;
+  /** Snapshotted catalog sell (IDR); not editable on the line. */
+  unitPrice?: number | null;
+  /** Snapshotted catalog cost (IDR). */
+  costPrice?: number | null;
+  lineAmount?: number | null;
   sortOrder?: number;
   scannedCode?: string;
   serial?: string;
@@ -237,6 +246,10 @@ export type DispatchOrder = {
   zone: string;
   volumeM3: number | null;
   weightKg: number | null;
+  /** Sum of catalog-priced line amounts (IDR). */
+  goodsSubtotal?: number | null;
+  /** Sum of qty × snapshotted cost (IDR). */
+  goodsCostSubtotal?: number | null;
   windowStart: string;
   windowEnd: string;
   /** Promised / plan day YYYY-MM-DD */
@@ -259,6 +272,8 @@ export type DispatchOrder = {
   templateId?: string | null;
   /** Saved customer this order was copied from. Later customer edits do not change the order. */
   customerId?: string | null;
+  /** Explicit stock source depot (else zone map → vehicle depot → default). */
+  sourceDepotId?: string | null;
   status: DispatchOrderStatus;
   jobId: string | null;
   stopId: string | null;
@@ -995,6 +1010,54 @@ export function sumOrderCargoTotals(lines: DispatchOrderLine[] | undefined): {
   };
 }
 
+export function lineAmountIdr(qty: number, unitPrice?: number | null): number | null {
+  const q = Number(qty);
+  const p = unitPrice == null ? null : Number(unitPrice);
+  if (!Number.isFinite(q) || q <= 0 || p == null || !Number.isFinite(p)) return null;
+  return Math.round(q * p);
+}
+
+export function pricedOrderLineFromCatalog(
+  item: DispatchGoodsItem,
+  qty = 1,
+): Pick<DispatchOrderLine, "unitPrice" | "costPrice" | "lineAmount"> {
+  const unitPrice = item.sellPrice == null ? null : Number(item.sellPrice);
+  const costPrice = item.costPrice == null ? null : Number(item.costPrice);
+  return {
+    unitPrice: unitPrice != null && Number.isFinite(unitPrice) ? Math.round(unitPrice) : null,
+    costPrice: costPrice != null && Number.isFinite(costPrice) ? Math.round(costPrice) : null,
+    lineAmount: lineAmountIdr(qty, unitPrice),
+  };
+}
+
+export function sumOrderMoneyTotals(lines: DispatchOrderLine[] | undefined): {
+  goodsSubtotal: number | null;
+  goodsCostSubtotal: number | null;
+  margin: number | null;
+} {
+  let sell = 0;
+  let cost = 0;
+  let anySell = false;
+  let anyCost = false;
+  for (const line of lines || []) {
+    const qty = Math.max(0, Number(line.qty) || 0);
+    const amount = line.lineAmount ?? lineAmountIdr(qty, line.unitPrice);
+    if (amount != null) {
+      sell += amount;
+      anySell = true;
+    }
+    if (line.costPrice != null && Number.isFinite(Number(line.costPrice))) {
+      cost += qty * Number(line.costPrice);
+      anyCost = true;
+    }
+  }
+  const goodsSubtotal = anySell ? Math.round(sell) : null;
+  const goodsCostSubtotal = anyCost ? Math.round(cost) : null;
+  const margin =
+    goodsSubtotal != null && goodsCostSubtotal != null ? goodsSubtotal - goodsCostSubtotal : null;
+  return { goodsSubtotal, goodsCostSubtotal, margin };
+}
+
 export function formatCargoSummary(lines: DispatchOrderLine[] | undefined, maxItems = 3): string {
   const list = (lines || []).filter((l) => l && String(l.name || "").trim());
   if (!list.length) return "";
@@ -1007,6 +1070,43 @@ export function formatCargoSummary(lines: DispatchOrderLine[] | undefined, maxIt
   return `${parts.join(" · ")}${extra}`;
 }
 
+export type DispatchStockSettings = {
+  stockHardBlock: boolean;
+  stockRequireScan: boolean;
+};
+
+export type DispatchStockBalance = {
+  id: string;
+  catalogItemId: string;
+  depotId: string;
+  depotName: string;
+  onHand: number;
+  reservedQty: number;
+  updatedAt?: string | null;
+};
+
+export type DispatchTruckStock = {
+  id: string;
+  jobId: string;
+  catalogItemId: string;
+  jobTitle: string;
+  qty: number;
+  updatedAt?: string | null;
+};
+
+export type DispatchStockMovement = {
+  id: string;
+  catalogItemId: string;
+  depotId: string | null;
+  jobId: string | null;
+  orderId: string | null;
+  kind: string;
+  layer: string;
+  qtyDelta: number;
+  note: string;
+  createdAt: string | null;
+};
+
 export async function fetchDispatchGoods(signal?: AbortSignal): Promise<DispatchGoodsItem[]> {
   const res = await fetch("/api/dispatch/goods", {
     headers: { accept: "application/json", ...tenantHeaders() },
@@ -1017,6 +1117,75 @@ export async function fetchDispatchGoods(signal?: AbortSignal): Promise<Dispatch
   return data.items || [];
 }
 
+export async function fetchDispatchStock(opts?: {
+  itemId?: string;
+  depotId?: string;
+  signal?: AbortSignal;
+}): Promise<{
+  balances: DispatchStockBalance[];
+  truck: DispatchTruckStock[];
+  settings: DispatchStockSettings;
+}> {
+  const q = new URLSearchParams();
+  if (opts?.itemId) q.set("itemId", opts.itemId);
+  if (opts?.depotId) q.set("depotId", opts.depotId);
+  const res = await fetch(`/api/dispatch/stock${q.toString() ? `?${q}` : ""}`, {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal: opts?.signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    balances?: DispatchStockBalance[];
+    truck?: DispatchTruckStock[];
+    settings?: DispatchStockSettings;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Stock ${res.status}`);
+  return {
+    balances: data.balances || [],
+    truck: data.truck || [],
+    settings: data.settings || { stockHardBlock: false, stockRequireScan: false },
+  };
+}
+
+export async function adjustDispatchStock(body: {
+  catalogItemId: string;
+  depotId: string;
+  qtyDelta?: number;
+  setOnHand?: number;
+  kind?: "adjust" | "receive" | "write_off";
+  note?: string;
+}): Promise<{ balance: DispatchStockBalance; movement: DispatchStockMovement | null }> {
+  const res = await fetch("/api/dispatch/stock/adjust", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    balance?: DispatchStockBalance;
+    movement?: DispatchStockMovement | null;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Stock adjust ${res.status}`);
+  if (!data.balance) throw new Error("Stock adjust failed");
+  return { balance: data.balance, movement: data.movement ?? null };
+}
+
+export async function fetchDispatchStockMovements(
+  catalogItemId: string,
+  limit = 20,
+): Promise<DispatchStockMovement[]> {
+  const res = await fetch(
+    `/api/dispatch/stock/${encodeURIComponent(catalogItemId)}/movements?limit=${limit}`,
+    { headers: { accept: "application/json", ...tenantHeaders() } },
+  );
+  const data = (await res.json().catch(() => ({}))) as {
+    movements?: DispatchStockMovement[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Stock movements ${res.status}`);
+  return data.movements || [];
+}
+
 export async function createDispatchGoodsItem(body: {
   name: string;
   sku?: string;
@@ -1024,6 +1193,8 @@ export async function createDispatchGoodsItem(body: {
   volumeM3Each?: number | null;
   weightKgEach?: number | null;
   unitsPerPack?: number | null;
+  sellPrice?: number | null;
+  costPrice?: number | null;
   onHand?: number | null;
   enabled?: boolean;
 }): Promise<DispatchGoodsItem> {

@@ -1,5 +1,10 @@
 import { tenantHeaders } from "./tenant";
-import type { DispatchGoodsItem, DispatchOrderLine } from "./dispatch";
+import {
+  lineAmountIdr,
+  pricedOrderLineFromCatalog,
+  type DispatchGoodsItem,
+  type DispatchOrderLine,
+} from "./dispatch";
 import type { CatalogItem, ServiceLine } from "./maintenance";
 
 export type ScanContext = "dispatch_cargo" | "maint_part" | "vehicle" | "location" | "any";
@@ -282,11 +287,20 @@ export function applyGoodsScanResult(
     const idx = lines.findIndex((l) => l.catalogItemId === item.id);
     if (idx >= 0) {
       return {
-        lines: lines.map((line, i) =>
-          i === idx
-            ? { ...line, qty: (Number(line.qty) || 0) + 1, scannedCode, scannedAt: now }
-            : line,
-        ),
+        lines: lines.map((line, i) => {
+          if (i !== idx) return line;
+          const qty = (Number(line.qty) || 0) + 1;
+          const unitPrice = line.unitPrice ?? pricedOrderLineFromCatalog(item, qty).unitPrice;
+          return {
+            ...line,
+            qty,
+            unitPrice,
+            costPrice: line.costPrice ?? pricedOrderLineFromCatalog(item, qty).costPrice,
+            lineAmount: lineAmountIdr(qty, unitPrice),
+            scannedCode,
+            scannedAt: now,
+          };
+        }),
       };
     }
     return {
@@ -299,6 +313,7 @@ export function applyGoodsScanResult(
           unit: item.unit,
           volumeM3Each: item.volumeM3Each,
           weightKgEach: item.weightKgEach,
+          ...pricedOrderLineFromCatalog(item, 1),
           scannedCode,
           scannedAt: now,
         },
@@ -343,6 +358,7 @@ export function applyGoodsScanResult(
         unit: item.unit,
         volumeM3Each: item.volumeM3Each,
         weightKgEach: item.weightKgEach,
+        ...pricedOrderLineFromCatalog(item, 1),
         scannedCode,
         serial,
         lot: opts.lot || "",

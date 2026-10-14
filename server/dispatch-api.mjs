@@ -19,6 +19,7 @@
  * GET/PUT /api/dispatch/depot
  * GET/POST /api/dispatch/depots · PATCH/DELETE /api/dispatch/depots/:id
  * GET/PUT /api/dispatch/zone-depot-map — optional zone → depot preferences
+ * GET /api/dispatch/stock · POST /api/dispatch/stock/adjust · GET …/movements
  * POST /api/dispatch/plan-day — CVRP auto-plan (fleet + depot / multi-depot modes)
  * POST /api/dispatch/replan-remaining — mid-day recovery preview / apply
  * GET  /api/dispatch/ops-exceptions?date=
@@ -61,6 +62,14 @@ import {
   listCustomers,
   updateCustomer,
 } from "./dispatch-customers.mjs";
+import {
+  adjustDepotStock,
+  listRecentStockMovements,
+  listStockBalances,
+  listTruckStock,
+  parseStockSettings,
+  resolveSourceDepotId,
+} from "./dispatch-stock.mjs";
 import { normalizeZoneKey } from "./dispatch-zone.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
@@ -619,6 +628,8 @@ function publicOrder(row) {
     zone: row.zone || "",
     volumeM3: row.volume_m3 == null ? null : Number(row.volume_m3),
     weightKg: row.weight_kg == null ? null : Number(row.weight_kg),
+    goodsSubtotal: row.goods_subtotal == null ? null : Number(row.goods_subtotal),
+    goodsCostSubtotal: row.goods_cost_subtotal == null ? null : Number(row.goods_cost_subtotal),
     windowStart: row.window_start || "",
     windowEnd: row.window_end || "",
     serviceDate: formatServiceDate(row.service_date) || todayYmd(),
@@ -640,6 +651,7 @@ function publicOrder(row) {
     stopId: row.stop_id || null,
     notes: row.notes || "",
     cargoTotalsLocked: row.cargo_totals_locked === true,
+    sourceDepotId: row.source_depot_id || null,
     lines: [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1261,6 +1273,40 @@ export async function handleDispatchRequest(req, res) {
     if (goodsOne && req.method === "DELETE") {
       await deleteGoodsItem(dbTenant.id, goodsOne[1]);
       json(res, 200, { ok: true });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/stock" && req.method === "GET") {
+      const catalogItemId = String(url.searchParams.get("itemId") || url.searchParams.get("catalogItemId") || "").trim() || null;
+      const depotId = String(url.searchParams.get("depotId") || "").trim() || null;
+      const balances = await listStockBalances(dbTenant.id, { catalogItemId, depotId });
+      const truck = await listTruckStock(dbTenant.id, { catalogItemId });
+      const settings = parseStockSettings(dbTenant.entitlements);
+      json(res, 200, { balances, truck, settings });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/stock/adjust" && req.method === "POST") {
+      const body = await readJson(req);
+      const out = await adjustDepotStock(dbTenant.id, body);
+      json(res, 200, out);
+      return true;
+    }
+
+    const stockMoves = /^\/api\/dispatch\/stock\/([0-9a-f-]{36})\/movements$/i.exec(url.pathname);
+    if (stockMoves && req.method === "GET") {
+      const movements = await listRecentStockMovements(dbTenant.id, stockMoves[1], Number(url.searchParams.get("limit") || 20));
+      json(res, 200, { movements });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/stock/resolve-depot" && req.method === "POST") {
+      const body = await readJson(req);
+      const depotId = await resolveSourceDepotId(dbTenant.id, {
+        order: body.order || body,
+        job: body.job || null,
+      });
+      json(res, 200, { depotId, settings: parseStockSettings(dbTenant.entitlements) });
       return true;
     }
 
@@ -2114,6 +2160,23 @@ export async function handleDispatchRequest(req, res) {
           [customerId, created.id, dbTenant.id],
         );
       }
+      const sourceDepotId = /^[0-9a-f-]{36}$/i.test(String(body.sourceDepotId || ""))
+        ? String(body.sourceDepotId)
+        : null;
+      if (sourceDepotId) {
+        const depotOk = await dbQuery(
+          `SELECT id FROM dispatch_depots WHERE id = $1 AND tenant_id = $2`,
+          [sourceDepotId, dbTenant.id],
+        );
+        if (!depotOk.rows[0]) {
+          json(res, 400, { error: "Unknown sourceDepotId" });
+          return true;
+        }
+        await dbQuery(
+          `UPDATE dispatch_orders SET source_depot_id = $1 WHERE id = $2 AND tenant_id = $3`,
+          [sourceDepotId, created.id, dbTenant.id],
+        );
+      }
       const fresh = await dbQuery(`SELECT * FROM dispatch_orders WHERE id = $1`, [created.id]);
       json(res, 201, { order: await publicOrderWithLines(dbTenant.id, fresh.rows[0] || created) });
       return true;
@@ -2360,6 +2423,10 @@ export async function handleDispatchRequest(req, res) {
         notes: ["notes", (v) => String(v || "").trim().slice(0, 2000) || null],
         customerId: [
           "customer_id",
+          (v) => (/^[0-9a-f-]{36}$/i.test(String(v || "")) ? String(v) : null),
+        ],
+        sourceDepotId: [
+          "source_depot_id",
           (v) => (/^[0-9a-f-]{36}$/i.test(String(v || "")) ? String(v) : null),
         ],
         windowStart: ["window_start", (v) => normalizeWindowClock(v)],

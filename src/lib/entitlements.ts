@@ -35,6 +35,8 @@ export const FEATURE_LABELS: Record<string, string> = {
   ai: "AI analysis",
   reverseGeocode: "Reverse geocode columns",
   deleteMaintenance: "Delete maintenance jobs (manager)",
+  dispatchStockHardBlock: "Dispatch: hard-block when depot stock is short",
+  dispatchStockRequireScan: "Dispatch: require cargo scan to move stock",
 };
 
 export function defaultEntitlements(): Entitlements {
@@ -59,6 +61,8 @@ export function defaultEntitlements(): Entitlements {
       ai: true,
       reverseGeocode: true,
       deleteMaintenance: false,
+      dispatchStockHardBlock: false,
+      dispatchStockRequireScan: false,
     },
     actions: {
       ackException: false,
