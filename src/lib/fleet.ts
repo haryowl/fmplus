@@ -19,15 +19,15 @@ export const FLEET_COLORS = [
 
 const FLEET_COLORS_MONO = ["#18181b", "#3f3f46", "#52525b", "#71717a", "#a1a1aa", "#27272a", "#09090b", "#d4d4d8"];
 
-const FLEET_COLORS_COLOR = [
-  "#0f9d8a",
-  "#3d5ad6",
-  "#e06a32",
-  "#e0a02e",
-  "#7c5cbf",
-  "#2a8fbf",
-  "#c45c6a",
-  "#2f9d74",
+const FLEET_COLORS_MODERN = [
+  "#0D9488",
+  "#0F766E",
+  "#F59E0B",
+  "#EA580C",
+  "#0E2E3A",
+  "#2A8FBF",
+  "#C45C6A",
+  "#115E59",
 ];
 
 export { FLEET_VEHICLE_CAP };
@@ -44,7 +44,8 @@ export type FleetVehicleRow = {
 
 export function fleetColor(index: number): string {
   const theme = typeof document !== "undefined" ? document.documentElement.getAttribute("data-theme") : "warm";
-  const palette = theme === "color" ? FLEET_COLORS_COLOR : theme === "mono" ? FLEET_COLORS_MONO : FLEET_COLORS;
+  const palette =
+    theme === "modern" ? FLEET_COLORS_MODERN : theme === "mono" ? FLEET_COLORS_MONO : FLEET_COLORS;
   return palette[index % palette.length];
 }
 

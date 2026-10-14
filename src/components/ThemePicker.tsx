@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { isThemeId, readStoredTheme, setTheme, THEMES, type ThemeId } from "../lib/theme";
 
-/** Compact topbar control: Warm, Mono, or Color. */
+/** Compact topbar control: Warm, Mono, or Modern. */
 export function ThemePicker() {
   const [theme, setLocal] = useState<ThemeId>(() => readStoredTheme());
 

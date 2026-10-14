@@ -1,4 +1,4 @@
-/** App colour themes. `warm` is the original palette; `mono` is black & white; `color` is a softer jewel palette. */
+/** App colour themes. `warm` default; `mono` B&W; `modern` cool teal ops (LookFeelDesign). */
 
 export const THEME_STORAGE_KEY = "fmplus.theme";
 
@@ -15,24 +15,42 @@ export const THEMES = {
     description: "Black & white",
     themeColor: "#0a0a0a",
   },
-  color: {
-    id: "color",
-    label: "Color",
-    description: "Soft colour",
-    themeColor: "#12343c",
+  modern: {
+    id: "modern",
+    label: "Modern",
+    description: "Cool teal ops",
+    themeColor: "#0E2E3A",
   },
 } as const;
 
 export type ThemeId = keyof typeof THEMES;
 
 export function isThemeId(value: unknown): value is ThemeId {
-  return value === "warm" || value === "mono" || value === "color";
+  return value === "warm" || value === "mono" || value === "modern";
+}
+
+/** Map legacy stored ids (e.g. pre-rename `color`) to current ThemeId. */
+export function normalizeThemeId(value: unknown): ThemeId | null {
+  if (isThemeId(value)) return value;
+  if (value === "color") return "modern";
+  return null;
 }
 
 export function readStoredTheme(): ThemeId {
   try {
     const raw = localStorage.getItem(THEME_STORAGE_KEY);
-    if (isThemeId(raw)) return raw;
+    const theme = normalizeThemeId(raw);
+    if (theme) {
+      // Rewrite legacy `color` so ThemePicker and storage stay in sync.
+      if (raw === "color") {
+        try {
+          localStorage.setItem(THEME_STORAGE_KEY, theme);
+        } catch {
+          /* ignore */
+        }
+      }
+      return theme;
+    }
   } catch {
     /* ignore */
   }
