@@ -622,26 +622,37 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                       name={item.name}
                       sku={item.sku || ""}
                       disabled={busy}
+                      className="master-icon-btn"
+                      label="QR"
                     />
-                    <CatalogNfcWriteButton kind="goods" name={item.name} sku={item.sku || ""} disabled={busy} />
+                    <CatalogNfcWriteButton
+                      kind="goods"
+                      name={item.name}
+                      sku={item.sku || ""}
+                      disabled={busy}
+                      compact
+                    />
                     <button
                       type="button"
                       className="master-icon-btn"
                       onClick={() => setOpenCodes((id) => (id === item.id ? null : item.id))}
                       aria-label={openCodes === item.id ? "Hide codes" : "Codes"}
+                      title={openCodes === item.id ? "Hide codes" : "Codes"}
                     >
                       #
                     </button>
                     <button
                       type="button"
-                      className="btn-secondary master-stock-btn"
+                      className="master-icon-btn master-stock-btn"
                       onClick={() => {
                         setOpenStock((id) => (id === item.id ? null : item.id));
                         setAdjustQty("");
                         setAdjustNote("");
                       }}
+                      title={openStock === item.id ? "Hide stock" : "Stock"}
+                      aria-label={openStock === item.id ? "Hide stock" : "Stock"}
                     >
-                      {openStock === item.id ? "Hide" : "Stock"}
+                      {openStock === item.id ? "×" : "Stk"}
                     </button>
                   </div>
                 {openStock === item.id ? (
