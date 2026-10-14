@@ -978,12 +978,19 @@ export async function upsertVehicleCapacity(body: {
 export function capacityForVehicle(
   capacities: VehicleCapacity[],
   armadaUserId: number | null | undefined,
-): { volumeCapacityM3: number; weightCapacityKg: number } {
+): {
+  volumeCapacityM3: number;
+  weightCapacityKg: number;
+  seatCapacity: number | null;
+  luggageCapacityKg: number | null;
+} {
   const id = armadaUserId == null ? null : Number(armadaUserId);
   const hit = id != null ? capacities.find((c) => c.armadaUserId === id) : undefined;
   return {
     volumeCapacityM3: hit?.volumeCapacityM3 ?? 12,
     weightCapacityKg: hit?.weightCapacityKg ?? 1500,
+    seatCapacity: hit?.seatCapacity ?? null,
+    luggageCapacityKg: hit?.luggageCapacityKg ?? null,
   };
 }
 
