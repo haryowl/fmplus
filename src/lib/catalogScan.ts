@@ -203,14 +203,27 @@ export function resolveVehicleJobOpen<T extends { id: string; armadaUserId?: num
 }
 
 export function formatOnHand(
-  item?: { onHand?: number | null; reservedQty?: number | null } | null,
+  item?: {
+    onHand?: number | null;
+    reservedQty?: number | null;
+    unit?: string | null;
+    unitsPerPack?: number | null;
+  } | null,
 ): string {
   if (!item || item.onHand == null || !Number.isFinite(Number(item.onHand))) return "";
   const onHand = Number(item.onHand);
   const reserved = Number(item.reservedQty) || 0;
   const qty = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 1000) / 1000));
-  if (reserved > 0) return `${qty(onHand - reserved)} available · ${qty(onHand)} on hand`;
-  return `${qty(onHand)} on hand`;
+  const unit = String(item.unit || "").trim();
+  const pack = item.unitsPerPack == null ? null : Number(item.unitsPerPack);
+  const packOk = pack != null && Number.isFinite(pack) && pack > 0;
+  const unitSuffix = unit ? ` ${unit}` : "";
+  const pcsNote = (n: number) => (packOk ? ` (${qty(n * (pack as number))} pcs)` : "");
+  if (reserved > 0) {
+    const avail = onHand - reserved;
+    return `${qty(avail)}${unitSuffix}${pcsNote(avail)} available · ${qty(onHand)}${unitSuffix} on hand`;
+  }
+  return `${qty(onHand)}${unitSuffix}${pcsNote(onHand)} on hand`;
 }
 
 export function locationScanNotice(opts: { name: string; zone?: string | null }): string {

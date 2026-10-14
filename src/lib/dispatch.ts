@@ -28,9 +28,70 @@ export type DispatchStopRole = "pickup" | "drop";
 
 export type DispatchOrderKind = "drop" | "pickup" | "pickup_drop";
 
-export type DispatchGoodsUnit = "pcs" | "box" | "bag" | "kg" | "L";
+export type DispatchGoodsUnit =
+  | "pcs"
+  | "box"
+  | "bag"
+  | "carton"
+  | "pack"
+  | "drum"
+  | "set"
+  | "pair"
+  | "kg"
+  | "L";
 
-export const DISPATCH_GOODS_UNITS: DispatchGoodsUnit[] = ["pcs", "box", "bag", "kg", "L"];
+export const DISPATCH_GOODS_UNITS: DispatchGoodsUnit[] = [
+  "pcs",
+  "box",
+  "bag",
+  "carton",
+  "pack",
+  "drum",
+  "set",
+  "pair",
+  "kg",
+  "L",
+];
+
+/** Units that may set unitsPerPack (pcs inside one sell/stock unit). */
+export const DISPATCH_PACKABLE_UNITS: DispatchGoodsUnit[] = [
+  "box",
+  "bag",
+  "carton",
+  "pack",
+  "drum",
+  "set",
+  "pair",
+];
+
+export function goodsUnitIsPackable(unit: string | null | undefined): boolean {
+  return DISPATCH_PACKABLE_UNITS.includes((unit || "pcs") as DispatchGoodsUnit);
+}
+
+export function formatGoodsPackHint(
+  unit: string | null | undefined,
+  unitsPerPack: number | null | undefined,
+): string {
+  if (!goodsUnitIsPackable(unit) || unitsPerPack == null || !Number.isFinite(unitsPerPack) || unitsPerPack <= 0) {
+    return "";
+  }
+  return `1 ${unit} = ${unitsPerPack} pcs`;
+}
+
+/** Sell/stock qty → base pcs when pack size is set. */
+export function qtyToBasePcs(qty: number, unitsPerPack?: number | null): number {
+  const q = Math.max(0, Number(qty) || 0);
+  const pack = unitsPerPack == null ? null : Number(unitsPerPack);
+  if (pack == null || !Number.isFinite(pack) || pack <= 0) return q;
+  return Math.round(q * pack * 1000) / 1000;
+}
+
+export function qtyFromBasePcs(baseQty: number, unitsPerPack?: number | null): number {
+  const b = Math.max(0, Number(baseQty) || 0);
+  const pack = unitsPerPack == null ? null : Number(unitsPerPack);
+  if (pack == null || !Number.isFinite(pack) || pack <= 0) return b;
+  return Math.round((b / pack) * 1000) / 1000;
+}
 
 export type DispatchGoodsItem = {
   id: string;
@@ -39,6 +100,8 @@ export type DispatchGoodsItem = {
   unit: DispatchGoodsUnit;
   volumeM3Each: number | null;
   weightKgEach: number | null;
+  /** Pcs contained in one catalog unit when unit is packable (box/carton/…). */
+  unitsPerPack?: number | null;
   onHand?: number | null;
   reservedQty?: number;
   enabled: boolean;
@@ -960,6 +1023,7 @@ export async function createDispatchGoodsItem(body: {
   unit?: DispatchGoodsUnit;
   volumeM3Each?: number | null;
   weightKgEach?: number | null;
+  unitsPerPack?: number | null;
   onHand?: number | null;
   enabled?: boolean;
 }): Promise<DispatchGoodsItem> {

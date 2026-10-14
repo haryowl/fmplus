@@ -212,6 +212,7 @@ export const DISPATCH_GOODS_CSV_HEADERS = [
   "name",
   "sku",
   "unit",
+  "units_per_pack",
   "volume_m3_each",
   "weight_kg_each",
   "on_hand",
@@ -222,8 +223,8 @@ export function dispatchGoodsCsvTemplate(): string {
   return toCsv(
     [...DISPATCH_GOODS_CSV_HEADERS],
     [
-      ["Oil", "OIL-01", "pcs", 0.02, 4, 24, "yes"],
-      ["Filter", "FIL-02", "box", 0.1, 8, 8, "yes"],
+      ["Oil", "OIL-01", "pcs", "", 0.02, 4, 24, "yes"],
+      ["Filter", "FIL-02", "box", 12, 0.1, 8, 8, "yes"],
     ],
   );
 }
@@ -233,6 +234,7 @@ export function dispatchGoodsCsvFromItems(
     name: string;
     sku?: string;
     unit: string;
+    unitsPerPack?: number | null;
     volumeM3Each?: number | null;
     weightKgEach?: number | null;
     onHand?: number | null;
@@ -245,6 +247,7 @@ export function dispatchGoodsCsvFromItems(
       item.name,
       item.sku || "",
       item.unit,
+      item.unitsPerPack ?? "",
       item.volumeM3Each ?? "",
       item.weightKgEach ?? "",
       item.onHand ?? "",

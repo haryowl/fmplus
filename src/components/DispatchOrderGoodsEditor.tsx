@@ -13,6 +13,7 @@ import {
 import type { CatalogScanResult } from "../lib/catalogScan";
 import {
   DISPATCH_GOODS_UNITS,
+  formatGoodsPackHint,
   sumOrderCargoTotals,
   type DispatchGoodsItem,
   type DispatchGoodsUnit,
@@ -217,8 +218,11 @@ export function DispatchOrderGoodsEditor({
                   <span>
                     {item.sku ? `${item.sku} · ` : ""}
                     {item.unit}
-                    {item.volumeM3Each != null ? ` · ${item.volumeM3Each} m³` : ""}
-                    {item.weightKgEach != null ? ` · ${item.weightKgEach} kg` : ""}
+                    {formatGoodsPackHint(item.unit, item.unitsPerPack)
+                      ? ` · ${formatGoodsPackHint(item.unit, item.unitsPerPack)}`
+                      : ""}
+                    {item.volumeM3Each != null ? ` · ${item.volumeM3Each} m³/unit` : ""}
+                    {item.weightKgEach != null ? ` · ${item.weightKgEach} kg/unit` : ""}
                     {formatOnHand(item) ? ` · ${formatOnHand(item)}` : ""}
                   </span>
                 </button>
@@ -276,7 +280,8 @@ export function DispatchOrderGoodsEditor({
                 size={1}
               />
               <select
-                aria-label="Unit"
+                aria-label="Unit (qty)"
+                title="Unit (qty)"
                 value={line.unit}
                 disabled={disabled}
                 onChange={(e) => patchLine(i, { unit: e.target.value as DispatchGoodsUnit })}
@@ -288,11 +293,12 @@ export function DispatchOrderGoodsEditor({
                 ))}
               </select>
               <input
-                aria-label="m³ each"
+                aria-label="Volume m3 per unit"
+                title="Volume each (m³)"
                 inputMode="decimal"
                 value={line.volumeM3Each == null ? "" : String(line.volumeM3Each)}
                 disabled={disabled}
-                placeholder="m³"
+                placeholder="m³/unit"
                 onChange={(e) =>
                   patchLine(i, {
                     volumeM3Each: e.target.value === "" ? null : Number(e.target.value),
@@ -301,11 +307,12 @@ export function DispatchOrderGoodsEditor({
                 size={1}
               />
               <input
-                aria-label="kg each"
+                aria-label="Weight kg per unit"
+                title="Weight each (kg)"
                 inputMode="decimal"
                 value={line.weightKgEach == null ? "" : String(line.weightKgEach)}
                 disabled={disabled}
-                placeholder="kg"
+                placeholder="kg/unit"
                 onChange={(e) =>
                   patchLine(i, {
                     weightKgEach: e.target.value === "" ? null : Number(e.target.value),

@@ -15,6 +15,8 @@ import {
   deleteDispatchGoodsItem,
   DISPATCH_GOODS_UNITS,
   fetchDispatchGoods,
+  formatGoodsPackHint,
+  goodsUnitIsPackable,
   importDispatchGoods,
   patchDispatchGoodsItem,
   type DispatchGoodsItem,
@@ -34,6 +36,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [unit, setUnit] = useState<DispatchGoodsUnit>("pcs");
+  const [unitsPerPack, setUnitsPerPack] = useState("");
   const [vol, setVol] = useState("");
   const [wt, setWt] = useState("");
   const [onHand, setOnHand] = useState("");
@@ -69,12 +72,16 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
         name: nextName,
         sku: sku.trim() || undefined,
         unit,
+        unitsPerPack:
+          goodsUnitIsPackable(unit) && unitsPerPack !== "" ? Number(unitsPerPack) : null,
         volumeM3Each: vol === "" ? null : Number(vol),
         weightKgEach: wt === "" ? null : Number(wt),
         onHand: onHand === "" ? null : Number(onHand),
       });
       setName("");
       setSku("");
+      setUnit("pcs");
+      setUnitsPerPack("");
       setVol("");
       setWt("");
       setOnHand("");
@@ -114,10 +121,10 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
     }
   }
 
+  const q = filter.trim().toLowerCase();
   const shown = items.filter((it) => {
-    const q = filter.trim().toLowerCase();
     if (!q) return true;
-    return it.name.toLowerCase().includes(q) || it.sku.toLowerCase().includes(q);
+    return [it.name, it.sku, it.unit].join(" ").toLowerCase().includes(q);
   });
 
   return (
@@ -131,7 +138,9 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
             </>
           ) : null}
           <p className="dispatch-search-hint">
-            Office list. Fill a SKU, then Print QR / barcode or Write NFC. Orders can also pick free text.
+            Unit (qty) is how you count the item (pcs, box, carton…). Volume/weight each are optional truck-capacity
+            attributes for one unit — not the unit label. For box/carton/pack set “pcs per unit” so stock can convert
+            (e.g. 1 box = 12 pcs).
           </p>
         </div>
         {onClose ? (
@@ -163,9 +172,14 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
         />
         <select
           value={unit}
-          onChange={(e) => setUnit(e.target.value as DispatchGoodsUnit)}
+          onChange={(e) => {
+            const next = e.target.value as DispatchGoodsUnit;
+            setUnit(next);
+            if (!goodsUnitIsPackable(next)) setUnitsPerPack("");
+          }}
           disabled={busy}
-          aria-label="Unit"
+          aria-label="Unit (qty)"
+          title="Unit (qty)"
         >
           {DISPATCH_GOODS_UNITS.map((u) => (
             <option key={u} value={u}>
@@ -173,21 +187,34 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
             </option>
           ))}
         </select>
+        {goodsUnitIsPackable(unit) ? (
+          <input
+            value={unitsPerPack}
+            onChange={(e) => setUnitsPerPack(e.target.value)}
+            placeholder="pcs / unit"
+            inputMode="decimal"
+            disabled={busy}
+            aria-label="Pcs per unit"
+            title="How many pcs in one of this unit"
+          />
+        ) : null}
         <input
           value={vol}
           onChange={(e) => setVol(e.target.value)}
-          placeholder="m³ each"
+          placeholder="m³ / unit"
           inputMode="decimal"
           disabled={busy}
-          aria-label="Volume m3 each"
+          aria-label="Volume m3 per unit"
+          title="Volume each (m³) — capacity for one unit"
         />
         <input
           value={wt}
           onChange={(e) => setWt(e.target.value)}
-          placeholder="kg each"
+          placeholder="kg / unit"
           inputMode="decimal"
           disabled={busy}
-          aria-label="Weight kg each"
+          aria-label="Weight kg per unit"
+          title="Weight each (kg) — capacity for one unit"
         />
         <input
           value={onHand}
@@ -206,7 +233,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           title="Import goods CSV"
           disabled={busy}
           templateFilename="dispatch-goods-template.csv"
-          hint="Required: name. Include sku to print QR/barcode and scan later. Optional: unit (pcs/box/bag/kg/L), volume_m3_each, weight_kg_each, on_hand, enabled. Matching SKU or name updates the existing item. Max 500 rows."
+          hint="Required: name. Include sku to print QR/barcode and scan later. Optional: unit (pcs/box/bag/carton/pack/drum/set/pair/kg/L), units_per_pack (pcs inside one unit when unit is packable), volume_m3_each, weight_kg_each, on_hand, enabled. Matching SKU or name updates the existing item. Max 500 rows."
           onDownloadTemplate={() => downloadCsv("dispatch-goods-template.csv", dispatchGoodsCsvTemplate())}
           parseFile={(text) => {
             const { headers, rows } = parseCsv(text);
@@ -261,82 +288,125 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
         <p className="dispatch-search-hint">No goods yet. Add a name to start the list.</p>
       ) : (
         <ul className="dispatch-goods-catalog-list">
-          {shown.map((item) => (
-            <li key={item.id} className={item.enabled ? undefined : "is-disabled"}>
-              <strong>{item.name}</strong>
-              <div className="dispatch-goods-catalog-fields">
-                <input
-                  key={`${item.id}-sku-${item.sku || ""}`}
-                  defaultValue={item.sku || ""}
-                  placeholder="SKU"
-                  disabled={busy}
-                  aria-label="SKU"
-                  onBlur={(e) => {
-                    const sku = e.target.value.trim();
-                    if (sku !== (item.sku || "")) void saveItem(item, { sku });
-                  }}
-                />
-                <input
-                  key={`${item.id}-onhand-${item.onHand ?? ""}`}
-                  defaultValue={item.onHand ?? ""}
-                  placeholder="On hand"
-                  inputMode="decimal"
-                  disabled={busy}
-                  aria-label="On hand"
-                  onBlur={(e) => {
-                    const next = e.target.value === "" ? null : Number(e.target.value);
-                    if (next !== (item.onHand ?? null)) void saveItem(item, { onHand: next });
-                  }}
-                />
-                <span className="dispatch-goods-catalog-meta">
-                  {item.unit}
-                  {item.volumeM3Each != null ? ` · ${item.volumeM3Each} m³` : ""}
-                  {item.weightKgEach != null ? ` · ${item.weightKgEach} kg` : ""}
-                </span>
-              </div>
-              <div className="dispatch-goods-catalog-actions">
-                <button
-                  type="button"
-                  className="btn-ghost btn-compact"
-                  disabled={busy}
-                  onClick={() => void saveItem(item, { enabled: !item.enabled })}
-                >
-                  {item.enabled ? "Disable" : "Enable"}
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost btn-compact"
-                  disabled={busy}
-                  onClick={() => void removeItem(item)}
-                >
-                  Delete
-                </button>
-                <CatalogLabelPrintButton
-                  kind="goods"
-                  name={item.name}
-                  sku={item.sku || ""}
-                  disabled={busy}
-                />
-                <CatalogNfcWriteButton kind="goods" name={item.name} sku={item.sku || ""} disabled={busy} />
-                <button
-                  type="button"
-                  className="btn-ghost btn-compact"
-                  onClick={() => setOpenCodes((id) => (id === item.id ? null : item.id))}
-                >
-                  {openCodes === item.id ? "Hide codes" : "Codes"}
-                </button>
-              </div>
-              {openCodes === item.id ? (
-                <CatalogCodesEditor
-                  kind="goods"
-                  itemId={item.id}
-                  sku={item.sku}
-                  name={item.name}
-                  disabled={busy}
-                />
-              ) : null}
-            </li>
-          ))}
+          {shown.map((item) => {
+            const packHint = formatGoodsPackHint(item.unit, item.unitsPerPack);
+            return (
+              <li key={item.id} className={item.enabled ? undefined : "is-disabled"}>
+                <strong>{item.name}</strong>
+                <div className="dispatch-goods-catalog-fields">
+                  <input
+                    key={`${item.id}-sku-${item.sku || ""}`}
+                    defaultValue={item.sku || ""}
+                    placeholder="SKU"
+                    disabled={busy}
+                    aria-label="SKU"
+                    onBlur={(e) => {
+                      const sku = e.target.value.trim();
+                      if (sku !== (item.sku || "")) void saveItem(item, { sku });
+                    }}
+                  />
+                  <select
+                    value={item.unit}
+                    disabled={busy}
+                    aria-label="Unit (qty)"
+                    title="Unit (qty)"
+                    onChange={(e) => {
+                      const next = e.target.value as DispatchGoodsUnit;
+                      void saveItem(item, {
+                        unit: next,
+                        unitsPerPack: goodsUnitIsPackable(next) ? item.unitsPerPack ?? null : null,
+                      });
+                    }}
+                  >
+                    {DISPATCH_GOODS_UNITS.map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                  </select>
+                  {goodsUnitIsPackable(item.unit) ? (
+                    <input
+                      key={`${item.id}-pack-${item.unitsPerPack ?? ""}`}
+                      defaultValue={item.unitsPerPack ?? ""}
+                      placeholder="pcs / unit"
+                      inputMode="decimal"
+                      disabled={busy}
+                      aria-label="Pcs per unit"
+                      title="How many pcs in one of this unit"
+                      onBlur={(e) => {
+                        const next = e.target.value === "" ? null : Number(e.target.value);
+                        if (next !== (item.unitsPerPack ?? null)) {
+                          void saveItem(item, { unitsPerPack: next });
+                        }
+                      }}
+                    />
+                  ) : null}
+                  <input
+                    key={`${item.id}-onhand-${item.onHand ?? ""}`}
+                    defaultValue={item.onHand ?? ""}
+                    placeholder="On hand"
+                    inputMode="decimal"
+                    disabled={busy}
+                    aria-label="On hand"
+                    onBlur={(e) => {
+                      const next = e.target.value === "" ? null : Number(e.target.value);
+                      if (next !== (item.onHand ?? null)) void saveItem(item, { onHand: next });
+                    }}
+                  />
+                  <span className="dispatch-goods-catalog-meta">
+                    {[
+                      packHint,
+                      item.volumeM3Each != null ? `${item.volumeM3Each} m³/unit` : "",
+                      item.weightKgEach != null ? `${item.weightKgEach} kg/unit` : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "No pack / capacity attrs"}
+                  </span>
+                </div>
+                <div className="dispatch-goods-catalog-actions">
+                  <button
+                    type="button"
+                    className="btn-ghost btn-compact"
+                    disabled={busy}
+                    onClick={() => void saveItem(item, { enabled: !item.enabled })}
+                  >
+                    {item.enabled ? "Disable" : "Enable"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost btn-compact"
+                    disabled={busy}
+                    onClick={() => void removeItem(item)}
+                  >
+                    Delete
+                  </button>
+                  <CatalogLabelPrintButton
+                    kind="goods"
+                    name={item.name}
+                    sku={item.sku || ""}
+                    disabled={busy}
+                  />
+                  <CatalogNfcWriteButton kind="goods" name={item.name} sku={item.sku || ""} disabled={busy} />
+                  <button
+                    type="button"
+                    className="btn-ghost btn-compact"
+                    onClick={() => setOpenCodes((id) => (id === item.id ? null : item.id))}
+                  >
+                    {openCodes === item.id ? "Hide codes" : "Codes"}
+                  </button>
+                </div>
+                {openCodes === item.id ? (
+                  <CatalogCodesEditor
+                    kind="goods"
+                    itemId={item.id}
+                    sku={item.sku}
+                    name={item.name}
+                    disabled={busy}
+                  />
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

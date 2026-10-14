@@ -5,12 +5,62 @@
 import { dbQuery } from "./db.mjs";
 import { deleteCodesForTarget, syncPrimarySku } from "./catalog-codes.mjs";
 
-export const GOODS_UNITS = ["pcs", "box", "bag", "kg", "L"];
+export const GOODS_UNITS = [
+  "pcs",
+  "box",
+  "bag",
+  "carton",
+  "pack",
+  "drum",
+  "set",
+  "pair",
+  "kg",
+  "L",
+];
+
+/** Units that may declare how many pcs equal one of this unit. */
+export const PACKABLE_GOODS_UNITS = ["box", "bag", "carton", "pack", "drum", "set", "pair"];
+
 const MAX_LINES = 40;
 
 export function parseGoodsUnit(v) {
   const s = String(v || "pcs").trim();
   return GOODS_UNITS.includes(s) ? s : "pcs";
+}
+
+export function goodsUnitIsPackable(unit) {
+  return PACKABLE_GOODS_UNITS.includes(parseGoodsUnit(unit));
+}
+
+/** Pcs contained in one catalog unit (box/pack/…). Null = no conversion. */
+export function parseUnitsPerPack(v, unit) {
+  if (!goodsUnitIsPackable(unit)) return null;
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n * 1000) / 1000;
+}
+
+/** Convert sell/stock qty into base pcs when pack size is set. */
+export function qtyToBasePcs(qty, unitsPerPack) {
+  const q = Math.max(0, Number(qty) || 0);
+  const pack = unitsPerPack == null ? null : Number(unitsPerPack);
+  if (pack == null || !Number.isFinite(pack) || pack <= 0) return q;
+  return Math.round(q * pack * 1000) / 1000;
+}
+
+export function qtyFromBasePcs(baseQty, unitsPerPack) {
+  const b = Math.max(0, Number(baseQty) || 0);
+  const pack = unitsPerPack == null ? null : Number(unitsPerPack);
+  if (pack == null || !Number.isFinite(pack) || pack <= 0) return b;
+  return Math.round((b / pack) * 1000) / 1000;
+}
+
+export function formatPackHint(unit, unitsPerPack) {
+  const u = parseGoodsUnit(unit);
+  const pack = parseUnitsPerPack(unitsPerPack, u);
+  if (pack == null) return "";
+  return `1 ${u} = ${pack} pcs`;
 }
 
 export function numOrNullGoods(v) {
@@ -20,13 +70,15 @@ export function numOrNullGoods(v) {
 }
 
 export function publicGoodsItem(row) {
+  const unit = parseGoodsUnit(row.unit);
   return {
     id: row.id,
     name: row.name || "",
     sku: row.sku || "",
-    unit: parseGoodsUnit(row.unit),
+    unit,
     volumeM3Each: row.volume_m3_each == null ? null : Number(row.volume_m3_each),
     weightKgEach: row.weight_kg_each == null ? null : Number(row.weight_kg_each),
+    unitsPerPack: parseUnitsPerPack(row.units_per_pack, unit),
     onHand: row.on_hand_qty == null ? null : Number(row.on_hand_qty),
     reservedQty: Number(row.reserved_qty) || 0,
     enabled: row.enabled !== false,
@@ -180,14 +232,25 @@ export async function importGoodsItemsFromRows(tenantId, rawRows) {
       continue;
     }
     const sku = goodsSkuFromCsvRow(row);
+    const unit = parseGoodsUnit(row.unit);
     const body = {
       name,
-      unit: parseGoodsUnit(row.unit),
+      unit,
       volumeM3Each: numOrNullGoods(row.volume_m3_each ?? row.volumeM3Each),
       weightKgEach: numOrNullGoods(row.weight_kg_each ?? row.weightKgEach),
       enabled: csvEnabledFlag(row.enabled),
     };
     if (sku) body.sku = sku;
+    if (
+      Object.prototype.hasOwnProperty.call(row, "units_per_pack") ||
+      Object.prototype.hasOwnProperty.call(row, "unitsPerPack") ||
+      Object.prototype.hasOwnProperty.call(row, "pcs_per_unit")
+    ) {
+      body.unitsPerPack = parseUnitsPerPack(
+        row.units_per_pack ?? row.unitsPerPack ?? row.pcs_per_unit,
+        unit,
+      );
+    }
     if (
       Object.prototype.hasOwnProperty.call(row, "on_hand") ||
       Object.prototype.hasOwnProperty.call(row, "onHand") ||
@@ -254,19 +317,25 @@ export async function createGoodsItem(tenantId, body) {
     throw err;
   }
   const sku = String(body.sku || "").trim().slice(0, 80) || null;
+  const unit = parseGoodsUnit(body.unit);
+  const unitsPerPack = parseUnitsPerPack(
+    body.unitsPerPack ?? body.units_per_pack,
+    unit,
+  );
   const inserted = await dbQuery(
     `INSERT INTO dispatch_goods_items (
-       tenant_id, name, sku, unit, volume_m3_each, weight_kg_each,
+       tenant_id, name, sku, unit, volume_m3_each, weight_kg_each, units_per_pack,
        on_hand_qty, reserved_qty, enabled, sort_order
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      RETURNING *`,
     [
       tenantId,
       name,
       sku,
-      parseGoodsUnit(body.unit),
+      unit,
       numOrNullGoods(body.volumeM3Each ?? body.volume_m3_each),
       numOrNullGoods(body.weightKgEach ?? body.weight_kg_each),
+      unitsPerPack,
       numOrNullGoods(body.onHand ?? body.on_hand ?? body.on_hand_qty),
       numOrNullGoods(body.reservedQty ?? body.reserved_qty) ?? 0,
       body.enabled === false ? false : true,
@@ -302,6 +371,19 @@ export async function updateGoodsItem(tenantId, itemId, body) {
   if (body.weightKgEach !== undefined || body.weight_kg_each !== undefined) {
     weight = numOrNullGoods(body.weightKgEach ?? body.weight_kg_each);
   }
+  let unitsPerPack = parseUnitsPerPack(row.units_per_pack, unit);
+  if (
+    body.unitsPerPack !== undefined ||
+    body.units_per_pack !== undefined ||
+    body.unit !== undefined
+  ) {
+    unitsPerPack = parseUnitsPerPack(
+      body.unitsPerPack !== undefined || body.units_per_pack !== undefined
+        ? (body.unitsPerPack ?? body.units_per_pack)
+        : row.units_per_pack,
+      unit,
+    );
+  }
   const enabled = body.enabled !== undefined ? Boolean(body.enabled) : row.enabled !== false;
   const sortOrder =
     body.sortOrder !== undefined && Number.isFinite(Number(body.sortOrder))
@@ -318,10 +400,24 @@ export async function updateGoodsItem(tenantId, itemId, body) {
   const updated = await dbQuery(
     `UPDATE dispatch_goods_items
      SET name = $3, sku = $4, unit = $5, volume_m3_each = $6, weight_kg_each = $7,
-         on_hand_qty = $8, reserved_qty = $9, enabled = $10, sort_order = $11, updated_at = now()
+         units_per_pack = $8, on_hand_qty = $9, reserved_qty = $10, enabled = $11,
+         sort_order = $12, updated_at = now()
      WHERE id = $1 AND tenant_id = $2
      RETURNING *`,
-    [itemId, tenantId, name, sku, unit, volume, weight, onHand, reservedQty || 0, enabled, sortOrder],
+    [
+      itemId,
+      tenantId,
+      name,
+      sku,
+      unit,
+      volume,
+      weight,
+      unitsPerPack,
+      onHand,
+      reservedQty || 0,
+      enabled,
+      sortOrder,
+    ],
   );
   if (body.sku !== undefined) {
     await syncPrimarySku(tenantId, "goods", itemId, sku);
