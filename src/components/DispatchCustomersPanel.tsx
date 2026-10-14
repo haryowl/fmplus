@@ -21,6 +21,7 @@ type Props = {
 };
 
 export function DispatchCustomersPanel({ onClose, onUse }: Props) {
+  const asPage = !onClose;
   const [items, setItems] = useState<DispatchCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -128,8 +129,12 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
     <section className={`dispatch-goods-catalog${onClose ? " is-dialog" : ""}`}>
       <div className="dispatch-goods-catalog-head">
         <div>
-          <p className="dispatch-eyebrow">Orders</p>
-          <h2>Customers</h2>
+          {!asPage ? (
+            <>
+              <p className="dispatch-eyebrow">Orders</p>
+              <h2>Customers</h2>
+            </>
+          ) : null}
           <p className="dispatch-search-hint">
             Name and coordinates are required. Zone, address, phone, contact, and notes are extra detail. Picking a
             customer copies them onto a new order. Editing this list later does not change orders already created.
@@ -147,14 +152,65 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
         </p>
       ) : null}
       <form className="dispatch-goods-catalog-add" onSubmit={(e) => void addItem(e)}>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Customer name" disabled={busy} size={1} />
-        <input value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Lat" inputMode="decimal" disabled={busy} size={1} />
-        <input value={lon} onChange={(e) => setLon(e.target.value)} placeholder="Lon" inputMode="decimal" disabled={busy} size={1} />
-        <input value={zone} onChange={(e) => setZone(e.target.value)} placeholder="Zone" disabled={busy} size={1} />
-        <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" disabled={busy} size={1} />
-        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" disabled={busy} size={1} />
-        <input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Contact" disabled={busy} size={1} />
-        <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" disabled={busy} size={1} />
+        <input
+          className="catalog-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Customer name"
+          disabled={busy}
+          aria-label="Customer name"
+        />
+        <input
+          value={lat}
+          onChange={(e) => setLat(e.target.value)}
+          placeholder="Lat"
+          inputMode="decimal"
+          disabled={busy}
+          aria-label="Latitude"
+        />
+        <input
+          value={lon}
+          onChange={(e) => setLon(e.target.value)}
+          placeholder="Lon"
+          inputMode="decimal"
+          disabled={busy}
+          aria-label="Longitude"
+        />
+        <input
+          value={zone}
+          onChange={(e) => setZone(e.target.value)}
+          placeholder="Zone"
+          disabled={busy}
+          aria-label="Zone"
+        />
+        <input
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="Address"
+          disabled={busy}
+          aria-label="Address"
+        />
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="Phone"
+          disabled={busy}
+          aria-label="Phone"
+        />
+        <input
+          value={contact}
+          onChange={(e) => setContact(e.target.value)}
+          placeholder="Contact"
+          disabled={busy}
+          aria-label="Contact"
+        />
+        <input
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Notes"
+          disabled={busy}
+          aria-label="Notes"
+        />
         <button type="submit" className="btn btn-primary" disabled={busy || !name.trim()}>
           Add
         </button>
@@ -207,7 +263,7 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
         onChange={(e) => setFilter(e.target.value)}
         placeholder="Filter customers…"
         autoComplete="off"
-        size={1}
+        aria-label="Filter customers"
       />
       {loading ? <p className="dispatch-search-hint">Loading customers…</p> : null}
       {!loading && shown.length === 0 ? (
@@ -216,74 +272,89 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
       <ul className="dispatch-goods-catalog-list">
         {shown.map((item) => (
           <li key={item.id} className={!item.enabled ? "is-disabled" : ""}>
-            <input
-              className="catalog-name"
-              defaultValue={item.name}
-              disabled={busy}
-              aria-label="Customer name"
-              onBlur={(e) => {
-                const next = e.target.value.trim();
-                if (next && next !== item.name) void save(item, { name: next });
-              }}
-            />
-            <input
-              defaultValue={String(item.lat)}
-              disabled={busy}
-              inputMode="decimal"
-              aria-label="Latitude"
-              onBlur={(e) => {
-                const next = Number(e.target.value);
-                if (Number.isFinite(next) && next !== item.lat) void save(item, { lat: next });
-              }}
-            />
-            <input
-              defaultValue={String(item.lon)}
-              disabled={busy}
-              inputMode="decimal"
-              aria-label="Longitude"
-              onBlur={(e) => {
-                const next = Number(e.target.value);
-                if (Number.isFinite(next) && next !== item.lon) void save(item, { lon: next });
-              }}
-            />
-            <input
-              defaultValue={item.zone}
-              placeholder="Zone"
-              disabled={busy}
-              aria-label="Zone"
-              onBlur={(e) => {
-                if (e.target.value.trim() !== item.zone) void save(item, { zone: e.target.value.trim() });
-              }}
-            />
-            <input
-              defaultValue={item.phone}
-              placeholder="Phone"
-              disabled={busy}
-              aria-label="Phone"
-              onBlur={(e) => {
-                if (e.target.value.trim() !== item.phone) void save(item, { phone: e.target.value.trim() });
-              }}
-            />
-            <label className="catalog-enabled">
+            <div className="dispatch-goods-catalog-fields">
               <input
-                type="checkbox"
-                checked={item.enabled}
+                className="catalog-name"
+                defaultValue={item.name}
                 disabled={busy}
-                onChange={(e) => void save(item, { enabled: e.target.checked })}
+                aria-label="Customer name"
+                onBlur={(e) => {
+                  const next = e.target.value.trim();
+                  if (next && next !== item.name) void save(item, { name: next });
+                }}
               />
-              On
-            </label>
-            {onUse ? (
-              <button type="button" className="btn-secondary" disabled={busy || !item.enabled} onClick={() => onUse(item)}>
-                Use
+              <input
+                defaultValue={String(item.lat)}
+                disabled={busy}
+                inputMode="decimal"
+                aria-label="Latitude"
+                onBlur={(e) => {
+                  const next = Number(e.target.value);
+                  if (Number.isFinite(next) && next !== item.lat) void save(item, { lat: next });
+                }}
+              />
+              <input
+                defaultValue={String(item.lon)}
+                disabled={busy}
+                inputMode="decimal"
+                aria-label="Longitude"
+                onBlur={(e) => {
+                  const next = Number(e.target.value);
+                  if (Number.isFinite(next) && next !== item.lon) void save(item, { lon: next });
+                }}
+              />
+              <input
+                defaultValue={item.zone}
+                placeholder="Zone"
+                disabled={busy}
+                aria-label="Zone"
+                onBlur={(e) => {
+                  if (e.target.value.trim() !== item.zone) void save(item, { zone: e.target.value.trim() });
+                }}
+              />
+              <input
+                defaultValue={item.phone}
+                placeholder="Phone"
+                disabled={busy}
+                aria-label="Phone"
+                onBlur={(e) => {
+                  if (e.target.value.trim() !== item.phone) void save(item, { phone: e.target.value.trim() });
+                }}
+              />
+            </div>
+            <div className="dispatch-goods-catalog-actions">
+              <label className="catalog-enabled">
+                <input
+                  type="checkbox"
+                  checked={item.enabled}
+                  disabled={busy}
+                  onChange={(e) => void save(item, { enabled: e.target.checked })}
+                />
+                On
+              </label>
+              {onUse ? (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={busy || !item.enabled}
+                  onClick={() => onUse(item)}
+                >
+                  Use
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn-ghost btn-compact"
+                disabled={busy}
+                onClick={() => void removeItem(item)}
+              >
+                Remove
               </button>
-            ) : null}
-            <button type="button" className="btn-ghost btn-compact" disabled={busy} onClick={() => void removeItem(item)}>
-              Remove
-            </button>
+            </div>
             <p className="dispatch-search-hint">
-              {[item.address, item.contactName ? `Contact ${item.contactName}` : "", item.notes].filter(Boolean).join(" · ") ||
-                "No address or notes"}
+              {[item.address, item.contactName ? `Contact ${item.contactName}` : "", item.notes]
+                .filter(Boolean)
+                .join(" · ") || "No address or notes"}
             </p>
           </li>
         ))}

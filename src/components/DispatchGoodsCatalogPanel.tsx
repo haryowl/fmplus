@@ -26,6 +26,7 @@ type Props = {
 };
 
 export function DispatchGoodsCatalogPanel({ onClose }: Props) {
+  const asPage = !onClose;
   const [items, setItems] = useState<DispatchGoodsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -123,8 +124,12 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
     <section className={`dispatch-goods-catalog${onClose ? " is-dialog" : ""}`}>
       <div className="dispatch-goods-catalog-head">
         <div>
-          <p className="dispatch-eyebrow">Cargo</p>
-          <h2>Goods &amp; Stock</h2>
+          {!asPage ? (
+            <>
+              <p className="dispatch-eyebrow">Cargo</p>
+              <h2>Goods &amp; Stock</h2>
+            </>
+          ) : null}
           <p className="dispatch-search-hint">
             Office list. Fill a SKU, then Print QR / barcode or Write NFC. Orders can also pick free text.
           </p>
@@ -142,13 +147,20 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
       ) : null}
       <form className="dispatch-goods-catalog-add" onSubmit={addItem}>
         <input
+          className="catalog-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Name"
           disabled={busy}
-          size={1}
+          aria-label="Name"
         />
-        <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="SKU" disabled={busy} size={1} />
+        <input
+          value={sku}
+          onChange={(e) => setSku(e.target.value)}
+          placeholder="SKU"
+          disabled={busy}
+          aria-label="SKU"
+        />
         <select
           value={unit}
           onChange={(e) => setUnit(e.target.value as DispatchGoodsUnit)}
@@ -167,7 +179,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           placeholder="m³ each"
           inputMode="decimal"
           disabled={busy}
-          size={1}
+          aria-label="Volume m3 each"
         />
         <input
           value={wt}
@@ -175,7 +187,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           placeholder="kg each"
           inputMode="decimal"
           disabled={busy}
-          size={1}
+          aria-label="Weight kg each"
         />
         <input
           value={onHand}
@@ -183,7 +195,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           placeholder="On hand"
           inputMode="decimal"
           disabled={busy}
-          size={1}
+          aria-label="On hand"
         />
         <button type="submit" className="btn btn-primary" disabled={busy || !name.trim()}>
           Add
@@ -242,7 +254,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
         onChange={(e) => setFilter(e.target.value)}
         placeholder="Filter catalog…"
         autoComplete="off"
-        size={1}
+        aria-label="Filter catalog"
       />
       {loading ? <p className="dispatch-search-hint">Loading catalog…</p> : null}
       {!loading && shown.length === 0 ? (
@@ -252,34 +264,36 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           {shown.map((item) => (
             <li key={item.id} className={item.enabled ? undefined : "is-disabled"}>
               <strong>{item.name}</strong>
-              <input
-                key={`${item.id}-sku-${item.sku || ""}`}
-                defaultValue={item.sku || ""}
-                placeholder="SKU"
-                disabled={busy}
-                size={8}
-                onBlur={(e) => {
-                  const sku = e.target.value.trim();
-                  if (sku !== (item.sku || "")) void saveItem(item, { sku });
-                }}
-              />
-              <input
-                key={`${item.id}-onhand-${item.onHand ?? ""}`}
-                defaultValue={item.onHand ?? ""}
-                placeholder="On hand"
-                inputMode="decimal"
-                disabled={busy}
-                size={6}
-                onBlur={(e) => {
-                  const next = e.target.value === "" ? null : Number(e.target.value);
-                  if (next !== (item.onHand ?? null)) void saveItem(item, { onHand: next });
-                }}
-              />
-              <span>
-                {item.unit}
-                {item.volumeM3Each != null ? ` · ${item.volumeM3Each} m³` : ""}
-                {item.weightKgEach != null ? ` · ${item.weightKgEach} kg` : ""}
-              </span>
+              <div className="dispatch-goods-catalog-fields">
+                <input
+                  key={`${item.id}-sku-${item.sku || ""}`}
+                  defaultValue={item.sku || ""}
+                  placeholder="SKU"
+                  disabled={busy}
+                  aria-label="SKU"
+                  onBlur={(e) => {
+                    const sku = e.target.value.trim();
+                    if (sku !== (item.sku || "")) void saveItem(item, { sku });
+                  }}
+                />
+                <input
+                  key={`${item.id}-onhand-${item.onHand ?? ""}`}
+                  defaultValue={item.onHand ?? ""}
+                  placeholder="On hand"
+                  inputMode="decimal"
+                  disabled={busy}
+                  aria-label="On hand"
+                  onBlur={(e) => {
+                    const next = e.target.value === "" ? null : Number(e.target.value);
+                    if (next !== (item.onHand ?? null)) void saveItem(item, { onHand: next });
+                  }}
+                />
+                <span className="dispatch-goods-catalog-meta">
+                  {item.unit}
+                  {item.volumeM3Each != null ? ` · ${item.volumeM3Each} m³` : ""}
+                  {item.weightKgEach != null ? ` · ${item.weightKgEach} kg` : ""}
+                </span>
+              </div>
               <div className="dispatch-goods-catalog-actions">
                 <button
                   type="button"

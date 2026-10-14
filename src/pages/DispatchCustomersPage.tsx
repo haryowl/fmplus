@@ -33,7 +33,7 @@ export default function DispatchCustomersPage() {
           </button>
         </div>
       </header>
-      <main className="shell dispatch-shell">
+      <main className="shell dispatch-shell dispatch-master-shell">
         <DispatchCustomersPanel />
       </main>
     </div>
