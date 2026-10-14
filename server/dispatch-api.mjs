@@ -86,6 +86,7 @@ import {
   upsertFareRates,
 } from "./dispatch-fare.mjs";
 import { parseDispatchProfiles } from "./dispatch-profiles.mjs";
+import { parseOrderProfile } from "./dispatch-sales.mjs";
 import { normalizeZoneKey } from "./dispatch-zone.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
@@ -531,6 +532,8 @@ function publicStop(row, jobServiceDate = "") {
     rescheduledTo: formatServiceDate(row.rescheduled_to) || null,
     plannedEta: row.planned_eta || "",
     role: row.role === "pickup" ? "pickup" : "drop",
+    visitOutcome: row.visit_outcome || null,
+    orderProfile: parseOrderProfile(row.order_profile || row.profile) || null,
   };
 }
 
@@ -709,6 +712,9 @@ function publicOrder(row) {
     weightKg: row.weight_kg == null ? null : Number(row.weight_kg),
     passengerCount: row.passenger_count == null ? null : Number(row.passenger_count),
     luggageKg: row.luggage_kg == null ? null : Number(row.luggage_kg),
+    profile: parseOrderProfile(row.profile) || "cargo",
+    visitOutcome: row.visit_outcome || null,
+    spawnedFromOrderId: row.spawned_from_order_id || null,
     goodsSubtotal: row.goods_subtotal == null ? null : Number(row.goods_subtotal),
     goodsCostSubtotal: row.goods_cost_subtotal == null ? null : Number(row.goods_cost_subtotal),
     windowStart: row.window_start || "",
@@ -809,7 +815,11 @@ export function publicDispatchPhoto(row, urlPrefix = "/api/dispatch/photos") {
 
 async function loadStops(jobId) {
   const rows = await dbQuery(
-    `SELECT * FROM dispatch_stops WHERE job_id = $1 ORDER BY sort_order ASC, created_at ASC`,
+    `SELECT s.*, o.profile AS order_profile
+     FROM dispatch_stops s
+     LEFT JOIN dispatch_orders o ON o.id = s.order_id
+     WHERE s.job_id = $1
+     ORDER BY s.sort_order ASC, s.created_at ASC`,
     [jobId],
   );
   return rows.rows;
@@ -2244,16 +2254,22 @@ export async function handleDispatchRequest(req, res) {
           return true;
         }
       }
-      const cargo = orderCargoFromBody(body);
+      const orderProfile = parseOrderProfile(body.profile) || "cargo";
+      const cargo =
+        orderProfile === "passenger"
+          ? orderCargoFromBody({ ...body, profile: "passenger" })
+          : orderProfile === "sales"
+            ? { volumeM3: null, weightKg: null, passengerCount: null, luggageKg: null }
+            : orderCargoFromBody(body);
       const inserted = await dbQuery(
         `INSERT INTO dispatch_orders (
            tenant_id, external_ref, customer_name, address, lat, lon, zone,
-           volume_m3, weight_kg, passenger_count, luggage_kg,
+           volume_m3, weight_kg, passenger_count, luggage_kg, profile,
            window_start, window_end, notes, service_date, service_minutes, proof_required,
            kind, pickup_address, pickup_lat, pickup_lon, pickup_zone,
            pickup_window_start, pickup_window_end, pickup_service_minutes, pickup_proof_required,
            cargo_totals_locked
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
          RETURNING *`,
         [
           dbTenant.id,
@@ -2267,6 +2283,7 @@ export async function handleDispatchRequest(req, res) {
           cargo.weightKg,
           cargo.passengerCount,
           cargo.luggageKg,
+          orderProfile === "cargo" ? null : orderProfile,
           normalizeWindowClock(body.windowStart),
           normalizeWindowClock(body.windowEnd),
           String(body.notes || "").trim().slice(0, 2000) || null,
@@ -2601,6 +2618,11 @@ export async function handleDispatchRequest(req, res) {
         params.push(numOrNull(body.lon ?? body.lng));
         sets.push(`lon = $${params.length}`);
       }
+      if ("profile" in body) {
+        const orderProfile = parseOrderProfile(body.profile) || "cargo";
+        params.push(orderProfile === "cargo" ? null : orderProfile);
+        sets.push(`profile = $${params.length}`);
+      }
       if (
         "passengerCount" in body ||
         "passenger_count" in body ||
@@ -2617,6 +2639,11 @@ export async function handleDispatchRequest(req, res) {
         sets.push(`passenger_count = $${params.length}`);
         params.push(cargo.luggageKg);
         sets.push(`luggage_kg = $${params.length}`);
+      } else if (String(body.profile || "").toLowerCase() === "sales") {
+        params.push(null);
+        sets.push(`volume_m3 = $${params.length}`);
+        params.push(null);
+        sets.push(`weight_kg = $${params.length}`);
       } else {
         if ("volumeM3" in body) {
           params.push(numOrNull(body.volumeM3));

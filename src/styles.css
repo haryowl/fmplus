@@ -3340,6 +3340,15 @@ html.onesheet-root body {
 .field-map-link { color: var(--accent); font-weight: 600; font-size: 0.9rem; width: fit-content; }
 
 .field-label { display: grid; gap: 6px; font-size: 0.86rem; color: var(--ink-soft); min-width: 0; }
+.field-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+  margin-top: 8px;
+}
+.field-check input { margin-top: 3px; }
 .field-label input, .field-label textarea, .field-line-card input, .field-line-card select {
   padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
   background: #fff; font: inherit; color: var(--ink);

@@ -10,6 +10,7 @@ import { DispatchOrderGoodsEditor } from "../components/DispatchOrderGoodsEditor
 import { ViewNav } from "../components/ViewNav";
 import {
   dispatchProfiles,
+  enabledDeskModes,
   resolveDispatchDeskMode,
   type DispatchDeskMode,
 } from "../lib/entitlements";
@@ -259,13 +260,17 @@ export default function DispatchBoard() {
   const [deskModePref, setDeskModePref] = useState<DispatchDeskMode>(() => {
     try {
       const raw = localStorage.getItem("dispatchDeskMode");
-      return raw === "passenger" ? "passenger" : "cargo";
+      if (raw === "passenger" || raw === "sales" || raw === "cargo") return raw;
+      return "cargo";
     } catch {
       return "cargo";
     }
   });
   const deskMode = resolveDispatchDeskMode(profiles, deskModePref);
+  const deskModes = enabledDeskModes(profiles);
   const isPassenger = deskMode === "passenger";
+  const isSales = deskMode === "sales";
+  const hideCargoUnits = isPassenger || isSales;
   const [jobs, setJobs] = useState<DispatchJob[]>([]);
   const [orders, setOrders] = useState<DispatchOrder[]>([]);
   const [templates, setTemplates] = useState<DispatchOrderTemplate[]>([]);
@@ -1428,7 +1433,9 @@ export default function DispatchBoard() {
       externalRef: orderCode,
       ...(isPassenger
         ? { kind: "pickup_drop" as DispatchOrderKind, pinTarget: "pickup" as const, passengerCount: "1" }
-        : {}),
+        : isSales
+          ? { kind: "drop" as DispatchOrderKind, pinTarget: "drop" as const, lines: [] as DispatchOrderLine[] }
+          : {}),
     });
     setEditingOrderId(null);
     setPlacing(false);
@@ -1526,17 +1533,17 @@ export default function DispatchBoard() {
     setError("");
     const payload = {
       kind: orderForm.kind,
-      profile: isPassenger ? ("passenger" as const) : ("cargo" as const),
+      profile: isPassenger ? ("passenger" as const) : isSales ? ("sales" as const) : ("cargo" as const),
       customerName: orderForm.customerName.trim(),
       externalRef: orderForm.externalRef.trim() || undefined,
       address: orderForm.address.trim() || undefined,
       zone: orderForm.zone.trim() || undefined,
-      volumeM3: isPassenger
+      volumeM3: hideCargoUnits
         ? null
         : orderForm.volumeM3 === ""
           ? null
           : Number(orderForm.volumeM3),
-      weightKg: isPassenger
+      weightKg: hideCargoUnits
         ? null
         : orderForm.weightKg === ""
           ? null
@@ -1578,7 +1585,9 @@ export default function DispatchBoard() {
       cargoTotalsLocked: orderForm.cargoTotalsLocked,
       notes: orderForm.notes.trim(),
       customerId: orderForm.customerId,
-      lines: orderForm.lines.filter((l) => l.name.trim() && Number(l.qty) > 0),
+      lines: hideCargoUnits
+        ? []
+        : orderForm.lines.filter((l) => l.name.trim() && Number(l.qty) > 0),
       serviceDate: planDate,
       lat: orderForm.lat,
       lon: orderForm.lon,
@@ -2210,25 +2219,40 @@ export default function DispatchBoard() {
               <strong className={`dispatch-util-${utilizationTone(kpis.avgUtil)}`}>{kpis.avgUtil}%</strong>
             </div>
           </div>
-          {profiles.cargo && profiles.passenger ? (
+          {deskModes.length > 1 ? (
             <div className="dispatch-profile-toggle" role="group" aria-label="Dispatch profile">
-              <button
-                type="button"
-                className={`btn-secondary${deskMode === "cargo" ? " is-active" : ""}`}
-                onClick={() => setDeskModePref("cargo")}
-              >
-                Cargo
-              </button>
-              <button
-                type="button"
-                className={`btn-secondary${deskMode === "passenger" ? " is-active" : ""}`}
-                onClick={() => setDeskModePref("passenger")}
-              >
-                Passenger
-              </button>
+              {deskModes.includes("cargo") ? (
+                <button
+                  type="button"
+                  className={`btn-secondary${deskMode === "cargo" ? " is-active" : ""}`}
+                  onClick={() => setDeskModePref("cargo")}
+                >
+                  Cargo
+                </button>
+              ) : null}
+              {deskModes.includes("passenger") ? (
+                <button
+                  type="button"
+                  className={`btn-secondary${deskMode === "passenger" ? " is-active" : ""}`}
+                  onClick={() => setDeskModePref("passenger")}
+                >
+                  Passenger
+                </button>
+              ) : null}
+              {deskModes.includes("sales") ? (
+                <button
+                  type="button"
+                  className={`btn-secondary${deskMode === "sales" ? " is-active" : ""}`}
+                  onClick={() => setDeskModePref("sales")}
+                >
+                  Sales
+                </button>
+              ) : null}
             </div>
           ) : isPassenger ? (
             <p className="dispatch-search-hint">Passenger profile</p>
+          ) : isSales ? (
+            <p className="dispatch-search-hint">Sales visit profile · phone GPS · vehicle optional</p>
           ) : null}
           <div className="dispatch-kpi-actions">
             <button type="button" className="btn-secondary" disabled={loading} onClick={() => setReload((n) => n + 1)}>
@@ -3805,6 +3829,10 @@ export default function DispatchBoard() {
                         />
                       </label>
                     </>
+                  ) : isSales ? (
+                    <p className="dispatch-search-hint" style={{ gridColumn: "1 / -1" }}>
+                      Sales visit — no cargo volume/weight. Outcomes collected on Field Finish.
+                    </p>
                   ) : (
                     <>
                       <label className="field">
@@ -3840,12 +3868,12 @@ export default function DispatchBoard() {
                     </>
                   )}
                 </div>
-                {!isPassenger && orderForm.cargoTotalsLocked && orderForm.lines.length > 0 ? (
+                {!hideCargoUnits && orderForm.cargoTotalsLocked && orderForm.lines.length > 0 ? (
                   <p className="dispatch-window-warn">
                     Totals are overridden and may differ from the goods sum.
                   </p>
                 ) : null}
-                {!isPassenger ? (
+                {!hideCargoUnits ? (
                   <div className="dispatch-goods-block">
                     <button
                       type="button"
@@ -4284,9 +4312,11 @@ export default function DispatchBoard() {
                                 : o.volumeM3 != null
                                   ? `${Math.round(o.volumeM3)} pax`
                                   : "—"
-                              : o.volumeM3 != null
-                                ? `${o.volumeM3} m³`
-                                : "—"}
+                              : isSales
+                                ? o.visitOutcome || "visit"
+                                : o.volumeM3 != null
+                                  ? `${o.volumeM3} m³`
+                                  : "—"}
                             <span aria-hidden>·</span>
                             {o.weightKg != null ? `${o.weightKg} kg` : "—"}
                             <span aria-hidden>·</span>

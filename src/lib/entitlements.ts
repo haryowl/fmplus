@@ -131,15 +131,28 @@ export function dispatchProfiles(ent: Entitlements): DispatchProfiles {
   };
 }
 
-export type DispatchDeskMode = "cargo" | "passenger";
+export type DispatchDeskMode = "cargo" | "passenger" | "sales";
 
 export function resolveDispatchDeskMode(
   profiles: DispatchProfiles,
   requested?: string | null,
 ): DispatchDeskMode {
   const req = String(requested || "").toLowerCase();
+  if (req === "sales" && profiles.sales) return "sales";
   if (req === "passenger" && profiles.passenger) return "passenger";
   if (req === "cargo" && profiles.cargo) return "cargo";
+  if (profiles.sales && !profiles.cargo && !profiles.passenger) return "sales";
   if (profiles.passenger && !profiles.cargo) return "passenger";
+  if (profiles.cargo) return "cargo";
+  if (profiles.passenger) return "passenger";
+  if (profiles.sales) return "sales";
   return "cargo";
+}
+
+export function enabledDeskModes(profiles: DispatchProfiles): DispatchDeskMode[] {
+  const modes: DispatchDeskMode[] = [];
+  if (profiles.cargo) modes.push("cargo");
+  if (profiles.passenger) modes.push("passenger");
+  if (profiles.sales) modes.push("sales");
+  return modes;
 }

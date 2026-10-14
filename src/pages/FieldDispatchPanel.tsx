@@ -44,6 +44,8 @@ import {
   shiftServiceDate,
   todayServiceDate,
   uploadDispatchStopPhoto,
+  VISIT_OUTCOME_LABELS,
+  VISIT_OUTCOMES,
   type DispatchCalendarDay,
   type DispatchCalendarSummary,
   type DispatchGoodsItem,
@@ -52,6 +54,7 @@ import {
   type DispatchPhoto,
   type DispatchStatus,
   type DispatchStop,
+  type VisitOutcome,
 } from "../lib/dispatch";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -147,6 +150,8 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
   const [showSkipPanel, setShowSkipPanel] = useState(false);
   const [skipReason, setSkipReason] = useState("");
   const [skipDate, setSkipDate] = useState(() => shiftServiceDate(todayServiceDate(), 1));
+  const [visitOutcome, setVisitOutcome] = useState<VisitOutcome | "">("");
+  const [createDelivery, setCreateDelivery] = useState(true);
   const [locationConsent, setLocationConsent] = useState(readLocationConsent);
   const [goodsCatalog, setGoodsCatalog] = useState<DispatchGoodsItem[]>([]);
   const [cargoOrderId, setCargoOrderId] = useState<string | null>(null);
@@ -453,18 +458,23 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
       onErrorRef.current("Proof photo is required before finishing this order");
       return;
     }
+    const isSalesVisit = activeStop.orderProfile === "sales";
+    if (isSalesVisit && !visitOutcome) {
+      onErrorRef.current("Choose a visit outcome before finishing");
+      return;
+    }
     const finishLines =
       activeStop.orderId && cargoOrderId === activeStop.orderId
         ? cargoDraft
         : activeStop.lines || [];
-    if (scan?.stopRequireScan && stopRequireScanBlocks(finishLines)) {
+    if (!isSalesVisit && scan?.stopRequireScan && stopRequireScanBlocks(finishLines)) {
       onErrorRef.current("Scan every expected item before finishing this order");
       return;
     }
     setBusy(true);
     setGpsWarn("");
     try {
-      if (activeStop.orderId && cargoOrderId === activeStop.orderId) {
+      if (!isSalesVisit && activeStop.orderId && cargoOrderId === activeStop.orderId) {
         const saved = await fieldPutOrderLines(
           activeStop.orderId,
           cargoDraft.filter((l) => l.name.trim() && Number(l.qty) > 0),
@@ -476,23 +486,34 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
       }
       const phone = await readPhonePosition();
       if (!phone) setGpsWarn("Phone GPS unavailable — Armada position will still be recorded if available.");
-      const { job } = await fieldPatchStop(selected.id, activeStop.id, {
+      const { job, deliveryOrderId } = await fieldPatchStop(selected.id, activeStop.id, {
         status: "done",
         notes: stopNote,
         phoneLat: phone?.lat ?? null,
         phoneLon: phone?.lon ?? null,
+        ...(isSalesVisit && visitOutcome
+          ? {
+              visitOutcome,
+              createDelivery: visitOutcome === "ordered" && createDelivery,
+            }
+          : {}),
       });
       setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
       setActiveStopId(null);
       setShowSkipPanel(false);
+      setVisitOutcome("");
       onErrorRef.current("");
       if (job.status === "done") {
-        onNoticeRef.current("Job completed");
+        onNoticeRef.current(
+          deliveryOrderId ? "Job completed · delivery order created for desk" : "Job completed",
+        );
         setSelectedId(null);
         setView("jobs");
       } else {
         setView("orders");
-        onNoticeRef.current("Order completed");
+        onNoticeRef.current(
+          deliveryOrderId ? "Visit done · delivery order created for desk" : "Order completed",
+        );
       }
     } catch (err) {
       onErrorRef.current(err instanceof Error ? err.message : "Finish failed");
@@ -755,12 +776,14 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
             </div>
           ) : null}
           {gpsWarn ? <p className="muted">{gpsWarn}</p> : null}
-          {formatCargoSummary(activeStop.lines) ? (
+          {activeStop.orderProfile === "sales" ? (
+            <p className="muted">Sales visit · phone GPS · vehicle optional</p>
+          ) : formatCargoSummary(activeStop.lines) ? (
             <p className="muted">{formatCargoSummary(activeStop.lines)}</p>
           ) : null}
         </section>
 
-        {activeStop.orderId && !locked ? (
+        {activeStop.orderId && !locked && activeStop.orderProfile !== "sales" ? (
           <section className="field-panel">
             <header className="field-panel-head">
               <h3>Cargo</h3>
@@ -845,12 +868,47 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
           ) : null}
         </section>
 
+        {activeStop.orderProfile === "sales" && !locked ? (
+          <section className="field-panel">
+            <header className="field-panel-head">
+              <h3>Visit outcome</h3>
+              <p className="muted">Required before Finish</p>
+            </header>
+            <label className="field-label">
+              Outcome
+              <select
+                value={visitOutcome}
+                disabled={busy}
+                onChange={(e) => setVisitOutcome(e.target.value as VisitOutcome | "")}
+              >
+                <option value="">Select…</option>
+                {VISIT_OUTCOMES.map((o) => (
+                  <option key={o} value={o}>
+                    {VISIT_OUTCOME_LABELS[o]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {visitOutcome === "ordered" ? (
+              <label className="field-check">
+                <input
+                  type="checkbox"
+                  checked={createDelivery}
+                  disabled={busy}
+                  onChange={(e) => setCreateDelivery(e.target.checked)}
+                />
+                Create delivery order for desk (cargo inbox)
+              </label>
+            ) : null}
+          </section>
+        ) : null}
+
         <div className="field-action-row">
           <button
             type="button"
             className="field-order-btn field-order-btn-start"
             style={{ minWidth: 120, height: 40, fontSize: "0.85rem" }}
-            disabled={busy || locked}
+            disabled={busy || locked || (activeStop.orderProfile === "sales" && !visitOutcome)}
             onClick={() => void finishActiveStop()}
           >
             Finish

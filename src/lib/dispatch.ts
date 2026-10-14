@@ -179,6 +179,28 @@ export type DispatchStop = {
   role?: DispatchStopRole;
   /** Cargo for the parent order (same list on both pair legs). */
   lines?: DispatchOrderLine[];
+  /** Sales visit Finish outcome. */
+  visitOutcome?: string | null;
+  /** Profile of the linked order (sales / passenger / cargo). */
+  orderProfile?: "cargo" | "passenger" | "sales" | null;
+};
+
+export const VISIT_OUTCOMES = [
+  "visited",
+  "not_home",
+  "ordered",
+  "follow_up",
+  "no_interest",
+] as const;
+
+export type VisitOutcome = (typeof VISIT_OUTCOMES)[number];
+
+export const VISIT_OUTCOME_LABELS: Record<VisitOutcome, string> = {
+  visited: "Visited (no order)",
+  not_home: "Not home / closed",
+  ordered: "Order taken",
+  follow_up: "Follow-up needed",
+  no_interest: "No interest",
 };
 
 /** One calendar day of a multi-day tour, as seen from the driver's day view. */
@@ -280,6 +302,10 @@ export type DispatchOrder = {
   passengerCount?: number | null;
   /** Passenger profile: luggage kg (mirrored to weightKg for CVRP). */
   luggageKg?: number | null;
+  /** cargo | passenger | sales — null/omitted treated as cargo. */
+  profile?: "cargo" | "passenger" | "sales" | null;
+  visitOutcome?: string | null;
+  spawnedFromOrderId?: string | null;
   windowStart: string;
   windowEnd: string;
   /** Promised / plan day YYYY-MM-DD */
@@ -1470,6 +1496,9 @@ export async function createDispatchOrder(body: {
   zone?: string;
   volumeM3?: number | null;
   weightKg?: number | null;
+  passengerCount?: number | null;
+  luggageKg?: number | null;
+  profile?: "cargo" | "passenger" | "sales";
   /** null clears / means Any time — must not be omitted from the JSON body. */
   windowStart?: string | null;
   windowEnd?: string | null;
@@ -1923,13 +1952,16 @@ export type FieldStopPatchBody = {
   phoneLon?: number | null;
   skipReason?: string;
   rescheduleDate?: string;
+  visitOutcome?: VisitOutcome | string;
+  createDelivery?: boolean;
+  deliveryServiceDate?: string;
 };
 
 export async function fieldPatchStop(
   jobId: string,
   stopId: string,
   body: FieldStopPatchBody,
-): Promise<{ job: DispatchJob; stop: DispatchStop }> {
+): Promise<{ job: DispatchJob; stop: DispatchStop; deliveryOrderId?: string | null }> {
   const res = await fetch(
     `/api/field/dispatch/jobs/${encodeURIComponent(jobId)}/stops/${encodeURIComponent(stopId)}`,
     {
@@ -1942,11 +1974,12 @@ export async function fieldPatchStop(
   const data = (await res.json().catch(() => ({}))) as {
     job?: DispatchJob;
     stop?: DispatchStop;
+    deliveryOrderId?: string | null;
     error?: string;
   };
   if (!res.ok) throw new Error(data.error || `Stop update ${res.status}`);
   if (!data.job || !data.stop) throw new Error("Stop update failed");
-  return { job: data.job, stop: data.stop };
+  return { job: data.job, stop: data.stop, deliveryOrderId: data.deliveryOrderId ?? null };
 }
 
 /** Phone position for a start/finish mark. Null if denied or unavailable. */

@@ -52,6 +52,13 @@ import {
 import { applyFieldStopStock, returnTruckStockToDepot } from "./dispatch-stock.mjs";
 import { refreshJobFareActual } from "./dispatch-fare.mjs";
 import { refreshJobOpexActual } from "./dispatch-opex.mjs";
+import { parseDispatchProfiles } from "./dispatch-profiles.mjs";
+import {
+  parseVisitOutcome,
+  salesVisitRequiresOutcome,
+  spawnDeliveryFromVisit,
+  VISIT_OUTCOMES,
+} from "./dispatch-sales.mjs";
 
 const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
   lat, lon, notification_id, started_at, ended_at, odometer_km,
@@ -218,6 +225,8 @@ function publicDispatchStop(row, jobServiceDate = "") {
     skipReason: row.skip_reason || "",
     rescheduledTo: fieldYmd(row.rescheduled_to) || null,
     role: row.role === "pickup" ? "pickup" : "drop",
+    visitOutcome: row.visit_outcome || null,
+    orderProfile: row.order_profile || null,
   };
 }
 
@@ -340,7 +349,11 @@ async function loadAssignedDispatchJob(tenantId, jobId, fieldUserId) {
 /** Every stop of a tour; publicDispatchJob narrows to the day being worked. */
 async function loadDispatchStops(jobId) {
   const all = await dbQuery(
-    `SELECT * FROM dispatch_stops WHERE job_id = $1 ORDER BY sort_order ASC, created_at ASC`,
+    `SELECT s.*, o.profile AS order_profile
+     FROM dispatch_stops s
+     LEFT JOIN dispatch_orders o ON o.id = s.order_id
+     WHERE s.job_id = $1
+     ORDER BY s.sort_order ASC, s.created_at ASC`,
     [jobId],
   );
   return all.rows;
@@ -1004,6 +1017,48 @@ export async function handleFieldRequest(req, res) {
           }
         }
 
+        let visitOutcome = null;
+        let spawnedDelivery = null;
+        let visitOrderProfile = null;
+        if (status === "done") {
+          let orderProfile = null;
+          let visitOrder = null;
+          if (stopRow.order_id) {
+            const ord = await dbQuery(
+              `SELECT * FROM dispatch_orders WHERE id = $1 AND tenant_id = $2`,
+              [stopRow.order_id, user.tenantId],
+            );
+            visitOrder = ord.rows[0] || null;
+            orderProfile = visitOrder?.profile || null;
+            visitOrderProfile = orderProfile;
+          }
+          const entRow = await dbQuery(`SELECT entitlements FROM tenants WHERE id = $1`, [
+            user.tenantId,
+          ]);
+          const profiles = parseDispatchProfiles(entRow.rows[0]?.entitlements);
+          if (salesVisitRequiresOutcome(orderProfile, profiles.sales)) {
+            visitOutcome = parseVisitOutcome(body.visitOutcome ?? body.outcome);
+            if (!visitOutcome) {
+              json(res, 400, {
+                error: `Visit outcome is required (${VISIT_OUTCOMES.join(", ")})`,
+              });
+              return true;
+            }
+          } else {
+            visitOutcome = parseVisitOutcome(body.visitOutcome ?? body.outcome);
+          }
+          if (
+            visitOutcome === "ordered" &&
+            (body.createDelivery === true || body.create_delivery === true) &&
+            visitOrder
+          ) {
+            spawnedDelivery = await spawnDeliveryFromVisit(user.tenantId, visitOrder, {
+              visitOutcome,
+              serviceDate: body.deliveryServiceDate || body.delivery_service_date || null,
+            });
+          }
+        }
+
         let skipReason = null;
         let rescheduleDate = null;
         if (status === "skipped") {
@@ -1096,6 +1151,10 @@ export async function handleFieldRequest(req, res) {
           params.push(String(body.notes || "").trim().slice(0, 2000) || null);
           sets.push(`notes = $${params.length}`);
         }
+        if (visitOutcome) {
+          params.push(visitOutcome);
+          sets.push(`visit_outcome = $${params.length}`);
+        }
         params.push(stopId, job.id);
         const updated = await dbQuery(
           `UPDATE dispatch_stops
@@ -1107,6 +1166,14 @@ export async function handleFieldRequest(req, res) {
         if (!updated.rows[0]) {
           json(res, 404, { error: "Stop not found" });
           return true;
+        }
+        if (visitOutcome && stopRow.order_id) {
+          await dbQuery(
+            `UPDATE dispatch_orders
+             SET visit_outcome = $3, updated_at = now()
+             WHERE id = $1 AND tenant_id = $2`,
+            [stopRow.order_id, user.tenantId, visitOutcome],
+          ).catch(() => null);
         }
 
         // One-shot stop GPS also feeds the Live phone trail. Duty pings are
@@ -1257,13 +1324,20 @@ export async function handleFieldRequest(req, res) {
         }
         const row = await loadAssignedDispatchJob(user.tenantId, job.id, user.id);
         json(res, 200, {
-          stop: publicDispatchStop(updated.rows[0], fieldYmd(job.service_date)),
+          stop: publicDispatchStop(
+            {
+              ...updated.rows[0],
+              order_profile: visitOrderProfile || updated.rows[0].order_profile || null,
+            },
+            fieldYmd(job.service_date),
+          ),
           job: await fieldJobWithLines(user.tenantId, row, todayServiceDate()),
           gps: {
             phone: phone || null,
             armada: armada || null,
           },
           stock: stockResult,
+          deliveryOrderId: spawnedDelivery?.id || null,
         });
         return true;
       }
