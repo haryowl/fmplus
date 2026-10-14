@@ -65,6 +65,7 @@ import {
   jobContributionMargin,
   jobMatchesDeskMode,
   orderMatchesDeskMode,
+  tallyVisitOutcomes,
   VISIT_OUTCOME_LABELS,
   type VisitOutcome,
   generateDispatchOrdersFromTemplates,
@@ -643,6 +644,13 @@ export default function DispatchBoard() {
           ) / 10;
     return { openOrders, openJobs, avgUtil };
   }, [deskOrders, deskJobs]);
+
+  const salesOutcomeKpis = useMemo(() => {
+    if (!isSales) return null;
+    const rows = deskJobs.flatMap((j) => j.stops || []);
+    const tallied = tallyVisitOutcomes(rows);
+    return tallied.total > 0 ? tallied : null;
+  }, [isSales, deskJobs]);
 
   const zoneCounts = useMemo(() => {
     const byKey = new Map<string, { label: string; count: number }>();
@@ -2308,10 +2316,31 @@ export default function DispatchBoard() {
               <span>Open jobs</span>
               <strong>{kpis.openJobs}</strong>
             </div>
-            <div className="dispatch-kpi">
-              <span>Avg fill</span>
-              <strong className={`dispatch-util-${utilizationTone(kpis.avgUtil)}`}>{kpis.avgUtil}%</strong>
-            </div>
+            {isSales ? (
+              <>
+                <div className="dispatch-kpi">
+                  <span>Visits done</span>
+                  <strong>{salesOutcomeKpis?.total ?? 0}</strong>
+                </div>
+                <div className="dispatch-kpi">
+                  <span>Ordered</span>
+                  <strong>
+                    {salesOutcomeKpis
+                      ? `${salesOutcomeKpis.ordered}${
+                          salesOutcomeKpis.conversionPct != null
+                            ? ` · ${salesOutcomeKpis.conversionPct}%`
+                            : ""
+                        }`
+                      : "0"}
+                  </strong>
+                </div>
+              </>
+            ) : (
+              <div className="dispatch-kpi">
+                <span>Avg fill</span>
+                <strong className={`dispatch-util-${utilizationTone(kpis.avgUtil)}`}>{kpis.avgUtil}%</strong>
+              </div>
+            )}
           </div>
           {deskModes.length > 1 ? (
             <div className="dispatch-profile-toggle" role="group" aria-label="Dispatch profile">

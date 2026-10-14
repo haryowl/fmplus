@@ -82,6 +82,29 @@ export function salesVisitRequiresOutcome(orderProfile, tenantSalesEnabled) {
 }
 
 /**
+ * Day rollup of visit outcomes from Live stops / manifest rows.
+ * @returns {{ byOutcome: Record<string, number>, total: number, ordered: number, conversionPct: number|null }}
+ */
+export function tallyVisitOutcomes(rows = []) {
+  const byOutcome = Object.fromEntries(VISIT_OUTCOMES.map((o) => [o, 0]));
+  let total = 0;
+  let ordered = 0;
+  for (const r of rows || []) {
+    const outcome = parseVisitOutcome(r.visitOutcome ?? r.visit_outcome);
+    if (!outcome) continue;
+    byOutcome[outcome] += 1;
+    total += 1;
+    if (outcome === "ordered") ordered += 1;
+  }
+  return {
+    byOutcome,
+    total,
+    ordered,
+    conversionPct: total > 0 ? Math.round((ordered / total) * 1000) / 10 : null,
+  };
+}
+
+/**
  * Create a pending cargo delivery order from a completed sales visit.
  * @returns {Promise<object|null>} new order row
  */

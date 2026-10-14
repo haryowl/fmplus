@@ -203,6 +203,40 @@ export const VISIT_OUTCOME_LABELS: Record<VisitOutcome, string> = {
   no_interest: "No interest",
 };
 
+/** Client tally of visit outcomes (mirrors server Live rollup). */
+export function tallyVisitOutcomes(
+  rows: Array<{ visitOutcome?: string | null }>,
+): {
+  byOutcome: Record<VisitOutcome, number>;
+  total: number;
+  ordered: number;
+  conversionPct: number | null;
+} {
+  const byOutcome = Object.fromEntries(VISIT_OUTCOMES.map((o) => [o, 0])) as Record<
+    VisitOutcome,
+    number
+  >;
+  let total = 0;
+  let ordered = 0;
+  for (const r of rows || []) {
+    const raw = String(r.visitOutcome || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+    if (!(VISIT_OUTCOMES as readonly string[]).includes(raw)) continue;
+    const outcome = raw as VisitOutcome;
+    byOutcome[outcome] += 1;
+    total += 1;
+    if (outcome === "ordered") ordered += 1;
+  }
+  return {
+    byOutcome,
+    total,
+    ordered,
+    conversionPct: total > 0 ? Math.round((ordered / total) * 1000) / 10 : null,
+  };
+}
+
 /** One calendar day of a multi-day tour, as seen from the driver's day view. */
 export type DispatchJobDayLeg = {
   dayIndex: number;
@@ -2461,6 +2495,13 @@ export type DispatchLiveSummary = {
   opex?: number | null;
   fare?: number | null;
   margin?: number | null;
+  /** Sales visit outcomes for the day (null when none finished with an outcome). */
+  salesOutcomes?: {
+    byOutcome: Record<string, number>;
+    total: number;
+    ordered: number;
+    conversionPct: number | null;
+  } | null;
 };
 
 /** Sum driver money fields when summary omits them (older snapshots). */

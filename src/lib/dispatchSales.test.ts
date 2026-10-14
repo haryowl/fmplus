@@ -5,8 +5,10 @@ import {
   orderMatchesDeskMode,
   parseVisitOutcome,
   salesVisitRequiresOutcome,
+  tallyVisitOutcomes,
   VISIT_OUTCOMES,
 } from "../../server/dispatch-sales.mjs";
+import { tallyVisitOutcomes as clientTally } from "./dispatch";
 import { enabledDeskModes, resolveDispatchDeskMode } from "../../server/dispatch-profiles.mjs";
 import {
   dispatchProfiles,
@@ -64,6 +66,34 @@ describe("desk mode with sales", () => {
     const profiles = dispatchProfiles(ent);
     expect(clientEnabledModes(profiles)).toEqual(["cargo", "passenger", "sales"]);
     expect(clientResolveMode(profiles, "sales")).toBe("sales");
+  });
+});
+
+describe("tallyVisitOutcomes", () => {
+  it("counts outcomes and conversion", () => {
+    const tallied = tallyVisitOutcomes([
+      { visitOutcome: "ordered" },
+      { visit_outcome: "ordered" },
+      { visitOutcome: "not_home" },
+      { visitOutcome: "visited" },
+      { visitOutcome: null },
+    ]);
+    expect(tallied.total).toBe(4);
+    expect(tallied.ordered).toBe(2);
+    expect(tallied.conversionPct).toBe(50);
+    expect(tallied.byOutcome.not_home).toBe(1);
+    expect(clientTally([{ visitOutcome: "ordered" }, { visitOutcome: "follow_up" }])).toEqual({
+      byOutcome: {
+        visited: 0,
+        not_home: 0,
+        ordered: 1,
+        follow_up: 1,
+        no_interest: 0,
+      },
+      total: 2,
+      ordered: 1,
+      conversionPct: 50,
+    });
   });
 });
 

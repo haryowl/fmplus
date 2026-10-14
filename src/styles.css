@@ -9650,6 +9650,51 @@ button.dispatch-pin-chip {
   line-height: 1.3;
 }
 
+.dispatch-live-sales-outcomes {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  display: grid;
+  gap: 8px;
+}
+
+.dispatch-live-sales-outcomes-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dispatch-live-sales-outcomes-head .dispatch-eyebrow {
+  margin: 0;
+}
+
+.dispatch-live-sales-outcomes-head strong {
+  font-size: 0.88rem;
+}
+
+.dispatch-live-sales-outcomes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.dispatch-live-sales-outcomes-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.82rem;
+}
+
+.dispatch-live-sales-outcomes-list li span {
+  color: var(--ink-faint);
+}
+
 .dispatch-live-current {
   margin: 0;
   font-size: 0.78rem;

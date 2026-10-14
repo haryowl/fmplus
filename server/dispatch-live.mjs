@@ -22,6 +22,7 @@ import {
   todayServiceDate as todayYmdJakarta,
 } from "./service-day.mjs";
 import { contributionMargin, moneyIdr } from "./dispatch-opex.mjs";
+import { tallyVisitOutcomes } from "./dispatch-sales.mjs";
 
 /** Batch goods sell/cost per job for Live money rollup. */
 async function goodsMoneyByJob(tenantId, jobIds) {
@@ -815,6 +816,7 @@ export async function buildDispatchLiveSnapshot(opts) {
     completionN > 0 ? Math.round((completionSum / completionN) * 10) / 10 : 0;
   const activeDrivers = drivers.filter((d) => d.jobStatus !== "done").length;
   const money = rollupLiveMoney(drivers);
+  const salesOutcomes = tallyVisitOutcomes(manifest);
 
   const snapshot = {
     serviceDate,
@@ -835,6 +837,7 @@ export async function buildDispatchLiveSnapshot(opts) {
       opex: money.opex,
       fare: money.fare,
       margin: money.margin,
+      salesOutcomes: salesOutcomes.total > 0 ? salesOutcomes : null,
     },
     drivers,
     manifest,

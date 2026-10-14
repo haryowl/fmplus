@@ -16,6 +16,7 @@ import {
   shiftServiceDate,
   todayServiceDate,
   VISIT_OUTCOME_LABELS,
+  VISIT_OUTCOMES,
   type DispatchLiveDriver,
   type DispatchLiveSnapshot,
   type DispatchLiveStop,
@@ -872,6 +873,37 @@ export default function DispatchLive() {
                 </>
               ) : null}
             </section>
+
+            {summary?.salesOutcomes && summary.salesOutcomes.total > 0 ? (
+              <section
+                className="dispatch-live-sales-outcomes"
+                data-live-pane="summary"
+                aria-label="Sales visit outcomes"
+              >
+                <header className="dispatch-live-sales-outcomes-head">
+                  <p className="dispatch-eyebrow">Sales outcomes</p>
+                  <strong>
+                    {summary.salesOutcomes.total} visit
+                    {summary.salesOutcomes.total === 1 ? "" : "s"}
+                    {summary.salesOutcomes.conversionPct != null
+                      ? ` · ${summary.salesOutcomes.conversionPct}% ordered`
+                      : ""}
+                  </strong>
+                </header>
+                <ul className="dispatch-live-sales-outcomes-list">
+                  {VISIT_OUTCOMES.map((o) => {
+                    const n = summary.salesOutcomes?.byOutcome?.[o] ?? 0;
+                    if (!n) return null;
+                    return (
+                      <li key={o}>
+                        <span>{VISIT_OUTCOME_LABELS[o]}</span>
+                        <strong>{n}</strong>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ) : null}
 
             <div className="dispatch-live-split" data-live-pane="summary">
             {sla ? (
