@@ -553,22 +553,34 @@ export async function applyPickupStockMove(tenantId, opts) {
   return { ok: true, moved: true, depotId, warnings: check.warnings, movements };
 }
 
+/**
+ * Apply optional Field Finish delivered qtys onto planned catalog lines.
+ * Missing ids keep planned qty; explicit 0 drops the line (remainder stays on truck).
+ */
+export function applyDeliveredQtyOverrides(orderLines, deliveredLines) {
+  const lines = catalogLinesFrom(orderLines);
+  if (!deliveredLines || !Array.isArray(deliveredLines)) {
+    return lines.filter((l) => l.qty > 0);
+  }
+  const byId = new Map(
+    deliveredLines.map((l) => [
+      String(l.catalogItemId || l.catalog_item_id || ""),
+      Math.max(0, Number(l.qty) || 0),
+    ]),
+  );
+  return lines
+    .map((l) => ({
+      ...l,
+      qty: byId.has(l.catalogItemId) ? byId.get(l.catalogItemId) : l.qty,
+    }))
+    .filter((l) => l.qty > 0);
+}
+
 /** Truck ↓ on delivery (drop finished). Drop-only orders pull from depot if nothing on truck. */
 export async function applyDeliveryStockMove(tenantId, opts) {
   const jobId = opts.jobId;
   const orderId = opts.orderId;
-  let lines = catalogLinesFrom(opts.lines);
-  if (opts.deliveredLines && Array.isArray(opts.deliveredLines)) {
-    const byId = new Map(
-      opts.deliveredLines.map((l) => [
-        String(l.catalogItemId || l.catalog_item_id || ""),
-        Math.max(0, Number(l.qty) || 0),
-      ]),
-    );
-    lines = lines
-      .map((l) => ({ ...l, qty: byId.has(l.catalogItemId) ? byId.get(l.catalogItemId) : l.qty }))
-      .filter((l) => l.qty > 0);
-  }
+  const lines = applyDeliveredQtyOverrides(opts.lines, opts.deliveredLines);
   if (!jobId || !orderId || !lines.length) {
     return { ok: true, moved: false, reason: "no_catalog_lines" };
   }

@@ -2039,7 +2039,40 @@ export type FieldStopPatchBody = {
   visitOutcome?: VisitOutcome | string;
   createDelivery?: boolean;
   deliveryServiceDate?: string;
+  /** Drop Finish: qty that left the truck (remainder stays in-transit). */
+  deliveredLines?: Array<{ catalogItemId: string; qty: number }>;
 };
+
+/** Build stock deliveredLines from planned order lines + Field qty inputs. */
+export function buildDeliveredLinesPayload(
+  lines: DispatchOrderLine[] | undefined,
+  deliveredQtyByItem: Record<string, string | number>,
+): Array<{ catalogItemId: string; qty: number }> {
+  const out: Array<{ catalogItemId: string; qty: number }> = [];
+  for (const l of lines || []) {
+    const id = String(l.catalogItemId || "").trim();
+    if (!id) continue;
+    const planned = Math.max(0, Number(l.qty) || 0);
+    if (!planned) continue;
+    const raw = deliveredQtyByItem[id];
+    const n = raw === undefined || raw === "" ? planned : Number(raw);
+    const qty = Math.min(planned, Math.max(0, Number.isFinite(n) ? n : 0));
+    out.push({ catalogItemId: id, qty });
+  }
+  return out;
+}
+
+export function initDeliveredQtyByItem(
+  lines: DispatchOrderLine[] | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const l of lines || []) {
+    const id = String(l.catalogItemId || "").trim();
+    if (!id) continue;
+    out[id] = String(Math.max(0, Number(l.qty) || 0));
+  }
+  return out;
+}
 
 export async function fieldPatchStop(
   jobId: string,

@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyDeliveredQtyOverrides,
   parseStockSettings,
   checkDepotStockForLines,
   publicTruckStock,
   STOCK_MOVE_KINDS,
 } from "../../server/dispatch-stock.mjs";
-import { groupTruckStockByJob, type DispatchTruckStock } from "./dispatch";
+import {
+  buildDeliveredLinesPayload,
+  groupTruckStockByJob,
+  initDeliveredQtyByItem,
+  type DispatchTruckStock,
+} from "./dispatch";
 
 describe("parseStockSettings", () => {
   it("defaults to warn + Finish-enough", () => {
@@ -65,6 +71,55 @@ describe("publicTruckStock", () => {
       itemSku: "W-1",
       unit: "crate",
       qty: 3,
+    });
+  });
+});
+
+describe("applyDeliveredQtyOverrides", () => {
+  it("keeps planned qty when no overrides", () => {
+    expect(
+      applyDeliveredQtyOverrides(
+        [
+          { catalogItemId: "a", qty: 5, name: "A" },
+          { catalogItemId: "b", qty: 2, name: "B" },
+        ],
+        null,
+      ),
+    ).toEqual([
+      expect.objectContaining({ catalogItemId: "a", qty: 5 }),
+      expect.objectContaining({ catalogItemId: "b", qty: 2 }),
+    ]);
+  });
+
+  it("uses partial delivered qty and drops zeros", () => {
+    expect(
+      applyDeliveredQtyOverrides(
+        [
+          { catalogItemId: "a", qty: 5, name: "A" },
+          { catalogItemId: "b", qty: 2, name: "B" },
+        ],
+        [
+          { catalogItemId: "a", qty: 3 },
+          { catalogItemId: "b", qty: 0 },
+        ],
+      ),
+    ).toEqual([expect.objectContaining({ catalogItemId: "a", qty: 3 })]);
+  });
+});
+
+describe("buildDeliveredLinesPayload", () => {
+  it("clamps to planned qty and defaults missing inputs", () => {
+    expect(
+      buildDeliveredLinesPayload(
+        [
+          { name: "A", qty: 5, unit: "pcs", catalogItemId: "a" },
+          { name: "Loose", qty: 1, unit: "pcs" },
+        ],
+        { a: "9" },
+      ),
+    ).toEqual([{ catalogItemId: "a", qty: 5 }]);
+    expect(initDeliveredQtyByItem([{ name: "A", qty: 4, unit: "pcs", catalogItemId: "a" }])).toEqual({
+      a: "4",
     });
   });
 });

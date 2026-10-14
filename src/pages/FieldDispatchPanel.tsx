@@ -31,6 +31,7 @@ import {
   calendarDayDotTones,
   DISPATCH_STATUS_LABELS,
   dispatchVehicleLabel,
+  buildDeliveredLinesPayload,
   dropLockedUntilPickup,
   fieldDispatchCalendar,
   fieldFetchDispatchGoods,
@@ -40,6 +41,7 @@ import {
   fieldStopPhotos,
   formatDispatchWindow,
   formatServiceDateLabel,
+  initDeliveredQtyByItem,
   mapsNavigateUrl,
   readPhonePosition,
   shiftServiceDate,
@@ -161,6 +163,8 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
   const [cargoOrderId, setCargoOrderId] = useState<string | null>(null);
   const [vehicleConfirmedJobId, setVehicleConfirmedJobId] = useState<string | null>(null);
   const [cargoDraft, setCargoDraft] = useState<DispatchOrderLine[]>([]);
+  /** Drop Finish: delivered qty per catalogItemId (planned qty stays on the order). */
+  const [deliveredQtyByItem, setDeliveredQtyByItem] = useState<Record<string, string>>({});
   const onErrorRef = useRef(onError);
   const onNoticeRef = useRef(onNotice);
   onErrorRef.current = onError;
@@ -422,6 +426,9 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
     if (stop.orderId) {
       setCargoOrderId(stop.orderId);
       setCargoDraft(stop.lines || []);
+      setDeliveredQtyByItem(initDeliveredQtyByItem(stop.lines || []));
+    } else {
+      setDeliveredQtyByItem({});
     }
     setBusy(true);
     setGpsWarn("");
@@ -471,14 +478,47 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
       activeStop.orderId && cargoOrderId === activeStop.orderId
         ? cargoDraft
         : activeStop.lines || [];
-    if (!isSalesVisit && scan?.stopRequireScan && stopRequireScanBlocks(finishLines)) {
+    const isDrop = (activeStop.role || "drop") !== "pickup";
+    const deliveredLines =
+      !isSalesVisit && isDrop
+        ? buildDeliveredLinesPayload(finishLines, deliveredQtyByItem)
+        : null;
+    const linesForScan =
+      deliveredLines && deliveredLines.length
+        ? finishLines
+            .map((l) => {
+              const id = String(l.catalogItemId || "").trim();
+              if (!id) return l;
+              const hit = deliveredLines.find((d) => d.catalogItemId === id);
+              return hit ? { ...l, qty: hit.qty } : l;
+            })
+            .filter((l) => Number(l.qty) > 0)
+        : finishLines;
+    if (
+      !isSalesVisit &&
+      isDrop &&
+      deliveredLines &&
+      deliveredLines.some((l) => l.catalogItemId) &&
+      deliveredLines.every((l) => !(l.qty > 0))
+    ) {
+      onErrorRef.current("Enter delivered qty, or Skip if nothing was delivered");
+      return;
+    }
+    if (!isSalesVisit && scan?.stopRequireScan && stopRequireScanBlocks(linesForScan)) {
       onErrorRef.current("Scan every expected item before finishing this order");
       return;
     }
     setBusy(true);
     setGpsWarn("");
     try {
-      if (!isSalesVisit && activeStop.orderId && cargoOrderId === activeStop.orderId) {
+      // Pickup may still persist cargo edits on Finish. Drop uses deliveredLines for stock
+      // so planned order qty is not rewritten by a partial delivery.
+      if (
+        !isSalesVisit &&
+        !isDrop &&
+        activeStop.orderId &&
+        cargoOrderId === activeStop.orderId
+      ) {
         const saved = await fieldPutOrderLines(
           activeStop.orderId,
           cargoDraft.filter((l) => l.name.trim() && Number(l.qty) > 0),
@@ -495,6 +535,9 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
         notes: stopNote,
         phoneLat: phone?.lat ?? null,
         phoneLon: phone?.lon ?? null,
+        ...(deliveredLines && deliveredLines.some((l) => l.catalogItemId)
+          ? { deliveredLines }
+          : {}),
         ...(isSalesVisit && visitOutcome
           ? {
               visitOutcome,
@@ -506,6 +549,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
       setActiveStopId(null);
       setShowSkipPanel(false);
       setVisitOutcome("");
+      setDeliveredQtyByItem({});
       onErrorRef.current("");
       if (job.status === "done") {
         onNoticeRef.current(
@@ -826,6 +870,15 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
               onChange={(lines) => {
                 setCargoOrderId(activeStop.orderId!);
                 setCargoDraft(lines);
+                if ((activeStop.role || "drop") !== "pickup") {
+                  setDeliveredQtyByItem((prev) => {
+                    const next = initDeliveredQtyByItem(lines);
+                    for (const id of Object.keys(next)) {
+                      if (prev[id] != null && prev[id] !== "") next[id] = prev[id];
+                    }
+                    return next;
+                  });
+                }
               }}
               compact
               scanSource="field"
@@ -848,6 +901,55 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
             >
               Save cargo
             </button>
+          </section>
+        ) : null}
+
+        {!locked &&
+        activeStop.orderProfile !== "sales" &&
+        (activeStop.role || "drop") !== "pickup" &&
+        (cargoOrderId === activeStop.orderId ? cargoDraft : activeStop.lines || []).some(
+          (l) => l.catalogItemId && Number(l.qty) > 0,
+        ) ? (
+          <section className="field-panel">
+            <header className="field-panel-head">
+              <h3>Delivered qty</h3>
+              <p className="muted">
+                Only this qty leaves the truck. Remainder stays in-transit for retry or return to depot.
+              </p>
+            </header>
+            <ul className="field-delivered-list">
+              {(cargoOrderId === activeStop.orderId ? cargoDraft : activeStop.lines || [])
+                .filter((l) => l.catalogItemId && Number(l.qty) > 0)
+                .map((l) => {
+                  const id = String(l.catalogItemId);
+                  const planned = Number(l.qty) || 0;
+                  return (
+                    <li key={id}>
+                      <div>
+                        <strong>{l.name || "Item"}</strong>
+                        <span className="muted">
+                          Planned {planned} {l.unit || "pcs"}
+                        </span>
+                      </div>
+                      <label className="field-label">
+                        Delivered
+                        <input
+                          type="number"
+                          min={0}
+                          max={planned}
+                          step="any"
+                          inputMode="decimal"
+                          disabled={busy}
+                          value={deliveredQtyByItem[id] ?? String(planned)}
+                          onChange={(e) =>
+                            setDeliveredQtyByItem((prev) => ({ ...prev, [id]: e.target.value }))
+                          }
+                        />
+                      </label>
+                    </li>
+                  );
+                })}
+            </ul>
           </section>
         ) : null}
 
