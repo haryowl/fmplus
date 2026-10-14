@@ -40,6 +40,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   dispatchCargo: "Dispatch: cargo / goods profile",
   dispatchPassenger: "Dispatch: passenger profile",
   dispatchSales: "Dispatch: sales visit profile",
+  dispatchShowMoneyOnField: "Dispatch: show money on Field / POD",
 };
 
 export function defaultEntitlements(): Entitlements {
@@ -69,6 +70,7 @@ export function defaultEntitlements(): Entitlements {
       dispatchCargo: true,
       dispatchPassenger: false,
       dispatchSales: false,
+      dispatchShowMoneyOnField: false,
     },
     actions: {
       ackException: false,

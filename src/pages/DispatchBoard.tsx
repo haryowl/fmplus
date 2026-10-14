@@ -63,6 +63,8 @@ import {
   formatDispatchServiceMinutes,
   formatServiceDateLabel,
   jobContributionMargin,
+  VISIT_OUTCOME_LABELS,
+  type VisitOutcome,
   generateDispatchOrdersFromTemplates,
   importDispatchOrders,
   moveStopToDay,
@@ -4306,19 +4308,33 @@ export default function DispatchBoard() {
                             <span className="dispatch-order-addr">{formatCargoSummary(o.lines)}</span>
                           ) : null}
                           <span className="dispatch-order-meta">
-                            {isPassenger
-                              ? o.passengerCount != null
-                                ? `${o.passengerCount} pax`
-                                : o.volumeM3 != null
-                                  ? `${Math.round(o.volumeM3)} pax`
-                                  : "—"
-                              : isSales
-                                ? o.visitOutcome || "visit"
-                                : o.volumeM3 != null
-                                  ? `${o.volumeM3} m³`
+                            {isPassenger ? (
+                              <>
+                                {o.passengerCount != null
+                                  ? `${o.passengerCount} pax`
+                                  : o.volumeM3 != null
+                                    ? `${Math.round(o.volumeM3)} pax`
+                                    : "—"}
+                                <span aria-hidden>·</span>
+                                {o.luggageKg != null || o.weightKg != null
+                                  ? `${o.luggageKg ?? o.weightKg} kg luggage`
                                   : "—"}
-                            <span aria-hidden>·</span>
-                            {o.weightKg != null ? `${o.weightKg} kg` : "—"}
+                              </>
+                            ) : isSales ? (
+                              <>
+                                {o.visitOutcome && o.visitOutcome in VISIT_OUTCOME_LABELS
+                                  ? VISIT_OUTCOME_LABELS[o.visitOutcome as VisitOutcome]
+                                  : o.visitOutcome
+                                    ? o.visitOutcome.replace(/_/g, " ")
+                                    : "Pending outcome"}
+                              </>
+                            ) : (
+                              <>
+                                {o.volumeM3 != null ? `${o.volumeM3} m³` : "—"}
+                                <span aria-hidden>·</span>
+                                {o.weightKg != null ? `${o.weightKg} kg` : "—"}
+                              </>
+                            )}
                             <span aria-hidden>·</span>
                             {formatDispatchWindow(o) || "Open window"}
                             {formatDispatchServiceMinutes(o) ? (
@@ -4998,7 +5014,19 @@ export default function DispatchBoard() {
                               <span className="dispatch-stop-meta">
                                 {stop.status}
                                 {stop.zone ? ` · ${stop.zone}` : ""}
-                                {stop.volumeM3 != null ? ` · ${stop.volumeM3} m³` : ""}
+                                {stop.orderProfile === "sales" || stop.visitOutcome
+                                  ? stop.visitOutcome && stop.visitOutcome in VISIT_OUTCOME_LABELS
+                                    ? ` · ${VISIT_OUTCOME_LABELS[stop.visitOutcome as VisitOutcome]}`
+                                    : stop.visitOutcome
+                                      ? ` · ${stop.visitOutcome.replace(/_/g, " ")}`
+                                      : " · sales visit"
+                                  : isPassenger
+                                    ? stop.volumeM3 != null
+                                      ? ` · ${Math.round(stop.volumeM3)} seats`
+                                      : ""
+                                    : stop.volumeM3 != null
+                                      ? ` · ${stop.volumeM3} m³`
+                                      : ""}
                                 {formatDispatchWindow(stop) ? ` · ${formatDispatchWindow(stop)}` : ""}
                                 {formatDispatchServiceMinutes(stop, Number(planServiceMin) || 8)
                                   ? ` · ${formatDispatchServiceMinutes(stop, Number(planServiceMin) || 8)}`

@@ -13,6 +13,7 @@ import {
 } from "../lib/driverLocation";
 import { isNativeFieldApp } from "../lib/nativeField";
 import { offlineFieldEnabled } from "../lib/offlineField";
+import { formatIdr } from "../lib/format";
 import type { FieldScanCapabilities } from "../lib/scanCapabilities";
 import { fieldScanCanCargo, fieldScanCanLocation, fieldScanCanVehicle } from "../lib/scanCapabilities";
 import { CatalogScanButton } from "../components/CatalogScanButton";
@@ -42,6 +43,7 @@ import {
   mapsNavigateUrl,
   readPhonePosition,
   shiftServiceDate,
+  sumOrderMoneyTotals,
   todayServiceDate,
   uploadDispatchStopPhoto,
   VISIT_OUTCOME_LABELS,
@@ -76,6 +78,8 @@ type Props = {
   onError: (msg: string) => void;
   onNotice: (msg: string) => void;
   scan?: FieldScanCapabilities | null;
+  /** Tenant entitlement: show goods/fare money on Field. */
+  showMoney?: boolean;
 };
 
 type View = "calendar" | "jobs" | "orders" | "activeStop";
@@ -118,7 +122,7 @@ function ymdFromParts(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
+export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false }: Props) {
   const allowCargoScan = fieldScanCanCargo(scan);
   const allowVehicleScan = fieldScanCanVehicle(scan);
   const allowLocationScan = fieldScanCanLocation(scan);
@@ -780,6 +784,27 @@ export function FieldDispatchPanel({ onError, onNotice, scan }: Props) {
             <p className="muted">Sales visit · phone GPS · vehicle optional</p>
           ) : formatCargoSummary(activeStop.lines) ? (
             <p className="muted">{formatCargoSummary(activeStop.lines)}</p>
+          ) : null}
+          {showMoney && activeStop.orderProfile !== "sales" ? (
+            (() => {
+              const money = sumOrderMoneyTotals(activeStop.lines);
+              if (money.goodsSubtotal == null && selected?.fareEstimate == null) return null;
+              return (
+                <p className="muted">
+                  {money.goodsSubtotal != null ? `Goods ${formatIdr(money.goodsSubtotal)}` : ""}
+                  {money.goodsSubtotal != null && selected?.fareEstimate != null ? " · " : ""}
+                  {selected?.fareEstimate != null ? `Fare est. ${formatIdr(selected.fareEstimate)}` : ""}
+                </p>
+              );
+            })()
+          ) : null}
+          {activeStop.visitOutcome ? (
+            <p className="muted">
+              Outcome:{" "}
+              {activeStop.visitOutcome in VISIT_OUTCOME_LABELS
+                ? VISIT_OUTCOME_LABELS[activeStop.visitOutcome as VisitOutcome]
+                : activeStop.visitOutcome}
+            </p>
           ) : null}
         </section>
 

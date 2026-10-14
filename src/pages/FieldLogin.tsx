@@ -146,6 +146,7 @@ export default function FieldLogin() {
   const [jobFilter, setJobFilter] = useState<JobListFilter>("all");
   const [catalog, setCatalog] = useState<CatalogGroup[]>([]);
   const [scan, setScan] = useState<FieldScanCapabilities | null>(null);
+  const [showMoneyOnField, setShowMoneyOnField] = useState(false);
   const [pendingPart, setPendingPart] = useState<{
     item: CatalogItem;
     scannedCode: string;
@@ -161,12 +162,14 @@ export default function FieldLogin() {
         mobileDispatch?: boolean;
         dutyLocation?: DutyLocationPolicy;
         scan?: FieldScanCapabilities;
+        showMoneyOnField?: boolean;
       }>("/api/field/me");
       if (me.user.role === "manager") {
         setUser(null);
         setMobileMaintenance(false);
         setMobileDispatch(false);
         setScan(null);
+        setShowMoneyOnField(false);
         setError("Manager accounts sign in at /mm, not /m.");
         return false;
       }
@@ -174,6 +177,7 @@ export default function FieldLogin() {
       setMobileMaintenance(Boolean(me.mobileMaintenance));
       setMobileDispatch(Boolean(me.mobileDispatch));
       setScan(me.scan || null);
+      setShowMoneyOnField(me.showMoneyOnField === true);
       applyDutyLocationPolicy(me.dutyLocation);
       return true;
     } catch {
@@ -181,6 +185,7 @@ export default function FieldLogin() {
       setMobileMaintenance(false);
       setMobileDispatch(false);
       setScan(null);
+      setShowMoneyOnField(false);
       return false;
     }
   }, []);
@@ -380,6 +385,7 @@ export default function FieldLogin() {
         mobileDispatch?: boolean;
         dutyLocation?: DutyLocationPolicy;
         scan?: FieldScanCapabilities;
+        showMoneyOnField?: boolean;
       }>("/api/field/login", {
         method: "POST",
         body: JSON.stringify({ tenantKey: tenantKey.trim(), username, password }),
@@ -389,6 +395,7 @@ export default function FieldLogin() {
         await api("/api/field/logout", { method: "POST", body: "{}" });
         setUser(null);
         setScan(null);
+        setShowMoneyOnField(false);
         setError("Manager accounts sign in at /mm, not /m.");
         return;
       }
@@ -396,6 +403,7 @@ export default function FieldLogin() {
       setMobileMaintenance(Boolean(data.mobileMaintenance));
       setMobileDispatch(Boolean(data.mobileDispatch));
       setScan(data.scan || null);
+      setShowMoneyOnField(data.showMoneyOnField === true);
       applyDutyLocationPolicy(data.dutyLocation);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -686,6 +694,7 @@ export default function FieldLogin() {
             onError={(msg) => setError(msg)}
             onNotice={(msg) => setNotice(msg)}
             scan={scan}
+            showMoney={showMoneyOnField}
           />
         ) : !inMaintenance ? (
           <div className="field-panel">

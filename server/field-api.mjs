@@ -162,6 +162,7 @@ async function mobileFlagsForTenant(tenantId) {
     mobileDispatch: ent.mobile?.dispatch === true,
     dutyLocation: dutyLocationFromTenantRow(row.rows[0] || {}),
     scan: ent.scan,
+    showMoneyOnField: ent.features.dispatchShowMoneyOnField === true,
   };
 }
 
@@ -332,6 +333,10 @@ function publicDispatchJob(row, stops = [], requestedDate = "") {
       row.route_end_lon,
       row.route_end_label || "Return",
     ),
+    fareEstimate: row.fare_estimate == null ? null : Number(row.fare_estimate),
+    fareActual: row.fare_actual == null ? null : Number(row.fare_actual),
+    opexEstimate: row.opex_estimate == null ? null : Number(row.opex_estimate),
+    opexActual: row.opex_actual == null ? null : Number(row.opex_actual),
     ...cap,
     stops: dayStops.map((s) => publicDispatchStop(s, serviceDate)),
   };
@@ -439,6 +444,7 @@ export async function handleFieldRequest(req, res) {
           mobileDispatch: flags.mobileDispatch,
           dutyLocation: flags.dutyLocation,
           scan: resolveFieldScan(flags.scan, row.role),
+          showMoneyOnField: flags.showMoneyOnField === true,
         },
         { "Set-Cookie": fieldSessionCookieHeader(session.token, maxAge) },
       );
@@ -466,6 +472,7 @@ export async function handleFieldRequest(req, res) {
         mobileDispatch: flags.mobileDispatch,
         dutyLocation: flags.dutyLocation,
         scan: resolveFieldScan(flags.scan, user.role),
+        showMoneyOnField: flags.showMoneyOnField === true,
       });
       return true;
     }

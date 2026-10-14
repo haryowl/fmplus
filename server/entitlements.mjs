@@ -33,6 +33,8 @@ export const FEATURE_KEYS = [
   "dispatchCargo",
   "dispatchPassenger",
   "dispatchSales",
+  /** Show goods sell / fare amounts on Field (POD); WhatsApp later */
+  "dispatchShowMoneyOnField",
 ];
 
 export const ACTION_KEYS = [
@@ -70,6 +72,7 @@ export function defaultEntitlements() {
       dispatchCargo: true,
       dispatchPassenger: false,
       dispatchSales: false,
+      dispatchShowMoneyOnField: false,
     },
     actions: {
       ackException: false,

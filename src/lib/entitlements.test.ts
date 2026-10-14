@@ -55,4 +55,12 @@ describe("entitlements", () => {
       dispatchProfiles(mergeEntitlements({ features: { dispatchPassenger: true } })).passenger,
     ).toBe(true);
   });
+
+  it("defaults Field money off", () => {
+    expect(defaultEntitlements().features.dispatchShowMoneyOnField).toBe(false);
+    expect(
+      mergeEntitlements({ features: { dispatchShowMoneyOnField: true } }).features
+        .dispatchShowMoneyOnField,
+    ).toBe(true);
+  });
 });
