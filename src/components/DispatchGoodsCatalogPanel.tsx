@@ -124,7 +124,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
       <div className="dispatch-goods-catalog-head">
         <div>
           <p className="dispatch-eyebrow">Cargo</p>
-          <h2>Goods catalog</h2>
+          <h2>Goods &amp; Stock</h2>
           <p className="dispatch-search-hint">
             Office list. Fill a SKU, then Print QR / barcode or Write NFC. Orders can also pick free text.
           </p>

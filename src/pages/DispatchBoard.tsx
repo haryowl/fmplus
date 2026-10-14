@@ -4,13 +4,12 @@ import { BrandMark } from "../components/BrandMark";
 import { CsvImportPanel } from "../components/CsvImportPanel";
 import { CatalogCodesEditor } from "../components/CatalogCodesEditor";
 import { CatalogScanButton } from "../components/CatalogScanButton";
-import { DispatchCustomersPanel } from "../components/DispatchCustomersPanel";
-import { DispatchGoodsCatalogPanel } from "../components/DispatchGoodsCatalogPanel";
 import { DispatchJobMap } from "../components/DispatchJobMap";
 import { DispatchOrderGoodsEditor } from "../components/DispatchOrderGoodsEditor";
 import { ViewNav } from "../components/ViewNav";
 import { locationNameFromScan, lookupCatalogScan } from "../lib/catalogScan";
 import { isNativeDispatchApp } from "../lib/nativeField";
+import { customersHref, goodsHref, navigateView } from "../lib/routing";
 import { nextDatedCode } from "../lib/datedCode";
 import {
   DISPATCH_ORDER_CSV_HEADERS,
@@ -242,8 +241,6 @@ export default function DispatchBoard() {
   const [orders, setOrders] = useState<DispatchOrder[]>([]);
   const [templates, setTemplates] = useState<DispatchOrderTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [showGoodsCatalog, setShowGoodsCatalog] = useState(false);
-  const [showCustomers, setShowCustomers] = useState(false);
   const [customers, setCustomers] = useState<DispatchCustomer[]>([]);
   const [customerFilter, setCustomerFilter] = useState("");
   const [customerPickId, setCustomerPickId] = useState("");
@@ -1348,34 +1345,6 @@ export default function DispatchBoard() {
     setPlacing(true);
     setError("");
   }
-
-  function closeCustomers() {
-    setShowCustomers(false);
-    void fetchDispatchCustomers()
-      .then(setCustomers)
-      .catch(() => undefined);
-  }
-
-  function closeGoodsCatalog() {
-    setShowGoodsCatalog(false);
-    void fetchDispatchGoods()
-      .then(setGoodsCatalog)
-      .catch(() => undefined);
-  }
-
-  useEffect(() => {
-    if (!showGoodsCatalog) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeGoodsCatalog();
-    };
-    window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [showGoodsCatalog]);
 
   const jobCode = useMemo(
     () => nextDatedCode("JOB", planDate, [...runSeeds.jobTitles, ...jobs.map((j) => j.title)]),
@@ -3217,20 +3186,24 @@ export default function DispatchBoard() {
               >
                 {showTemplates ? "Hide routines" : `Routines (${templates.length})`}
               </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowGoodsCatalog(true)}
-              >
-                Goods ({goodsCatalog.length})
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowCustomers(true)}
-              >
-                Customers ({customers.length})
-              </button>
+              {!isNativeDispatchApp() ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => navigateView(goodsHref(window.location.search))}
+                  >
+                    Goods &amp; Stock ({goodsCatalog.length})
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => navigateView(customersHref(window.location.search))}
+                  >
+                    Customers ({customers.length})
+                  </button>
+                </>
+              ) : null}
             </div>
 
             <CsvImportPanel
@@ -3443,10 +3416,19 @@ export default function DispatchBoard() {
                     </select>
                   </div>
                   <p className="dispatch-search-hint">
-                    Copies name, pin, zone, and notes onto this order.{" "}
-                    <button type="button" className="btn-ghost btn-compact" onClick={() => setShowCustomers(true)}>
-                      Manage the list
-                    </button>
+                    Copies name, pin, zone, and notes onto this order.
+                    {!isNativeDispatchApp() ? (
+                      <>
+                        {" "}
+                        <button
+                          type="button"
+                          className="btn-ghost btn-compact"
+                          onClick={() => navigateView(customersHref(window.location.search))}
+                        >
+                          Manage the list
+                        </button>
+                      </>
+                    ) : null}
                   </p>
                 </>
               ) : (
@@ -4873,39 +4855,6 @@ export default function DispatchBoard() {
           </section>
         </div>
       </main>
-      {showCustomers ? (
-        <div
-          className="dispatch-catalog-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Customers"
-          onClick={closeCustomers}
-        >
-          <div className="dispatch-catalog-sheet" onClick={(e) => e.stopPropagation()}>
-            <DispatchCustomersPanel
-              onClose={closeCustomers}
-              onUse={(customer) => {
-                applyCustomer(customer);
-                setPlaceMode("customer");
-                closeCustomers();
-              }}
-            />
-          </div>
-        </div>
-      ) : null}
-      {showGoodsCatalog ? (
-        <div
-          className="dispatch-catalog-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Goods catalog"
-          onClick={closeGoodsCatalog}
-        >
-          <div className="dispatch-catalog-sheet" onClick={(e) => e.stopPropagation()}>
-            <DispatchGoodsCatalogPanel onClose={closeGoodsCatalog} />
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

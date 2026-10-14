@@ -11,6 +11,8 @@ import ExceptionsInbox from "./pages/ExceptionsInbox";
 import PlacesAnalytics from "./pages/PlacesAnalytics";
 import RoutePlanPage from "./pages/RoutePlan";
 import DispatchBoard from "./pages/DispatchBoard";
+import DispatchCustomersPage from "./pages/DispatchCustomersPage";
+import DispatchGoodsPage from "./pages/DispatchGoodsPage";
 import DispatchLive from "./pages/DispatchLive";
 import MaintenanceBoard from "./pages/MaintenanceBoard";
 import TripDetail from "./pages/TripDetail";
@@ -47,6 +49,8 @@ function pageFor(view: AppView) {
   if (view === "places") return PlacesAnalytics;
   if (view === "routePlan") return RoutePlanPage;
   if (view === "dispatchDesk") return DispatchBoard;
+  if (view === "dispatchGoods") return DispatchGoodsPage;
+  if (view === "dispatchCustomers") return DispatchCustomersPage;
   if (view === "dispatchLive") return DispatchLive;
   if (view === "maintenance") return MaintenanceBoard;
   if (view === "status") return LastStatus;

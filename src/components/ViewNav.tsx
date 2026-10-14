@@ -1,10 +1,12 @@
 import {
   compactHref,
+  customersHref,
   dispatchLiveHref,
   exceptionsHref,
   fleetCompactHref,
   fleetHref,
   fullHref,
+  goodsHref,
   liveHref,
   maintenanceHref,
   navigateView,
@@ -32,10 +34,13 @@ const LINKS: { view: AppView; label: string; href: (search: string) => string }[
   { view: "places", label: "Places", href: placesHref },
   { view: "routePlan", label: "Route", href: routePlanHref },
   { view: "dispatchDesk", label: "Jobs", href: jobsHref },
+  { view: "dispatchGoods", label: "Goods & Stock", href: goodsHref },
+  { view: "dispatchCustomers", label: "Customers", href: customersHref },
   { view: "dispatchLive", label: "Dispatch Live", href: dispatchLiveHref },
   { view: "maintenance", label: "Maintenance", href: maintenanceHref },
 ];
 
+/** Dispatch APK: execution only — catalog/customers admin stays on desk browser. */
 const DISPATCH_APP_LINKS = LINKS.filter(
   (link) => link.view === "dispatchDesk" || link.view === "dispatchLive",
 );

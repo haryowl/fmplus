@@ -13,6 +13,8 @@ import {
   placesHref,
   routePlanHref,
   jobsHref,
+  goodsHref,
+  customersHref,
   dispatchLiveHref,
   viewFromPath,
   withSearch,
@@ -39,6 +41,12 @@ describe("viewFromPath", () => {
     expect(viewFromPath("/route/")).toBe("routePlan");
     expect(viewFromPath("/jobs")).toBe("dispatchDesk");
     expect(viewFromPath("/jobs/")).toBe("dispatchDesk");
+    expect(viewFromPath("/goods")).toBe("dispatchGoods");
+    expect(viewFromPath("/goods/")).toBe("dispatchGoods");
+    expect(viewFromPath("/jobs/goods")).toBe("dispatchGoods");
+    expect(viewFromPath("/customers")).toBe("dispatchCustomers");
+    expect(viewFromPath("/customers/")).toBe("dispatchCustomers");
+    expect(viewFromPath("/jobs/customers")).toBe("dispatchCustomers");
     expect(viewFromPath("/dispatch-live")).toBe("dispatchLive");
     expect(viewFromPath("/dispatch-live/")).toBe("dispatchLive");
     expect(viewFromPath("/jobs/live")).toBe("dispatchLive");
@@ -89,6 +97,8 @@ describe("withSearch", () => {
     expect(placesHref(q)).toBe("/places?groupId=12&userId=99&embed=1");
     expect(routePlanHref(q)).toBe("/route?groupId=12&userId=99&embed=1");
     expect(jobsHref(q)).toBe("/jobs?groupId=12&userId=99&embed=1");
+    expect(goodsHref(q)).toBe("/goods?groupId=12&userId=99&embed=1");
+    expect(customersHref(q)).toBe("/customers?groupId=12&userId=99&embed=1");
     expect(dispatchLiveHref(q)).toBe("/dispatch-live?groupId=12&userId=99&embed=1");
     expect(maintenanceHref(q)).toBe("/maintenance?groupId=12&userId=99&embed=1");
     expect(withSearch("/compact", "")).toBe("/compact");

@@ -95,6 +95,13 @@ export function mergeEntitlements(raw: unknown): Entitlements {
 /** Map AppView → entitlements.modules key */
 export function moduleKeyForView(view: string): string {
   if (view === "fleetCompact") return "fleetCompact";
-  if (view === "dispatchDesk" || view === "dispatchLive") return "dispatch";
+  if (
+    view === "dispatchDesk" ||
+    view === "dispatchLive" ||
+    view === "dispatchGoods" ||
+    view === "dispatchCustomers"
+  ) {
+    return "dispatch";
+  }
   return view;
 }
