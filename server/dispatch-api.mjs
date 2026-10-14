@@ -69,6 +69,7 @@ import {
   listTruckStock,
   parseStockSettings,
   resolveSourceDepotId,
+  returnTruckStockToDepot,
 } from "./dispatch-stock.mjs";
 import { normalizeZoneKey } from "./dispatch-zone.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
@@ -2985,6 +2986,25 @@ export async function handleDispatchRequest(req, res) {
       return true;
     }
 
+    const returnStock = /^\/api\/dispatch\/jobs\/([0-9a-f-]{36})\/return-stock$/i.exec(url.pathname);
+    if (returnStock && req.method === "POST") {
+      const job = await loadJob(dbTenant.id, returnStock[1]);
+      if (!job) {
+        json(res, 404, { error: "Job not found" });
+        return true;
+      }
+      const body = await readJson(req);
+      const out = await returnTruckStockToDepot(dbTenant.id, {
+        jobId: job.id,
+        job,
+        depotId: body.depotId || body.depot_id || null,
+        writeOff: body.writeOff === true || body.write_off === true,
+        note: body.note || (body.writeOff ? "Write-off truck stock" : "Manual return truck → depot"),
+      });
+      json(res, 200, out);
+      return true;
+    }
+
     const nextTrip = /^\/api\/dispatch\/jobs\/([0-9a-f-]{36})\/next-trip$/i.exec(url.pathname);
     if (nextTrip && req.method === "POST") {
       const source = await loadJob(dbTenant.id, nextTrip[1]);
@@ -3290,8 +3310,21 @@ export async function handleDispatchRequest(req, res) {
         if (status === "done" || status === "cancelled") {
           sets.push(`completed_at = COALESCE(completed_at, now())`);
         }
+        if (status === "done" && existing.status !== "done") {
+          await returnTruckStockToDepot(dbTenant.id, {
+            jobId: existing.id,
+            job: existing,
+            note: "Return remaining truck stock on job done",
+          }).catch(() => null);
+        }
         // Cancelling returns linked orders to the inbox so they can be re-planned.
         if (status === "cancelled" && existing.status !== "cancelled") {
+          // Truck cargo must return before stops are wiped.
+          await returnTruckStockToDepot(dbTenant.id, {
+            jobId: existing.id,
+            job: existing,
+            note: "Return truck stock on job cancel",
+          }).catch(() => null);
           await dbQuery(
             `UPDATE dispatch_orders
              SET status = 'pending', job_id = NULL, stop_id = NULL, updated_at = now()

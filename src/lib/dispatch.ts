@@ -1186,6 +1186,26 @@ export async function fetchDispatchStockMovements(
   return data.movements || [];
 }
 
+/** Return remaining truck/in-transit qty to a depot (or write-off). */
+export async function returnDispatchJobStock(
+  jobId: string,
+  body?: { depotId?: string; writeOff?: boolean; note?: string },
+): Promise<{ ok: boolean; returned: number; depotId?: string }> {
+  const res = await fetch(`/api/dispatch/jobs/${encodeURIComponent(jobId)}/return-stock`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body || {}),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    returned?: number;
+    depotId?: string;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Return stock ${res.status}`);
+  return { ok: data.ok !== false, returned: data.returned || 0, depotId: data.depotId };
+}
+
 export async function createDispatchGoodsItem(body: {
   name: string;
   sku?: string;

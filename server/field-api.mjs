@@ -49,6 +49,7 @@ import {
   listGoodsItems,
   replaceOrderLines,
 } from "./dispatch-goods.mjs";
+import { applyFieldStopStock, returnTruckStockToDepot } from "./dispatch-stock.mjs";
 
 const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
   lat, lon, notification_id, started_at, ended_at, odometer_km,
@@ -1181,6 +1182,49 @@ export async function handleFieldRequest(req, res) {
           );
         }
 
+        let stockResult = null;
+        if (status === "done" && stopRow.order_id) {
+          const entRow = await dbQuery(`SELECT entitlements FROM tenants WHERE id = $1`, [
+            user.tenantId,
+          ]);
+          try {
+            stockResult = await applyFieldStopStock(user.tenantId, {
+              status: "done",
+              stop: stopRow,
+              job,
+              jobId: job.id,
+              orderId: stopRow.order_id,
+              entitlements: entRow.rows[0]?.entitlements,
+              deliveredLines: body.deliveredLines || body.delivered_lines || null,
+            });
+          } catch (err) {
+            const code = Number(err?.status) || 500;
+            // Roll back stop status so Finish can be retried after fixing stock/scan.
+            await dbQuery(
+              `UPDATE dispatch_stops
+               SET status = $1, completed_at = $2, arrived_at = $3,
+                   complete_phone_lat = $4, complete_phone_lon = $5,
+                   complete_armada_lat = $6, complete_armada_lon = $7
+               WHERE id = $8 AND job_id = $9`,
+              [
+                stopRow.status,
+                stopRow.completed_at,
+                stopRow.arrived_at,
+                stopRow.complete_phone_lat,
+                stopRow.complete_phone_lon,
+                stopRow.complete_armada_lat,
+                stopRow.complete_armada_lon,
+                stopId,
+                job.id,
+              ],
+            );
+            json(res, code >= 400 && code < 600 ? code : 400, {
+              error: err instanceof Error ? err.message : "Stock move failed",
+            });
+            return true;
+          }
+        }
+
         // Auto-bump job to en_route when first stop progresses
         if (
           job.status === "assigned" &&
@@ -1194,7 +1238,14 @@ export async function handleFieldRequest(req, res) {
           );
         }
         if (status === "done" || status === "skipped") {
-          await markJobDoneIfNoOpenStops(job.id);
+          const closed = await markJobDoneIfNoOpenStops(job.id);
+          if (closed) {
+            await returnTruckStockToDepot(user.tenantId, {
+              jobId: job.id,
+              job,
+              note: "Auto-return remaining truck stock at job complete",
+            }).catch(() => null);
+          }
         }
         const row = await loadAssignedDispatchJob(user.tenantId, job.id, user.id);
         json(res, 200, {
@@ -1204,6 +1255,7 @@ export async function handleFieldRequest(req, res) {
             phone: phone || null,
             armada: armada || null,
           },
+          stock: stockResult,
         });
         return true;
       }

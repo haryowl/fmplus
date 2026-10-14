@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseStockSettings, checkDepotStockForLines } from "../../server/dispatch-stock.mjs";
+import {
+  parseStockSettings,
+  checkDepotStockForLines,
+  STOCK_MOVE_KINDS,
+} from "../../server/dispatch-stock.mjs";
 
 describe("parseStockSettings", () => {
   it("defaults to warn + Finish-enough", () => {
@@ -15,6 +19,14 @@ describe("parseStockSettings", () => {
         features: { dispatchStockHardBlock: true, dispatchStockRequireScan: true },
       }),
     ).toEqual({ stockHardBlock: true, stockRequireScan: true });
+  });
+});
+
+describe("stock move kinds", () => {
+  it("includes pickup delivery return write_off", () => {
+    expect(STOCK_MOVE_KINDS).toEqual(
+      expect.arrayContaining(["pickup", "delivery", "return", "write_off", "adjust", "receive"]),
+    );
   });
 });
 
