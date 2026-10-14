@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { pickLivePosition, downsampleLatLon, clipTimedTrailToWindow } from "../../server/dispatch-live.mjs";
+import {
+  pickLivePosition,
+  downsampleLatLon,
+  clipTimedTrailToWindow,
+  jobLiveMoney,
+  rollupLiveMoney,
+} from "../../server/dispatch-live.mjs";
 import { computeDwellMinutes, detectExceptionsFromSnapshot } from "../../server/dispatch-recovery.mjs";
+import { rollupLiveMoneyFromDrivers } from "./dispatch";
 
 const PHONE = { lat: -6.2, lon: 106.8, ageSec: 12, recordedAt: "2026-09-17T10:00:00Z", accuracyM: 8 };
 const VEHICLE = { lat: -6.25, lon: 106.85, label: "B 1234 XY" };
@@ -252,5 +259,45 @@ describe("carryover work on a multi-day tour", () => {
       }),
     ).filter((e: { payload: { reason?: string } }) => e.payload?.reason === "carryover");
     expect(ex).toHaveLength(0);
+  });
+});
+
+describe("Live money rollup", () => {
+  it("prefers opex/fare actual and computes goods margin", () => {
+    expect(
+      jobLiveMoney(
+        { opex_estimate: 10000, opex_actual: 12000, fare_estimate: 50000, fare_actual: null },
+        { goodsSubtotal: 100000, goodsCostSubtotal: 40000 },
+      ),
+    ).toEqual({
+      goodsSubtotal: 100000,
+      goodsCostSubtotal: 40000,
+      opexEstimate: 10000,
+      opexActual: 12000,
+      opex: 12000,
+      fareEstimate: 50000,
+      fareActual: null,
+      fare: 50000,
+      margin: 48000,
+    });
+  });
+
+  it("sums drivers on server and client helpers", () => {
+    const drivers = [
+      { goodsSubtotal: 100000, opex: 10000, fare: null, margin: 50000 },
+      { goodsSubtotal: 20000, opex: 5000, fare: 30000, margin: 8000 },
+    ];
+    expect(rollupLiveMoney(drivers)).toEqual({
+      goodsSubtotal: 120000,
+      opex: 15000,
+      fare: 30000,
+      margin: 58000,
+    });
+    expect(rollupLiveMoneyFromDrivers(drivers as never)).toEqual({
+      goodsSubtotal: 120000,
+      opex: 15000,
+      fare: 30000,
+      margin: 58000,
+    });
   });
 });

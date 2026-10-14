@@ -9643,6 +9643,13 @@ button.dispatch-pin-chip {
   border-radius: inherit;
 }
 
+.dispatch-live-money {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  line-height: 1.3;
+}
+
 .dispatch-live-current {
   margin: 0;
   font-size: 0.78rem;

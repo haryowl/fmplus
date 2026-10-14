@@ -12,6 +12,7 @@ import {
   fetchPhoneTrailForDate,
   formatServiceDateLabel,
   replanDispatchRemaining,
+  rollupLiveMoneyFromDrivers,
   shiftServiceDate,
   todayServiceDate,
   VISIT_OUTCOME_LABELS,
@@ -27,6 +28,7 @@ import {
 import { livePositionLabel } from "../lib/dispatchLiveLabel";
 import { clipTimedTrackToWindow, type TimedMapPoint } from "../lib/dispatchTrackClip";
 import { phoneTrailOrCrumbs } from "../lib/dispatchPhoneTrail";
+import { formatIdr } from "../lib/format";
 import { writeLocationSearch } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 
@@ -402,6 +404,24 @@ export default function DispatchLive() {
   }, [focusStopId, snapshot?.manifest]);
 
   const summary = snapshot?.summary;
+  const moneyRollup = useMemo(() => {
+    if (!summary) return null;
+    const fromSummary = {
+      goodsSubtotal: summary.goodsSubtotal ?? null,
+      opex: summary.opex ?? null,
+      fare: summary.fare ?? null,
+      margin: summary.margin ?? null,
+    };
+    if (
+      fromSummary.goodsSubtotal != null ||
+      fromSummary.opex != null ||
+      fromSummary.fare != null ||
+      fromSummary.margin != null
+    ) {
+      return fromSummary;
+    }
+    return rollupLiveMoneyFromDrivers(snapshot?.drivers || []);
+  }, [summary, snapshot?.drivers]);
   const drivers = useMemo(() => {
     const list = snapshot?.drivers || [];
     const now = Date.now();
@@ -815,6 +835,42 @@ export default function DispatchLive() {
                     : ""}
                 </em>
               </article>
+              {moneyRollup &&
+              (moneyRollup.goodsSubtotal != null ||
+                moneyRollup.opex != null ||
+                moneyRollup.fare != null ||
+                moneyRollup.margin != null) ? (
+                <>
+                  {moneyRollup.goodsSubtotal != null ? (
+                    <article className="dispatch-live-kpi">
+                      <span>Goods sell</span>
+                      <strong>{formatIdr(moneyRollup.goodsSubtotal)}</strong>
+                      <em>catalog lines today</em>
+                    </article>
+                  ) : null}
+                  {moneyRollup.opex != null ? (
+                    <article className="dispatch-live-kpi">
+                      <span>Opex</span>
+                      <strong>{formatIdr(moneyRollup.opex)}</strong>
+                      <em>actual preferred</em>
+                    </article>
+                  ) : null}
+                  {moneyRollup.fare != null ? (
+                    <article className="dispatch-live-kpi">
+                      <span>Fare</span>
+                      <strong>{formatIdr(moneyRollup.fare)}</strong>
+                      <em>passenger</em>
+                    </article>
+                  ) : null}
+                  {moneyRollup.margin != null ? (
+                    <article className="dispatch-live-kpi tone-ok">
+                      <span>Margin</span>
+                      <strong>{formatIdr(moneyRollup.margin)}</strong>
+                      <em>sell − COGS − opex</em>
+                    </article>
+                  ) : null}
+                </>
+              ) : null}
             </section>
 
             <div className="dispatch-live-split" data-live-pane="summary">
@@ -1062,6 +1118,21 @@ export default function DispatchLive() {
                           </span>
                           <span>{d.timeWindowLabel}</span>
                         </div>
+                        {d.goodsSubtotal != null ||
+                        d.opex != null ||
+                        d.fare != null ||
+                        d.margin != null ? (
+                          <p className="dispatch-live-money">
+                            {[
+                              d.goodsSubtotal != null ? `Sell ${formatIdr(d.goodsSubtotal)}` : "",
+                              d.opex != null ? `Opex ${formatIdr(d.opex)}` : "",
+                              d.fare != null ? `Fare ${formatIdr(d.fare)}` : "",
+                              d.margin != null ? `Margin ${formatIdr(d.margin)}` : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        ) : null}
                         <div className="dispatch-live-progress" aria-hidden>
                           <i style={{ width: `${Math.min(100, Math.max(0, d.pctComplete))}%` }} />
                         </div>

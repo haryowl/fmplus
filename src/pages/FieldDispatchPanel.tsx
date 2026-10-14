@@ -35,13 +35,16 @@ import {
   dropLockedUntilPickup,
   fieldDispatchCalendar,
   fieldFetchDispatchGoods,
+  fieldFinishLabel,
   fieldPatchStop,
   fieldPutOrderLines,
+  fieldStartLabel,
   formatCargoSummary,
   fieldStopPhotos,
   formatDispatchWindow,
   formatServiceDateLabel,
   initDeliveredQtyByItem,
+  isPassengerDispatchStop,
   mapsNavigateUrl,
   readPhonePosition,
   shiftServiceDate,
@@ -826,6 +829,16 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
           {gpsWarn ? <p className="muted">{gpsWarn}</p> : null}
           {activeStop.orderProfile === "sales" ? (
             <p className="muted">Sales visit · phone GPS · vehicle optional</p>
+          ) : isPassengerDispatchStop(activeStop, selected) ? (
+            <p className="muted">
+              Passenger
+              {activeStop.volumeM3 != null
+                ? ` · ${Math.round(Number(activeStop.volumeM3))} seat${
+                    Math.round(Number(activeStop.volumeM3)) === 1 ? "" : "s"
+                  }`
+                : ""}
+              {(activeStop.role || "drop") === "pickup" ? " · board here" : " · alight here"}
+            </p>
           ) : formatCargoSummary(activeStop.lines) ? (
             <p className="muted">{formatCargoSummary(activeStop.lines)}</p>
           ) : null}
@@ -1038,7 +1051,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
             disabled={busy || locked || (activeStop.orderProfile === "sales" && !visitOutcome)}
             onClick={() => void finishActiveStop()}
           >
-            Finish
+            {fieldFinishLabel(activeStop, selected)}
           </button>
           <button
             type="button"
@@ -1349,9 +1362,15 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
                       <div className="field-dispatch-stop-top">
                         <span className="field-dispatch-stop-num">{i + 1}</span>
                         <strong className="field-dispatch-stop-title">{stop.name}</strong>
-                        {stop.role === "pickup" ? <span className="field-order-chip">Pickup</span> : null}
+                        {stop.role === "pickup" ? (
+                          <span className="field-order-chip">
+                            {isPassengerDispatchStop(stop, selected) ? "Board" : "Pickup"}
+                          </span>
+                        ) : null}
                         {stop.role === "drop" && stop.orderId ? (
-                          <span className="field-order-chip">Drop</span>
+                          <span className="field-order-chip">
+                            {isPassengerDispatchStop(stop, selected) ? "Alight" : "Drop"}
+                          </span>
                         ) : null}
                         {stop.proofRequired ? <span className="field-order-chip">POD</span> : null}
                         {isDone ? <span className="field-order-chip field-order-chip-done">Done</span> : null}
@@ -1471,7 +1490,9 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
                       {(isDone || inProgress) && (stop.arrivedAt || startCoords) ? (
                         <div className="field-dispatch-exec">
                           <div className="field-dispatch-exec-row">
-                            <span className="field-dispatch-exec-label">Start</span>
+                            <span className="field-dispatch-exec-label">
+                              {isPassengerDispatchStop(stop, selected) ? "Arrive" : "Start"}
+                            </span>
                             <span className="field-dispatch-exec-time">{formatFieldClock(stop.arrivedAt)}</span>
                             <span className="field-dispatch-exec-coords">
                               {startCoords
@@ -1481,7 +1502,9 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
                           </div>
                           {isDone ? (
                             <div className="field-dispatch-exec-row">
-                              <span className="field-dispatch-exec-label">Finish</span>
+                              <span className="field-dispatch-exec-label">
+                                {fieldFinishLabel(stop, selected)}
+                              </span>
                               <span className="field-dispatch-exec-time">
                                 {formatFieldClock(stop.completedAt)}
                               </span>
@@ -1518,8 +1541,15 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
                         </span>
                       ) : null}
                       {!closed && !locked && dropLockedUntilPickup(stop, selected.stops) ? (
-                        <span className="field-order-btn field-order-btn-skipped" aria-label="Wait for pickup">
-                          Wait for pickup
+                        <span
+                          className="field-order-btn field-order-btn-skipped"
+                          aria-label={
+                            isPassengerDispatchStop(stop, selected)
+                              ? "Wait for board"
+                              : "Wait for pickup"
+                          }
+                        >
+                          {isPassengerDispatchStop(stop, selected) ? "Wait for board" : "Wait for pickup"}
                         </span>
                       ) : null}
                       {!closed && !locked && !dropLockedUntilPickup(stop, selected.stops) ? (
@@ -1529,7 +1559,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
                           disabled={busy}
                           onClick={() => void openActiveStop(stop)}
                         >
-                          {inProgress ? "Resume" : "Start"}
+                          {inProgress ? "Resume" : fieldStartLabel(stop, selected)}
                         </button>
                       ) : null}
                     </div>

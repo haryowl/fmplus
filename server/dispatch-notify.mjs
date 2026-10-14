@@ -4,6 +4,7 @@
  */
 import { dbQuery } from "./db.mjs";
 import { decryptSecret, secretsKeyConfigured } from "./crypto-secrets.mjs";
+import { mergeEntitlements } from "./entitlements.mjs";
 import { parseRecipientList, sendWablasMessage } from "./wablas.mjs";
 
 function publicBase() {
@@ -18,12 +19,16 @@ function dispatchFieldLink(tenantKey) {
 
 async function loadTenantNotify(tenantId) {
   const res = await dbQuery(
-    `SELECT key, notify_whatsapp, wablas_base_url,
+    `SELECT key, entitlements, notify_whatsapp, wablas_base_url,
             wablas_token_ciphertext, wablas_secret_ciphertext
      FROM tenants WHERE id = $1`,
     [tenantId],
   );
   return res.rows[0] || null;
+}
+
+function tenantShowMoney(tenantRow) {
+  return mergeEntitlements(tenantRow?.entitlements).features.dispatchShowMoneyOnField === true;
 }
 
 async function wablasCreds(tenantRow) {
@@ -77,26 +82,97 @@ function serviceDateLabel(job) {
   return s || "—";
 }
 
-function buildAssignedMessage(job, tenantKey) {
+function formatIdrWa(n) {
+  return `Rp ${Math.round(Number(n) || 0).toLocaleString("id-ID")}`;
+}
+
+function jobIsPassenger(job) {
+  if (job.seatCapacity != null || job.seat_capacity != null) return true;
+  const stops = Array.isArray(job.stops) ? job.stops : [];
+  return stops.some((s) => {
+    const p = String(s.orderProfile || s.order_profile || "").toLowerCase();
+    return p === "passenger";
+  });
+}
+
+/** Unique-order goods sell from stop lines (pickup+drop share cargo). */
+export function sumJobGoodsSellForNotify(job) {
+  const stops = Array.isArray(job.stops) ? job.stops : [];
+  const seen = new Set();
+  let sell = 0;
+  let any = false;
+  for (const s of stops) {
+    const key = String(s.orderId || s.order_id || s.id || "");
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    for (const line of s.lines || []) {
+      const amt =
+        line.lineAmount != null
+          ? Number(line.lineAmount)
+          : line.line_amount != null
+            ? Number(line.line_amount)
+            : (Number(line.qty) || 0) * (Number(line.unitPrice ?? line.unit_price) || 0);
+      if (Number.isFinite(amt) && amt > 0) {
+        sell += amt;
+        any = true;
+      }
+    }
+  }
+  return any ? Math.round(sell) : null;
+}
+
+/** Money lines for WhatsApp when tenant entitlement is on. */
+export function moneyLinesForNotify(job, { showMoney = false } = {}) {
+  if (!showMoney) return [];
+  const lines = [];
+  const fareRaw =
+    job.fareActual ?? job.fare_actual ?? job.fareEstimate ?? job.fare_estimate ?? null;
+  if (fareRaw != null && Number.isFinite(Number(fareRaw))) {
+    lines.push(`Fare: ${formatIdrWa(fareRaw)}`);
+  }
+  const goods = sumJobGoodsSellForNotify(job);
+  if (goods != null) lines.push(`Goods: ${formatIdrWa(goods)}`);
+  return lines;
+}
+
+export function buildAssignedMessage(job, tenantKey, opts = {}) {
+  const showMoney = opts.showMoney === true;
   const stops = Array.isArray(job.stops) ? job.stops : [];
   const stopCount = stops.length;
+  const isPax = jobIsPassenger(job);
+  const seats =
+    job.seatsUsed != null
+      ? Number(job.seatsUsed)
+      : job.volumeUsed != null && isPax
+        ? Number(job.volumeUsed)
+        : stops.reduce((n, s) => n + (Number(s.volumeM3 ?? s.volume_m3) || 0), 0);
   const vol =
     job.volumeUsed != null
       ? job.volumeUsed
       : stops.reduce((n, s) => n + (Number(s.volumeM3 ?? s.volume_m3) || 0), 0);
   const title = String(job.title || "Dispatch job").trim() || "Dispatch job";
+  const loadHint = isPax
+    ? seats
+      ? ` · ${seats} seat${seats === 1 ? "" : "s"}`
+      : ""
+    : vol
+      ? ` · ${vol} m³`
+      : "";
   const lines = [
     `ARMADA M.1 · Dispatch job assigned`,
     ``,
     `Job: ${title}`,
     `Date: ${serviceDateLabel(job)}`,
     `Vehicle: ${vehicleLabel(job)}`,
-    `Orders: ${stopCount} stop${stopCount === 1 ? "" : "s"}${vol ? ` · ${vol} m³` : ""}`,
+    `Orders: ${stopCount} stop${stopCount === 1 ? "" : "s"}${loadHint}`,
     `Assigned to: ${assigneeLabel(job)}`,
-    ``,
-    `Open Dispatch:`,
-    dispatchFieldLink(tenantKey),
   ];
+  const money = moneyLinesForNotify(job, { showMoney });
+  if (money.length) {
+    lines.push(``);
+    lines.push(...money);
+  }
+  lines.push(``, `Open Dispatch:`, dispatchFieldLink(tenantKey));
   return lines.join("\n").slice(0, 1024);
 }
 
@@ -155,7 +231,9 @@ export async function maybeNotifyDispatchJobAssigned(opts) {
   if (!creds) return { skipped: true, reason: "wablas_not_configured" };
 
   const tenantKey = opts.tenantKey || tenant?.key || "";
-  const message = buildAssignedMessage(job, tenantKey);
+  const message = buildAssignedMessage(job, tenantKey, {
+    showMoney: tenantShowMoney(tenant),
+  });
   const results = [];
   for (const phone of phones) {
     try {
@@ -178,7 +256,8 @@ function addedStopNames(names, limit = 4) {
   return extra > 0 ? `${shown.join(", ")} +${extra} more` : shown.join(", ");
 }
 
-export function buildRouteUpdatedMessage(job, tenantKey, addedNames) {
+export function buildRouteUpdatedMessage(job, tenantKey, addedNames, opts = {}) {
+  const showMoney = opts.showMoney === true;
   const names = addedStopNames(addedNames);
   const n = Array.isArray(addedNames) ? addedNames.filter(Boolean).length : 0;
   const title = String(job.title || "Dispatch job").trim() || "Dispatch job";
@@ -188,10 +267,13 @@ export function buildRouteUpdatedMessage(job, tenantKey, addedNames) {
     `Job: ${title}`,
     `Date: ${serviceDateLabel(job)}`,
     `${n} new stop${n === 1 ? "" : "s"} added${names ? `: ${names}` : ""}`,
-    ``,
-    `Open Dispatch:`,
-    dispatchFieldLink(tenantKey),
   ];
+  const money = moneyLinesForNotify(job, { showMoney });
+  if (money.length) {
+    lines.push(``);
+    lines.push(...money);
+  }
+  lines.push(``, `Open Dispatch:`, dispatchFieldLink(tenantKey));
   return lines.join("\n").slice(0, 1024);
 }
 
@@ -221,7 +303,9 @@ export async function maybeNotifyDispatchRouteUpdated(opts) {
   if (!creds) return { skipped: true, reason: "wablas_not_configured" };
 
   const tenantKey = opts.tenantKey || tenant?.key || "";
-  const message = buildRouteUpdatedMessage(job, tenantKey, addedNames);
+  const message = buildRouteUpdatedMessage(job, tenantKey, addedNames, {
+    showMoney: tenantShowMoney(tenant),
+  });
   const results = [];
   for (const phone of phones) {
     try {

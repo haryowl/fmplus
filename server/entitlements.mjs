@@ -33,7 +33,7 @@ export const FEATURE_KEYS = [
   "dispatchCargo",
   "dispatchPassenger",
   "dispatchSales",
-  /** Show goods sell / fare amounts on Field (POD); WhatsApp later */
+  /** Show goods sell / fare amounts on Field / POD / WhatsApp */
   "dispatchShowMoneyOnField",
 ];
 

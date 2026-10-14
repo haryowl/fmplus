@@ -2074,6 +2074,34 @@ export function initDeliveredQtyByItem(
   return out;
 }
 
+/** True when this stop/job is in the passenger profile. */
+export function isPassengerDispatchStop(
+  stop: Pick<DispatchStop, "orderProfile"> | null | undefined,
+  job?: Pick<DispatchJob, "seatCapacity" | "stops"> | null,
+): boolean {
+  if (stop?.orderProfile === "passenger") return true;
+  if (job?.seatCapacity != null && Number.isFinite(Number(job.seatCapacity))) return true;
+  return (job?.stops || []).some((s) => s.orderProfile === "passenger");
+}
+
+/** Field Finish button / exec label for passenger vs cargo. */
+export function fieldFinishLabel(
+  stop: Pick<DispatchStop, "orderProfile" | "role"> | null | undefined,
+  job?: Pick<DispatchJob, "seatCapacity" | "stops"> | null,
+): string {
+  if (!isPassengerDispatchStop(stop, job)) return "Finish";
+  return (stop?.role || "drop") === "pickup" ? "Boarded" : "Alighted";
+}
+
+/** Field list Start chip for passenger pickup. */
+export function fieldStartLabel(
+  stop: Pick<DispatchStop, "orderProfile" | "role"> | null | undefined,
+  job?: Pick<DispatchJob, "seatCapacity" | "stops"> | null,
+): string {
+  if (!isPassengerDispatchStop(stop, job)) return "Start";
+  return (stop?.role || "drop") === "pickup" ? "Board" : "Start";
+}
+
 export async function fieldPatchStop(
   jobId: string,
   stopId: string,
@@ -2359,6 +2387,16 @@ export type DispatchLiveDriver = {
     } | null;
   };
   stops: DispatchLiveStop[];
+  /** Trip economics (IDR) — actual preferred over estimate. */
+  goodsSubtotal?: number | null;
+  goodsCostSubtotal?: number | null;
+  opexEstimate?: number | null;
+  opexActual?: number | null;
+  opex?: number | null;
+  fareEstimate?: number | null;
+  fareActual?: number | null;
+  fare?: number | null;
+  margin?: number | null;
 };
 
 export type DispatchOpsExceptionKind = "window_at_risk" | "stuck" | "failed_skip";
@@ -2418,7 +2456,53 @@ export type DispatchLiveSummary = {
   skipped: number;
   avgCompletion: number;
   inTransitPct: number;
+  /** Day rollup IDR (null when no economics on any job). */
+  goodsSubtotal?: number | null;
+  opex?: number | null;
+  fare?: number | null;
+  margin?: number | null;
 };
+
+/** Sum driver money fields when summary omits them (older snapshots). */
+export function rollupLiveMoneyFromDrivers(drivers: DispatchLiveDriver[]): {
+  goodsSubtotal: number | null;
+  opex: number | null;
+  fare: number | null;
+  margin: number | null;
+} {
+  let goods = 0;
+  let opex = 0;
+  let fare = 0;
+  let margin = 0;
+  let anyGoods = false;
+  let anyOpex = false;
+  let anyFare = false;
+  let anyMargin = false;
+  for (const d of drivers || []) {
+    if (d.goodsSubtotal != null && Number.isFinite(Number(d.goodsSubtotal))) {
+      goods += Number(d.goodsSubtotal);
+      anyGoods = true;
+    }
+    if (d.opex != null && Number.isFinite(Number(d.opex))) {
+      opex += Number(d.opex);
+      anyOpex = true;
+    }
+    if (d.fare != null && Number.isFinite(Number(d.fare))) {
+      fare += Number(d.fare);
+      anyFare = true;
+    }
+    if (d.margin != null && Number.isFinite(Number(d.margin))) {
+      margin += Number(d.margin);
+      anyMargin = true;
+    }
+  }
+  return {
+    goodsSubtotal: anyGoods ? Math.round(goods) : null,
+    opex: anyOpex ? Math.round(opex) : null,
+    fare: anyFare ? Math.round(fare) : null,
+    margin: anyMargin ? Math.round(margin) : null,
+  };
+}
 
 export type DispatchLiveSnapshot = {
   serviceDate: string;

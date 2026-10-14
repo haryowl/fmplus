@@ -21,6 +21,102 @@ import {
   nowClockHm as nowHmJakarta,
   todayServiceDate as todayYmdJakarta,
 } from "./service-day.mjs";
+import { contributionMargin, moneyIdr } from "./dispatch-opex.mjs";
+
+/** Batch goods sell/cost per job for Live money rollup. */
+async function goodsMoneyByJob(tenantId, jobIds) {
+  /** @type {Map<string, { goodsSubtotal: number|null, goodsCostSubtotal: number|null }>} */
+  const map = new Map();
+  if (!jobIds.length) return map;
+  const rows = await dbQuery(
+    `SELECT o.job_id,
+            COALESCE(SUM(o.goods_subtotal), 0) AS sell,
+            COALESCE(SUM(o.goods_cost_subtotal), 0) AS cost
+     FROM dispatch_orders o
+     WHERE o.tenant_id = $1 AND o.job_id = ANY($2::uuid[])
+     GROUP BY o.job_id`,
+    [tenantId, jobIds],
+  );
+  for (const r of rows.rows) {
+    const sell = Number(r.sell) || 0;
+    const cost = Number(r.cost) || 0;
+    map.set(String(r.job_id), {
+      goodsSubtotal: sell > 0 ? moneyIdr(sell) : null,
+      goodsCostSubtotal: cost > 0 ? moneyIdr(cost) : null,
+    });
+  }
+  return map;
+}
+
+export function jobLiveMoney(jobRow, goods = {}) {
+  const goodsSubtotal =
+    goods.goodsSubtotal != null && Number.isFinite(Number(goods.goodsSubtotal))
+      ? moneyIdr(goods.goodsSubtotal)
+      : null;
+  const goodsCostSubtotal =
+    goods.goodsCostSubtotal != null && Number.isFinite(Number(goods.goodsCostSubtotal))
+      ? moneyIdr(goods.goodsCostSubtotal)
+      : null;
+  const opexEstimate =
+    jobRow.opex_estimate == null ? null : moneyIdr(jobRow.opex_estimate);
+  const opexActual = jobRow.opex_actual == null ? null : moneyIdr(jobRow.opex_actual);
+  const opex = opexActual ?? opexEstimate;
+  const fareEstimate =
+    jobRow.fare_estimate == null ? null : moneyIdr(jobRow.fare_estimate);
+  const fareActual = jobRow.fare_actual == null ? null : moneyIdr(jobRow.fare_actual);
+  const fare = fareActual ?? fareEstimate;
+  const margin = contributionMargin({
+    goodsSubtotal,
+    goodsCostSubtotal,
+    opex,
+  });
+  return {
+    goodsSubtotal,
+    goodsCostSubtotal,
+    opexEstimate,
+    opexActual,
+    opex,
+    fareEstimate,
+    fareActual,
+    fare,
+    margin,
+  };
+}
+
+export function rollupLiveMoney(drivers) {
+  let goods = 0;
+  let opex = 0;
+  let fare = 0;
+  let margin = 0;
+  let anyGoods = false;
+  let anyOpex = false;
+  let anyFare = false;
+  let anyMargin = false;
+  for (const d of drivers || []) {
+    if (d.goodsSubtotal != null && Number.isFinite(Number(d.goodsSubtotal))) {
+      goods += Number(d.goodsSubtotal);
+      anyGoods = true;
+    }
+    if (d.opex != null && Number.isFinite(Number(d.opex))) {
+      opex += Number(d.opex);
+      anyOpex = true;
+    }
+    if (d.fare != null && Number.isFinite(Number(d.fare))) {
+      fare += Number(d.fare);
+      anyFare = true;
+    }
+    if (d.margin != null && Number.isFinite(Number(d.margin))) {
+      margin += Number(d.margin);
+      anyMargin = true;
+    }
+  }
+  return {
+    goodsSubtotal: anyGoods ? moneyIdr(goods) : null,
+    opex: anyOpex ? moneyIdr(opex) : null,
+    fare: anyFare ? moneyIdr(fare) : null,
+    margin: anyMargin ? moneyIdr(margin) : null,
+  };
+}
 
 const DEFAULT_SERVICE_MIN = 8;
 /** Phone fixes newer than this win over the Armada vehicle position. */
@@ -347,6 +443,7 @@ export async function buildDispatchLiveSnapshot(opts) {
   const orderRefByStop = new Map();
   /** @type {Map<string, number>} */
   const photoCountByStop = new Map();
+  const goodsByJob = await goodsMoneyByJob(opts.tenantId, jobIds);
 
   if (jobIds.length) {
     const stopsRes = await dbQuery(
@@ -669,6 +766,7 @@ export async function buildDispatchLiveSnapshot(opts) {
       plannedDistanceKm: null,
       plannedDurationSec: null,
       stops: stopsOut,
+      ...jobLiveMoney(job, goodsByJob.get(job.id) || {}),
     };
     drivers.push(driver);
   }
@@ -716,6 +814,7 @@ export async function buildDispatchLiveSnapshot(opts) {
   const avgCompletion =
     completionN > 0 ? Math.round((completionSum / completionN) * 10) / 10 : 0;
   const activeDrivers = drivers.filter((d) => d.jobStatus !== "done").length;
+  const money = rollupLiveMoney(drivers);
 
   const snapshot = {
     serviceDate,
@@ -732,6 +831,10 @@ export async function buildDispatchLiveSnapshot(opts) {
       skipped,
       avgCompletion,
       inTransitPct: totalStops > 0 ? Math.round((inTransit / totalStops) * 1000) / 10 : 0,
+      goodsSubtotal: money.goodsSubtotal,
+      opex: money.opex,
+      fare: money.fare,
+      margin: money.margin,
     },
     drivers,
     manifest,
