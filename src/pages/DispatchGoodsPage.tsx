@@ -4,7 +4,7 @@ import { DispatchGoodsCatalogPanel } from "../components/DispatchGoodsCatalogPan
 import { ViewNav } from "../components/ViewNav";
 import { jobsHref, navigateView } from "../lib/routing";
 
-/** Desk Goods & Stock admin (catalog, print/NFC; stock-per-depot lands here later). */
+/** Desk Goods & Stock admin (catalog, per-depot stock, truck day-close, print/NFC). */
 export default function DispatchGoodsPage() {
   useEffect(() => {
     document.title = "Goods & Stock · ARMADA M.1";

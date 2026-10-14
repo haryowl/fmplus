@@ -1,5 +1,5 @@
 /**
- * Per-depot + truck stock ledger (manual adjust now; auto moves next).
+ * Per-depot + truck stock ledger (manual adjust, pickup/delivery/return, day-close).
  */
 import { dbQuery } from "./db.mjs";
 import { mergeEntitlements } from "./entitlements.mjs";
@@ -358,7 +358,7 @@ export async function checkDepotStockForLines(tenantId, depotId, lines, { hardBl
   return { ok: errors.length === 0, depotId, warnings, errors };
 }
 
-/** Expose pack-aware base qty helper for future auto moves. */
+/** Pack-aware base qty for stock moves (box ↔ pcs). */
 export function lineQtyToBasePcs(line, unitsPerPack) {
   return qtyToBasePcs(line.qty, unitsPerPack);
 }
