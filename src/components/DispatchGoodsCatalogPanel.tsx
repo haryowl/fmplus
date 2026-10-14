@@ -244,32 +244,31 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
   const truckByJob = groupTruckStockByJob(truck);
 
   return (
-    <section className={`dispatch-goods-catalog${onClose ? " is-dialog" : ""}`}>
-      <div className="dispatch-goods-catalog-head">
-        <div>
-          {!asPage ? (
-            <>
-              <p className="dispatch-eyebrow">Cargo</p>
-              <h2>Goods &amp; Stock</h2>
-            </>
+    <section
+      className={`dispatch-goods-catalog${onClose ? " is-dialog" : ""}${asPage ? " is-master-desk" : ""}`}
+    >
+      {!asPage ? (
+        <div className="dispatch-goods-catalog-head">
+          <div>
+            <p className="dispatch-eyebrow">Cargo</p>
+            <h2>Goods &amp; Stock</h2>
+            <p className="dispatch-search-hint">
+              Sell/cost are IDR per unit. Stock is per depot; catalog on-hand is the sum of depot balances.
+            </p>
+          </div>
+          {onClose ? (
+            <button type="button" className="btn-secondary" onClick={onClose}>
+              Close
+            </button>
           ) : null}
-          <p className="dispatch-search-hint">
-            Unit (qty) is how you count the item. Sell/cost are IDR per unit (snapshotted onto order lines — not
-            editable there). Stock is per depot; truck/in-transit shows after pickup moves. Catalog “On hand” is the
-            sum of depot balances.
-          </p>
-          <p className="dispatch-search-hint">
-            Stock policy: {stockSettings.stockHardBlock ? "hard-block" : "warn"} when short ·{" "}
-            {stockSettings.stockRequireScan ? "scan required to move" : "Finish can move stock"} (Admin entitlements).
-            Trip opex = km×rate + stops×rate + fixed + hours×rate (depot rates, global fallback).
-          </p>
         </div>
-        {onClose ? (
-          <button type="button" className="btn-secondary" onClick={onClose}>
-            Close
-          </button>
-        ) : null}
-      </div>
+      ) : (
+        <p className="master-policy-note">
+          Stock policy: {stockSettings.stockHardBlock ? "hard-block" : "warn"} when short ·{" "}
+          {stockSettings.stockRequireScan ? "scan required to move" : "Finish can move stock"} · catalog on-hand =
+          depot sum
+        </p>
+      )}
       {error ? (
         <p className="dispatch-window-warn" role="alert">
           {error}
@@ -337,180 +336,224 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           </ul>
         </div>
       ) : null}
-      <form className="dispatch-goods-catalog-add" onSubmit={addItem}>
-        <input
-          className="catalog-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Name"
-          disabled={busy}
-          aria-label="Name"
-        />
-        <input
-          value={sku}
-          onChange={(e) => setSku(e.target.value)}
-          placeholder="SKU"
-          disabled={busy}
-          aria-label="SKU"
-        />
-        <select
-          value={unit}
-          onChange={(e) => {
-            const next = e.target.value as DispatchGoodsUnit;
-            setUnit(next);
-            if (!goodsUnitIsPackable(next)) setUnitsPerPack("");
-          }}
-          disabled={busy}
-          aria-label="Unit (qty)"
-          title="Unit (qty)"
-        >
-          {DISPATCH_GOODS_UNITS.map((u) => (
-            <option key={u} value={u}>
-              {u}
-            </option>
-          ))}
-        </select>
-        {goodsUnitIsPackable(unit) ? (
-          <input
-            value={unitsPerPack}
-            onChange={(e) => setUnitsPerPack(e.target.value)}
-            placeholder="pcs / unit"
-            inputMode="decimal"
-            disabled={busy}
-            aria-label="Pcs per unit"
-            title="How many pcs in one of this unit"
-          />
-        ) : null}
-        <input
-          value={sellPrice}
-          onChange={(e) => setSellPrice(e.target.value)}
-          placeholder="Sell Rp"
-          inputMode="numeric"
-          disabled={busy}
-          aria-label="Sell price IDR"
-          title="Sell price (IDR per unit)"
-        />
-        <input
-          value={costPrice}
-          onChange={(e) => setCostPrice(e.target.value)}
-          placeholder="Cost Rp"
-          inputMode="numeric"
-          disabled={busy}
-          aria-label="Cost price IDR"
-          title="Cost price / COGS (IDR per unit)"
-        />
-        <input
-          value={vol}
-          onChange={(e) => setVol(e.target.value)}
-          placeholder="m³ / unit"
-          inputMode="decimal"
-          disabled={busy}
-          aria-label="Volume m3 per unit"
-          title="Volume each (m³) — capacity for one unit"
-        />
-        <input
-          value={wt}
-          onChange={(e) => setWt(e.target.value)}
-          placeholder="kg / unit"
-          inputMode="decimal"
-          disabled={busy}
-          aria-label="Weight kg per unit"
-          title="Weight each (kg) — capacity for one unit"
-        />
-        <input
-          value={onHand}
-          onChange={(e) => setOnHand(e.target.value)}
-          placeholder="On hand"
-          inputMode="decimal"
-          disabled={busy}
-          aria-label="On hand"
-        />
-        <button type="submit" className="btn btn-primary" disabled={busy || !name.trim()}>
-          Add
-        </button>
-      </form>
-      <div className="dispatch-goods-catalog-tools">
-        <CsvImportPanel
-          title="Import goods CSV"
-          disabled={busy}
-          templateFilename="dispatch-goods-template.csv"
-          hint="Required: name. Include sku to print QR/barcode and scan later. Optional: unit (pcs/box/bag/carton/pack/drum/set/pair/kg/L), units_per_pack, sell_price, cost_price (IDR), volume_m3_each, weight_kg_each, on_hand, enabled. Matching SKU or name updates the existing item. Max 500 rows."
-          onDownloadTemplate={() => downloadCsv("dispatch-goods-template.csv", dispatchGoodsCsvTemplate())}
-          parseFile={(text) => {
-            const { headers, rows } = parseCsv(text);
-            if (!headers.includes("name")) {
-              return { rows: [], error: "CSV must include name column" };
-            }
-            const missing = DISPATCH_GOODS_CSV_HEADERS.filter((h) => h === "name").filter(
-              (h) => !headers.includes(h),
-            );
-            if (missing.length) return { rows: [], error: `Missing columns: ${missing.join(", ")}` };
-            if (!rows.length) return { rows: [], error: "No data rows found" };
-            if (rows.length > 500) return { rows: [], error: "Maximum 500 rows per import" };
-            return { rows };
-          }}
-          onImport={async (rows) => {
-            setBusy(true);
-            setError("");
-            try {
-              const out = await importDispatchGoods({ rows });
-              await reload();
-              return out;
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : "Import failed";
-              setError(msg);
-              throw err;
-            } finally {
-              setBusy(false);
-            }
-          }}
-        />
-        {items.length ? (
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={busy}
-            onClick={() => downloadCsv("dispatch-goods.csv", dispatchGoodsCsvFromItems(items))}
-          >
-            Export goods CSV
-          </button>
-        ) : null}
+      <div className="master-card">
+        <p className="master-card-kicker">Add product — inline</p>
+        <form className="master-add-form is-goods" onSubmit={addItem}>
+          <label className="master-field is-name">
+            <span>Product name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Name"
+              disabled={busy}
+            />
+          </label>
+          <label className="master-field">
+            <span>SKU</span>
+            <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="SKU" disabled={busy} />
+          </label>
+          <label className="master-field">
+            <span>Unit</span>
+            <select
+              value={unit}
+              onChange={(e) => {
+                const next = e.target.value as DispatchGoodsUnit;
+                setUnit(next);
+                if (!goodsUnitIsPackable(next)) setUnitsPerPack("");
+              }}
+              disabled={busy}
+            >
+              {DISPATCH_GOODS_UNITS.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
+          </label>
+          {goodsUnitIsPackable(unit) ? (
+            <label className="master-field">
+              <span>Pcs / unit</span>
+              <input
+                value={unitsPerPack}
+                onChange={(e) => setUnitsPerPack(e.target.value)}
+                placeholder="0"
+                inputMode="decimal"
+                disabled={busy}
+              />
+            </label>
+          ) : null}
+          <label className="master-field">
+            <span>Sell Rp</span>
+            <input
+              value={sellPrice}
+              onChange={(e) => setSellPrice(e.target.value)}
+              placeholder="0"
+              inputMode="numeric"
+              disabled={busy}
+            />
+          </label>
+          <label className="master-field">
+            <span>Cost Rp</span>
+            <input
+              value={costPrice}
+              onChange={(e) => setCostPrice(e.target.value)}
+              placeholder="0"
+              inputMode="numeric"
+              disabled={busy}
+            />
+          </label>
+          <label className="master-field">
+            <span>m³</span>
+            <input
+              value={vol}
+              onChange={(e) => setVol(e.target.value)}
+              placeholder="0"
+              inputMode="decimal"
+              disabled={busy}
+            />
+          </label>
+          <label className="master-field">
+            <span>kg</span>
+            <input
+              value={wt}
+              onChange={(e) => setWt(e.target.value)}
+              placeholder="0"
+              inputMode="decimal"
+              disabled={busy}
+            />
+          </label>
+          <label className="master-field">
+            <span>On hand</span>
+            <input
+              value={onHand}
+              onChange={(e) => setOnHand(e.target.value)}
+              placeholder="0"
+              inputMode="decimal"
+              disabled={busy}
+            />
+          </label>
+          <div className="master-add-actions">
+            <button type="submit" className="btn btn-primary" disabled={busy || !name.trim()}>
+              + Add product
+            </button>
+          </div>
+        </form>
       </div>
-      <input
-        type="search"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        placeholder="Filter catalog…"
-        autoComplete="off"
-        aria-label="Filter catalog"
-      />
+
+      <div className="master-toolbar">
+        <input
+          type="search"
+          className="master-search"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter name or SKU…"
+          autoComplete="off"
+          aria-label="Filter catalog"
+        />
+        <div className="master-toolbar-actions">
+          <CsvImportPanel
+            title="Import"
+            disabled={busy}
+            templateFilename="dispatch-goods-template.csv"
+            hint="Required: name. Include sku to print QR/barcode and scan later. Optional: unit (pcs/box/bag/carton/pack/drum/set/pair/kg/L), units_per_pack, sell_price, cost_price (IDR), volume_m3_each, weight_kg_each, on_hand, enabled. Matching SKU or name updates the existing item. Max 500 rows."
+            onDownloadTemplate={() => downloadCsv("dispatch-goods-template.csv", dispatchGoodsCsvTemplate())}
+            parseFile={(text) => {
+              const { headers, rows } = parseCsv(text);
+              if (!headers.includes("name")) {
+                return { rows: [], error: "CSV must include name column" };
+              }
+              const missing = DISPATCH_GOODS_CSV_HEADERS.filter((h) => h === "name").filter(
+                (h) => !headers.includes(h),
+              );
+              if (missing.length) return { rows: [], error: `Missing columns: ${missing.join(", ")}` };
+              if (!rows.length) return { rows: [], error: "No data rows found" };
+              if (rows.length > 500) return { rows: [], error: "Maximum 500 rows per import" };
+              return { rows };
+            }}
+            onImport={async (rows) => {
+              setBusy(true);
+              setError("");
+              try {
+                const out = await importDispatchGoods({ rows });
+                await reload();
+                return out;
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : "Import failed";
+                setError(msg);
+                throw err;
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+          {items.length ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={busy}
+              onClick={() => downloadCsv("dispatch-goods.csv", dispatchGoodsCsvFromItems(items))}
+            >
+              Export
+            </button>
+          ) : null}
+          <span className="master-count">
+            {shown.length} item{shown.length === 1 ? "" : "s"}
+          </span>
+        </div>
+      </div>
+
       {loading ? <p className="dispatch-search-hint">Loading catalog…</p> : null}
       {!loading && shown.length === 0 ? (
         <p className="dispatch-search-hint">No goods yet. Add a name to start the list.</p>
       ) : (
-        <ul className="dispatch-goods-catalog-list">
-          {shown.map((item) => {
-            const packHint = formatGoodsPackHint(item.unit, item.unitsPerPack);
-            return (
-              <li key={item.id} className={item.enabled ? undefined : "is-disabled"}>
-                <strong>{item.name}</strong>
-                <div className="dispatch-goods-catalog-fields">
+        <div className="master-table-wrap">
+          <div className="master-table-head is-goods" role="row">
+            <span>Name</span>
+            <span>SKU</span>
+            <span>Unit</span>
+            <span>Sell Rp</span>
+            <span>Cost Rp</span>
+            <span>On hand</span>
+            <span>Actions</span>
+          </div>
+          <ul className="master-table-list dispatch-goods-catalog-list">
+            {shown.map((item) => {
+              const packHint = formatGoodsPackHint(item.unit, item.unitsPerPack);
+              const hand = item.onHand ?? 0;
+              return (
+                <li
+                  key={item.id}
+                  className={`master-table-row is-goods${item.enabled ? "" : " is-disabled"}`}
+                >
+                  <div className="master-cell-primary">
+                    <strong>{item.name}</strong>
+                    <p className="master-cell-meta">
+                      {[
+                        packHint,
+                        item.volumeM3Each != null ? `${item.volumeM3Each} m³` : "",
+                        item.weightKgEach != null ? `${item.weightKgEach} kg` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                    </p>
+                  </div>
                   <input
                     key={`${item.id}-sku-${item.sku || ""}`}
+                    className="master-pill-input"
                     defaultValue={item.sku || ""}
                     placeholder="SKU"
                     disabled={busy}
                     aria-label="SKU"
                     onBlur={(e) => {
-                      const sku = e.target.value.trim();
-                      if (sku !== (item.sku || "")) void saveItem(item, { sku });
+                      const nextSku = e.target.value.trim();
+                      if (nextSku !== (item.sku || "")) void saveItem(item, { sku: nextSku });
                     }}
                   />
                   <select
+                    className="master-inline-input"
                     value={item.unit}
                     disabled={busy}
                     aria-label="Unit (qty)"
-                    title="Unit (qty)"
                     onChange={(e) => {
                       const next = e.target.value as DispatchGoodsUnit;
                       void saveItem(item, {
@@ -525,31 +568,14 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                       </option>
                     ))}
                   </select>
-                  {goodsUnitIsPackable(item.unit) ? (
-                    <input
-                      key={`${item.id}-pack-${item.unitsPerPack ?? ""}`}
-                      defaultValue={item.unitsPerPack ?? ""}
-                      placeholder="pcs / unit"
-                      inputMode="decimal"
-                      disabled={busy}
-                      aria-label="Pcs per unit"
-                      title="How many pcs in one of this unit"
-                      onBlur={(e) => {
-                        const next = e.target.value === "" ? null : Number(e.target.value);
-                        if (next !== (item.unitsPerPack ?? null)) {
-                          void saveItem(item, { unitsPerPack: next });
-                        }
-                      }}
-                    />
-                  ) : null}
                   <input
                     key={`${item.id}-sell-${item.sellPrice ?? ""}`}
+                    className="master-inline-input"
                     defaultValue={item.sellPrice ?? ""}
-                    placeholder="Sell Rp"
+                    placeholder="0"
                     inputMode="numeric"
                     disabled={busy}
                     aria-label="Sell price IDR"
-                    title="Sell price (IDR per unit)"
                     onBlur={(e) => {
                       const next = e.target.value === "" ? null : Number(e.target.value);
                       if (next !== (item.sellPrice ?? null)) void saveItem(item, { sellPrice: next });
@@ -557,78 +583,69 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                   />
                   <input
                     key={`${item.id}-cost-${item.costPrice ?? ""}`}
+                    className="master-inline-input"
                     defaultValue={item.costPrice ?? ""}
-                    placeholder="Cost Rp"
+                    placeholder="0"
                     inputMode="numeric"
                     disabled={busy}
                     aria-label="Cost price IDR"
-                    title="Cost price / COGS (IDR per unit)"
                     onBlur={(e) => {
                       const next = e.target.value === "" ? null : Number(e.target.value);
                       if (next !== (item.costPrice ?? null)) void saveItem(item, { costPrice: next });
                     }}
                   />
-                  <span className="dispatch-goods-catalog-meta">
-                    {[
-                      packHint,
-                      item.sellPrice != null ? `Sell ${formatIdr(item.sellPrice)}` : "",
-                      item.costPrice != null ? `Cost ${formatIdr(item.costPrice)}` : "",
-                      item.sellPrice != null && item.costPrice != null
-                        ? `Margin ${formatIdr(item.sellPrice - item.costPrice)}/unit`
-                        : "",
-                      `On hand ${item.onHand ?? 0} ${item.unit}`,
-                      item.volumeM3Each != null ? `${item.volumeM3Each} m³/unit` : "",
-                      item.weightKgEach != null ? `${item.weightKgEach} kg/unit` : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ") || "No price / pack / capacity attrs"}
+                  <span className={`master-stock-pill${hand > 0 ? " is-ok" : ""}`}>
+                    {hand > 0 ? `+ ${hand}` : "0"} in stock
                   </span>
-                </div>
-                <div className="dispatch-goods-catalog-actions">
-                  <button
-                    type="button"
-                    className="btn-ghost btn-compact"
-                    disabled={busy}
-                    onClick={() => void saveItem(item, { enabled: !item.enabled })}
-                  >
-                    {item.enabled ? "Disable" : "Enable"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost btn-compact"
-                    disabled={busy}
-                    onClick={() => void removeItem(item)}
-                  >
-                    Delete
-                  </button>
-                  <CatalogLabelPrintButton
-                    kind="goods"
-                    name={item.name}
-                    sku={item.sku || ""}
-                    disabled={busy}
-                  />
-                  <CatalogNfcWriteButton kind="goods" name={item.name} sku={item.sku || ""} disabled={busy} />
-                  <button
-                    type="button"
-                    className="btn-ghost btn-compact"
-                    onClick={() => setOpenCodes((id) => (id === item.id ? null : item.id))}
-                  >
-                    {openCodes === item.id ? "Hide codes" : "Codes"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost btn-compact"
-                    onClick={() => {
-                      setOpenStock((id) => (id === item.id ? null : item.id));
-                      setAdjustQty("");
-                      setAdjustNote("");
-                    }}
-                  >
-                    {openStock === item.id ? "Hide stock" : "Stock"}
-                  </button>
-                </div>
+                  <div className="master-row-actions dispatch-goods-catalog-actions">
+                    <button
+                      type="button"
+                      className="master-icon-btn"
+                      disabled={busy}
+                      title={item.enabled ? "Disable" : "Enable"}
+                      aria-label={item.enabled ? "Disable" : "Enable"}
+                      onClick={() => void saveItem(item, { enabled: !item.enabled })}
+                    >
+                      {item.enabled ? "●" : "○"}
+                    </button>
+                    <button
+                      type="button"
+                      className="master-icon-btn"
+                      disabled={busy}
+                      aria-label="Delete"
+                      onClick={() => void removeItem(item)}
+                    >
+                      ⌫
+                    </button>
+                    <CatalogLabelPrintButton
+                      kind="goods"
+                      name={item.name}
+                      sku={item.sku || ""}
+                      disabled={busy}
+                    />
+                    <CatalogNfcWriteButton kind="goods" name={item.name} sku={item.sku || ""} disabled={busy} />
+                    <button
+                      type="button"
+                      className="master-icon-btn"
+                      onClick={() => setOpenCodes((id) => (id === item.id ? null : item.id))}
+                      aria-label={openCodes === item.id ? "Hide codes" : "Codes"}
+                    >
+                      #
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary master-stock-btn"
+                      onClick={() => {
+                        setOpenStock((id) => (id === item.id ? null : item.id));
+                        setAdjustQty("");
+                        setAdjustNote("");
+                      }}
+                    >
+                      {openStock === item.id ? "Hide" : "Stock"}
+                    </button>
+                  </div>
                 {openStock === item.id ? (
-                  <div className="dispatch-goods-stock">
+                  <div className="dispatch-goods-stock master-row-expand">
                     {!depots.length ? (
                       <p className="dispatch-search-hint">
                         Add a depot on Jobs (Depots) before recording per-depot stock.
@@ -740,22 +757,25 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                   </div>
                 ) : null}
                 {openCodes === item.id ? (
-                  <CatalogCodesEditor
-                    kind="goods"
-                    itemId={item.id}
-                    sku={item.sku}
-                    name={item.name}
-                    disabled={busy}
-                  />
+                  <div className="master-row-expand">
+                    <CatalogCodesEditor
+                      kind="goods"
+                      itemId={item.id}
+                      sku={item.sku}
+                      name={item.name}
+                      disabled={busy}
+                    />
+                  </div>
                 ) : null}
               </li>
             );
           })}
-        </ul>
+          </ul>
+        </div>
       )}
 
       {asPage ? (
-        <div className="dispatch-opex-rates">
+        <div className="dispatch-opex-rates master-card">
           <p className="dispatch-eyebrow">Operating cost rates</p>
           <p className="dispatch-search-hint">
             Global rates apply when a depot has none. Used for job opex estimate (after plan/optimize) and actual

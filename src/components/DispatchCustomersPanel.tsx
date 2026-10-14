@@ -126,239 +126,273 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
   });
 
   return (
-    <section className={`dispatch-goods-catalog${onClose ? " is-dialog" : ""}`}>
-      <div className="dispatch-goods-catalog-head">
-        <div>
-          {!asPage ? (
-            <>
-              <p className="dispatch-eyebrow">Orders</p>
-              <h2>Customers</h2>
-            </>
+    <section
+      className={`dispatch-goods-catalog${onClose ? " is-dialog" : ""}${asPage ? " is-master-desk" : ""}`}
+    >
+      {!asPage ? (
+        <div className="dispatch-goods-catalog-head">
+          <div>
+            <p className="dispatch-eyebrow">Orders</p>
+            <h2>Customers</h2>
+            <p className="dispatch-search-hint">
+              Name and coordinates are required. Picking a customer copies them onto a new order.
+            </p>
+          </div>
+          {onClose ? (
+            <button type="button" className="btn-secondary" onClick={onClose}>
+              Close
+            </button>
           ) : null}
-          <p className="dispatch-search-hint">
-            Name and coordinates are required. Zone, address, phone, contact, and notes are extra detail. Picking a
-            customer copies them onto a new order. Editing this list later does not change orders already created.
-          </p>
         </div>
-        {onClose ? (
-          <button type="button" className="btn-secondary" onClick={onClose}>
-            Close
-          </button>
-        ) : null}
-      </div>
+      ) : null}
       {error ? (
         <p className="dispatch-window-warn" role="alert">
           {error}
         </p>
       ) : null}
-      <form className="dispatch-goods-catalog-add" onSubmit={(e) => void addItem(e)}>
-        <input
-          className="catalog-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Customer name"
-          disabled={busy}
-          aria-label="Customer name"
-        />
-        <input
-          value={lat}
-          onChange={(e) => setLat(e.target.value)}
-          placeholder="Lat"
-          inputMode="decimal"
-          disabled={busy}
-          aria-label="Latitude"
-        />
-        <input
-          value={lon}
-          onChange={(e) => setLon(e.target.value)}
-          placeholder="Lon"
-          inputMode="decimal"
-          disabled={busy}
-          aria-label="Longitude"
-        />
-        <input
-          value={zone}
-          onChange={(e) => setZone(e.target.value)}
-          placeholder="Zone"
-          disabled={busy}
-          aria-label="Zone"
-        />
-        <input
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="Address"
-          disabled={busy}
-          aria-label="Address"
-        />
-        <input
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="Phone"
-          disabled={busy}
-          aria-label="Phone"
-        />
-        <input
-          value={contact}
-          onChange={(e) => setContact(e.target.value)}
-          placeholder="Contact"
-          disabled={busy}
-          aria-label="Contact"
-        />
-        <input
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Notes"
-          disabled={busy}
-          aria-label="Notes"
-        />
-        <button type="submit" className="btn btn-primary" disabled={busy || !name.trim()}>
-          Add
-        </button>
-      </form>
-      <div className="dispatch-goods-catalog-tools">
-        <CsvImportPanel
-          title="Import customers CSV"
-          disabled={busy || loading}
-          templateFilename="dispatch-customers-template.csv"
-          hint="Required: name, lat, lon. Optional: zone, address, phone, contact_name, notes, window_start, window_end, proof_required, enabled. Matching name updates the customer. Max 500 rows."
-          onDownloadTemplate={() => downloadCsv("dispatch-customers-template.csv", dispatchCustomerCsvTemplate())}
-          parseFile={(text) => {
-            const { headers, rows } = parseCsv(text);
-            const missing = ["name", "lat", "lon"].filter((h) => !headers.includes(h));
-            if (missing.length) return { rows: [], error: `Missing columns: ${missing.join(", ")}` };
-            if (!rows.length) return { rows: [], error: "No data rows found" };
-            if (rows.length > 500) return { rows: [], error: "Maximum 500 rows per import" };
-            return { rows };
-          }}
-          onImport={async (rows) => {
-            setBusy(true);
-            setError("");
-            try {
-              const out = await importDispatchCustomers({ rows });
-              await reload();
-              return out;
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : "Import failed";
-              setError(msg);
-              throw err;
-            } finally {
-              setBusy(false);
-            }
-          }}
-        />
-        {items.length ? (
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={busy}
-            onClick={() => downloadCsv("dispatch-customers.csv", dispatchCustomerCsvFromItems(items))}
-          >
-            Export customers CSV
-          </button>
-        ) : null}
+
+      <div className="master-card">
+        <p className="master-card-kicker">Add customer — compact</p>
+        <form className="master-add-form is-customers" onSubmit={(e) => void addItem(e)}>
+          <label className="master-field is-wide">
+            <span>Customer name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Name"
+              disabled={busy}
+            />
+          </label>
+          <label className="master-field">
+            <span>Latitude</span>
+            <input
+              value={lat}
+              onChange={(e) => setLat(e.target.value)}
+              placeholder="-6.2"
+              inputMode="decimal"
+              disabled={busy}
+            />
+          </label>
+          <label className="master-field">
+            <span>Longitude</span>
+            <input
+              value={lon}
+              onChange={(e) => setLon(e.target.value)}
+              placeholder="106.8"
+              inputMode="decimal"
+              disabled={busy}
+            />
+          </label>
+          <label className="master-field">
+            <span>Zone</span>
+            <input value={zone} onChange={(e) => setZone(e.target.value)} placeholder="Zone" disabled={busy} />
+          </label>
+          <label className="master-field is-wide">
+            <span>Address</span>
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="Street / landmark"
+              disabled={busy}
+            />
+          </label>
+          <label className="master-field">
+            <span>Phone</span>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" disabled={busy} />
+          </label>
+          <label className="master-field">
+            <span>Contact</span>
+            <input
+              value={contact}
+              onChange={(e) => setContact(e.target.value)}
+              placeholder="Contact"
+              disabled={busy}
+            />
+          </label>
+          <label className="master-field is-wide">
+            <span>Notes</span>
+            <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" disabled={busy} />
+          </label>
+          <div className="master-add-actions">
+            <button type="submit" className="btn btn-primary" disabled={busy || !name.trim()}>
+              + Add customer
+            </button>
+          </div>
+        </form>
       </div>
-      <input
-        type="search"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        placeholder="Filter customers…"
-        autoComplete="off"
-        aria-label="Filter customers"
-      />
+
+      <div className="master-toolbar">
+        <input
+          type="search"
+          className="master-search"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter customer or zone…"
+          autoComplete="off"
+          aria-label="Filter customers"
+        />
+        <div className="master-toolbar-actions">
+          <CsvImportPanel
+            title="Import"
+            disabled={busy || loading}
+            templateFilename="dispatch-customers-template.csv"
+            hint="Required: name, lat, lon. Optional: zone, address, phone, contact_name, notes, window_start, window_end, proof_required, enabled. Matching name updates the customer. Max 500 rows."
+            onDownloadTemplate={() =>
+              downloadCsv("dispatch-customers-template.csv", dispatchCustomerCsvTemplate())
+            }
+            parseFile={(text) => {
+              const { headers, rows } = parseCsv(text);
+              const missing = ["name", "lat", "lon"].filter((h) => !headers.includes(h));
+              if (missing.length) return { rows: [], error: `Missing columns: ${missing.join(", ")}` };
+              if (!rows.length) return { rows: [], error: "No data rows found" };
+              if (rows.length > 500) return { rows: [], error: "Maximum 500 rows per import" };
+              return { rows };
+            }}
+            onImport={async (rows) => {
+              setBusy(true);
+              setError("");
+              try {
+                const out = await importDispatchCustomers({ rows });
+                await reload();
+                return out;
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : "Import failed";
+                setError(msg);
+                throw err;
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+          {items.length ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={busy}
+              onClick={() => downloadCsv("dispatch-customers.csv", dispatchCustomerCsvFromItems(items))}
+            >
+              Export
+            </button>
+          ) : null}
+          <span className="master-count">
+            {shown.length} location{shown.length === 1 ? "" : "s"}
+          </span>
+        </div>
+      </div>
+
       {loading ? <p className="dispatch-search-hint">Loading customers…</p> : null}
       {!loading && shown.length === 0 ? (
         <p className="dispatch-search-hint">No customers yet. Add a name and coordinates, or import a CSV.</p>
       ) : null}
-      <ul className="dispatch-goods-catalog-list">
-        {shown.map((item) => (
-          <li key={item.id} className={!item.enabled ? "is-disabled" : ""}>
-            <div className="dispatch-goods-catalog-fields">
-              <input
-                className="catalog-name"
-                defaultValue={item.name}
-                disabled={busy}
-                aria-label="Customer name"
-                onBlur={(e) => {
-                  const next = e.target.value.trim();
-                  if (next && next !== item.name) void save(item, { name: next });
-                }}
-              />
-              <input
-                defaultValue={String(item.lat)}
-                disabled={busy}
-                inputMode="decimal"
-                aria-label="Latitude"
-                onBlur={(e) => {
-                  const next = Number(e.target.value);
-                  if (Number.isFinite(next) && next !== item.lat) void save(item, { lat: next });
-                }}
-              />
-              <input
-                defaultValue={String(item.lon)}
-                disabled={busy}
-                inputMode="decimal"
-                aria-label="Longitude"
-                onBlur={(e) => {
-                  const next = Number(e.target.value);
-                  if (Number.isFinite(next) && next !== item.lon) void save(item, { lon: next });
-                }}
-              />
-              <input
-                defaultValue={item.zone}
-                placeholder="Zone"
-                disabled={busy}
-                aria-label="Zone"
-                onBlur={(e) => {
-                  if (e.target.value.trim() !== item.zone) void save(item, { zone: e.target.value.trim() });
-                }}
-              />
-              <input
-                defaultValue={item.phone}
-                placeholder="Phone"
-                disabled={busy}
-                aria-label="Phone"
-                onBlur={(e) => {
-                  if (e.target.value.trim() !== item.phone) void save(item, { phone: e.target.value.trim() });
-                }}
-              />
-            </div>
-            <div className="dispatch-goods-catalog-actions">
-              <label className="catalog-enabled">
+
+      {shown.length ? (
+        <div className="master-table-wrap">
+          <div className="master-table-head is-customers" role="row">
+            <span>Customer</span>
+            <span>Lat</span>
+            <span>Lon</span>
+            <span>Zone</span>
+            <span>Phone</span>
+            <span>Status</span>
+            <span>Action</span>
+          </div>
+          <ul className="master-table-list">
+            {shown.map((item) => (
+              <li key={item.id} className={`master-table-row is-customers${!item.enabled ? " is-disabled" : ""}`}>
+                <div className="master-cell-primary">
+                  <input
+                    className="master-inline-name"
+                    defaultValue={item.name}
+                    disabled={busy}
+                    aria-label="Customer name"
+                    onBlur={(e) => {
+                      const next = e.target.value.trim();
+                      if (next && next !== item.name) void save(item, { name: next });
+                    }}
+                  />
+                  <p className="master-cell-meta">
+                    {[item.address, item.contactName ? `Contact ${item.contactName}` : "", item.notes]
+                      .filter(Boolean)
+                      .join(" · ") || "No address or notes"}
+                  </p>
+                </div>
                 <input
-                  type="checkbox"
-                  checked={item.enabled}
+                  className="master-inline-input"
+                  defaultValue={String(item.lat)}
                   disabled={busy}
-                  onChange={(e) => void save(item, { enabled: e.target.checked })}
+                  inputMode="decimal"
+                  aria-label="Latitude"
+                  onBlur={(e) => {
+                    const next = Number(e.target.value);
+                    if (Number.isFinite(next) && next !== item.lat) void save(item, { lat: next });
+                  }}
                 />
-                On
-              </label>
-              {onUse ? (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  disabled={busy || !item.enabled}
-                  onClick={() => onUse(item)}
-                >
-                  Use
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="btn-ghost btn-compact"
-                disabled={busy}
-                onClick={() => void removeItem(item)}
-              >
-                Remove
-              </button>
-            </div>
-            <p className="dispatch-search-hint">
-              {[item.address, item.contactName ? `Contact ${item.contactName}` : "", item.notes]
-                .filter(Boolean)
-                .join(" · ") || "No address or notes"}
-            </p>
-          </li>
-        ))}
-      </ul>
+                <input
+                  className="master-inline-input"
+                  defaultValue={String(item.lon)}
+                  disabled={busy}
+                  inputMode="decimal"
+                  aria-label="Longitude"
+                  onBlur={(e) => {
+                    const next = Number(e.target.value);
+                    if (Number.isFinite(next) && next !== item.lon) void save(item, { lon: next });
+                  }}
+                />
+                <input
+                  className="master-pill-input"
+                  defaultValue={item.zone}
+                  placeholder="Zone"
+                  disabled={busy}
+                  aria-label="Zone"
+                  onBlur={(e) => {
+                    if (e.target.value.trim() !== item.zone) void save(item, { zone: e.target.value.trim() });
+                  }}
+                />
+                <input
+                  className="master-inline-input"
+                  defaultValue={item.phone}
+                  placeholder="—"
+                  disabled={busy}
+                  aria-label="Phone"
+                  onBlur={(e) => {
+                    if (e.target.value.trim() !== item.phone) void save(item, { phone: e.target.value.trim() });
+                  }}
+                />
+                <label className={`master-switch${item.enabled ? " is-on" : ""}`} title={item.enabled ? "On" : "Off"}>
+                  <input
+                    type="checkbox"
+                    checked={item.enabled}
+                    disabled={busy}
+                    onChange={(e) => void save(item, { enabled: e.target.checked })}
+                  />
+                  <span aria-hidden />
+                </label>
+                <div className="master-row-actions">
+                  {onUse ? (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={busy || !item.enabled}
+                      onClick={() => onUse(item)}
+                    >
+                      Use
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="master-icon-btn"
+                    disabled={busy}
+                    aria-label={`Remove ${item.name}`}
+                    onClick={() => void removeItem(item)}
+                  >
+                    ⌫
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </section>
   );
 }
