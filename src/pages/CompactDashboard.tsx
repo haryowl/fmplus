@@ -251,7 +251,7 @@ export default function CompactDashboard() {
             <div className="value">{trips ? formatHours(totals.hours) : "—"}</div>
             <div className="unit">hours</div>
           </article>
-          <article className="kpi" style={{ ["--tick" as string]: "#c47d3a" }}>
+          <article className="kpi" style={{ ["--tick" as string]: "var(--idle)" }}>
             <div className="label">Idle</div>
             <div className="value">{trips ? formatHours(totals.idle) : "—"}</div>
             <div className="unit">
@@ -335,7 +335,7 @@ export default function CompactDashboard() {
                       <i className="swatch" style={{ background: "var(--gps)" }} /> Active
                     </span>
                     <span>
-                      <i className="swatch" style={{ background: "#c47d3a" }} /> Idle
+                      <i className="swatch" style={{ background: "var(--idle)" }} /> Idle
                     </span>
                   </div>
                   <ExportExcelButton

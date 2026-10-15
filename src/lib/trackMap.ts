@@ -9,12 +9,26 @@ export const MAX_MAP_TELEPORT_KM = 80;
 /** Both axes near 0,0 — the usual "no fix" dump, not the equator in Indonesia. */
 const NULL_ISLAND_DEG = 0.01;
 
+function cssVar(name: string, fallback: string): string {
+  if (typeof document === "undefined") return fallback;
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
+/** Theme-aware track colors (Warm fallbacks when CSS vars unavailable). */
 export const MAP_COLOR = {
-  low: "#0b6b62",
-  mid: "#c47d3a",
-  high: "#9f2a2a",
-  unknown: "#8a8378",
-} as const;
+  get low() {
+    return cssVar("--gps", "#0b6b62");
+  },
+  get mid() {
+    return cssVar("--idle", "#c47d3a");
+  },
+  get high() {
+    return cssVar("--danger", "#9f2a2a");
+  },
+  get unknown() {
+    return cssVar("--ink-faint", "#8a8378");
+  },
+};
 
 export type MapMode = "path" | "elevation" | "road";
 

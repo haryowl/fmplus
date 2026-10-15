@@ -18,6 +18,7 @@
   --accent: #0b6b62;
   --accent-hover: #09574f;
   --accent-soft: #d9efe9;
+  --accent-ink: #08443e;
   --gps: #0b6b62;
   --ign: #3b4cb3;
   --odo: #9a3b12;
@@ -69,6 +70,7 @@
   --accent: #18181b;
   --accent-hover: #000000;
   --accent-soft: #e4e4e7;
+  --accent-ink: #0a0a0a;
   --gps: #3f3f46;
   --ign: #52525b;
   --odo: #71717a;
@@ -115,6 +117,7 @@
   --accent: #0f766e;
   --accent-hover: #115e59;
   --accent-soft: #e8f7f6;
+  --accent-ink: #0a4f4a;
   --gps: #0d9488;
   --ign: #0f766e;
   --odo: #ea580c;
@@ -590,7 +593,7 @@ span.btn-ghost {
 .field select {
   height: 38px;
   border: 1px solid var(--line-strong);
-  background: #fff;
+  background: var(--surface);
   border-radius: var(--radius-sm);
   padding: 0 10px;
   color: var(--ink);
@@ -632,7 +635,7 @@ span.btn-ghost {
 }
 
 .period-switch button.active {
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   box-shadow: var(--shadow);
 }
@@ -851,7 +854,7 @@ span.btn-ghost {
 
 .map-wrap .leaflet-control-attribution {
   font-size: 10px;
-  background: rgba(251, 249, 244, 0.92);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
 }
 
 .map-caption {
@@ -1132,7 +1135,7 @@ table.metrics tbody tr:hover {
 
 .banner.progress {
   background: var(--accent-soft);
-  color: #08443e;
+  color: var(--accent-ink);
 }
 
 .banner.warn {
@@ -1501,7 +1504,7 @@ html.onesheet-root body {
 }
 
 .vehicle-picker {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   overflow: hidden;
@@ -1563,7 +1566,7 @@ html.onesheet-root body {
   flex-shrink: 0;
   border: 1px solid var(--line-strong);
   border-radius: 3px;
-  background: #fff;
+  background: var(--surface);
   background-position: center;
   background-repeat: no-repeat;
   background-size: 10px 10px;
@@ -1685,7 +1688,7 @@ html.onesheet-root body {
 
 .status-ign.on {
   background: var(--accent-soft);
-  color: #08443e;
+  color: var(--accent-ink);
 }
 
 .status-ign.off {
@@ -2319,7 +2322,7 @@ html.onesheet-root body {
   background: none;
   padding: 0;
   margin: 0;
-  color: #0b6b62;
+  color: var(--accent);
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
@@ -2381,7 +2384,7 @@ html.onesheet-root body {
   gap: 2px;
   padding: 8px 10px;
   border-radius: 6px;
-  background: #f5f1e8;
+  background: var(--surface-2);
 }
 
 .trip-event-list strong {
@@ -2415,7 +2418,7 @@ html.onesheet-root body {
 .trip-detail-table th {
   position: sticky;
   top: 0;
-  background: #f3efe6;
+  background: var(--surface-2);
   z-index: 1;
 }
 
@@ -2429,7 +2432,7 @@ html.onesheet-root body {
 }
 
 .trip-detail-table a {
-  color: #0b6b62;
+  color: var(--accent);
 }
 
 .trip-detail-table td.trip-location {
@@ -2448,7 +2451,7 @@ html.onesheet-root body {
 }
 
 .trip-status-trip {
-  color: #0b6b62;
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -2557,7 +2560,7 @@ html.onesheet-root body {
   padding: 8px 10px;
   height: 36px;
   border: 1px solid var(--admin-line);
-  background: #fff;
+  background: var(--surface);
   border-radius: 8px;
   color: var(--admin-ink);
   font-size: 0.84rem;
@@ -2922,7 +2925,7 @@ html.onesheet-root body {
   padding: 4px 10px;
   border: 1px solid var(--admin-line);
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface);
   font-size: 0.78rem;
   font-weight: 650;
   color: var(--admin-ink-soft);
@@ -2990,7 +2993,7 @@ html.onesheet-root body {
   border: 1px solid var(--admin-line);
   font-size: 0.7rem;
   font-weight: 650;
-  background: #fff;
+  background: var(--surface);
   color: var(--admin-ink-soft);
 }
 
@@ -3181,7 +3184,7 @@ html.onesheet-root body {
   padding: 6px 11px;
   border: 1px solid var(--admin-line);
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface);
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--admin-ink-soft);
@@ -3334,7 +3337,7 @@ html.onesheet-root body {
 .admin-field-list li.is-editing {
   grid-column: 1 / -1;
   border-color: var(--admin-accent);
-  background: #fff;
+  background: var(--surface);
 }
 
 .admin-field-summary {
@@ -3478,7 +3481,7 @@ html.onesheet-root body {
   z-index: 40;
   padding: 8px 12px;
   background: #1c2b28;
-  color: #f4f1ea;
+  color: var(--surface-2);
   font-size: 13px;
 }
 .offline-field-conflict {
@@ -3489,8 +3492,8 @@ html.onesheet-root body {
   max-width: 100%;
   overflow-x: hidden;
   background:
-    radial-gradient(900px 420px at 0% -10%, rgba(11, 107, 98, 0.16), transparent 55%),
-    linear-gradient(165deg, #f4f1ea 0%, #e8ebe8 55%, #e4ebe8 100%);
+    radial-gradient(900px 420px at 0% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 55%),
+    linear-gradient(165deg, var(--bg) 0%, var(--surface-2) 55%, var(--bg-deep) 100%);
   color: var(--ink);
   padding: 0 0 48px;
   font-family: var(--font);
@@ -3567,7 +3570,7 @@ html.onesheet-root body {
 
 .field-banner { max-width: 640px; margin: 12px auto 0; padding: 0 16px; width: 100%; box-sizing: border-box; }
 .field-error { margin: 0; padding: 10px 12px; background: var(--danger-soft); color: var(--danger); border-radius: var(--radius-sm); }
-.field-notice { margin: 0; padding: 10px 12px; background: var(--accent-soft); color: #08443e; border-radius: var(--radius-sm); }
+.field-notice { margin: 0; padding: 10px 12px; background: var(--accent-soft); color: var(--accent-ink); border-radius: var(--radius-sm); }
 
 .field-jobs, .field-job-detail {
   max-width: 640px; margin: 10px auto 0; padding: 0 12px; display: grid; gap: 8px;
@@ -3576,9 +3579,9 @@ html.onesheet-root body {
 }
 
 .field-panel {
-  display: grid; gap: 8px; padding: 12px; border: 1px solid rgba(200, 191, 176, 0.7);
-  background: rgba(251, 249, 244, 0.96); border-radius: 14px;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 8px 22px rgba(23, 22, 20, 0.05);
+  display: grid; gap: 8px; padding: 12px; border: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
+  background: color-mix(in srgb, var(--surface) 96%, transparent); border-radius: 14px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 8px 22px color-mix(in srgb, var(--ink) 5%, transparent);
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
@@ -3600,10 +3603,10 @@ html.onesheet-root body {
 
 .field-status, .field-pill {
   display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px;
-  font-size: 0.72rem; font-weight: 650; border: 1px solid var(--line-strong); background: #fff;
+  font-size: 0.72rem; font-weight: 650; border: 1px solid var(--line-strong); background: var(--surface);
 }
 .field-status-due { background: #f8ead8; border-color: #c49a5a; color: #7a4b12; }
-.field-status-in_progress { background: var(--accent-soft); border-color: var(--accent); color: #08443e; }
+.field-status-in_progress { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
 .field-status-done,
 .field-status-approved { background: #e8f3ea; border-color: #8aaf8f; color: #1e5c34; }
 .field-status-skipped { background: #eeeae3; border-color: #b7b0a4; color: #5e584f; }
@@ -3635,13 +3638,13 @@ html.onesheet-root body {
   font-size: 0.75rem;
   font-weight: 650;
   color: var(--ink-faint);
-  background: #fff;
+  background: var(--surface);
 }
 
 .field-flow-steps li.is-current {
   border-color: var(--accent);
   background: var(--accent-soft);
-  color: #08443e;
+  color: var(--accent-ink);
 }
 
 .field-flow-steps li.is-done {
@@ -3664,7 +3667,7 @@ html.onesheet-root body {
 .field-check input { margin-top: 3px; }
 .field-label input, .field-label textarea, .field-line-card input, .field-line-card select {
   padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
-  background: #fff; font: inherit; color: var(--ink);
+  background: var(--surface); font: inherit; color: var(--ink);
   width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;
 }
 .field-label input:focus, .field-label textarea:focus, .field-line-card input:focus, .field-line-card select:focus {
@@ -3674,7 +3677,7 @@ html.onesheet-root body {
 .field-lines { display: grid; gap: 10px; min-width: 0; }
 .field-line-card {
   display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm);
-  background: #fff; min-width: 0; max-width: 100%; box-sizing: border-box;
+  background: var(--surface); min-width: 0; max-width: 100%; box-sizing: border-box;
 }
 .field-line-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; min-width: 0; }
 .field-line-top select { flex: 1; min-width: 0; max-width: 100%; }
@@ -3692,7 +3695,7 @@ html.onesheet-root body {
 }
 .field-photo-btn {
   display: inline-flex; justify-content: center; align-items: center; padding: 12px 14px;
-  border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); background: #fff;
+  border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); background: var(--surface);
   font: inherit; font-weight: 650; color: var(--accent); cursor: pointer;
 }
 .field-photo-btn:disabled { opacity: 0.55; cursor: default; }
@@ -3701,8 +3704,8 @@ html.onesheet-root body {
 
 .field-job-actions {
   position: sticky; bottom: 10px; display: flex; flex-wrap: wrap; gap: 8px; padding: 10px;
-  border: 1px solid var(--line); background: rgba(251, 249, 244, 0.96); border-radius: var(--radius-sm);
-  box-shadow: 0 10px 28px rgba(23, 22, 20, 0.1); z-index: 2;
+  border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 96%, transparent); border-radius: var(--radius-sm);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 10%, transparent); z-index: 2;
 }
 
 .field-photos-panel .field-photo-btn,
@@ -3753,13 +3756,13 @@ html.onesheet-root body {
 .field-filter-chip.is-active {
   border-color: var(--accent);
   background: var(--accent-soft);
-  color: #08443e;
+  color: var(--accent-ink);
 }
 .field-filter-count {
   min-width: 1.1rem;
   padding: 0 5px;
   border-radius: 999px;
-  background: rgba(23, 22, 20, 0.06);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
   text-align: center;
@@ -3859,7 +3862,7 @@ html.onesheet-root body {
 }
 
 .field-legend-due { background: #c49a5a; }
-.field-legend-progress { background: #0b6b62; }
+.field-legend-progress { background: var(--accent); }
 .field-legend-done { background: #5a7a72; }
 
 .field-legend-pct {
@@ -3942,7 +3945,7 @@ html.onesheet-root body {
   gap: 8px;
   font-size: 0.82rem;
   padding-top: 2px;
-  border-top: 1px solid rgba(200, 191, 176, 0.6);
+  border-top: 1px solid color-mix(in srgb, var(--line-strong) 60%, transparent);
 }
 .duty-location-state > span:nth-of-type(2) {
   min-width: 0;
@@ -3986,11 +3989,11 @@ html.onesheet-root body {
 .field-job-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
 .field-job-row {
   width: 100%; display: grid; grid-template-columns: 3px 1fr auto; gap: 8px; align-items: center;
-  text-align: left; padding: 0 8px 0 0; min-height: 52px; border: 1px solid rgba(200, 191, 176, 0.75);
+  text-align: left; padding: 0 8px 0 0; min-height: 52px; border: 1px solid color-mix(in srgb, var(--line-strong) 75%, transparent);
   border-radius: 12px; background: rgba(255, 254, 251, 0.96); cursor: pointer; color: inherit; font: inherit;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset;
 }
-.field-job-row:hover { border-color: var(--accent); background: rgba(217, 239, 233, 0.3); }
+.field-job-row:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 30%, transparent); }
 .field-job-row-done { opacity: 0.92; }
 .field-row-rail { align-self: stretch; background: #d5cbb9; border-radius: 12px 0 0 12px; }
 .field-row-rail.field-status-due { background: #c49a5a; }
@@ -4125,7 +4128,7 @@ html.onesheet-root body {
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     padding: 10px max(12px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
-    background: rgba(251, 249, 244, 0.98);
+    background: color-mix(in srgb, var(--surface) 98%, transparent);
     z-index: 30;
     box-sizing: border-box;
   }
@@ -4255,7 +4258,7 @@ html.onesheet-root body {
 
 .live-ops-list li {
   border: 1px solid #e0d8cb;
-  background: #fff;
+  background: var(--surface);
   padding: 8px;
 }
 
@@ -4272,7 +4275,7 @@ html.onesheet-root body {
 }
 
 .live-ops-list li > button.active .live-ops-list-main strong {
-  color: #0b6b62;
+  color: var(--accent);
 }
 
 .live-ops-list-main {
@@ -4327,7 +4330,7 @@ html.onesheet-root body {
   align-items: flex-start;
   padding: 12px 14px;
   border: 1px solid #d5cbb9;
-  background: #fffdf8;
+  background: var(--surface);
 }
 
 .exceptions-list li.acked {
@@ -4377,7 +4380,7 @@ html.onesheet-root body {
 .places-kpis > div {
   padding: 12px 14px;
   border: 1px solid #d5cbb9;
-  background: #fffdf8;
+  background: var(--surface);
   display: grid;
   gap: 4px;
 }
@@ -4409,7 +4412,7 @@ html.onesheet-root body {
 .places-chip-list li {
   padding: 6px 10px;
   border: 1px solid #d5cbb9;
-  background: #fffdf8;
+  background: var(--surface);
   font-size: 0.88rem;
 }
 
@@ -4445,7 +4448,7 @@ html.onesheet-root body {
   align-items: baseline;
   padding: 10px 12px;
   border: 1px solid #d5cbb9;
-  background: #fffdf8;
+  background: var(--surface);
   font-size: 0.9rem;
 }
 
@@ -4520,7 +4523,7 @@ html.onesheet-root body {
   align-items: flex-start;
   padding: 8px 10px;
   border: 1px solid #d5cbb9;
-  background: #fffdf8;
+  background: var(--surface);
   font-size: 0.9rem;
 }
 
@@ -4534,7 +4537,7 @@ html.onesheet-root body {
   font: inherit;
   padding: 8px;
   border: 1px solid #d5cbb9;
-  background: #fff;
+  background: var(--surface);
   resize: vertical;
 }
 
@@ -4610,7 +4613,7 @@ html.onesheet-root body {
   overflow: auto;
   border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .dispatch-plan-job-list li {
@@ -4716,7 +4719,7 @@ html.onesheet-root body {
   padding: 6px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   font-size: 0.92rem;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -4737,7 +4740,7 @@ html.onesheet-root body {
   min-width: 96px;
   padding: 8px 12px;
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid transparent;
 }
 
@@ -4804,10 +4807,10 @@ html.onesheet-root body {
   max-width: 100%;
   height: 100%;
   padding: 14px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;
-  box-shadow: 0 8px 24px rgba(23, 22, 20, 0.04);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 4%, transparent);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -4865,7 +4868,7 @@ html.onesheet-root body {
 }
 
 .dispatch-place-mode button.is-active {
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
@@ -4883,7 +4886,7 @@ html.onesheet-root body {
 
 .dispatch-search-box:focus-within {
   border-color: var(--accent);
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
@@ -4920,7 +4923,7 @@ html.onesheet-root body {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .dispatch-search-results button {
@@ -4989,7 +4992,7 @@ html.onesheet-root body {
 }
 
 .dispatch-search-source-address {
-  background: #f3f1ec;
+  background: var(--surface-2);
   border-color: #c9c2b6;
   color: #5e584f;
 }
@@ -5000,7 +5003,7 @@ html.onesheet-root body {
   gap: 12px;
   padding: 14px;
   border-radius: 12px;
-  background: linear-gradient(180deg, #f4fbf9 0%, #eef7f4 100%);
+  background: linear-gradient(180deg, var(--accent-soft) 0%, var(--surface-2) 100%);
   border: 1px solid #bddfd6;
   position: relative;
   isolation: isolate;
@@ -5128,7 +5131,7 @@ html.onesheet-root body {
   gap: 10px;
   align-items: flex-start;
   padding: 10px 12px;
-  background: #fff;
+  background: var(--surface);
   border-radius: 10px;
   border: 1px solid var(--line);
   font-size: 0.82rem;
@@ -5227,7 +5230,7 @@ button.dispatch-pin-chip {
   gap: 8px;
   padding: 10px;
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   margin: 0;
   position: relative;
@@ -5275,7 +5278,7 @@ button.dispatch-pin-chip {
 .dispatch-window-chip.is-active {
   background: var(--accent-soft);
   border-color: var(--accent);
-  color: #08443e;
+  color: var(--accent-ink);
 }
 
 .dispatch-window-block input[type="time"] {
@@ -5300,7 +5303,7 @@ button.dispatch-pin-chip {
   height: 30px;
   border-radius: 8px;
   border: 1px solid var(--line-strong);
-  background: #fff;
+  background: var(--surface);
   padding: 0 8px;
   font-family: inherit;
   font-size: 12px;
@@ -5463,7 +5466,7 @@ button.dispatch-pin-chip {
   height: 32px;
   border-radius: 8px;
   border: 1px solid var(--line-strong);
-  background: #fff;
+  background: var(--surface);
   padding: 0 10px;
   font: inherit;
   font-size: 0.82rem;
@@ -5487,7 +5490,7 @@ button.dispatch-pin-chip {
 .dispatch-zone-chip {
   appearance: none;
   border: 1px solid var(--line-strong);
-  background: #fff;
+  background: var(--surface);
   color: var(--ink-muted);
   font: inherit;
   font-size: 0.72rem;
@@ -5534,7 +5537,7 @@ button.dispatch-pin-chip {
   height: 32px;
   border-radius: 8px;
   border: 1px solid var(--line-strong);
-  background: #fff;
+  background: var(--surface);
   font: inherit;
   font-size: 0.82rem;
   padding: 0 8px;
@@ -6390,7 +6393,7 @@ button.dispatch-pin-chip {
   padding: 6px 10px;
   font-size: 0.78rem;
   color: var(--ink-soft);
-  background: rgba(251, 249, 244, 0.95);
+  background: color-mix(in srgb, var(--surface) 95%, transparent);
   border-top: 1px solid var(--line);
 }
 
@@ -6559,7 +6562,7 @@ button.dispatch-pin-chip {
 
 .dispatch-status-draft { background: #eeeae3; color: #5e584f; }
 .dispatch-status-assigned { background: #f8ead8; color: #7a4b12; }
-.dispatch-status-en_route { background: var(--accent-soft); color: #08443e; }
+.dispatch-status-en_route { background: var(--accent-soft); color: var(--accent-ink); }
 .dispatch-status-arrived { background: #e8eef8; color: #1e3a5c; }
 .dispatch-status-done { background: #e8f3ea; color: #1e5c34; }
 .dispatch-status-cancelled { background: #f3e8e8; color: #6b2a2a; }
@@ -6734,23 +6737,23 @@ button.dispatch-pin-chip {
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 0 rgba(28, 27, 24, 0.04);
 }
 
 .field-dispatch-stop.is-done {
   border-color: #c9ddd0;
-  background: linear-gradient(180deg, #f7fbf8 0%, #fff 48%);
+  background: linear-gradient(180deg, var(--accent-soft) 0%, #fff 48%);
 }
 
 .field-dispatch-stop.is-active {
   border-color: #b7cfc9;
-  background: linear-gradient(180deg, #f3faf8 0%, #fff 55%);
+  background: linear-gradient(180deg, var(--accent-soft) 0%, #fff 55%);
 }
 
 .field-dispatch-stop.is-next {
   border-color: #c49a5a;
-  background: #fff9f0;
+  background: var(--surface-2);
 }
 
 .field-dispatch-stop-main {
@@ -6806,7 +6809,7 @@ button.dispatch-pin-chip {
   padding: 0 8px;
   border-radius: 999px;
   border: 1px solid var(--line-strong);
-  background: #fff;
+  background: var(--surface);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -6822,7 +6825,7 @@ button.dispatch-pin-chip {
 .field-order-chip-active {
   background: var(--accent-soft);
   border-color: var(--accent);
-  color: #08443e;
+  color: var(--accent-ink);
 }
 
 .field-dispatch-exec {
@@ -6914,7 +6917,7 @@ button.dispatch-pin-chip {
 }
 
 .field-order-btn-skip {
-  background: #fff;
+  background: var(--surface);
   border-color: #c49a5a;
   color: #7a4b12;
 }
@@ -6934,7 +6937,7 @@ button.dispatch-pin-chip {
 
 .field-dispatch-stop.is-skipped {
   border-color: #d5cfc4;
-  background: linear-gradient(180deg, #f7f5f1 0%, #fff 48%);
+  background: linear-gradient(180deg, var(--surface-2) 0%, #fff 48%);
 }
 
 .field-dispatch-skip-reason {
@@ -6988,7 +6991,7 @@ button.dispatch-pin-chip {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface);
 }
 
 .field-dispatch-cal-dow {
@@ -7032,7 +7035,7 @@ button.dispatch-pin-chip {
 
 .field-dispatch-cal-day.has-jobs {
   border-color: var(--line);
-  background: #f7f4ef;
+  background: var(--surface-2);
   opacity: 1;
 }
 
@@ -7065,7 +7068,7 @@ button.dispatch-pin-chip {
 }
 
 .field-dispatch-cal-dot.is-progress {
-  background: #0b6b62;
+  background: var(--accent);
 }
 
 .field-dispatch-cal-dot.is-done {
@@ -7134,7 +7137,7 @@ button.dispatch-pin-chip {
   display: grid;
   gap: 0;
   border: 1px solid var(--line);
-  background: rgba(251, 249, 244, 0.95);
+  background: color-mix(in srgb, var(--surface) 95%, transparent);
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
@@ -7202,7 +7205,7 @@ button.dispatch-pin-chip {
   padding: 4px 10px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface);
   font: inherit;
   font-size: 0.78rem;
   cursor: pointer;
@@ -7218,7 +7221,7 @@ button.dispatch-pin-chip {
 .maint-filter-chip.is-active {
   border-color: var(--accent);
   background: var(--accent-soft);
-  color: #08443e;
+  color: var(--accent-ink);
 }
 
 .maint-filter-chip.kind-overdue.is-active {
@@ -7258,7 +7261,7 @@ button.dispatch-pin-chip {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-faint);
-  background: #fffdf8;
+  background: var(--surface);
   padding: 6px 10px;
   border-bottom: 1px solid var(--line);
   font-weight: 650;
@@ -7266,12 +7269,12 @@ button.dispatch-pin-chip {
 
 .maintenance-inbox-table td {
   padding: 6px 10px;
-  border-bottom: 1px solid rgba(217, 210, 198, 0.7);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
   vertical-align: middle;
 }
 
 .maintenance-inbox-table tr:hover td {
-  background: rgba(217, 239, 233, 0.35);
+  background: color-mix(in srgb, var(--accent-soft) 35%, transparent);
 }
 
 .maintenance-inbox-alert {
@@ -7310,7 +7313,7 @@ button.dispatch-pin-chip {
   font-size: 0.72rem;
   font-weight: 650;
   border: 1px solid var(--line-strong);
-  background: #fff;
+  background: var(--surface);
   white-space: nowrap;
 }
 
@@ -7370,7 +7373,7 @@ button.dispatch-pin-chip {
 .maint-vehicle-group {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: rgba(251, 249, 244, 0.95);
+  background: color-mix(in srgb, var(--surface) 95%, transparent);
   overflow: hidden;
 }
 
@@ -7382,7 +7385,7 @@ button.dispatch-pin-chip {
   gap: 8px 10px;
   padding: 8px 12px;
   border: 0;
-  background: rgba(23, 22, 20, 0.03);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
   text-align: left;
   font: inherit;
   cursor: pointer;
@@ -7390,7 +7393,7 @@ button.dispatch-pin-chip {
 }
 
 .maint-vehicle-head:hover {
-  background: rgba(217, 239, 233, 0.35);
+  background: color-mix(in srgb, var(--accent-soft) 35%, transparent);
 }
 
 .maint-vehicle-head strong {
@@ -7407,14 +7410,14 @@ button.dispatch-pin-chip {
 .maint-vehicle-group .maintenance-list {
   border: 0;
   border-radius: 0;
-  border-top: 1px solid rgba(217, 210, 198, 0.75);
+  border-top: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
 }
 
 .maint-vehicle-more {
   width: 100%;
   padding: 8px 12px;
   border: 0;
-  border-top: 1px solid rgba(217, 210, 198, 0.75);
+  border-top: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
   background: transparent;
   font: inherit;
   font-size: 0.82rem;
@@ -7425,7 +7428,7 @@ button.dispatch-pin-chip {
 }
 
 .maint-vehicle-more:hover {
-  background: rgba(217, 239, 233, 0.28);
+  background: color-mix(in srgb, var(--accent-soft) 28%, transparent);
 }
 
 .maintenance-list li.maint-row-compact {
@@ -7476,7 +7479,7 @@ button.dispatch-pin-chip {
   padding: 8px 12px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface);
   font: inherit;
 }
 
@@ -7490,7 +7493,7 @@ button.dispatch-pin-chip {
   gap: 10px;
   padding: 14px;
   border: 1px solid #d5cbb9;
-  background: #fffdf8;
+  background: var(--surface);
 }
 
 .maintenance-create label {
@@ -7502,7 +7505,7 @@ button.dispatch-pin-chip {
 .maintenance-create select {
   padding: 8px 10px;
   border: 1px solid #c9bfae;
-  background: #fff;
+  background: var(--surface);
   width: 100%;
   min-height: 8rem;
 }
@@ -7528,7 +7531,7 @@ button.dispatch-pin-chip {
   font-weight: 600;
   padding: 2px 8px;
   border: 1px solid #c9bfae;
-  background: #f4f1ea;
+  background: var(--surface-2);
   color: inherit;
   text-decoration: none;
   white-space: nowrap;
@@ -7581,7 +7584,7 @@ button.dispatch-pin-chip {
   display: grid;
   gap: 0;
   border: 1px solid var(--line);
-  background: rgba(251, 249, 244, 0.9);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
@@ -7599,8 +7602,8 @@ button.dispatch-pin-chip {
   align-items: center;
   padding: 8px 10px 8px 0;
   border: 0;
-  border-bottom: 1px solid rgba(217, 210, 198, 0.75);
-  background: #fffdf8;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+  background: var(--surface);
 }
 
 .maintenance-list li.maint-row:last-child {
@@ -7608,7 +7611,7 @@ button.dispatch-pin-chip {
 }
 
 .maintenance-list li.maint-row:hover {
-  background: rgba(217, 239, 233, 0.28);
+  background: color-mix(in srgb, var(--accent-soft) 28%, transparent);
 }
 
 .maintenance-list li.maint-status-done,
@@ -7787,7 +7790,7 @@ button.dispatch-pin-chip {
   gap: 14px;
   padding: 14px;
   border: 1px solid #d5cbb9;
-  background: #fffdf8;
+  background: var(--surface);
 }
 
 .maintenance-detail-head {
@@ -7801,7 +7804,7 @@ button.dispatch-pin-chip {
   font-size: 0.8rem;
   padding: 2px 8px;
   border: 1px solid #c9bfae;
-  background: #f4f1ea;
+  background: var(--surface-2);
 }
 
 .maint-row .maint-badge {
@@ -7826,7 +7829,7 @@ button.dispatch-pin-chip {
   gap: 8px;
   padding: 12px 14px;
   border: 1px solid #d5cbb9;
-  background: #fffdf8;
+  background: var(--surface);
 }
 
 .maintenance-chart-panel header h3 {
@@ -7850,7 +7853,7 @@ button.dispatch-pin-chip {
   padding: 12px 10px;
   text-align: left;
   border: 1px solid #d5cbb9;
-  background: #fffdf8;
+  background: var(--surface);
   font: inherit;
   cursor: pointer;
   color: inherit;
@@ -7870,7 +7873,7 @@ button.dispatch-pin-chip {
 
 .maint-dash-tile.is-active {
   border-color: #4a463e;
-  background: #f4f1ea;
+  background: var(--surface-2);
 }
 
 .maint-dash-tile.maint-health-upcoming.is-active,
@@ -7951,7 +7954,7 @@ button.dispatch-pin-chip {
 .maintenance-detail-form textarea {
   padding: 8px 10px;
   border: 1px solid #c9bfae;
-  background: #fff;
+  background: var(--surface);
   font: inherit;
 }
 
@@ -8086,7 +8089,7 @@ button.dispatch-pin-chip {
   gap: 16px;
   padding: 14px 16px;
   border: 1px solid #d5cbb9;
-  background: #fffdf8;
+  background: var(--surface);
 }
 
 .maintenance-analyze-report {
@@ -8102,8 +8105,8 @@ button.dispatch-pin-chip {
   gap: 10px 14px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: rgba(243, 239, 231, 0.55);
-  border: 1px solid rgba(217, 210, 198, 0.65);
+  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
 }
 
 .maint-analyze-strip > div {
@@ -8126,7 +8129,7 @@ button.dispatch-pin-chip {
   display: grid;
   gap: 14px;
   padding-top: 8px;
-  border-top: 1px solid rgba(217, 210, 198, 0.75);
+  border-top: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
 }
 
 .maint-results-filters {
@@ -8198,7 +8201,7 @@ button.dispatch-pin-chip {
   display: grid;
   place-items: center;
   border-radius: 12px;
-  background: #171614;
+  background: var(--nav);
   color: #fff;
 }
 
@@ -8233,7 +8236,7 @@ button.dispatch-pin-chip {
   height: 32px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   color: var(--ink-soft);
   font-size: 1.2rem;
   line-height: 1;
@@ -8244,7 +8247,7 @@ button.dispatch-pin-chip {
   padding: 10px 12px;
   border-radius: 14px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
 }
 
 .catalog-v2-note strong {
@@ -8278,7 +8281,7 @@ button.dispatch-pin-chip {
   padding: 0 14px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   font-size: 0.82rem;
   font-weight: 600;
@@ -8304,8 +8307,8 @@ button.dispatch-pin-chip {
 }
 
 .catalog-v2-view button[aria-pressed="true"] {
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(23, 22, 20, 0.08);
+  background: var(--surface);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
 .catalog-v2-search {
@@ -8319,7 +8322,7 @@ button.dispatch-pin-chip {
   height: 36px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   padding: 0 14px;
 }
 
@@ -8334,7 +8337,7 @@ button.dispatch-pin-chip {
   padding: 0 12px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   color: var(--ink-soft);
   font-weight: 600;
   font-size: 0.84rem;
@@ -8355,9 +8358,9 @@ button.dispatch-pin-chip {
 }
 
 .catalog-v2-tabs button.is-on {
-  background: #171614;
+  background: var(--nav);
   color: #fff;
-  border-color: #171614;
+  border-color: var(--nav);
 }
 
 .catalog-v2-tabs button.is-on span {
@@ -8410,7 +8413,7 @@ button.dispatch-pin-chip {
 .catalog-v2-empty {
   border: 1px solid var(--line);
   border-radius: 16px;
-  background: #fff;
+  background: var(--surface);
   padding: 10px 12px;
 }
 
@@ -8433,7 +8436,7 @@ button.dispatch-pin-chip {
   border-radius: 999px;
   display: grid;
   place-items: center;
-  background: #171614;
+  background: var(--nav);
   color: #fff;
   font-size: 0.75rem;
   font-weight: 700;
@@ -8519,7 +8522,7 @@ button.dispatch-pin-chip {
   width: 14px;
   height: 14px;
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
@@ -8528,7 +8531,7 @@ button.dispatch-pin-chip {
 }
 
 .catalog-v2-switch.is-on span {
-  background: #171614;
+  background: var(--nav);
 }
 
 .catalog-v2-switch.is-on span::after {
@@ -8593,7 +8596,7 @@ button.dispatch-pin-chip {
   border-radius: 999px;
   border: 1px solid var(--line);
   padding: 0 12px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .catalog-v2-add-btn {
@@ -8601,7 +8604,7 @@ button.dispatch-pin-chip {
   padding: 0 14px;
   border: 0;
   border-radius: 999px;
-  background: #171614;
+  background: var(--nav);
   color: #fff;
   font-weight: 700;
 }
@@ -8632,7 +8635,7 @@ button.dispatch-pin-chip {
 
 .catalog-v2 input:focus,
 .catalog-v2 button:focus-visible {
-  outline: 2px solid #171614;
+  outline: 2px solid var(--nav);
   outline-offset: 2px;
 }
 
@@ -8803,9 +8806,9 @@ button.dispatch-pin-chip {
 .maintenance-page .filters {
   padding: 14px 16px;
   border-radius: var(--radius);
-  border: 1px solid rgba(200, 191, 176, 0.7);
-  background: linear-gradient(180deg, rgba(251, 249, 244, 0.98), rgba(243, 239, 231, 0.9));
-  box-shadow: 0 10px 28px rgba(23, 22, 20, 0.04);
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--surface), var(--surface-2));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 4%, transparent);
 }
 
 .maintenance-schedule-dash {
@@ -8819,10 +8822,10 @@ button.dispatch-pin-chip {
   border: 1px solid transparent;
   border-radius: 16px;
   background:
-    linear-gradient(180deg, #fffefb, #f7f3eb);
+    linear-gradient(180deg, var(--surface), var(--surface-2));
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.7) inset,
-    0 8px 20px rgba(23, 22, 20, 0.045);
+    0 8px 20px color-mix(in srgb, var(--ink) 5%, transparent);
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
@@ -8834,18 +8837,18 @@ button.dispatch-pin-chip {
   top: 0;
   height: 3px;
   border-radius: 0 0 4px 4px;
-  background: rgba(23, 22, 20, 0.1);
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
 }
 
 .maint-dash-tile:hover {
   transform: translateY(-1px);
-  box-shadow: 0 12px 24px rgba(23, 22, 20, 0.07);
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--ink) 7%, transparent);
 }
 
 .maint-dash-tile.is-active {
-  border-color: rgba(11, 107, 98, 0.35);
-  background: linear-gradient(180deg, #f3faf7, #e7f3ef);
-  box-shadow: 0 0 0 1px rgba(11, 107, 98, 0.12), 0 10px 24px rgba(11, 107, 98, 0.08);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: linear-gradient(180deg, var(--accent-soft), var(--surface-2));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent), 0 10px 24px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .maint-dash-tile.is-active::before,
@@ -8854,15 +8857,15 @@ button.dispatch-pin-chip {
 }
 
 .maint-dash-tile.maint-health-due.is-active::before {
-  background: #c49a5a;
+  background: var(--health-due);
 }
 
 .maint-dash-tile.maint-health-overdue.is-active::before {
-  background: #c97a7a;
+  background: var(--health-overdue);
 }
 
 .maint-dash-tile.maint-health-completed.is-active::before {
-  background: #5f8f6a;
+  background: var(--health-ok);
 }
 
 .maint-dash-label {
@@ -8896,10 +8899,10 @@ button.dispatch-pin-chip {
 }
 
 .maintenance-chart-panel {
-  border: 1px solid rgba(200, 191, 176, 0.65);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 65%, transparent);
   border-radius: 18px;
-  background: linear-gradient(180deg, #fffefb, #faf7f1);
-  box-shadow: 0 10px 28px rgba(23, 22, 20, 0.04);
+  background: linear-gradient(180deg, var(--surface), var(--surface-2));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 4%, transparent);
   padding: 16px 16px 12px;
 }
 
@@ -8921,7 +8924,7 @@ button.dispatch-pin-chip {
   font-size: 0.88rem;
   font-weight: 700;
   letter-spacing: 0.01em;
-  box-shadow: 0 8px 18px rgba(11, 107, 98, 0.22);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .maintenance-page .btn-secondary,
@@ -8929,8 +8932,8 @@ button.dispatch-pin-chip {
   height: 40px;
   padding: 0 16px;
   border-radius: 999px;
-  background: rgba(251, 249, 244, 0.9);
-  border-color: rgba(200, 191, 176, 0.9);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  border-color: color-mix(in srgb, var(--line-strong) 90%, transparent);
 }
 
 .maintenance-inbox,
@@ -8939,17 +8942,17 @@ button.dispatch-pin-chip {
 .maintenance-catalog-panel,
 .maintenance-cost-dash,
 .maintenance-analyze-report {
-  border: 1px solid rgba(200, 191, 176, 0.65);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 65%, transparent);
   border-radius: 18px;
-  background: linear-gradient(180deg, #fffefb, #faf7f1);
-  box-shadow: 0 10px 28px rgba(23, 22, 20, 0.04);
+  background: linear-gradient(180deg, var(--surface), var(--surface-2));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 4%, transparent);
   overflow: hidden;
 }
 
 .maintenance-inbox-head {
   padding: 12px 14px;
   background: transparent;
-  border-bottom: 1px solid rgba(217, 210, 198, 0.65);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
 }
 
 .maintenance-inbox-title {
@@ -8962,7 +8965,7 @@ button.dispatch-pin-chip {
 
 .maintenance-inbox-filters {
   padding: 10px 14px;
-  background: rgba(243, 239, 231, 0.45);
+  background: color-mix(in srgb, var(--surface-2) 45%, transparent);
 }
 
 .maint-filter-chip {
@@ -8974,15 +8977,15 @@ button.dispatch-pin-chip {
   margin: 4px 0 12px;
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(251, 249, 244, 0.7);
-  border: 1px solid rgba(200, 191, 176, 0.45);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 45%, transparent);
 }
 
 .maintenance-list-search input {
   height: 40px;
   border-radius: 999px;
-  border-color: rgba(200, 191, 176, 0.9);
-  background: #fff;
+  border-color: color-mix(in srgb, var(--line-strong) 90%, transparent);
+  background: var(--surface);
   padding: 0 16px;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset;
 }
@@ -8990,12 +8993,12 @@ button.dispatch-pin-chip {
 .maintenance-list-search input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(11, 107, 98, 0.12);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .maint-vehicle-head {
   padding: 12px 14px;
-  background: linear-gradient(90deg, rgba(11, 107, 98, 0.06), transparent 55%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 6%, transparent), transparent 55%);
 }
 
 .maint-vehicle-head strong {
@@ -9010,13 +9013,13 @@ button.dispatch-pin-chip {
 
 .maintenance-list li.maint-row,
 .maintenance-list li.maint-row-compact {
-  border-bottom: 1px solid rgba(217, 210, 198, 0.55);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
   background: transparent;
   transition: background 0.12s ease;
 }
 
 .maintenance-list li.maint-row-compact:hover {
-  background: rgba(217, 239, 233, 0.28);
+  background: color-mix(in srgb, var(--accent-soft) 28%, transparent);
 }
 
 .maint-row-rail {
@@ -9122,9 +9125,9 @@ button.dispatch-pin-chip {
 .maintenance-page textarea {
   font: inherit;
   color: var(--ink);
-  border: 1px solid rgba(200, 191, 176, 0.95);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 95%, transparent);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
   padding: 10px 12px;
   min-height: 40px;
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
@@ -9140,13 +9143,13 @@ button.dispatch-pin-chip {
 .maintenance-page textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(11, 107, 98, 0.12);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .maintenance-page input:disabled,
 .maintenance-page select:disabled,
 .maintenance-page textarea:disabled {
-  background: rgba(243, 239, 231, 0.7);
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
   color: var(--ink-soft);
 }
 
@@ -9164,11 +9167,11 @@ button.dispatch-pin-chip {
   gap: 14px;
   padding: 16px 18px;
   border-radius: 18px;
-  border: 1px solid rgba(200, 191, 176, 0.65);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 65%, transparent);
   background:
-    radial-gradient(120% 80% at 0% 0%, rgba(11, 107, 98, 0.1), transparent 50%),
-    linear-gradient(180deg, #fffefb, #f7f3eb);
-  box-shadow: 0 10px 28px rgba(23, 22, 20, 0.04);
+    radial-gradient(120% 80% at 0% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 50%),
+    linear-gradient(180deg, var(--surface), var(--surface-2));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 4%, transparent);
 }
 
 .maint-detail-nav {
@@ -9227,10 +9230,10 @@ button.dispatch-pin-chip {
 .maint-section {
   display: grid;
   gap: 0;
-  border: 1px solid rgba(200, 191, 176, 0.65);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 65%, transparent);
   border-radius: 18px;
-  background: linear-gradient(180deg, #fffefb, #faf7f1);
-  box-shadow: 0 8px 22px rgba(23, 22, 20, 0.035);
+  background: linear-gradient(180deg, var(--surface), var(--surface-2));
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--ink) 4%, transparent);
   overflow: hidden;
 }
 
@@ -9240,8 +9243,8 @@ button.dispatch-pin-chip {
 
 .maint-section-head {
   padding: 14px 16px 10px;
-  border-bottom: 1px solid rgba(217, 210, 198, 0.55);
-  background: rgba(243, 239, 231, 0.35);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 35%, transparent);
 }
 
 .maint-section-head h3 {
@@ -9291,8 +9294,8 @@ button.dispatch-pin-chip {
   gap: 8px;
   padding: 10px;
   border-radius: 14px;
-  background: rgba(243, 239, 231, 0.4);
-  border: 1px solid rgba(217, 210, 198, 0.55);
+  background: color-mix(in srgb, var(--surface-2) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
 }
 
 .maintenance-lines-footer {
@@ -9321,10 +9324,10 @@ button.dispatch-pin-chip {
   gap: 8px;
   padding: 12px 14px;
   border-radius: 16px;
-  border: 1px solid rgba(200, 191, 176, 0.7);
-  background: rgba(251, 249, 244, 0.92);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter: blur(8px);
-  box-shadow: 0 -8px 24px rgba(23, 22, 20, 0.06);
+  box-shadow: 0 -8px 24px color-mix(in srgb, var(--ink) 6%, transparent);
 }
 
 .maintenance-photos {
@@ -9333,8 +9336,8 @@ button.dispatch-pin-chip {
 
 .maintenance-photos-head {
   padding: 14px 16px 10px;
-  border-bottom: 1px solid rgba(217, 210, 198, 0.55);
-  background: rgba(243, 239, 231, 0.35);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 35%, transparent);
   align-items: flex-start;
 }
 
@@ -9359,8 +9362,8 @@ button.dispatch-pin-chip {
 .maintenance-photo-grid li {
   border-radius: 14px;
   overflow: hidden;
-  border: 1px solid rgba(200, 191, 176, 0.7);
-  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
+  background: var(--surface);
 }
 
 .maintenance-photo-grid img {
@@ -9418,7 +9421,7 @@ button.dispatch-pin-chip {
   align-items: flex-start;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(217, 210, 198, 0.85);
+  border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
   background: rgba(255, 255, 255, 0.65);
   cursor: pointer;
 }
@@ -9464,7 +9467,7 @@ button.dispatch-pin-chip {
   gap: 10px;
   padding: 12px 14px;
   border-radius: 14px;
-  border: 1px solid rgba(217, 210, 198, 0.75);
+  border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
   background: rgba(255, 255, 255, 0.55);
 }
 
@@ -9513,18 +9516,18 @@ button.dispatch-pin-chip {
   padding: 40px 20px;
   background:
     radial-gradient(900px 480px at 12% -8%, rgba(0, 180, 220, 0.12), transparent 55%),
-    radial-gradient(700px 420px at 92% 108%, rgba(11, 107, 98, 0.14), transparent 50%),
+    radial-gradient(700px 420px at 92% 108%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 50%),
     linear-gradient(165deg, #ebe7df 0%, #e4dfd5 45%, #dde6e3 100%);
 }
 
 .auth-login-shell {
   width: min(940px, 100%);
-  border: 1px solid rgba(200, 191, 176, 0.55);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 55%, transparent);
   border-radius: 24px;
-  background: rgba(251, 249, 244, 0.72);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.65) inset,
-    0 28px 64px rgba(23, 22, 20, 0.14);
+    0 28px 64px color-mix(in srgb, var(--ink) 14%, transparent);
   overflow: hidden;
   backdrop-filter: blur(10px);
 }
@@ -9534,7 +9537,7 @@ button.dispatch-pin-chip {
   border-radius: 24px;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.65) inset,
-    0 28px 64px rgba(23, 22, 20, 0.14);
+    0 28px 64px color-mix(in srgb, var(--ink) 14%, transparent);
 }
 
 .auth-login-brand {
@@ -9546,7 +9549,7 @@ button.dispatch-pin-chip {
   min-height: 420px;
   background:
     radial-gradient(120% 80% at 100% 0%, rgba(0, 200, 255, 0.16), transparent 45%),
-    radial-gradient(90% 70% at 0% 100%, rgba(11, 107, 98, 0.45), transparent 55%),
+    radial-gradient(90% 70% at 0% 100%, color-mix(in srgb, var(--accent) 45%, transparent), transparent 55%),
     linear-gradient(155deg, #0c0c0b 0%, #121816 42%, #0a3d38 100%);
   color: #f4efe6;
 }
@@ -9676,9 +9679,9 @@ button.dispatch-pin-chip {
 .auth-login-form input {
   height: 46px;
   padding: 0 14px;
-  border: 1px solid rgba(200, 191, 176, 0.95);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 95%, transparent);
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
   font: inherit;
   font-size: 0.95rem;
   color: var(--ink);
@@ -9695,7 +9698,7 @@ button.dispatch-pin-chip {
 .auth-login-form input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(11, 107, 98, 0.14);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .auth-login-submit {
@@ -9705,7 +9708,7 @@ button.dispatch-pin-chip {
   font-size: 0.95rem !important;
   font-weight: 700 !important;
   letter-spacing: 0.01em;
-  box-shadow: 0 12px 24px rgba(11, 107, 98, 0.28) !important;
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--accent) 28%, transparent) !important;
 }
 
 .auth-login-submit:hover:not(:disabled) {
@@ -9770,7 +9773,7 @@ button.dispatch-pin-chip {
 }
 
 .dispatch-live-tabs button.is-active {
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 12%, transparent);
 }
@@ -9853,7 +9856,7 @@ button.dispatch-pin-chip {
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .dispatch-live-exception-list li > div:first-child {
@@ -9913,7 +9916,7 @@ button.dispatch-pin-chip {
 .dispatch-live-driver-card {
   text-align: left;
   border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
-  background: #fff;
+  background: var(--surface);
   border-radius: 12px;
   padding: 8px 10px;
   display: grid;
@@ -10132,7 +10135,7 @@ button.dispatch-pin-chip {
   border-radius: 8px;
   padding: 8px 10px;
   font: inherit;
-  background: #fff;
+  background: var(--surface);
 }
 
 .dispatch-live-search input:focus {
@@ -10287,7 +10290,7 @@ button.dispatch-pin-chip {
   max-height: min(32vh, 320px);
   border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .dispatch-live-gantt-hours {
@@ -10519,7 +10522,7 @@ button.dispatch-pin-chip {
 }
 
 .dispatch-live-gantt-node.is-pending {
-  background: #fff;
+  background: var(--surface);
   color: var(--ink-soft);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 16%, transparent);
   z-index: 4;
@@ -10557,7 +10560,7 @@ button.dispatch-pin-chip {
 }
 
 .dispatch-live-gantt-node.tone-pending {
-  background: #fff;
+  background: var(--surface);
   color: var(--ink-soft);
 }
 
@@ -10699,7 +10702,7 @@ button.dispatch-pin-chip {
 
 /* Dispatch Live visual refresh — scoped so Jobs keeps its own pills. */
 .dispatch-live-page {
-  background: #f6f5f2;
+  background: var(--bg);
 }
 
 .dispatch-live-page .dispatch-live-shell {
@@ -10709,13 +10712,13 @@ button.dispatch-pin-chip {
 .dispatch-live-page .dispatch-live-toolbar {
   padding: 10px 12px;
   border-radius: 18px;
-  background: #fff;
-  border: 1px solid rgba(23, 22, 20, 0.08);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
 .dispatch-live-page .dispatch-live-tabs {
   border-radius: 999px;
-  background: #f3f1ec;
+  background: var(--surface-2);
   padding: 3px;
 }
 
@@ -10725,7 +10728,7 @@ button.dispatch-pin-chip {
 }
 
 .dispatch-live-page .dispatch-live-tabs button.is-active {
-  background: #171614;
+  background: var(--nav);
   color: #fff;
   box-shadow: none;
 }
@@ -10746,13 +10749,13 @@ button.dispatch-pin-chip {
 .dispatch-live-page .dispatch-date-nav .btn-secondary {
   height: 34px;
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .dispatch-live-page .dispatch-live-refresh .btn-ghost {
-  background: #171614;
+  background: var(--nav);
   color: #fff;
-  border-color: #171614;
+  border-color: var(--nav);
 }
 
 .dispatch-live-page .dispatch-live-kpis {
@@ -10763,8 +10766,8 @@ button.dispatch-pin-chip {
 .dispatch-live-page .dispatch-live-kpi {
   padding: 14px 14px 12px;
   border-radius: 16px;
-  background: #fff;
-  border: 1px solid rgba(23, 22, 20, 0.08);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
   min-height: 92px;
 }
 
@@ -10776,7 +10779,7 @@ button.dispatch-pin-chip {
 }
 
 .dispatch-live-page .dispatch-live-kpi.is-featured {
-  box-shadow: inset 0 3px 0 #171614;
+  box-shadow: inset 0 3px 0 var(--nav);
 }
 
 .dispatch-live-page .dispatch-live-kpi.tone-ok strong {
@@ -10792,8 +10795,8 @@ button.dispatch-pin-chip {
 
 .dispatch-live-page .fold-panel {
   border-radius: 18px;
-  border: 1px solid rgba(23, 22, 20, 0.08);
-  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  background: var(--surface);
   box-shadow: none;
 }
 
@@ -10851,7 +10854,7 @@ button.dispatch-pin-chip {
 .dispatch-live-page .dispatch-live-clear-chips span {
   padding: 4px 8px;
   border-radius: 999px;
-  background: #f3f1ec;
+  background: var(--surface-2);
   font-size: 0.75rem;
   font-weight: 650;
 }
@@ -10867,15 +10870,15 @@ button.dispatch-pin-chip {
 
 .dispatch-live-page .dispatch-live-driver-card {
   border-radius: 16px;
-  border: 1px solid rgba(23, 22, 20, 0.08);
-  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  background: var(--surface);
   text-align: left;
 }
 
 .dispatch-live-page .dispatch-live-pill.tone-delivered {
-  background: #171614;
+  background: var(--nav);
   color: #fff;
-  border-color: #171614;
+  border-color: var(--nav);
 }
 
 .dispatch-live-page .dispatch-live-pod.pod-yes {
@@ -11066,7 +11069,7 @@ button.dispatch-pin-chip {
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
     background: color-mix(in srgb, var(--surface, #fff) 96%, transparent);
     border-top: 1px solid var(--line, #d8d4cb);
-    box-shadow: 0 -4px 16px rgba(23, 22, 20, 0.08);
+    box-shadow: 0 -4px 16px color-mix(in srgb, var(--ink) 8%, transparent);
     backdrop-filter: blur(10px);
     max-width: 100vw;
     box-sizing: border-box;
@@ -11192,8 +11195,8 @@ button.dispatch-pin-chip {
 
   .dispatch-live-progress-phone {
     border-radius: 16px;
-    border: 1px solid rgba(23, 22, 20, 0.08);
-    background: #fff;
+    border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+    background: var(--surface);
     padding: 12px;
   }
 
@@ -11229,7 +11232,7 @@ button.dispatch-pin-chip {
     gap: 8px;
     align-items: center;
     text-align: left;
-    border: 1px solid rgba(23, 22, 20, 0.08);
+    border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
     background: #faf9f6;
     border-radius: 12px;
     padding: 10px;
@@ -11239,7 +11242,7 @@ button.dispatch-pin-chip {
 
   .dispatch-live-progress-phone-stop.is-selected {
     border-color: var(--accent, #1f6f5b);
-    background: #fff;
+    background: var(--surface);
   }
 
   .dispatch-live-progress-phone-stop em {
@@ -11315,8 +11318,8 @@ button.dispatch-pin-chip {
   .dispatch-live-stop-card {
     width: 100%;
     text-align: left;
-    border: 1px solid rgba(23, 22, 20, 0.1);
-    background: #fff;
+    border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+    background: var(--surface);
     border-radius: 14px;
     padding: 12px;
     font: inherit;
@@ -11530,7 +11533,7 @@ button.dispatch-pin-chip {
   margin: 0 auto;
   padding: 0;
   border-radius: 16px;
-  background: #fff !important;
+  background: var(--surface) !important;
   box-shadow: 0 18px 48px rgba(20, 18, 16, 0.22);
 }
 
@@ -11666,7 +11669,7 @@ a.dispatch-master-nav-tab:hover {
 }
 
 .dispatch-master-nav-tab.is-on em {
-  background: #fff;
+  background: var(--surface);
   color: var(--nav);
 }
 
@@ -11758,7 +11761,7 @@ a.dispatch-master-nav-tab:hover {
   box-sizing: border-box;
   height: 34px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   border-radius: 8px;
   padding: 0 10px;
   color: var(--ink);
@@ -12111,7 +12114,7 @@ a.dispatch-master-nav-tab:hover {
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   transition: transform 0.15s ease;
 }
@@ -12266,7 +12269,7 @@ a.dispatch-master-nav-tab:hover {
 .dispatch-goods-suggest li button {
   width: 100%;
   text-align: left;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 12px 14px;
@@ -12425,7 +12428,7 @@ a.dispatch-master-nav-tab:hover {
   gap: 10px;
   padding: 18px;
   border-radius: 16px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 18px 48px rgba(20, 18, 16, 0.22);
 }
 
@@ -12464,7 +12467,7 @@ a.dispatch-master-nav-tab:hover {
   gap: 10px;
   padding: 16px;
   border-radius: 16px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .catalog-scan-video {
@@ -12498,7 +12501,7 @@ a.dispatch-master-nav-tab:hover {
   gap: 12px;
   padding: 18px;
   border-radius: 16px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 18px 48px rgba(20, 18, 16, 0.22);
 }
 
@@ -12538,7 +12541,7 @@ a.dispatch-master-nav-tab:hover {
   box-sizing: border-box;
   padding: 8px 10px;
   border-radius: 8px;
-  background: var(--surface-2, #f3f1ec);
+  background: var(--surface-2);
   font-size: 0.72rem;
   word-break: break-all;
   text-align: left;
@@ -12559,13 +12562,13 @@ a.dispatch-master-nav-tab:hover {
   .catalog-label-print-modal * {
     visibility: visible !important;
   }
-  .catalog-label-print-modal {
-    position: static !important;
-    inset: auto !important;
-    background: #fff !important;
-    padding: 0 !important;
-    display: block !important;
-  }
+    .catalog-label-print-modal {
+      position: static !important;
+      inset: auto !important;
+      background: var(--surface) !important;
+      padding: 0 !important;
+      display: block !important;
+    }
   .catalog-label-print-sheet {
     box-shadow: none !important;
     border-radius: 0 !important;
@@ -12583,7 +12586,7 @@ a.dispatch-master-nav-tab:hover {
   gap: 10px;
   padding: 18px;
   border-radius: 16px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 18px 48px rgba(20, 18, 16, 0.22);
 }
 
@@ -12686,7 +12689,7 @@ a.dispatch-master-nav-tab:hover {
 
 /* Maintenance dashboard visual refresh */
 .maintenance-page {
-  background: #f6f5f2;
+  background: var(--bg);
 }
 
 .maintenance-page .shell {
@@ -12696,8 +12699,8 @@ a.dispatch-master-nav-tab:hover {
 .maintenance-page .filters {
   padding: 12px 14px;
   border-radius: 18px;
-  border: 1px solid rgba(23, 22, 20, 0.08);
-  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  background: var(--surface);
   box-shadow: none;
 }
 
@@ -12716,8 +12719,8 @@ a.dispatch-master-nav-tab:hover {
   min-height: 96px;
   padding: 14px 14px 12px;
   border-radius: 16px;
-  border: 1px solid rgba(23, 22, 20, 0.08);
-  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  background: var(--surface);
   align-content: start;
 }
 
@@ -12735,9 +12738,9 @@ a.dispatch-master-nav-tab:hover {
 }
 
 .maintenance-page .maint-dash-tile.is-active {
-  border-color: #171614;
-  background: #fff;
-  box-shadow: inset 0 3px 0 #171614;
+  border-color: var(--nav);
+  background: var(--surface);
+  box-shadow: inset 0 3px 0 var(--nav);
 }
 
 .maintenance-page .maint-dash-tile.maint-health-overdue.is-active {
@@ -12753,8 +12756,8 @@ a.dispatch-master-nav-tab:hover {
 .maintenance-page .maint-vehicle-group,
 .maintenance-page .maintenance-create {
   border-radius: 18px;
-  border: 1px solid rgba(23, 22, 20, 0.08);
-  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  background: var(--surface);
   box-shadow: none;
 }
 
@@ -12793,8 +12796,8 @@ a.dispatch-master-nav-tab:hover {
 .maintenance-page .maintenance-list-search input {
   height: 36px;
   border-radius: 999px;
-  border: 1px solid rgba(23, 22, 20, 0.1);
-  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+  background: var(--surface);
   padding: 0 14px;
 }
 
@@ -12809,7 +12812,7 @@ a.dispatch-master-nav-tab:hover {
 .maintenance-page .maint-job-mode-option {
   position: relative;
   border-radius: 16px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .maintenance-page .maint-job-mode-option input {
@@ -12853,9 +12856,9 @@ a.dispatch-master-nav-tab:hover {
 }
 
 .maintenance-page .filters .btn-ghost:not(:disabled) {
-  background: #171614;
+  background: var(--nav);
   color: #fff;
-  border-color: #171614;
+  border-color: var(--nav);
 }
 
 .maintenance-stage.is-split {
@@ -12887,7 +12890,7 @@ a.dispatch-master-nav-tab:hover {
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  background: #171614;
+  background: var(--nav);
   color: #fff;
   font-size: 0.75rem;
   font-weight: 700;
@@ -12981,12 +12984,12 @@ a.dispatch-master-nav-tab:hover {
   display: grid;
   place-items: center;
   padding: 24px 16px;
-  background: var(--bg, #f6f5f2);
+  background: var(--bg);
 }
 
 .dispatch-app-setup-card {
   width: min(420px, 100%);
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line, #e4e1da);
   border-radius: 16px;
   padding: 22px 20px 20px;
@@ -13066,7 +13069,7 @@ a.dispatch-master-nav-tab:hover {
     top: var(--app-topbar-h, 4.75rem);
     z-index: 45;
     padding: 6px 2px;
-    background: color-mix(in srgb, var(--bg, #f6f5f2) 94%, transparent);
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
     backdrop-filter: blur(8px);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -13075,7 +13078,7 @@ a.dispatch-master-nav-tab:hover {
   .dispatch-mobile-rail-tab {
     flex: 0 0 auto;
     border: 1px solid var(--line, #d8d4cb);
-    background: #fff;
+    background: var(--surface);
     border-radius: 999px;
     padding: 6px 12px;
     font: inherit;
@@ -13155,7 +13158,7 @@ a.dispatch-master-nav-tab:hover {
     overflow: hidden;
     border-radius: 12px;
     border: 1px solid var(--line, #d8d4cb);
-    background: #fff;
+    background: var(--surface);
   }
 
   .dispatch-page.is-mobile-map-mode .dispatch-map-pane > .dispatch-pane-head {
@@ -13203,7 +13206,7 @@ a.dispatch-master-nav-tab:hover {
     inset: auto 0 0;
     top: max(10vh, env(safe-area-inset-top, 0px) + 48px);
     z-index: 60;
-    background: #fff;
+    background: var(--surface);
     border-radius: 16px 16px 0 0;
     border: 1px solid var(--line, #d8d4cb);
     box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.16);

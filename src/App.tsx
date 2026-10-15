@@ -508,7 +508,7 @@ export default function App() {
                       <i className="swatch" style={{ background: "var(--gps)" }} /> Active
                     </span>
                     <span>
-                      <i className="swatch" style={{ background: "#c47d3a" }} /> Idle
+                      <i className="swatch" style={{ background: "var(--idle)" }} /> Idle
                     </span>
                   </div>
                   <ExportExcelButton
@@ -684,7 +684,7 @@ export default function App() {
                     <i className="swatch" style={{ background: "var(--gps)" }} /> Smooth
                   </span>
                   <span>
-                    <i className="swatch" style={{ background: "#c47d3a" }} /> Rough
+                    <i className="swatch" style={{ background: "var(--idle)" }} /> Rough
                   </span>
                   <span>
                     <i className="swatch" style={{ background: "var(--danger)" }} /> Bumpy

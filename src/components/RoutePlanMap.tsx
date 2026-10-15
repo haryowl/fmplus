@@ -3,6 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { STREET_TILE, streetTileOptions } from "../lib/mapTiles";
 import type { RouteOrderedStop, RoutePoint } from "../lib/routePlan";
+import { cssVar } from "./chartTheme";
 
 type Props = {
   start: RoutePoint | null;
@@ -45,7 +46,11 @@ export function RoutePlanMap({ start, draftStops, ordered, geometry, onMapClick,
     const bounds: L.LatLngExpression[] = [];
 
     if (geometry.length >= 2) {
-      const line = L.polyline(geometry, { color: "#0b6b62", weight: 4, opacity: 0.85 });
+      const line = L.polyline(geometry, {
+        color: cssVar("--accent", "#0b6b62"),
+        weight: 4,
+        opacity: 0.85,
+      });
       line.addTo(layer);
       for (const p of geometry) bounds.push(p);
     }
@@ -60,7 +65,7 @@ export function RoutePlanMap({ start, draftStops, ordered, geometry, onMapClick,
     for (const stop of marks) {
       const isStart = stop.role === "start";
       const isReturn = stop.role === "return";
-      const color = isStart || isReturn ? "#9a3b12" : "#3b4cb3";
+      const color = isStart || isReturn ? cssVar("--odo", "#9a3b12") : cssVar("--ign", "#3b4cb3");
       const label = isStart ? "S" : isReturn ? "R" : String(stop.seq);
       const icon = L.divIcon({
         className: "route-plan-marker",

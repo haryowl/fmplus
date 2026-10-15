@@ -16,13 +16,29 @@ export const LIVE_OPS_LABELS: Record<LiveOpsClass, string> = {
   noFix: "No fix",
 };
 
-export const LIVE_OPS_COLORS: Record<LiveOpsClass, string> = {
-  moving: "#0b6b62",
-  idle: "#c47a1a",
-  off: "#6a6358",
-  stale: "#9f2a2a",
-  noFix: "#8a8378",
-};
+function cssVar(name: string, fallback: string): string {
+  if (typeof document === "undefined") return fallback;
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
+/** Theme-aware marker/filter colors (reads CSS vars at call time). */
+export function liveOpsColors(): Record<LiveOpsClass, string> {
+  return {
+    moving: cssVar("--gps", "#0b6b62"),
+    idle: cssVar("--idle", "#c47d3a"),
+    off: cssVar("--ink-soft", "#6a6358"),
+    stale: cssVar("--danger", "#9f2a2a"),
+    noFix: cssVar("--ink-faint", "#8a8378"),
+  };
+}
+
+/** Proxy so existing LIVE_OPS_COLORS[cls] reads stay theme-aware. */
+export const LIVE_OPS_COLORS: Record<LiveOpsClass, string> = new Proxy({} as Record<LiveOpsClass, string>, {
+  get(_t, prop: string) {
+    if (prop in LIVE_OPS_LABELS) return liveOpsColors()[prop as LiveOpsClass];
+    return undefined;
+  },
+});
 
 export function defaultLiveFilters(): Record<LiveOpsClass, boolean> {
   return {
