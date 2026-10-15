@@ -4151,46 +4151,84 @@ html.onesheet-root body {
   }
 }
 
-/* â€”â€” Live Ops â€”â€” */
+/* —— Live Ops —— */
 .app.live-ops-page .shell {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   min-height: calc(100vh - 120px);
+}
+
+.app.live-ops-page .filters {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  align-items: flex-end;
+}
+
+.app.live-ops-page .filters .btn-ghost {
+  background: var(--nav);
+  color: var(--nav-text);
+  border-color: var(--nav);
+  border-radius: 999px;
+  padding: 0 18px;
+}
+
+.app.live-ops-page .filters .btn {
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--ink);
 }
 
 .live-ops-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 16px;
+  gap: 8px 14px;
   align-items: center;
+  padding: 2px 2px 0;
+  font-size: 0.82rem;
 }
 
 .live-ops-filter-tools {
   display: inline-flex;
-  gap: 10px;
+  gap: 8px;
   margin-right: 4px;
+}
+
+.live-ops-filter-tools .btn-link {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 0.72rem;
+  text-decoration: none;
+  color: var(--ink-soft);
 }
 
 .live-ops-filter {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   cursor: pointer;
+  color: var(--ink-soft);
 }
 
 .live-ops-swatch {
   display: inline-block;
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
 .live-ops-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.9fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.85fr);
   gap: 12px;
   flex: 1;
   min-height: 420px;
@@ -4198,8 +4236,10 @@ html.onesheet-root body {
 
 .live-ops-map-wrap {
   min-height: 420px;
-  border: 1px solid var(--border, #d5cbb9);
-  background: #e8ebe9;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-deep);
+  overflow: hidden;
 }
 
 .live-ops-map {
@@ -4216,12 +4256,12 @@ html.onesheet-root body {
 .live-ops-marker-dot {
   display: block;
   border-radius: 50%;
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--ink) 35%, transparent);
 }
 
 .live-ops-marker-dot.selected {
-  border-color: #1c1a16;
+  border-color: var(--nav);
 }
 
 .live-ops-popup {
@@ -4236,16 +4276,21 @@ html.onesheet-root body {
 }
 
 .live-ops-list {
-  border: 1px solid var(--border, #d5cbb9);
-  background: rgba(255, 252, 245, 0.95);
-  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 0;
   overflow: auto;
   max-height: min(70vh, 640px);
+  box-shadow: var(--shadow);
 }
 
 .live-ops-list h2 {
-  margin: 0 0 10px;
-  font-size: 1rem;
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  border-bottom: 1px solid var(--line);
 }
 
 .live-ops-list ul {
@@ -4253,13 +4298,19 @@ html.onesheet-root body {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 8px;
+  gap: 0;
 }
 
 .live-ops-list li {
-  border: 1px solid #e0d8cb;
+  border: 0;
+  border-bottom: 1px solid var(--line);
   background: var(--surface);
-  padding: 8px;
+  padding: 10px 12px;
+  border-radius: 0;
+}
+
+.live-ops-list li:hover {
+  background: var(--surface-2);
 }
 
 .live-ops-list li > button {
@@ -4688,6 +4739,7 @@ html.onesheet-root body {
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
+  background: var(--surface);
   box-shadow: var(--shadow);
 }
 
@@ -4740,8 +4792,8 @@ html.onesheet-root body {
   min-width: 96px;
   padding: 8px 12px;
   border-radius: 10px;
-  background: var(--surface);
-  border: 1px solid transparent;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
 }
 
 .dispatch-kpi span {
@@ -4765,6 +4817,25 @@ html.onesheet-root body {
   gap: 8px;
   align-items: center;
   margin-left: auto;
+}
+
+.dispatch-kpi-actions .btn,
+.dispatch-kpi-actions .btn-secondary {
+  height: 32px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  padding: 0 12px;
+}
+
+.dispatch-kpi-actions .btn-primary,
+.dispatch-toolbar .btn-primary {
+  height: 32px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  padding: 0 14px;
+  min-width: 0;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .dispatch-alert {
@@ -4809,8 +4880,8 @@ html.onesheet-root body {
   padding: 14px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 4%, transparent);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -5867,9 +5938,9 @@ button.dispatch-pin-chip {
   isolation: isolate;
   position: relative;
   z-index: 0;
-  border: 1px solid var(--line-strong);
-  background: #d9d4cb;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--line);
+  background: var(--bg-deep);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 70%, transparent);
 }
 
 .dispatch-job-map-wrap {
@@ -5888,7 +5959,7 @@ button.dispatch-pin-chip {
   min-height: 280px;
   width: 100%;
   border: 0;
-  background: #e8e4db;
+  background: var(--bg-deep);
   isolation: isolate;
   position: relative;
   z-index: 0;
@@ -10817,7 +10888,7 @@ button.dispatch-pin-chip {
 .dispatch-live-page .dispatch-live-sla-kpis .dispatch-live-kpi {
   min-height: 0;
   padding: 10px;
-  background: #faf9f6;
+  background: var(--surface-2);
 }
 
 .dispatch-live-page .dispatch-live-clear {
@@ -10834,8 +10905,8 @@ button.dispatch-pin-chip {
   display: grid;
   place-items: center;
   border-radius: 999px;
-  background: #e8f6ee;
-  color: #15803d;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   font-weight: 700;
 }
 
@@ -12904,8 +12975,47 @@ a.dispatch-master-nav-tab:hover {
 
 /* Modern: flat page (no wash); KPI / dash tiles get a top accent bar. */
 [data-theme="modern"] .maintenance-page,
-[data-theme="modern"] .dispatch-live-page {
+[data-theme="modern"] .dispatch-live-page,
+[data-theme="modern"] .dispatch-page,
+[data-theme="modern"] .live-ops-page {
   background: transparent;
+}
+
+[data-theme="modern"] .dispatch-page .dispatch-toolbar,
+[data-theme="modern"] .dispatch-page .dispatch-rail,
+[data-theme="modern"] .live-ops-page .filters,
+[data-theme="modern"] .live-ops-page .live-ops-list,
+[data-theme="modern"] .live-ops-page .live-ops-map-wrap {
+  border-radius: 12px;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+[data-theme="modern"] .dispatch-page .dispatch-kpi-actions .btn-primary,
+[data-theme="modern"] .dispatch-page .dispatch-toolbar .btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+[data-theme="modern"] .dispatch-live-page .dispatch-live-sla-kpis .dispatch-live-kpi {
+  background: var(--surface-2);
+}
+
+[data-theme="modern"] .dispatch-live-page .dispatch-live-exception-list li {
+  background: var(--surface-2);
+  border-radius: 10px;
+}
+
+[data-theme="modern"] .dispatch-live-page .dispatch-live-exception-actions .btn-ghost,
+[data-theme="modern"] .dispatch-live-page .fold-panel-toggle {
+  background: var(--nav);
+  color: var(--nav-text);
+  border-color: var(--nav);
+}
+
+[data-theme="modern"] .live-ops-page .filters .btn-ghost {
+  background: var(--nav);
+  color: var(--nav-text);
+  border-color: var(--nav);
 }
 
 [data-theme="modern"] .kpis .kpi:nth-child(4n + 1),
