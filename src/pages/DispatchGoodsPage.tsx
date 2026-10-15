@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { DispatchGoodsCatalogPanel } from "../components/DispatchGoodsCatalogPanel";
-import { DispatchMasterNav } from "../components/DispatchMasterNav";
 import { ViewNav } from "../components/ViewNav";
 
 /** Desk Goods & Stock admin (catalog, per-depot stock, truck day-close, print/NFC). */
@@ -25,7 +24,6 @@ export default function DispatchGoodsPage() {
         </div>
       </header>
       <main className="shell dispatch-shell dispatch-master-shell">
-        <DispatchMasterNav current="dispatchGoods" />
         <DispatchGoodsCatalogPanel />
       </main>
     </div>

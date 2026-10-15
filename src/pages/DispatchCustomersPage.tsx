@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { DispatchCustomersPanel } from "../components/DispatchCustomersPanel";
-import { DispatchMasterNav } from "../components/DispatchMasterNav";
 import { ViewNav } from "../components/ViewNav";
 
 /** Desk Customers master list (pick into Jobs order form stays on Jobs). */
@@ -25,7 +24,6 @@ export default function DispatchCustomersPage() {
         </div>
       </header>
       <main className="shell dispatch-shell dispatch-master-shell">
-        <DispatchMasterNav current="dispatchCustomers" />
         <DispatchCustomersPanel />
       </main>
     </div>

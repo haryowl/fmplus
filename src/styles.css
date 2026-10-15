@@ -11253,18 +11253,23 @@ button.dispatch-pin-chip {
   padding: 10px 0;
 }
 
-/* Full-page Goods/Customers (and dialog) — readable grids, not size=1 collapse */
+/* Full-page Goods/Customers — centered column (not left-stuck on wide screens). */
 .dispatch-master-shell .dispatch-goods-catalog {
-  max-width: 1120px;
+  max-width: none;
+  width: 100%;
 }
 
 /* —— Master desk (Goods / Customers) — Modern-Redesign layout —— */
 .dispatch-master-page .dispatch-master-shell {
   gap: 12px;
-  padding-top: 4px;
+  padding-top: 8px;
   overflow: visible;
-  max-width: 100%;
+  width: 100%;
+  max-width: 1120px;
+  margin-left: auto;
+  margin-right: auto;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 .dispatch-master-page .topbar .brand h1 {
