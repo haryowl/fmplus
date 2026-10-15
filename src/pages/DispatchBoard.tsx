@@ -15,6 +15,7 @@ import {
   type DispatchDeskMode,
 } from "../lib/entitlements";
 import { locationNameFromScan, lookupCatalogScan } from "../lib/catalogScan";
+import { useDeskSession } from "../lib/deskSession";
 import { isNativeDispatchApp } from "../lib/nativeField";
 import { customersHref, goodsHref, navigateView } from "../lib/routing";
 import { nextDatedCode } from "../lib/datedCode";
@@ -264,6 +265,8 @@ export default function DispatchBoard() {
     allowsGroup,
     entitlements,
   } = useEmbedTenant();
+  const { privileges: deskPrivileges } = useDeskSession();
+  const canEditCustomers = deskPrivileges.editDispatchCustomers === true;
   const profiles = useMemo(() => dispatchProfiles(entitlements), [entitlements]);
   const [deskModePref, setDeskModePref] = useState<DispatchDeskMode>(() => {
     try {
@@ -1671,7 +1674,13 @@ export default function DispatchBoard() {
         await patchDispatchOrder(editingOrderId, payload);
       } else {
         let customerId = orderForm.customerId;
-        if (orderForm.saveAsCustomer && !customerId && orderForm.lat != null && orderForm.lon != null) {
+        if (
+          canEditCustomers &&
+          orderForm.saveAsCustomer &&
+          !customerId &&
+          orderForm.lat != null &&
+          orderForm.lon != null
+        ) {
           const customerBody = {
             name: payload.customerName,
             lat: orderForm.lat,
@@ -4260,7 +4269,7 @@ export default function DispatchBoard() {
                       ? "pickup"
                       : "FINISH"}
                 </label>
-                {!editingOrderId && !orderForm.customerId ? (
+                {!editingOrderId && !orderForm.customerId && canEditCustomers ? (
                   <label className="dispatch-plan-check" style={{ marginTop: 4 }}>
                     <input
                       type="checkbox"

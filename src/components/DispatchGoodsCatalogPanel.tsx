@@ -10,6 +10,7 @@ import {
 import { CatalogCodesEditor } from "./CatalogCodesEditor";
 import { CatalogLabelPrintButton } from "./CatalogLabelPrintButton";
 import { CatalogNfcWriteButton } from "./CatalogNfcWriteButton";
+import { useDeskSession } from "../lib/deskSession";
 import { formatIdr } from "../lib/format";
 import {
   adjustDispatchStock,
@@ -42,6 +43,9 @@ type Props = {
 
 export function DispatchGoodsCatalogPanel({ onClose }: Props) {
   const asPage = !onClose;
+  const { user, privileges } = useDeskSession();
+  const canEdit = privileges.editDispatchGoods === true;
+  const canDelete = privileges.deleteDispatchGoods === true;
   const [items, setItems] = useState<DispatchGoodsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -336,6 +340,14 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           </ul>
         </div>
       ) : null}
+      {!canEdit ? (
+        <p className="desk-master-hint">
+          {user
+            ? "View only — your Field user is not allowed to edit Goods & Stock."
+            : "View only — sign in with a Field user that has Goods edit rights to add or change products."}
+        </p>
+      ) : null}
+      {canEdit ? (
       <div className="master-card">
         <p className="master-card-kicker">Add product — inline</p>
         <form className="master-add-form is-goods" onSubmit={addItem}>
@@ -439,6 +451,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           </div>
         </form>
       </div>
+      ) : null}
 
       <div className="master-toolbar">
         <input
@@ -451,6 +464,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
           aria-label="Filter catalog"
         />
         <div className="master-toolbar-actions">
+          {canEdit ? (
           <CsvImportPanel
             title="Import"
             disabled={busy}
@@ -486,6 +500,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
               }
             }}
           />
+          ) : null}
           {items.length ? (
             <button
               type="button"
@@ -542,9 +557,11 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                     className="master-pill-input"
                     defaultValue={item.sku || ""}
                     placeholder="SKU"
-                    disabled={busy}
+                    disabled={busy || !canEdit}
+                    readOnly={!canEdit}
                     aria-label="SKU"
                     onBlur={(e) => {
+                      if (!canEdit) return;
                       const nextSku = e.target.value.trim();
                       if (nextSku !== (item.sku || "")) void saveItem(item, { sku: nextSku });
                     }}
@@ -552,9 +569,10 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                   <select
                     className="master-inline-input"
                     value={item.unit}
-                    disabled={busy}
+                    disabled={busy || !canEdit}
                     aria-label="Unit (qty)"
                     onChange={(e) => {
+                      if (!canEdit) return;
                       const next = e.target.value as DispatchGoodsUnit;
                       void saveItem(item, {
                         unit: next,
@@ -574,9 +592,11 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                     defaultValue={item.sellPrice ?? ""}
                     placeholder="0"
                     inputMode="numeric"
-                    disabled={busy}
+                    disabled={busy || !canEdit}
+                    readOnly={!canEdit}
                     aria-label="Sell price IDR"
                     onBlur={(e) => {
+                      if (!canEdit) return;
                       const next = e.target.value === "" ? null : Number(e.target.value);
                       if (next !== (item.sellPrice ?? null)) void saveItem(item, { sellPrice: next });
                     }}
@@ -587,9 +607,11 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                     defaultValue={item.costPrice ?? ""}
                     placeholder="0"
                     inputMode="numeric"
-                    disabled={busy}
+                    disabled={busy || !canEdit}
+                    readOnly={!canEdit}
                     aria-label="Cost price IDR"
                     onBlur={(e) => {
+                      if (!canEdit) return;
                       const next = e.target.value === "" ? null : Number(e.target.value);
                       if (next !== (item.costPrice ?? null)) void saveItem(item, { costPrice: next });
                     }}
@@ -598,6 +620,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                     {hand > 0 ? `+ ${hand}` : "0"} in stock
                   </span>
                   <div className="master-row-actions dispatch-goods-catalog-actions">
+                    {canEdit ? (
                     <button
                       type="button"
                       className="master-icon-btn"
@@ -608,6 +631,8 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                     >
                       {item.enabled ? "●" : "○"}
                     </button>
+                    ) : null}
+                    {canDelete ? (
                     <button
                       type="button"
                       className="master-icon-btn"
@@ -617,6 +642,7 @@ export function DispatchGoodsCatalogPanel({ onClose }: Props) {
                     >
                       ⌫
                     </button>
+                    ) : null}
                     <CatalogLabelPrintButton
                       kind="goods"
                       name={item.name}

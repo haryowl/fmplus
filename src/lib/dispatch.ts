@@ -1543,6 +1543,7 @@ export async function createDispatchGoodsItem(body: {
 }): Promise<DispatchGoodsItem> {
   const res = await fetch("/api/dispatch/goods", {
     method: "POST",
+    credentials: "include",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify(body),
   });
@@ -1558,6 +1559,7 @@ export async function patchDispatchGoodsItem(
 ): Promise<DispatchGoodsItem> {
   const res = await fetch(`/api/dispatch/goods/${encodeURIComponent(id)}`, {
     method: "PATCH",
+    credentials: "include",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify(patch),
   });
@@ -1570,6 +1572,7 @@ export async function patchDispatchGoodsItem(
 export async function deleteDispatchGoodsItem(id: string): Promise<void> {
   const res = await fetch(`/api/dispatch/goods/${encodeURIComponent(id)}`, {
     method: "DELETE",
+    credentials: "include",
     headers: { accept: "application/json", ...tenantHeaders() },
   });
   const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -1690,6 +1693,7 @@ export async function createDispatchCustomer(body: {
 }): Promise<DispatchCustomer> {
   const res = await fetch("/api/dispatch/customers", {
     method: "POST",
+    credentials: "include",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify(body),
   });
@@ -1705,6 +1709,7 @@ export async function patchDispatchCustomer(
 ): Promise<DispatchCustomer> {
   const res = await fetch(`/api/dispatch/customers/${encodeURIComponent(id)}`, {
     method: "PATCH",
+    credentials: "include",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify(patch),
   });
@@ -1717,6 +1722,7 @@ export async function patchDispatchCustomer(
 export async function deleteDispatchCustomer(id: string): Promise<void> {
   const res = await fetch(`/api/dispatch/customers/${encodeURIComponent(id)}`, {
     method: "DELETE",
+    credentials: "include",
     headers: { accept: "application/json", ...tenantHeaders() },
   });
   const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -1733,6 +1739,7 @@ export async function importDispatchCustomers(body: {
 }> {
   const res = await fetch("/api/dispatch/customers/import", {
     method: "POST",
+    credentials: "include",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify(body),
   });
@@ -1763,6 +1770,7 @@ export async function importDispatchGoods(body: {
 }> {
   const res = await fetch("/api/dispatch/goods/import", {
     method: "POST",
+    credentials: "include",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify(body),
   });

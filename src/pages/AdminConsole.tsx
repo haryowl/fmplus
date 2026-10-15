@@ -18,6 +18,13 @@ import {
   type ScanEntitlements,
 } from "../lib/scanCapabilities";
 import { BrandMark } from "../components/BrandMark";
+import {
+  DESK_PRIVILEGE_KEYS,
+  DESK_PRIVILEGE_LABELS,
+  emptyDeskPrivileges,
+  mergeDeskPrivileges,
+  type DeskPrivileges,
+} from "../lib/deskPrivileges";
 
 type AdminTenant = {
   id: string;
@@ -49,6 +56,7 @@ type FieldUserRow = {
   phone?: string;
   email?: string;
   enabled: boolean;
+  privileges?: DeskPrivileges;
 };
 
 type FieldUserEdit = {
@@ -58,6 +66,7 @@ type FieldUserEdit = {
   phone: string;
   email: string;
   password: string;
+  privileges: DeskPrivileges;
 };
 
 function editFromRow(u: FieldUserRow): FieldUserEdit {
@@ -68,6 +77,7 @@ function editFromRow(u: FieldUserRow): FieldUserEdit {
     phone: u.phone || "",
     email: u.email || "",
     password: "",
+    privileges: mergeDeskPrivileges(u.privileges),
   };
 }
 
@@ -346,6 +356,7 @@ export default function AdminConsole() {
   const [fuDisplayName, setFuDisplayName] = useState("");
   const [fuPhone, setFuPhone] = useState("");
   const [fuEmail, setFuEmail] = useState("");
+  const [fuPrivileges, setFuPrivileges] = useState<DeskPrivileges>(() => emptyDeskPrivileges());
   const [fuEdits, setFuEdits] = useState<Record<string, FieldUserEdit>>({});
   const [fuEditingId, setFuEditingId] = useState<string | null>(null);
 
@@ -541,6 +552,7 @@ export default function AdminConsole() {
           displayName: fuDisplayName.trim(),
           phone: fuPhone.trim(),
           email: fuEmail.trim(),
+          privileges: fuPrivileges,
         }),
       });
       setFuUsername("");
@@ -549,6 +561,7 @@ export default function AdminConsole() {
       setFuPhone("");
       setFuEmail("");
       setFuRole("operator");
+      setFuPrivileges(emptyDeskPrivileges());
       setNotice("Field user created");
       await loadFieldUsers(selectedId);
     } catch (err) {
@@ -565,7 +578,15 @@ export default function AdminConsole() {
         prev[userId] ||
         (row
           ? editFromRow(row)
-          : { username: "", displayName: "", role: "operator", phone: "", email: "", password: "" });
+          : {
+              username: "",
+              displayName: "",
+              role: "operator",
+              phone: "",
+              email: "",
+              password: "",
+              privileges: emptyDeskPrivileges(),
+            });
       return { ...prev, [userId]: { ...current, ...patch } };
     });
   }
@@ -579,6 +600,7 @@ export default function AdminConsole() {
       role: edit.role,
       phone: edit.phone.trim(),
       email: edit.email.trim(),
+      privileges: edit.privileges,
     };
     if (edit.password.trim()) body.password = edit.password;
     const ok = await patchFieldUser(userId, body);
@@ -1260,6 +1282,26 @@ export default function AdminConsole() {
                                   disabled={busy}
                                 />
                               </label>
+                              <fieldset className="span-2 admin-fieldset">
+                                <legend>Desk privileges (Goods &amp; Customers)</legend>
+                                <div className="admin-toggle-grid">
+                                  {DESK_PRIVILEGE_KEYS.map((key) => (
+                                    <label key={key} className={`admin-chip-toggle${edit.privileges[key] ? " is-on" : ""}`}>
+                                      <input
+                                        type="checkbox"
+                                        checked={edit.privileges[key]}
+                                        disabled={busy}
+                                        onChange={(e) =>
+                                          updateFieldUserEdit(u.id, {
+                                            privileges: { ...edit.privileges, [key]: e.target.checked },
+                                          })
+                                        }
+                                      />
+                                      {DESK_PRIVILEGE_LABELS[key]}
+                                    </label>
+                                  ))}
+                                </div>
+                              </fieldset>
                               <div className="span-2 admin-field-row-actions">
                                 <button
                                   type="submit"
@@ -1341,6 +1383,24 @@ export default function AdminConsole() {
                           placeholder="tech@…"
                         />
                       </label>
+                      <fieldset className="span-2 admin-fieldset">
+                        <legend>Desk privileges (Goods &amp; Customers)</legend>
+                        <div className="admin-toggle-grid">
+                          {DESK_PRIVILEGE_KEYS.map((key) => (
+                            <label key={key} className={`admin-chip-toggle${fuPrivileges[key] ? " is-on" : ""}`}>
+                              <input
+                                type="checkbox"
+                                checked={fuPrivileges[key]}
+                                disabled={busy}
+                                onChange={(e) =>
+                                  setFuPrivileges((prev) => ({ ...prev, [key]: e.target.checked }))
+                                }
+                              />
+                              {DESK_PRIVILEGE_LABELS[key]}
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
                       <div className="span-2 admin-actions">
                         <button type="submit" className="btn btn-primary" disabled={busy}>
                           Add field user

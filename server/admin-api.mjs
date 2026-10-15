@@ -23,6 +23,7 @@ import {
   isFieldRole,
   isFieldUsername,
 } from "./field-auth.mjs";
+import { mergeDeskPrivileges, normalizeDeskPrivilegesInput } from "./desk-privileges.mjs";
 import { initTenantVault, isTenantKey } from "./tenants.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 
@@ -114,6 +115,7 @@ function publicFieldUserRow(row) {
     phone: row.phone || "",
     email: row.email || "",
     enabled: row.enabled !== false,
+    privileges: mergeDeskPrivileges(row.privileges),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -311,7 +313,7 @@ export async function handleAdminRequest(req, res) {
 
       if (req.method === "GET") {
         const rows = await dbQuery(
-          `SELECT id, username, role, display_name, phone, email, enabled, created_at, updated_at
+          `SELECT id, username, role, display_name, phone, email, enabled, privileges, created_at, updated_at
            FROM field_users WHERE tenant_id = $1 ORDER BY username ASC`,
           [tenantId],
         );
@@ -327,6 +329,7 @@ export async function handleAdminRequest(req, res) {
         const displayName = String(body.displayName || "").trim();
         const phone = String(body.phone || "").trim() || null;
         const email = String(body.email || "").trim() || null;
+        const privileges = normalizeDeskPrivilegesInput(body.privileges);
         if (!isFieldUsername(username)) {
           json(res, 400, { error: "Invalid username (2–64: A–Z a–z 0–9 . _ -)" });
           return true;
@@ -340,9 +343,9 @@ export async function handleAdminRequest(req, res) {
           return true;
         }
         const inserted = await dbQuery(
-          `INSERT INTO field_users (tenant_id, username, password_hash, role, display_name, phone, email, enabled)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-           RETURNING id, username, role, display_name, phone, email, enabled, created_at, updated_at`,
+          `INSERT INTO field_users (tenant_id, username, password_hash, role, display_name, phone, email, enabled, privileges)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+           RETURNING id, username, role, display_name, phone, email, enabled, privileges, created_at, updated_at`,
           [
             tenantId,
             username,
@@ -352,6 +355,7 @@ export async function handleAdminRequest(req, res) {
             phone,
             email,
             body.enabled !== false,
+            JSON.stringify(privileges),
           ],
         );
         await writeAudit(admin.id, "field_user.create", { tenantId, username, role });
@@ -418,6 +422,10 @@ export async function handleAdminRequest(req, res) {
           body.email !== undefined ? String(body.email || "").trim() || null : current.email;
         const enabled =
           body.enabled !== undefined ? body.enabled !== false : current.enabled !== false;
+        const privileges =
+          body.privileges !== undefined
+            ? normalizeDeskPrivilegesInput(body.privileges)
+            : mergeDeskPrivileges(current.privileges);
 
         const updated = await dbQuery(
           `UPDATE field_users SET
@@ -428,10 +436,22 @@ export async function handleAdminRequest(req, res) {
              phone = $7,
              email = $8,
              enabled = $9,
+             privileges = $10::jsonb,
              updated_at = now()
            WHERE id = $1 AND tenant_id = $2
-           RETURNING id, username, role, display_name, phone, email, enabled, created_at, updated_at`,
-          [userId, tenantId, username, role, passwordHash, displayName, phone, email, enabled],
+           RETURNING id, username, role, display_name, phone, email, enabled, privileges, created_at, updated_at`,
+          [
+            userId,
+            tenantId,
+            username,
+            role,
+            passwordHash,
+            displayName,
+            phone,
+            email,
+            enabled,
+            JSON.stringify(privileges),
+          ],
         );
         await writeAudit(admin.id, "field_user.update", {
           tenantId,

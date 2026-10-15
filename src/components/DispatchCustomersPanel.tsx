@@ -6,6 +6,7 @@ import {
   downloadCsv,
   parseCsv,
 } from "../lib/csvImport";
+import { useDeskSession } from "../lib/deskSession";
 import {
   createDispatchCustomer,
   deleteDispatchCustomer,
@@ -22,6 +23,9 @@ type Props = {
 
 export function DispatchCustomersPanel({ onClose, onUse }: Props) {
   const asPage = !onClose;
+  const { user, privileges } = useDeskSession();
+  const canEdit = privileges.editDispatchCustomers === true;
+  const canDelete = privileges.deleteDispatchCustomers === true;
   const [items, setItems] = useState<DispatchCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -151,6 +155,14 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
         </p>
       ) : null}
 
+      {!canEdit ? (
+        <p className="desk-master-hint">
+          {user
+            ? "View only — your Field user is not allowed to edit Customers."
+            : "View only — sign in with a Field user that has Customers edit rights to add or change locations."}
+        </p>
+      ) : null}
+      {canEdit ? (
       <div className="master-card">
         <p className="master-card-kicker">Add customer — compact</p>
         <form className="master-add-form is-customers" onSubmit={(e) => void addItem(e)}>
@@ -220,6 +232,7 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
           </div>
         </form>
       </div>
+      ) : null}
 
       <div className="master-toolbar">
         <input
@@ -232,6 +245,7 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
           aria-label="Filter customers"
         />
         <div className="master-toolbar-actions">
+          {canEdit ? (
           <CsvImportPanel
             title="Import"
             disabled={busy || loading}
@@ -264,6 +278,7 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
               }
             }}
           />
+          ) : null}
           {items.length ? (
             <button
               type="button"
@@ -303,9 +318,11 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
                   <input
                     className="master-inline-name"
                     defaultValue={item.name}
-                    disabled={busy}
+                    disabled={busy || !canEdit}
+                    readOnly={!canEdit}
                     aria-label="Customer name"
                     onBlur={(e) => {
+                      if (!canEdit) return;
                       const next = e.target.value.trim();
                       if (next && next !== item.name) void save(item, { name: next });
                     }}
@@ -319,10 +336,12 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
                 <input
                   className="master-inline-input"
                   defaultValue={String(item.lat)}
-                  disabled={busy}
+                  disabled={busy || !canEdit}
+                  readOnly={!canEdit}
                   inputMode="decimal"
                   aria-label="Latitude"
                   onBlur={(e) => {
+                    if (!canEdit) return;
                     const next = Number(e.target.value);
                     if (Number.isFinite(next) && next !== item.lat) void save(item, { lat: next });
                   }}
@@ -330,10 +349,12 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
                 <input
                   className="master-inline-input"
                   defaultValue={String(item.lon)}
-                  disabled={busy}
+                  disabled={busy || !canEdit}
+                  readOnly={!canEdit}
                   inputMode="decimal"
                   aria-label="Longitude"
                   onBlur={(e) => {
+                    if (!canEdit) return;
                     const next = Number(e.target.value);
                     if (Number.isFinite(next) && next !== item.lon) void save(item, { lon: next });
                   }}
@@ -342,9 +363,11 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
                   className="master-pill-input"
                   defaultValue={item.zone}
                   placeholder="Zone"
-                  disabled={busy}
+                  disabled={busy || !canEdit}
+                  readOnly={!canEdit}
                   aria-label="Zone"
                   onBlur={(e) => {
+                    if (!canEdit) return;
                     if (e.target.value.trim() !== item.zone) void save(item, { zone: e.target.value.trim() });
                   }}
                 />
@@ -352,9 +375,11 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
                   className="master-inline-input"
                   defaultValue={item.phone}
                   placeholder="—"
-                  disabled={busy}
+                  disabled={busy || !canEdit}
+                  readOnly={!canEdit}
                   aria-label="Phone"
                   onBlur={(e) => {
+                    if (!canEdit) return;
                     if (e.target.value.trim() !== item.phone) void save(item, { phone: e.target.value.trim() });
                   }}
                 />
@@ -362,8 +387,11 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
                   <input
                     type="checkbox"
                     checked={item.enabled}
-                    disabled={busy}
-                    onChange={(e) => void save(item, { enabled: e.target.checked })}
+                    disabled={busy || !canEdit}
+                    onChange={(e) => {
+                      if (!canEdit) return;
+                      void save(item, { enabled: e.target.checked });
+                    }}
                   />
                   <span aria-hidden />
                 </label>
@@ -378,6 +406,7 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
                       Use
                     </button>
                   ) : null}
+                  {canDelete ? (
                   <button
                     type="button"
                     className="master-icon-btn"
@@ -387,6 +416,7 @@ export function DispatchCustomersPanel({ onClose, onUse }: Props) {
                   >
                     ⌫
                   </button>
+                  ) : null}
                 </div>
               </li>
             ))}

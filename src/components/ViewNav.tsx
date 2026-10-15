@@ -20,6 +20,7 @@ import {
 import { dispatchProfiles, moduleKeyForView } from "../lib/entitlements";
 import { isNativeDispatchApp } from "../lib/nativeField";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
+import { DeskAuthChip } from "./DeskAuthChip";
 import { ThemePicker } from "./ThemePicker";
 
 const LINKS: { view: AppView; label: string; href: (search: string) => string }[] = [
@@ -54,14 +55,23 @@ export function ViewNav({ current }: Props) {
   const { ready, moduleAllowed, entitlements } = useEmbedTenant();
   const profiles = dispatchProfiles(entitlements);
   const base = isNativeDispatchApp() ? DISPATCH_APP_LINKS : LINKS;
-  const links = ready
-    ? base.filter((link) => {
-        if (!moduleAllowed(moduleKeyForView(link.view))) return false;
-        // Goods & Stock is cargo-only admin
-        if (link.view === "dispatchGoods" && !profiles.cargo) return false;
-        return true;
-      })
-    : base;
+
+  if (!ready) {
+    return (
+      <>
+        <nav className="view-nav" aria-label="Dashboard views" aria-busy="true" />
+        <DeskAuthChip />
+        <ThemePicker />
+      </>
+    );
+  }
+
+  const links = base.filter((link) => {
+    if (!moduleAllowed(moduleKeyForView(link.view))) return false;
+    // Goods & Stock is cargo-only admin
+    if (link.view === "dispatchGoods" && !profiles.cargo) return false;
+    return true;
+  });
 
   return (
     <>
@@ -94,6 +104,7 @@ export function ViewNav({ current }: Props) {
           ),
         )}
       </nav>
+      <DeskAuthChip />
       <ThemePicker />
     </>
   );

@@ -29,6 +29,7 @@
 import crypto from "node:crypto";
 import { databaseUrlConfigured, dbQuery } from "./db.mjs";
 import { mergeEntitlements, moduleEnabled } from "./entitlements.mjs";
+import { fieldFromRequest } from "./field-auth.mjs";
 import { resolveDbTenant } from "./maintenance-api.mjs";
 import {
   assignVehiclesToDepots,
@@ -859,6 +860,27 @@ async function reorderJobStopsRoad(jobId, depot = null, routing = null) {
   return result.matrixEngine ? { engine: result.matrixEngine, warning: result.warning } : null;
 }
 
+/**
+ * Desk master writes: field session required + matching tenant + privilege flag.
+ * @returns {Promise<boolean>} true if allowed
+ */
+async function requireDeskMasterPrivilege(req, res, tenantId, privilege) {
+  const user = await fieldFromRequest(req);
+  if (!user) {
+    json(res, 401, { error: "Desk sign-in required to change master data" });
+    return false;
+  }
+  if (String(user.tenantId) !== String(tenantId)) {
+    json(res, 403, { error: "Signed-in user does not match this tenant" });
+    return false;
+  }
+  if (!user.privileges || user.privileges[privilege] !== true) {
+    json(res, 403, { error: `Missing desk privilege: ${privilege}` });
+    return false;
+  }
+  return true;
+}
+
 async function requireDispatchModule(tenantId) {
   const row = await dbQuery(`SELECT entitlements FROM tenants WHERE id = $1`, [tenantId]);
   const ent = mergeEntitlements(row.rows[0]?.entitlements);
@@ -1334,12 +1356,14 @@ export async function handleDispatchRequest(req, res) {
       return true;
     }
     if (url.pathname === "/api/dispatch/customers" && req.method === "POST") {
+      if (!(await requireDeskMasterPrivilege(req, res, dbTenant.id, "editDispatchCustomers"))) return true;
       const body = await readJson(req);
       const customer = await createCustomer(dbTenant.id, body);
       json(res, 201, { customer });
       return true;
     }
     if (url.pathname === "/api/dispatch/customers/import" && req.method === "POST") {
+      if (!(await requireDeskMasterPrivilege(req, res, dbTenant.id, "editDispatchCustomers"))) return true;
       const body = await readJson(req);
       let rawRows = Array.isArray(body.rows) ? body.rows : null;
       if (!rawRows && typeof body.csv === "string") rawRows = parseCsv(body.csv).rows;
@@ -1352,12 +1376,14 @@ export async function handleDispatchRequest(req, res) {
     }
     const customerOne = /^\/api\/dispatch\/customers\/([0-9a-f-]{36})$/i.exec(url.pathname);
     if (customerOne && req.method === "PATCH") {
+      if (!(await requireDeskMasterPrivilege(req, res, dbTenant.id, "editDispatchCustomers"))) return true;
       const body = await readJson(req);
       const customer = await updateCustomer(dbTenant.id, customerOne[1], body);
       json(res, 200, { customer });
       return true;
     }
     if (customerOne && req.method === "DELETE") {
+      if (!(await requireDeskMasterPrivilege(req, res, dbTenant.id, "deleteDispatchCustomers"))) return true;
       await deleteCustomer(dbTenant.id, customerOne[1]);
       json(res, 200, { ok: true });
       return true;
@@ -1370,6 +1396,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (url.pathname === "/api/dispatch/goods" && req.method === "POST") {
+      if (!(await requireDeskMasterPrivilege(req, res, dbTenant.id, "editDispatchGoods"))) return true;
       const body = await readJson(req);
       const item = await createGoodsItem(dbTenant.id, body);
       json(res, 201, { item });
@@ -1377,6 +1404,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (url.pathname === "/api/dispatch/goods/import" && req.method === "POST") {
+      if (!(await requireDeskMasterPrivilege(req, res, dbTenant.id, "editDispatchGoods"))) return true;
       const body = await readJson(req);
       let rawRows = Array.isArray(body.rows) ? body.rows : null;
       if (!rawRows && typeof body.csv === "string") {
@@ -1393,12 +1421,14 @@ export async function handleDispatchRequest(req, res) {
 
     const goodsOne = /^\/api\/dispatch\/goods\/([0-9a-f-]{36})$/i.exec(url.pathname);
     if (goodsOne && req.method === "PATCH") {
+      if (!(await requireDeskMasterPrivilege(req, res, dbTenant.id, "editDispatchGoods"))) return true;
       const body = await readJson(req);
       const item = await updateGoodsItem(dbTenant.id, goodsOne[1], body);
       json(res, 200, { item });
       return true;
     }
     if (goodsOne && req.method === "DELETE") {
+      if (!(await requireDeskMasterPrivilege(req, res, dbTenant.id, "deleteDispatchGoods"))) return true;
       await deleteGoodsItem(dbTenant.id, goodsOne[1]);
       json(res, 200, { ok: true });
       return true;

@@ -19,6 +19,7 @@ import {
 import { applyEventPatch, loadEventDetail, loadPhotoBytes, parseDataUrl, publicEvent, savePhoto } from "./maintenance-api.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 import { mergeEntitlements } from "./entitlements.mjs";
+import { mergeDeskPrivileges } from "./desk-privileges.mjs";
 import {
   denyScanMessage,
   fieldScanAllowsContext,
@@ -124,6 +125,7 @@ function publicFieldUser(user) {
     tenantDisplayName: user.tenantDisplayName || user.tenant_display_name || "",
     appId: user.appId ?? user.app_id,
     tenantId: user.tenantId || user.tenant_id,
+    privileges: mergeDeskPrivileges(user.privileges),
   };
 }
 
@@ -421,7 +423,7 @@ export async function handleFieldRequest(req, res) {
         return true;
       }
       const found = await dbQuery(
-        `SELECT u.id, u.username, u.password_hash, u.role, u.display_name, u.enabled,
+        `SELECT u.id, u.username, u.password_hash, u.role, u.display_name, u.enabled, u.privileges,
                 t.id AS tenant_id, t.key AS tenant_key, t.display_name AS tenant_display_name,
                 t.app_id, t.enabled AS tenant_enabled
          FROM field_users u
@@ -454,6 +456,7 @@ export async function handleFieldRequest(req, res) {
             username: row.username,
             role: row.role,
             displayName: row.display_name,
+            privileges: mergeDeskPrivileges(row.privileges),
             tenantKey: row.tenant_key,
             tenantDisplayName: row.tenant_display_name || "",
             tenantId: row.tenant_id,

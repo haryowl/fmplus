@@ -5,6 +5,7 @@
 import crypto from "node:crypto";
 import { databaseUrlConfigured, dbQuery } from "./db.mjs";
 import { hashPassword, readCookies, verifyPassword } from "./admin-auth.mjs";
+import { mergeDeskPrivileges } from "./desk-privileges.mjs";
 
 const COOKIE = "fmplus_field_sid";
 const SESSION_DAYS = 14;
@@ -83,7 +84,7 @@ export async function fieldFromRequest(req) {
   const token = fieldSessionTokenFromRequest(req);
   if (!token) return null;
   const res = await dbQuery(
-    `SELECT s.id AS session_id, u.id, u.username, u.role, u.display_name, u.enabled,
+    `SELECT s.id AS session_id, u.id, u.username, u.role, u.display_name, u.enabled, u.privileges,
             t.id AS tenant_id, t.key AS tenant_key, t.display_name AS tenant_display_name,
             t.app_id, t.enabled AS tenant_enabled
      FROM field_sessions s
@@ -99,6 +100,7 @@ export async function fieldFromRequest(req) {
     username: row.username,
     role: row.role,
     displayName: row.display_name || "",
+    privileges: mergeDeskPrivileges(row.privileges),
     sessionId: row.session_id,
     tenantId: row.tenant_id,
     tenantKey: row.tenant_key,
