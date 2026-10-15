@@ -92,6 +92,12 @@ import {
   normalizeDispatchProfile,
   parseOrderProfile,
 } from "./dispatch-sales.mjs";
+import {
+  cargoFromOrderCsvRow,
+  orderCsvAllowsGoodsLines,
+  pickupFromOrderCsvRow,
+  resolveOrderCsvProfile,
+} from "./dispatch-order-csv.mjs";
 import { normalizeZoneKey } from "./dispatch-zone.mjs";
 import { buildRouteForPoints } from "./route-plan-api.mjs";
 import { getDistanceMatrix } from "./routing-matrix.mjs";
@@ -2474,13 +2480,22 @@ export async function handleDispatchRequest(req, res) {
           proofCell == null || String(proofCell).trim() === ""
             ? Boolean(known?.proofRequired)
             : csvBool(proofCell);
+        const orderProfile = resolveOrderCsvProfile(row);
+        const cargo = cargoFromOrderCsvRow(row, orderProfile);
+        const pickup = pickupFromOrderCsvRow(row);
+        if (pickup.error) {
+          errors.push({ line, error: pickup.error });
+          continue;
+        }
         try {
           const inserted = await dbQuery(
             `INSERT INTO dispatch_orders (
                tenant_id, external_ref, customer_name, address, lat, lon, zone,
-               volume_m3, weight_kg, window_start, window_end, notes, service_date,
-               service_minutes, proof_required
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+               volume_m3, weight_kg, passenger_count, luggage_kg, profile,
+               window_start, window_end, notes, service_date,
+               service_minutes, proof_required,
+               kind, pickup_address, pickup_lat, pickup_lon, pickup_zone
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
              RETURNING *`,
             [
               dbTenant.id,
@@ -2490,14 +2505,22 @@ export async function handleDispatchRequest(req, res) {
               lat,
               lon,
               zone,
-              csvNum(row.volume_m3 ?? row.volumeM3),
-              csvNum(row.weight_kg ?? row.weightKg),
+              cargo.volumeM3,
+              cargo.weightKg,
+              cargo.passengerCount,
+              cargo.luggageKg,
+              orderProfile === "cargo" ? null : orderProfile,
               windowStart,
               windowEnd,
               notes,
               serviceDate,
               serviceMinutesOrNull(row.service_minutes ?? row.serviceMinutes),
               proofRequired,
+              pickup.kind,
+              pickup.pickupAddress,
+              pickup.pickupLat,
+              pickup.pickupLon,
+              pickup.pickupZone,
             ],
           );
           if (known?.id) {
@@ -2506,17 +2529,19 @@ export async function handleDispatchRequest(req, res) {
               [known.id, inserted.rows[0].id, dbTenant.id],
             );
           }
-          const goodsCell = row.goods || row.cargo || "";
-          const lines = await resolveCsvGoodsLines(dbTenant.id, goodsCell, row);
-          if (lines.length) {
-            await replaceOrderLines(dbTenant.id, inserted.rows[0].id, lines);
-            const hasManualTotals =
-              csvNum(row.volume_m3 ?? row.volumeM3) != null ||
-              csvNum(row.weight_kg ?? row.weightKg) != null;
-            if (hasManualTotals) {
-              await setCargoTotalsLocked(dbTenant.id, inserted.rows[0].id, true);
-            } else {
-              await applyCargoTotals(dbTenant.id, inserted.rows[0].id, { locked: false });
+          if (orderCsvAllowsGoodsLines(orderProfile)) {
+            const goodsCell = row.goods || row.cargo || "";
+            const lines = await resolveCsvGoodsLines(dbTenant.id, goodsCell, row);
+            if (lines.length) {
+              await replaceOrderLines(dbTenant.id, inserted.rows[0].id, lines);
+              const hasManualTotals =
+                csvNum(row.volume_m3 ?? row.volumeM3) != null ||
+                csvNum(row.weight_kg ?? row.weightKg) != null;
+              if (hasManualTotals) {
+                await setCargoTotalsLocked(dbTenant.id, inserted.rows[0].id, true);
+              } else {
+                await applyCargoTotals(dbTenant.id, inserted.rows[0].id, { locked: false });
+              }
             }
           }
           const fresh = await dbQuery(`SELECT * FROM dispatch_orders WHERE id = $1`, [

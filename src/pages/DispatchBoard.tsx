@@ -3507,7 +3507,7 @@ export default function DispatchBoard() {
               title="Import orders CSV"
               disabled={busy}
               templateFilename="dispatch-orders-template.csv"
-              hint="Required: customer_name. Leave lat and lon blank when that name is already in the customer list — the pin, address, zone, notes, window, and proof are copied. Otherwise lat and lon are required. Optional: address, external_ref, zone, volume_m3, weight_kg, windows, proof_required, sku, goods (OIL-01:2; FIL-02:1 box — matches catalog SKU/name or free text). Max 200 rows. Duplicate external_ref on this date is skipped."
+              hint="Required: customer_name. Leave lat/lon blank when the name is already in Customers (pin/address/zone/window/proof copy). Optional profile: cargo (default), passenger, or sales. Passenger: passenger_count, luggage_kg; use kind=pickup_drop with pickup_lat/pickup_lon for a pickup pin. Sales: visit pin only (goods ignored). Cargo: volume_m3, weight_kg, sku, goods (OIL-01:2; FIL-02:1 box). Max 200 rows. Duplicate external_ref on this date is skipped."
               onDownloadTemplate={() =>
                 downloadCsv("dispatch-orders-template.csv", dispatchOrderCsvTemplate())
               }
