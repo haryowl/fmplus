@@ -4490,16 +4490,13 @@ html.onesheet-root body {
   z-index: 0;
 }
 
+/* Draft form is a rail overlay — keep board height stable while pinning. */
 .dispatch-board-3col.is-drafting {
-  height: auto;
-  max-height: none;
-  align-items: start;
+  align-items: stretch;
 }
 
 .dispatch-board-3col.is-drafting > .dispatch-rail {
-  height: auto;
-  min-height: min(64vh, 640px);
-  max-height: none;
+  min-height: 0;
 }
 
 .dispatch-rail {
@@ -5063,25 +5060,87 @@ button.dispatch-pin-chip {
 }
 
 .dispatch-rail.dispatch-pool.is-drafting {
-  overflow: visible;
-  height: auto;
+  overflow: hidden;
 }
 
 .dispatch-rail.dispatch-pool.is-drafting .dispatch-pool-list-wrap {
-  flex: 0 1 auto;
-  max-height: min(28vh, 260px);
-}
-
-.dispatch-rail.dispatch-pool.is-drafting .dispatch-order-draft {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   max-height: none;
-  overflow: visible;
+  min-height: 0;
 }
 
 .dispatch-rail.dispatch-pool,
 .dispatch-rail.dispatch-vehicle-pane {
   position: relative;
   z-index: 1;
+}
+
+/* New stop / edit order — scrollable popup over the Orders rail (map stays clickable). */
+.dispatch-order-draft-pop {
+  position: absolute;
+  inset: 10px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  max-height: calc(100% - 20px);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(15, 42, 51, 0.18);
+  overflow: hidden;
+}
+
+.dispatch-order-draft-pop-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent-soft) 70%, var(--surface));
+  flex: 0 0 auto;
+}
+
+.dispatch-order-draft-pop-head .dispatch-eyebrow {
+  margin: 0;
+}
+
+.dispatch-order-draft-pop-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--ink-faint);
+  line-height: 1.35;
+}
+
+.dispatch-order-draft-pop-head .btn-secondary {
+  height: 30px;
+  padding: 0 10px;
+  flex-shrink: 0;
+}
+
+.dispatch-order-draft-pop .dispatch-order-draft {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  width: 100%;
+}
+
+.dispatch-order-draft-pop .dispatch-create-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 4px -14px -14px;
+  padding: 12px 14px 14px;
+  background: linear-gradient(180deg, transparent, var(--surface) 28%);
+  border-top: 1px solid var(--line);
 }
 
 .dispatch-rail.dispatch-vehicle-pane {

@@ -723,9 +723,22 @@ export default function DispatchBoard() {
     const el = orderDraftRef.current;
     if (!el) return;
     const t = window.setTimeout(() => {
-      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      el.scrollTop = 0;
+      const body = el.querySelector(".dispatch-order-draft");
+      if (body instanceof HTMLElement) body.scrollTop = 0;
     }, 50);
     return () => window.clearTimeout(t);
+  }, [placing, draftPin, editingOrderId]);
+
+  useEffect(() => {
+    if (!(placing || draftPin || editingOrderId)) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      clearDraft();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [placing, draftPin, editingOrderId]);
 
   useEffect(() => {
@@ -3773,8 +3786,27 @@ export default function DispatchBoard() {
             </div>
 
             {placing || draftPin ? (
-              <div className="dispatch-order-draft" ref={orderDraftRef}>
-                <p className="dispatch-eyebrow">{editingOrderId ? "Edit order" : "New stop"}</p>
+              <div
+                className="dispatch-order-draft-pop"
+                role="dialog"
+                aria-modal="false"
+                aria-labelledby="dispatch-order-draft-title"
+                ref={orderDraftRef}
+              >
+                <div className="dispatch-order-draft-pop-head">
+                  <div>
+                    <p className="dispatch-eyebrow" id="dispatch-order-draft-title">
+                      {editingOrderId ? "Edit order" : "New stop"}
+                    </p>
+                    <p className="dispatch-order-draft-pop-hint">
+                      Pin on the map stays available — form scrolls here.
+                    </p>
+                  </div>
+                  <button type="button" className="btn-secondary" onClick={clearDraft}>
+                    Close
+                  </button>
+                </div>
+                <div className="dispatch-order-draft">
                 <div className="dispatch-window-presets" role="group" aria-label="Order type">
                   <button
                     type="button"
@@ -4312,6 +4344,7 @@ export default function DispatchBoard() {
                   <button type="button" className="btn-secondary" onClick={clearDraft}>
                     Cancel
                   </button>
+                </div>
                 </div>
               </div>
             ) : null}
