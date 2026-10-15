@@ -25,17 +25,6 @@ export default function DispatchGoodsPage() {
         </div>
       </header>
       <main className="shell dispatch-shell dispatch-master-shell">
-        <div className="dispatch-master-page-head">
-          <div>
-            <h2 className="dispatch-master-title">
-              Goods &amp; Stock
-              <span className="dispatch-master-sub">— Products, pricing, stock levels</span>
-            </h2>
-          </div>
-          <span className="dispatch-master-live" aria-label="Live">
-            <i aria-hidden /> Live
-          </span>
-        </div>
         <DispatchMasterNav current="dispatchGoods" />
         <DispatchGoodsCatalogPanel />
       </main>

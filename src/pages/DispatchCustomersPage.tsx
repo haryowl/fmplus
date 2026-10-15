@@ -25,17 +25,6 @@ export default function DispatchCustomersPage() {
         </div>
       </header>
       <main className="shell dispatch-shell dispatch-master-shell">
-        <div className="dispatch-master-page-head">
-          <div>
-            <h2 className="dispatch-master-title">
-              Customers
-              <span className="dispatch-master-sub">— Delivery points, zones, routing</span>
-            </h2>
-          </div>
-          <span className="dispatch-master-live" aria-label="Live">
-            <i aria-hidden /> Live
-          </span>
-        </div>
         <DispatchMasterNav current="dispatchCustomers" />
         <DispatchCustomersPanel />
       </main>

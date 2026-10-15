@@ -11201,8 +11201,11 @@ button.dispatch-pin-chip {
 
 /* —— Master desk (Goods / Customers) — Modern-Redesign layout —— */
 .dispatch-master-page .dispatch-master-shell {
-  gap: 16px;
+  gap: 12px;
   padding-top: 4px;
+  overflow: visible;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .dispatch-master-page .topbar .brand h1 {
@@ -11324,6 +11327,8 @@ a.dispatch-master-nav-tab:hover {
   border-radius: 12px;
   padding: 14px 16px 16px;
   box-shadow: var(--shadow);
+  overflow: visible;
+  min-width: 0;
 }
 
 .master-card-kicker {
@@ -11335,35 +11340,37 @@ a.dispatch-master-nav-tab:hover {
   color: var(--ink-faint);
 }
 
+/* Flex wrap keeps + Add on-screen (grid auto-fill was clipping it). */
 .master-add-form {
-  display: grid;
-  gap: 10px 10px;
-  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  min-width: 0;
 }
 
-.master-add-form.is-goods {
-  grid-template-columns: minmax(11rem, 1.8fr) repeat(auto-fill, minmax(5.25rem, 1fr));
+.master-add-form.is-goods .master-field.is-name {
+  flex: 1 1 12rem;
+  min-width: min(12rem, 100%);
 }
 
-.master-add-form.is-customers {
-  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+.master-add-form.is-goods .master-field:not(.is-name) {
+  flex: 0 1 5.75rem;
+  min-width: 4.75rem;
 }
 
-.master-add-form.is-goods .master-field.is-name,
+.master-add-form.is-customers .master-field {
+  flex: 1 1 7.5rem;
+  min-width: 6.5rem;
+}
+
 .master-add-form.is-customers .master-field.is-wide {
-  grid-column: span 2;
+  flex: 2 1 14rem;
 }
 
 .master-add-form .master-add-actions {
-  grid-column: 1 / -1;
-  justify-content: flex-end;
-}
-
-@media (min-width: 1100px) {
-  .master-add-form.is-goods .master-add-actions {
-    grid-column: auto;
-    justify-content: flex-start;
-  }
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .master-field {
@@ -11412,15 +11419,21 @@ a.dispatch-master-nav-tab:hover {
 
 .master-add-actions {
   display: flex;
-  align-items: end;
+  align-items: flex-end;
+  flex-shrink: 0;
 }
 
-.master-add-actions .btn-primary {
+.master-add-actions .btn-primary,
+.master-add-actions .btn.btn-primary {
   height: 34px;
   padding: 0 14px;
   border-radius: 8px;
   font-size: 12.5px;
   white-space: nowrap;
+  width: auto;
+  max-width: none;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .master-toolbar {
@@ -11763,25 +11776,17 @@ a.dispatch-master-nav-tab:hover {
 }
 
 @media (max-width: 960px) {
-  .master-add-form.is-goods,
-  .master-add-form.is-customers,
-  .master-table-head.is-goods,
-  .master-table-head.is-customers,
-  .master-table-row.is-goods,
-  .master-table-row.is-customers {
-    grid-template-columns: 1fr 1fr;
-  }
-
   .master-table-head {
     display: none;
   }
 
-  .master-add-form.is-goods .master-field.is-name,
-  .master-add-form.is-customers .master-field.is-wide,
-  .master-add-actions,
-  .master-cell-primary,
-  .master-row-actions {
-    grid-column: 1 / -1;
+  .master-add-form .master-add-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .master-add-form .master-add-actions .btn-primary {
+    width: 100%;
   }
 
   .master-table-row.is-goods,
@@ -11789,6 +11794,11 @@ a.dispatch-master-nav-tab:hover {
     display: flex;
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .master-cell-primary,
+  .master-row-actions {
+    width: 100%;
   }
 
   .master-row-actions {
