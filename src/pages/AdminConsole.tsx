@@ -677,19 +677,35 @@ export default function AdminConsole() {
 
   const selected = tenants.find((t) => t.id === selectedId);
 
+  const adminInitials = username
+    .split(/[@.\s_-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() || "")
+    .join("") || "A";
+
   return (
     <div className="admin-app">
       <header className="admin-topbar">
         <div className="admin-brand">
           <BrandMark size={22} />
           <div>
-            <p className="admin-kicker">ARMADA M.1</p>
-            <h1>Admin</h1>
+            <h1>Armada M.1 Admin</h1>
+            <p className="admin-kicker">Fleet ops control</p>
           </div>
         </div>
+        <div className="admin-topbar-live" aria-live="polite">
+          <i aria-hidden />
+          Live · {stats.enabled} tenant{stats.enabled === 1 ? "" : "s"} active
+        </div>
         <div className="admin-topbar-meta">
-          <span className="admin-user-chip">{username}</span>
-          <button type="button" className="btn-ghost" onClick={() => void handleLogout()} disabled={busy}>
+          <span className="admin-user-chip">
+            <span className="admin-user-avatar" aria-hidden>
+              {adminInitials}
+            </span>
+            {username}
+          </span>
+          <button type="button" className="admin-signout" onClick={() => void handleLogout()} disabled={busy}>
             Sign out
           </button>
         </div>
@@ -699,18 +715,24 @@ export default function AdminConsole() {
         <div className="admin-stat">
           <span className="admin-stat-label">Tenants</span>
           <strong>{stats.total}</strong>
+          <em>total configured</em>
         </div>
         <div className="admin-stat">
           <span className="admin-stat-label">Enabled</span>
           <strong>{stats.enabled}</strong>
+          <em>
+            {stats.total ? Math.round((stats.enabled / stats.total) * 100) : 0}% operational
+          </em>
         </div>
         <div className="admin-stat">
           <span className="admin-stat-label">Notify set</span>
           <strong>{stats.withNotify}</strong>
+          <em>email or WhatsApp</em>
         </div>
         <div className="admin-stat">
           <span className="admin-stat-label">Wablas ready</span>
           <strong>{stats.withWablas}</strong>
+          <em>token + secret</em>
         </div>
       </section>
 
@@ -724,19 +746,23 @@ export default function AdminConsole() {
       <div className="admin-layout">
         <aside className="admin-sidebar">
           <div className="admin-sidebar-head">
-            <h2>Tenants</h2>
-            <button type="button" className="btn btn-primary" onClick={selectNew}>
-              New
+            <h2>
+              Tenants <span className="admin-count-badge">{filteredTenants.length}</span>
+            </h2>
+          </div>
+          <div className="admin-sidebar-tools">
+            <label className="admin-search">
+              <span className="visually-hidden">Search tenants</span>
+              <input
+                value={tenantQuery}
+                onChange={(e) => setTenantQuery(e.target.value)}
+                placeholder="Search key, name, app…"
+              />
+            </label>
+            <button type="button" className="btn btn-primary admin-new-btn" onClick={selectNew}>
+              + New
             </button>
           </div>
-          <label className="admin-search">
-            <span className="visually-hidden">Search tenants</span>
-            <input
-              value={tenantQuery}
-              onChange={(e) => setTenantQuery(e.target.value)}
-              placeholder="Search key, name, app…"
-            />
-          </label>
           <ul className="admin-tenant-list">
             {filteredTenants.map((t) => (
               <li key={t.id}>
@@ -747,9 +773,12 @@ export default function AdminConsole() {
                 >
                   <span className="admin-tenant-row">
                     <strong>{t.displayName || t.key}</strong>
-                    <span className={`admin-dot${t.enabled ? " is-on" : ""}`} title={t.enabled ? "Enabled" : "Disabled"} />
+                    <span className="admin-tenant-chevron" aria-hidden>
+                      ›
+                    </span>
                   </span>
                   <span className="admin-tenant-meta">
+                    <span className={`admin-dot${t.enabled ? " is-on" : ""}`} title={t.enabled ? "Enabled" : "Disabled"} />
                     <code>{t.key}</code> · app {t.appId}
                   </span>
                 </button>
@@ -759,6 +788,9 @@ export default function AdminConsole() {
               <li className="muted admin-empty">{tenants.length ? "No match." : "No database tenants yet."}</li>
             )}
           </ul>
+          <p className="admin-sidebar-foot muted">
+            Embed key format: opaque tenant key in <code>?k=</code>
+          </p>
         </aside>
 
         <main className="admin-main">
@@ -766,25 +798,43 @@ export default function AdminConsole() {
             <>
               <div className="admin-main-head">
                 <div>
-                  <p className="admin-kicker">{selectedId === "new" ? "Create" : "Edit tenant"}</p>
+                  <p className="admin-kicker">
+                    {selectedId === "new" ? "Create tenant" : "Edit tenant"}
+                    {selectedId !== "new" ? (
+                      <>
+                        {" "}
+                        / <strong>{draft.displayName || draft.key}</strong>
+                      </>
+                    ) : null}
+                  </p>
                   <h2>{selectedId === "new" ? "New tenant" : draft.displayName || draft.key}</h2>
+                  {selected ? (
+                    <div className="admin-status-row">
+                      <StatusPill ok={selected.enabled} label={selected.enabled ? "Enabled" : "Disabled"} />
+                      <StatusPill ok={selected.hasToken} label={selected.hasToken ? "Token set" : "No token"} />
+                      <StatusPill
+                        ok={selected.hasWebhookSecret}
+                        label={selected.hasWebhookSecret ? "Webhook set" : "No webhook"}
+                      />
+                      <StatusPill
+                        ok={Boolean(selected.hasWablasToken && selected.hasWablasSecret)}
+                        label={
+                          selected.hasWablasToken && selected.hasWablasSecret ? "Wablas set" : "No Wablas"
+                        }
+                      />
+                    </div>
+                  ) : null}
                 </div>
-                {selected && (
-                  <div className="admin-status-row">
-                    <StatusPill ok={selected.enabled} label={selected.enabled ? "Enabled" : "Disabled"} />
-                    <StatusPill ok={selected.hasToken} label={selected.hasToken ? "Token set" : "No token"} />
-                    <StatusPill
-                      ok={selected.hasWebhookSecret}
-                      label={selected.hasWebhookSecret ? "Webhook set" : "No webhook"}
-                    />
-                    <StatusPill
-                      ok={Boolean(selected.hasWablasToken && selected.hasWablasSecret)}
-                      label={
-                        selected.hasWablasToken && selected.hasWablasSecret ? "Wablas set" : "No Wablas"
-                      }
-                    />
-                  </div>
-                )}
+                <div className="admin-main-head-actions">
+                  {selectedId !== "new" ? (
+                    <button type="button" className="btn-secondary" disabled={busy} onClick={() => void disableTenant()}>
+                      Disable
+                    </button>
+                  ) : null}
+                  <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveDraft()}>
+                    ✓ Save tenant
+                  </button>
+                </div>
               </div>
 
               <div className="admin-main-cols">
@@ -828,11 +878,50 @@ export default function AdminConsole() {
                 </div>
               </section>
 
+              <section className="admin-panel">
+                <header className="admin-panel-head">
+                  <h3>Field GPS</h3>
+                  <p className="muted">Default 15s · 60s · 25 m</p>
+                </header>
+                <div className="admin-form-grid admin-gps-grid">
+                  <label>
+                    Moving interval (seconds)
+                    <input
+                      type="number"
+                      min={5}
+                      max={120}
+                      value={draft.dutyIntervalSec}
+                      onChange={(e) => setDraft({ ...draft, dutyIntervalSec: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Parked heartbeat (seconds)
+                    <input
+                      type="number"
+                      min={5}
+                      max={600}
+                      value={draft.dutyQuietSec}
+                      onChange={(e) => setDraft({ ...draft, dutyQuietSec: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Minimum move (metres)
+                    <input
+                      type="number"
+                      min={5}
+                      max={200}
+                      value={draft.dutyMinMoveM}
+                      onChange={(e) => setDraft({ ...draft, dutyMinMoveM: e.target.value })}
+                    />
+                  </label>
+                </div>
+              </section>
+
               <AdminFold
                 key={`${selectedId}-access`}
                 title="Access & secrets"
                 hint="Token, webhook, and fleet scope"
-                defaultOpen={selectedId === "new"}
+                defaultOpen
               >
                 <div className="admin-form-grid">
                   <label>
@@ -869,41 +958,6 @@ export default function AdminConsole() {
                       value={draft.groupIds}
                       onChange={(e) => setDraft({ ...draft, groupIds: e.target.value })}
                       placeholder="empty = all"
-                    />
-                  </label>
-                </div>
-              </AdminFold>
-
-              <AdminFold title="Field GPS" hint="Default 15s moving · 60s parked · 25 m">
-                <div className="admin-form-grid admin-gps-grid">
-                  <label>
-                    Moving interval (seconds)
-                    <input
-                      type="number"
-                      min={5}
-                      max={120}
-                      value={draft.dutyIntervalSec}
-                      onChange={(e) => setDraft({ ...draft, dutyIntervalSec: e.target.value })}
-                    />
-                  </label>
-                  <label>
-                    Parked heartbeat (seconds)
-                    <input
-                      type="number"
-                      min={5}
-                      max={600}
-                      value={draft.dutyQuietSec}
-                      onChange={(e) => setDraft({ ...draft, dutyQuietSec: e.target.value })}
-                    />
-                  </label>
-                  <label>
-                    Minimum move (metres)
-                    <input
-                      type="number"
-                      min={5}
-                      max={200}
-                      value={draft.dutyMinMoveM}
-                      onChange={(e) => setDraft({ ...draft, dutyMinMoveM: e.target.value })}
                     />
                   </label>
                 </div>
@@ -1072,47 +1126,50 @@ export default function AdminConsole() {
               </div>
               </div>
 
-              <div className="admin-actions sticky">
-                <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveDraft()}>
-                  Save tenant
-                </button>
-                {selectedId !== "new" && (
-                  <button type="button" className="btn-ghost" disabled={busy} onClick={() => void disableTenant()}>
-                    Disable
-                  </button>
-                )}
-              </div>
-
               {selectedId !== "new" && (
                 <section className="admin-panel admin-field-users">
                   <header className="admin-panel-head">
-                    <h3>Field users</h3>
+                    <h3>
+                      Field users <span className="admin-count-badge">{fieldUsers.length}</span>
+                    </h3>
                     <p className="muted">
-                      Sign-in at <code>/m</code> · Edit a row to change details
+                      Sign-in at <code>/m</code> · {fieldUsers.length} user
+                      {fieldUsers.length === 1 ? "" : "s"}
                     </p>
                   </header>
                   <ul className="admin-field-list">
                     {fieldUsers.map((u) => {
                       const editing = fuEditingId === u.id;
                       const edit = fuEdits[u.id] || editFromRow(u);
+                      const initials = (u.displayName || u.username)
+                        .split(/\s+/)
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((p) => p[0]?.toUpperCase() || "")
+                        .join("");
                       return (
                         <li key={u.id} className={editing ? "is-editing" : undefined}>
                           <div className="admin-field-summary">
                             <div className="admin-field-identity">
-                              <strong>{u.username}</strong>
-                              <div className="admin-field-tags">
-                                <span className="admin-pill is-muted">{u.role}</span>
-                                {!u.enabled ? <span className="admin-pill is-off">disabled</span> : null}
-                              </div>
-                              <span className="muted">
-                                {[u.displayName, u.phone, u.email].filter(Boolean).join(" · ") || "No contact set"}
+                              <span className="admin-field-avatar" aria-hidden>
+                                {initials || "?"}
                               </span>
+                              <div className="admin-field-identity-text">
+                                <strong>{u.displayName || u.username}</strong>
+                                <div className="admin-field-tags">
+                                  <span className="admin-pill is-muted">{u.role}</span>
+                                  {!u.enabled ? <span className="admin-pill is-off">disabled</span> : null}
+                                </div>
+                                <span className="muted">
+                                  {[u.username, u.phone, u.email].filter(Boolean).join(" · ") || "No contact set"}
+                                </span>
+                              </div>
                             </div>
                             <div className="admin-field-row-actions">
                               {editing ? (
                                 <button
                                   type="button"
-                                  className="btn-ghost"
+                                  className="btn-secondary"
                                   disabled={busy}
                                   onClick={() => setFuEditingId(null)}
                                 >
@@ -1121,7 +1178,7 @@ export default function AdminConsole() {
                               ) : (
                                 <button
                                   type="button"
-                                  className="btn"
+                                  className="btn-secondary"
                                   disabled={busy}
                                   onClick={() => startEditFieldUser(u)}
                                 >
@@ -1232,8 +1289,8 @@ export default function AdminConsole() {
                     })}
                     {fieldUsers.length === 0 && <li className="muted admin-empty">No field users yet.</li>}
                   </ul>
-                  <details className="admin-inner-fold">
-                    <summary>Add field user</summary>
+                  <details className="admin-inner-fold admin-add-user-fold">
+                    <summary>+ Add field user</summary>
                     <form className="admin-form-grid" onSubmit={(e) => void createFieldUser(e)}>
                       <label>
                         Username
@@ -1303,6 +1360,11 @@ export default function AdminConsole() {
           )}
         </main>
       </div>
+
+      <footer className="admin-footer">
+        <span>Armada M.1 · Tenant editor · Compact dense layout</span>
+        <span>{tenants.length} tenant{tenants.length === 1 ? "" : "s"} loaded</span>
+      </footer>
     </div>
   );
 }
