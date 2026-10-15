@@ -2736,6 +2736,8 @@ html.onesheet-root body {
   border-radius: var(--admin-radius);
   box-shadow: 0 1px 0 rgba(14, 46, 58, 0.04);
   align-content: start;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .admin-sidebar-head {
@@ -2776,6 +2778,7 @@ html.onesheet-root body {
   display: flex;
   gap: 8px;
   align-items: stretch;
+  min-width: 0;
 }
 
 .admin-sidebar-tools .admin-search {
@@ -2785,6 +2788,9 @@ html.onesheet-root body {
 
 .admin-new-btn {
   height: 36px !important;
+  min-width: 0 !important;
+  width: auto !important;
+  flex: 0 0 auto;
   padding: 0 12px !important;
   border-radius: 8px !important;
   font-size: 0.8rem !important;
@@ -3064,6 +3070,15 @@ html.onesheet-root body {
   padding: 12px 16px 16px;
   display: grid;
   gap: 10px;
+}
+
+.admin-entitlements-wide {
+  width: 100%;
+  min-width: 0;
+}
+
+.admin-entitlements-wide .admin-fold-body {
+  gap: 14px;
 }
 .admin-inner-fold {
   border: 1px solid var(--admin-line);

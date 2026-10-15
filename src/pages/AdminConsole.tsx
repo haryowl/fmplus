@@ -301,17 +301,19 @@ function AdminFold({
   title,
   hint,
   defaultOpen = false,
+  className,
   children,
 }: {
   title: string;
   hint?: string;
   defaultOpen?: boolean;
+  className?: string;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <details
-      className="admin-panel admin-fold"
+      className={["admin-panel", "admin-fold", className].filter(Boolean).join(" ")}
       open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
@@ -1017,11 +1019,57 @@ export default function AdminConsole() {
                 </div>
               </AdminFold>
 
+              {selected && (
+                <AdminFold title="Armada Command notifiers" hint="Custom Server URLs">
+                  <div className="admin-notifier-list">
+                    <div className="admin-notifier-row">
+                      <div>
+                        <span className="admin-stat-label">Exception</span>
+                        <code>{selected.notifierUrlTemplate}</code>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() =>
+                          void copyText(selected.notifierUrlTemplate).then(() =>
+                            setNotice("Exception notifier URL copied"),
+                          )
+                        }
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    {selected.notifierUrlMaintenance && (
+                      <div className="admin-notifier-row">
+                        <div>
+                          <span className="admin-stat-label">Maintenance</span>
+                          <code>{selected.notifierUrlMaintenance}</code>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() =>
+                            void copyText(selected.notifierUrlMaintenance || "").then(() =>
+                              setNotice("Maintenance notifier URL copied"),
+                            )
+                          }
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </AdminFold>
+              )}
+              </div>
+              </div>
+
               <AdminFold
                 key={`${selectedId}-entitlements`}
                 title="Entitlements"
                 hint="Embed tabs, features, mobile apps, and Field scan by role"
-                defaultOpen={selectedId === "new"}
+                defaultOpen
+                className="admin-entitlements-wide"
               >
                 <ToggleGrid
                   title="Modules"
@@ -1080,51 +1128,6 @@ export default function AdminConsole() {
                   }
                 />
               </AdminFold>
-
-              {selected && (
-                <AdminFold title="Armada Command notifiers" hint="Custom Server URLs">
-                  <div className="admin-notifier-list">
-                    <div className="admin-notifier-row">
-                      <div>
-                        <span className="admin-stat-label">Exception</span>
-                        <code>{selected.notifierUrlTemplate}</code>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        onClick={() =>
-                          void copyText(selected.notifierUrlTemplate).then(() =>
-                            setNotice("Exception notifier URL copied"),
-                          )
-                        }
-                      >
-                        Copy
-                      </button>
-                    </div>
-                    {selected.notifierUrlMaintenance && (
-                      <div className="admin-notifier-row">
-                        <div>
-                          <span className="admin-stat-label">Maintenance</span>
-                          <code>{selected.notifierUrlMaintenance}</code>
-                        </div>
-                        <button
-                          type="button"
-                          className="btn-secondary"
-                          onClick={() =>
-                            void copyText(selected.notifierUrlMaintenance || "").then(() =>
-                              setNotice("Maintenance notifier URL copied"),
-                            )
-                          }
-                        >
-                          Copy
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </AdminFold>
-              )}
-              </div>
-              </div>
 
               {selectedId !== "new" && (
                 <section className="admin-panel admin-field-users">
