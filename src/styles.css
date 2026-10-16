@@ -6626,6 +6626,21 @@ button.dispatch-pin-chip {
   flex-wrap: wrap;
 }
 
+.dispatch-plan-balance-goals {
+  display: grid;
+  gap: 2px;
+}
+
+.dispatch-plan-balance-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.dispatch-plan-balance-goals .dispatch-plan-check {
+  padding: 2px 0;
+}
+
 .dispatch-plan-check {
   display: flex;
   align-items: flex-start;

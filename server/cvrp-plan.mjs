@@ -309,11 +309,95 @@ function pathKm(route, matrix, depotIdx, roundtrip) {
   return routeDistance(route, matrix, depotIdx, roundtrip).distanceKm;
 }
 
+/** @typedef {"fill"|"stops"|"distance"|"duration"} BalanceGoal */
+export const BALANCE_GOAL_KEYS = /** @type {const} */ (["fill", "stops", "distance", "duration"]);
+
+/**
+ * Normalize plan-day balance goals.
+ * Omitted / invalid → `["fill"]` (legacy fill-only). `[]` → skip relocate.
+ * @param {unknown} raw
+ * @returns {BalanceGoal[]}
+ */
+export function normalizeBalanceGoals(raw) {
+  if (raw == null) return ["fill"];
+  if (!Array.isArray(raw)) return ["fill"];
+  /** @type {BalanceGoal[]} */
+  const out = [];
+  const seen = new Set();
+  for (const g of raw) {
+    const s = String(g || "")
+      .trim()
+      .toLowerCase();
+    if (BALANCE_GOAL_KEYS.includes(/** @type {BalanceGoal} */ (s)) && !seen.has(s)) {
+      seen.add(s);
+      out.push(/** @type {BalanceGoal} */ (s));
+    }
+  }
+  return out;
+}
+
+function routeDurationMin(vs, orders, matrix, depotIdx, orderMatrixIndex, serviceMinutes, fallbackDayStart) {
+  if (!vs.route?.length) return 0;
+  const dayStart = vs.dayStartMin != null ? vs.dayStartMin : fallbackDayStart;
+  const ordersByMatrixIdx = new Map();
+  for (const oi of vs.orderIndexes) {
+    ordersByMatrixIdx.set(orderMatrixIndex(oi), orders[oi]);
+  }
+  const schedule = simulateRouteSchedule({
+    route: vs.route,
+    ordersByMatrixIdx,
+    matrix,
+    depotIdx,
+    dayStartMin: dayStart,
+    serviceMinutes,
+  });
+  if (!schedule.length) return 0;
+  return Math.max(0, schedule[schedule.length - 1].departMin - dayStart);
+}
+
+function balanceRawMetrics(
+  vs,
+  orders,
+  matrix,
+  depotIdx,
+  orderMatrixIndex,
+  roundtrip,
+  serviceMinutes,
+  dayStartMin,
+) {
+  return {
+    fill: utilPct(vs, orders),
+    stops: vs.orderIndexes.length,
+    distance: vs.route?.length ? pathKm(vs.route, matrix, depotIdx, roundtrip) : 0,
+    duration: routeDurationMin(
+      vs,
+      orders,
+      matrix,
+      depotIdx,
+      orderMatrixIndex,
+      serviceMinutes,
+      dayStartMin,
+    ),
+  };
+}
+
+function combinedLoadFromRaw(raw, goals, maxima) {
+  if (!goals.length) return 0;
+  let sum = 0;
+  for (const g of goals) {
+    const max = maxima[g] || 0;
+    sum += max > 0 ? raw[g] / max : 0;
+  }
+  return sum / goals.length;
+}
+
 /**
  * Move orders from overloaded vehicles to lighter ones when capacity allows
  * and total distance does not grow more than 8%.
+ * Load = equal-weight average of enabled normalized metrics (fill / stops / distance / duration).
+ * @returns {number} move count
  */
-function balanceRelocate(
+export function balanceRelocate(
   vehicleStates,
   orders,
   matrix,
@@ -322,22 +406,68 @@ function balanceRelocate(
   orderMatrixIndex,
   opts = {},
 ) {
+  const goals = normalizeBalanceGoals(
+    opts.balanceGoals === undefined ? ["fill"] : opts.balanceGoals,
+  );
+  if (!goals.length) return 0;
+
   const twMode = opts.twMode || "soft";
   const dayStartMin = opts.dayStartMin ?? DEFAULT_DAY_START_MIN;
   const serviceMinutes = opts.serviceMinutes ?? DEFAULT_SERVICE_MIN;
   const maxStops = opts.maxStopsPerVehicle || 0;
   const preferSameZone = Boolean(opts.preferSameZone);
+
+  const metricOf = (vs) =>
+    balanceRawMetrics(
+      vs,
+      orders,
+      matrix,
+      depotIdx,
+      orderMatrixIndex,
+      roundtrip,
+      serviceMinutes,
+      dayStartMin,
+    );
+
+  const snapshotVs = (vs) => ({
+    key: vs.key,
+    volumeCapacityM3: vs.volumeCapacityM3,
+    weightCapacityKg: vs.weightCapacityKg,
+    dayStartMin: vs.dayStartMin,
+    orderIndexes: vs.orderIndexes.slice(),
+    route: vs.route.slice(),
+  });
+
   let moves = 0;
   for (let pass = 0; pass < 24; pass++) {
+    if (vehicleStates.length < 2) break;
     const active = vehicleStates.filter((v) => v.orderIndexes.length > 0);
-    if (active.length < 2) break;
-    const utils = active.map((v) => utilPct(v, orders));
-    const avg = utils.reduce((a, b) => a + b, 0) / utils.length;
-    let improved = false;
+    if (!active.length) break;
+
+    // Normalize by max among routes that already have work; empty stay 0.
+    const maxima = { fill: 0, stops: 0, distance: 0, duration: 0 };
+    for (const v of active) {
+      const raw = metricOf(v);
+      for (const g of goals) {
+        if (raw[g] > maxima[g]) maxima[g] = raw[g];
+      }
+    }
+    const loads = new Map();
+    for (const v of vehicleStates) {
+      loads.set(v.key, combinedLoadFromRaw(metricOf(v), goals, maxima));
+    }
+    // Average across the whole trip fleet (including empties) so a lone busy
+    // vehicle can donate to an empty capable peer.
+    const avg =
+      vehicleStates.reduce((a, v) => a + (loads.get(v.key) || 0), 0) /
+      vehicleStates.length;
+
+    /** @type {null | { score: number, apply: () => void }} */
+    let best = null;
 
     for (const from of active) {
-      const fromUtil = utilPct(from, orders);
-      if (fromUtil < avg + 8) continue;
+      const fromLoad = loads.get(from.key) || 0;
+      if (fromLoad <= avg + 0.08) continue;
       for (let i = 0; i < from.orderIndexes.length; i++) {
         const oi = from.orderIndexes[i];
         if (isPairDrop(orders[oi])) continue;
@@ -356,6 +486,9 @@ function balanceRelocate(
             const toDom = routeDominantZone(to.orderIndexes, orders);
             if (cand && toDom && cand !== toDom) continue;
           }
+          const toLoad = loads.get(to.key) || 0;
+          const gapBefore = Math.abs(fromLoad - toLoad);
+
           if (pairMove) {
             const tentative = to.orderIndexes.concat([oi, dropI]);
             if (
@@ -372,22 +505,38 @@ function balanceRelocate(
             const toNext = to.orderIndexes.slice();
             toNext.splice(ins.pPos, 0, oi);
             toNext.splice(ins.dPos, 0, dropI);
-            const fromVs = { route: fromNext.map((x) => orderMatrixIndex(x)) };
-            const toVs = { route: toNext.map((x) => orderMatrixIndex(x)) };
+            const fromProbe = snapshotVs(from);
+            fromProbe.orderIndexes = fromNext;
+            syncRouteFromOrderIndexes(fromProbe, orderMatrixIndex);
+            const toProbe = snapshotVs(to);
+            toProbe.orderIndexes = toNext;
+            syncPairOrder(toProbe, orders, orderMatrixIndex);
+            syncPairOrder(fromProbe, orders, orderMatrixIndex);
             const after =
-              pathKm(fromVs.route, matrix, depotIdx, roundtrip) +
-              pathKm(toVs.route, matrix, depotIdx, roundtrip);
+              pathKm(fromProbe.route, matrix, depotIdx, roundtrip) +
+              pathKm(toProbe.route, matrix, depotIdx, roundtrip);
             if (after > (fromBefore + toBefore) * 1.08 + 0.5) continue;
-            from.orderIndexes = fromNext;
-            to.orderIndexes = toNext;
-            syncPairOrder(from, orders, orderMatrixIndex);
-            syncPairOrder(to, orders, orderMatrixIndex);
-            refreshResidual(from, orders);
-            refreshResidual(to, orders);
-            moves += 1;
-            improved = true;
-            break;
+            const fromLoadAfter = combinedLoadFromRaw(metricOf(fromProbe), goals, maxima);
+            const toLoadAfter = combinedLoadFromRaw(metricOf(toProbe), goals, maxima);
+            const gapAfter = Math.abs(fromLoadAfter - toLoadAfter);
+            if (gapAfter >= gapBefore - 1e-9) continue;
+            const score = gapBefore - gapAfter;
+            if (!best || score > best.score + 1e-9) {
+              best = {
+                score,
+                apply: () => {
+                  from.orderIndexes = fromNext;
+                  to.orderIndexes = toNext;
+                  syncPairOrder(from, orders, orderMatrixIndex);
+                  syncPairOrder(to, orders, orderMatrixIndex);
+                  refreshResidual(from, orders);
+                  refreshResidual(to, orders);
+                },
+              };
+            }
+            continue;
           }
+
           const toUsed = usedDemand(to, orders);
           if (
             !fits(
@@ -429,25 +578,44 @@ function balanceRelocate(
 
           const fromAfter = pathKm(fromRouteNext, matrix, depotIdx, roundtrip);
           const toAfter = pathKm(toRouteNext, matrix, depotIdx, roundtrip);
-          const before = fromBefore + toBefore;
-          const after = fromAfter + toAfter;
-          if (after > before * 1.08 + 0.5) continue;
+          if (fromAfter + toAfter > (fromBefore + toBefore) * 1.08 + 0.5) continue;
 
-          from.orderIndexes.splice(i, 1);
-          to.orderIndexes.splice(ins.pos, 0, oi);
-          syncRouteFromOrderIndexes(from, orderMatrixIndex);
-          syncRouteFromOrderIndexes(to, orderMatrixIndex);
-          refreshResidual(from, orders);
-          refreshResidual(to, orders);
-          moves += 1;
-          improved = true;
-          break;
+          const fromProbe = snapshotVs(from);
+          fromProbe.orderIndexes = from.orderIndexes.filter((_, idx) => idx !== i);
+          fromProbe.route = fromRouteNext;
+          const toProbe = snapshotVs(to);
+          toProbe.orderIndexes = to.orderIndexes.slice();
+          toProbe.orderIndexes.splice(ins.pos, 0, oi);
+          toProbe.route = toRouteNext;
+
+          const fromLoadAfter = combinedLoadFromRaw(metricOf(fromProbe), goals, maxima);
+          const toLoadAfter = combinedLoadFromRaw(metricOf(toProbe), goals, maxima);
+          const gapAfter = Math.abs(fromLoadAfter - toLoadAfter);
+          if (gapAfter >= gapBefore - 1e-9) continue;
+          const score = gapBefore - gapAfter;
+          if (!best || score > best.score + 1e-9) {
+            const fromOi = oi;
+            const insertPos = ins.pos;
+            const removeAt = i;
+            best = {
+              score,
+              apply: () => {
+                from.orderIndexes.splice(removeAt, 1);
+                to.orderIndexes.splice(insertPos, 0, fromOi);
+                syncRouteFromOrderIndexes(from, orderMatrixIndex);
+                syncRouteFromOrderIndexes(to, orderMatrixIndex);
+                refreshResidual(from, orders);
+                refreshResidual(to, orders);
+              },
+            };
+          }
         }
-        if (improved) break;
       }
-      if (improved) break;
     }
-    if (!improved) break;
+
+    if (!best) break;
+    best.apply();
+    moves += 1;
   }
   return moves;
 }
@@ -534,6 +702,7 @@ export function assignVehiclesToDepots(vehicles, depots, demandByDepot) {
  * @param {boolean} [input.preferSameZone]
  * @param {"off"|"max2"|"unlimited"} [input.multiTripMode]
  * @param {number} [input.reloadMinutes] — depot dwell between trips
+ * @param {BalanceGoal[]|null|undefined} [input.balanceGoals] — omit → fill; [] → skip balance
  */
 export function planCvrp({
   orders,
@@ -550,6 +719,7 @@ export function planCvrp({
   preferSameZone = false,
   multiTripMode = "off",
   reloadMinutes = DEFAULT_RELOAD_MIN,
+  balanceGoals: balanceGoalsIn,
 }) {
   const mode = ["off", "soft", "hard"].includes(twMode) ? twMode : "soft";
   const svcMin = Math.max(0, Math.min(120, Number(serviceMinutes) || DEFAULT_SERVICE_MIN));
@@ -558,6 +728,9 @@ export function planCvrp({
   const reloadMin = Math.max(0, Math.min(120, Number(reloadMinutes) || DEFAULT_RELOAD_MIN));
   const maxStops = Math.max(0, Math.floor(Number(maxStopsPerVehicle) || 0));
   const sameZone = Boolean(preferSameZone);
+  const balanceGoals = normalizeBalanceGoals(
+    balanceGoalsIn === undefined ? undefined : balanceGoalsIn,
+  );
   const tripMode = ["off", "max2", "unlimited"].includes(multiTripMode) ? multiTripMode : "off";
   // Multi-trip needs a depot (return → unload → go again). Open tours stay single-trip.
   const maxTrips =
@@ -796,6 +969,7 @@ export function planCvrp({
         maxStopsPerVehicle: maxStops,
         preferSameZone: sameZone,
         perVehicleDayStart: true,
+        balanceGoals,
       },
     );
 
@@ -929,6 +1103,7 @@ export function planCvrp({
     depotIndex,
     roundtrip: forceRoundtrip,
     balanceMoves,
+    balanceGoals,
     twMode: mode,
     serviceMinutes: svcMin,
     dayStartMin: startMin,

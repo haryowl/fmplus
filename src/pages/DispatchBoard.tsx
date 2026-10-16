@@ -98,6 +98,7 @@ import {
   type DispatchDepotPathMode,
   type DispatchOpenStartMode,
   type DispatchTwMode,
+  type DispatchBalanceGoal,
   type DispatchJob,
   type DispatchCustomer,
   type DispatchGoodsItem,
@@ -228,6 +229,32 @@ function activeWindowPreset(start: string, end: string): string | null {
   const b = normalizeClockHm(end);
   const hit = WINDOW_PRESETS.find((p) => p.start === a && p.end === b);
   return hit?.id || null;
+}
+
+const PLAN_BALANCE_GOALS_KEY = "dispatchPlanBalanceGoals";
+const PLAN_BALANCE_GOAL_OPTIONS: { id: DispatchBalanceGoal; label: string }[] = [
+  { id: "fill", label: "Capacity fill %" },
+  { id: "stops", label: "Stop count" },
+  { id: "distance", label: "Distance (km)" },
+  { id: "duration", label: "Time (drive + service)" },
+];
+
+function loadPlanBalanceGoals(): DispatchBalanceGoal[] {
+  try {
+    const raw = localStorage.getItem(PLAN_BALANCE_GOALS_KEY);
+    if (raw == null) return ["fill"];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return ["fill"];
+    const allowed = new Set(PLAN_BALANCE_GOAL_OPTIONS.map((o) => o.id));
+    const out: DispatchBalanceGoal[] = [];
+    for (const g of parsed) {
+      const id = String(g || "") as DispatchBalanceGoal;
+      if (allowed.has(id) && !out.includes(id)) out.push(id);
+    }
+    return out;
+  } catch {
+    return ["fill"];
+  }
 }
 
 /** Human label for Auto-plan day unassigned[].reason codes. */
@@ -363,6 +390,9 @@ export default function DispatchBoard() {
   const [planServiceMin, setPlanServiceMin] = useState("8");
   const [planDayStart, setPlanDayStart] = useState("08:00");
   const [planDayEnd, setPlanDayEnd] = useState("18:00");
+  const [planBalanceGoals, setPlanBalanceGoals] = useState<DispatchBalanceGoal[]>(() =>
+    loadPlanBalanceGoals(),
+  );
   const [planMaxStops, setPlanMaxStops] = useState("");
   const [planOnlyEmpty, setPlanOnlyEmpty] = useState(true);
   /** off | max2 | unlimited — second+ trips after return to depot. */
@@ -814,6 +844,14 @@ export default function DispatchBoard() {
       /* ignore */
     }
   }, [deskMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PLAN_BALANCE_GOALS_KEY, JSON.stringify(planBalanceGoals));
+    } catch {
+      /* ignore */
+    }
+  }, [planBalanceGoals]);
 
   useEffect(() => {
     if (!multiDesk || !selectedId) return;
@@ -2109,6 +2147,7 @@ export default function DispatchBoard() {
         preferSameZone,
         multiTripMode: depotMode === "open" ? "off" : multiTripMode,
         reloadMinutes: Number(planReloadMin) || 15,
+        balanceGoals: planBalanceGoals,
         jobIds: planJobIds,
         depotIds: depotMode === "multi" ? planDepotIds : undefined,
         ...(multiDesk ? { profile: deskMode } : {}),
@@ -2563,6 +2602,29 @@ export default function DispatchBoard() {
                   }}
                   title="Clock start for planned ETAs (vehicle leaves / first stop clock)"
                 />
+              </div>
+              <div className="field dispatch-plan-balance-goals">
+                <span className="dispatch-plan-balance-label">Balance across vehicles</span>
+                {PLAN_BALANCE_GOAL_OPTIONS.map((opt) => (
+                  <label key={opt.id} className="dispatch-plan-check">
+                    <input
+                      type="checkbox"
+                      checked={planBalanceGoals.includes(opt.id)}
+                      onChange={() => {
+                        setPlanBalanceGoals((prev) =>
+                          prev.includes(opt.id)
+                            ? prev.filter((g) => g !== opt.id)
+                            : [...prev, opt.id],
+                        );
+                      }}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+                <p className="dispatch-search-hint">
+                  Capacity limits always apply. Checked items even out work across vehicles after
+                  packing.
+                </p>
               </div>
               <div className="field">
                 <label htmlFor="dispatch-day-end">Day end</label>
@@ -3248,9 +3310,19 @@ export default function DispatchBoard() {
                 <p className="dispatch-search-hint">
                   {planPreview.routes.length} route(s) · {planPreview.orderCount} orders considered ·{" "}
                   {planPreview.unassigned.length} unassigned
-                  {planPreview.balanceMoves
-                    ? ` · ${planPreview.balanceMoves} balance move(s)`
-                    : ""}
+                  {Array.isArray(planPreview.balanceGoals)
+                    ? ` · Balance: ${
+                        planPreview.balanceGoals.length
+                          ? `${planPreview.balanceGoals.join(" · ")}${
+                              planPreview.balanceMoves
+                                ? ` · ${planPreview.balanceMoves} moves`
+                                : ""
+                            }`
+                          : "off"
+                      }`
+                    : planPreview.balanceMoves
+                      ? ` · ${planPreview.balanceMoves} balance move(s)`
+                      : ""}
                   {planPreview.depots?.length
                     ? ` · ${planPreview.depots.length} depot(s)`
                     : ""}

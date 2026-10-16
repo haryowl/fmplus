@@ -724,6 +724,8 @@ export type DispatchDepotPathMode = "calc" | "map" | "sequence";
 export type DispatchOpenStartMode = "none" | "vehicle";
 export type DispatchTwMode = "off" | "soft" | "hard";
 
+export type DispatchBalanceGoal = "fill" | "stops" | "distance" | "duration";
+
 export type DispatchPlanDayStop = {
   orderId: string | null;
   label: string;
@@ -779,6 +781,8 @@ export type DispatchPlanDayResult = {
   }[] | null;
   roundtrip: boolean;
   balanceMoves?: number;
+  /** Active load-balance goals after packing (omit treated as fill on older servers). */
+  balanceGoals?: DispatchBalanceGoal[];
   twMode?: DispatchTwMode;
   serviceMinutes?: number;
   dayStartMin?: number;
@@ -961,6 +965,11 @@ export async function planDispatchDay(body: {
   multiTripMode?: DispatchMultiTripMode;
   /** Minutes at depot between trips when multi-trip is on. */
   reloadMinutes?: number;
+  /**
+   * Post-pack load balance goals. Omit → server default `["fill"]`.
+   * Pass `[]` to pack only (no inter-route relocate).
+   */
+  balanceGoals?: DispatchBalanceGoal[];
   /** When set, only plan orders/jobs for this desk profile. */
   profile?: DispatchProfileKind;
   routing?: {

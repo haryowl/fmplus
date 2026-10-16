@@ -33,6 +33,7 @@ import { fieldFromRequest } from "./field-auth.mjs";
 import { resolveDbTenant } from "./maintenance-api.mjs";
 import {
   assignVehiclesToDepots,
+  normalizeBalanceGoals,
   partitionOrdersByNearestDepot,
   planCvrp,
 } from "./cvrp-plan.mjs";
@@ -3929,6 +3930,11 @@ export async function handleDispatchRequest(req, res) {
       // Multi-trip only for depot / multi (needs return-to-reload).
       if (depotMode === "open") multiTripMode = "off";
       const reloadMinutes = Math.max(0, Math.min(120, Number(body.reloadMinutes) || 15));
+      const balanceGoals = normalizeBalanceGoals(
+        Object.prototype.hasOwnProperty.call(body, "balanceGoals")
+          ? body.balanceGoals
+          : undefined,
+      );
       let dayStartMin = 8 * 60;
       if (body.dayStart) {
         const parsed = String(body.dayStart).trim();
@@ -4249,6 +4255,7 @@ export async function handleDispatchRequest(req, res) {
         preferSameZone,
         multiTripMode,
         reloadMinutes,
+        balanceGoals,
       };
 
       /** @type {any[]} */
@@ -4529,6 +4536,7 @@ export async function handleDispatchRequest(req, res) {
         depots: previewDepots,
         roundtrip: planRoundtrip,
         balanceMoves: planBalanceMoves,
+        balanceGoals,
         twMode,
         serviceMinutes,
         dayStartMin,
