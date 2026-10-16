@@ -64,6 +64,15 @@ type TrackerDeviceRow = {
   lastFix?: { lat: number; lon: number; recordedAt: string | null; speed: number | null } | null;
 };
 
+type UnassignedTrackerRow = {
+  imei: string;
+  protocol: string;
+  lastRemote: string;
+  hitCount: number;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+};
+
 type FieldUserRow = {
   id: string;
   username: string;
@@ -390,6 +399,7 @@ export default function AdminConsole() {
   const [fuEdits, setFuEdits] = useState<Record<string, FieldUserEdit>>({});
   const [fuEditingId, setFuEditingId] = useState<string | null>(null);
   const [trackerDevices, setTrackerDevices] = useState<TrackerDeviceRow[]>([]);
+  const [unassignedTrackers, setUnassignedTrackers] = useState<UnassignedTrackerRow[]>([]);
   const [tdImei, setTdImei] = useState("");
   const [tdLabel, setTdLabel] = useState("");
   const [tdProtocol, setTdProtocol] = useState("teltonika");
@@ -425,6 +435,13 @@ export default function AdminConsole() {
     setTrackerDevices(data.devices);
   }, []);
 
+  const loadUnassignedTrackers = useCallback(async () => {
+    const data = await api<{ unassigned: UnassignedTrackerRow[] }>(
+      `/api/admin/tracker-unassigned?limit=100`,
+    );
+    setUnassignedTrackers(data.unassigned);
+  }, []);
+
   useEffect(() => {
     document.title = "Admin · ARMADA M.1";
     void refreshMe().then((ok) => {
@@ -443,7 +460,8 @@ export default function AdminConsole() {
     }
     void loadFieldUsers(selectedId).catch((err: Error) => setError(err.message));
     void loadTrackerDevices(selectedId).catch((err: Error) => setError(err.message));
-  }, [selectedId, loadFieldUsers, loadTrackerDevices]);
+    void loadUnassignedTrackers().catch((err: Error) => setError(err.message));
+  }, [selectedId, loadFieldUsers, loadTrackerDevices, loadUnassignedTrackers]);
 
   const filteredTenants = useMemo(() => {
     const q = tenantQuery.trim().toLowerCase();
@@ -758,6 +776,50 @@ export default function AdminConsole() {
       await loadTrackerDevices(selectedId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function claimUnassignedTracker(row: UnassignedTrackerRow) {
+    if (!selectedId || selectedId === "new") return;
+    setBusy(true);
+    setError("");
+    setLastDeviceToken("");
+    try {
+      const created = await api<{ device: TrackerDeviceRow }>(
+        `/api/admin/tenants/${selectedId}/tracker-devices/claim-unassigned`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            imei: row.imei,
+            protocol: row.protocol,
+            label: "",
+          }),
+        },
+      );
+      setNotice(`Claimed ${created.device.imei} into this tenant`);
+      if (created.device.authToken) setLastDeviceToken(created.device.authToken);
+      await Promise.all([loadTrackerDevices(selectedId), loadUnassignedTrackers()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Claim failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function dismissUnassignedTracker(imei: string) {
+    if (!window.confirm(`Dismiss unknown IMEI “${imei}”?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/admin/tracker-unassigned/${encodeURIComponent(imei)}`, {
+        method: "DELETE",
+      });
+      setNotice(`Dismissed ${imei}`);
+      await loadUnassignedTrackers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Dismiss failed");
     } finally {
       setBusy(false);
     }
@@ -1572,6 +1634,59 @@ export default function AdminConsole() {
                         Copy
                       </button>
                     </p>
+                  ) : null}
+                  {unassignedTrackers.length > 0 ? (
+                    <div className="admin-unassigned-block">
+                      <h4>
+                        Unassigned IMEIs{" "}
+                        <span className="admin-count-badge">{unassignedTrackers.length}</span>
+                      </h4>
+                      <p className="muted">
+                        Seen by the gateway but not registered — claim into this tenant or dismiss.
+                      </p>
+                      <ul className="admin-field-list">
+                        {unassignedTrackers.map((u) => (
+                          <li key={u.imei}>
+                            <div className="admin-field-summary">
+                              <div className="admin-field-identity">
+                                <div className="admin-field-identity-text">
+                                  <strong>{u.imei}</strong>
+                                  <div className="admin-field-tags">
+                                    <span className="admin-pill is-muted">{u.protocol}</span>
+                                    <span className="admin-pill is-muted">{u.hitCount} hits</span>
+                                  </div>
+                                  <span className="muted">
+                                    {u.lastRemote ? `from ${u.lastRemote} · ` : ""}
+                                    last{" "}
+                                    {u.lastSeenAt
+                                      ? new Date(u.lastSeenAt).toLocaleString()
+                                      : "—"}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="admin-field-row-actions">
+                                <button
+                                  type="button"
+                                  className="btn-secondary"
+                                  disabled={busy}
+                                  onClick={() => void claimUnassignedTracker(u)}
+                                >
+                                  Claim
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-ghost"
+                                  disabled={busy}
+                                  onClick={() => void dismissUnassignedTracker(u.imei)}
+                                >
+                                  Dismiss
+                                </button>
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ) : null}
                   <ul className="admin-field-list">
                     {trackerDevices.map((d) => (

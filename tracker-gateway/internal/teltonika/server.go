@@ -62,7 +62,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 	}
 	imei := string(imeiBuf)
 
-	device := deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String())
+	device := deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "teltonika")
 	if device == nil {
 		_, _ = conn.Write([]byte{0x00})
 		return

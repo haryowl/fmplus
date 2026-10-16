@@ -56,6 +56,7 @@ import {
   fetchDispatchRunNumbers,
   fetchDispatchOrderTemplates,
   fetchArmadaDayTracks,
+  fetchDeviceDayTracks,
   fetchDispatchLive,
   fetchPhoneTrailForDate,
   fetchStopPhotos,
@@ -1046,18 +1047,21 @@ export default function DispatchBoard() {
     }
 
     if (selected.armadaUserId != null) {
+      const day = { userId: selected.armadaUserId, date };
       tasks.push(
-        fetchArmadaDayTracks([{ userId: selected.armadaUserId, date }], ac.signal)
-          .then((map) => {
-            if (cancelled) return;
-            const timed = map.get(`${selected.armadaUserId}|${date}`) || [];
-            setJobArmadaTrack(
-              clipTimedTrackToWindow(timed, selected.startedAt, selected.completedAt),
-            );
-          })
-          .catch(() => {
-            if (!cancelled) setJobArmadaTrack([]);
-          }),
+        Promise.all([
+          fetchArmadaDayTracks([day], ac.signal).catch(() => new Map()),
+          fetchDeviceDayTracks([day], ac.signal).catch(() => new Map()),
+        ]).then(([armadaMap, deviceMap]) => {
+          if (cancelled) return;
+          const key = `${selected.armadaUserId}|${date}`;
+          const deviceTimed = deviceMap.get(key) || [];
+          const armadaTimed = armadaMap.get(key) || [];
+          const timed = deviceTimed.length >= 2 ? deviceTimed : armadaTimed;
+          setJobArmadaTrack(
+            clipTimedTrackToWindow(timed, selected.startedAt, selected.completedAt),
+          );
+        }),
       );
     } else {
       setJobArmadaTrack([]);

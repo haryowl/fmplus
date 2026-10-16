@@ -27,9 +27,12 @@ import { mergeDeskPrivileges, normalizeDeskPrivilegesInput } from "./desk-privil
 import { initTenantVault, isTenantKey } from "./tenants.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 import {
+  claimUnassignedTrackerImei,
   createTrackerDevice,
   deleteTrackerDevice,
+  dismissUnassignedTrackerImei,
   listTrackerDevices,
+  listUnassignedTrackerImeis,
   normalizeTelematicsSource,
   updateTrackerDevice,
 } from "./tracker-devices.mjs";
@@ -306,6 +309,59 @@ export async function handleAdminRequest(req, res) {
       await writeAudit(admin.id, "tenant.create", { key, appId });
       await initTenantVault();
       json(res, 201, { tenant: publicTenantRow(inserted.rows[0]) });
+      return true;
+    }
+
+    if (path === "/api/admin/tracker-unassigned") {
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "GET") {
+        const lim = Number(url.searchParams.get("limit") || 100);
+        json(res, 200, { unassigned: await listUnassignedTrackerImeis(lim) });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const unassignedOneMatch = /^\/api\/admin\/tracker-unassigned\/([^/]+)$/i.exec(path);
+    if (unassignedOneMatch) {
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      const imei = decodeURIComponent(unassignedOneMatch[1]);
+      if (req.method === "DELETE") {
+        await dismissUnassignedTrackerImei(imei);
+        await writeAudit(admin.id, "tracker_unassigned.dismiss", { imei });
+        json(res, 200, { ok: true });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const claimUnassignedMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-devices\/claim-unassigned$/i.exec(path);
+    if (claimUnassignedMatch) {
+      const tenantId = claimUnassignedMatch[1];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      const tenantOk = await dbQuery(`SELECT id FROM tenants WHERE id = $1`, [tenantId]);
+      if (!tenantOk.rows[0]) {
+        json(res, 404, { error: "Tenant not found" });
+        return true;
+      }
+      if (req.method === "POST") {
+        const body = await readJson(req);
+        const device = await claimUnassignedTrackerImei(tenantId, body);
+        await writeAudit(admin.id, "tracker_unassigned.claim", {
+          tenantId,
+          deviceId: device.id,
+          imei: device.imei,
+        });
+        json(res, 201, { device });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
       return true;
     }
 

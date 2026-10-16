@@ -197,9 +197,9 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sess *sess
 		return reply(conn, sess, 0x8100, buildRegisterAck(seq, 0, "FM1"))
 	case 0x0102: // auth
 		remote := conn.RemoteAddr().String()
-		sess.device = deviceauth.FindByIMEI(ctx, st, phone, remote)
+		sess.device = deviceauth.FindByIMEI(ctx, st, phone, remote, "jt808")
 		if sess.device == nil {
-			sess.device = deviceauth.FindByIMEI(ctx, st, bcdPhone(msg[4:10]), remote)
+			sess.device = deviceauth.FindByIMEI(ctx, st, bcdPhone(msg[4:10]), remote, "jt808")
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0002: // heartbeat
@@ -208,7 +208,7 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sess *sess
 		fix, ok := parseLocation(body)
 		if ok {
 			if sess.device == nil {
-				sess.device = deviceauth.FindByIMEI(ctx, st, phone, conn.RemoteAddr().String())
+				sess.device = deviceauth.FindByIMEI(ctx, st, phone, conn.RemoteAddr().String(), "jt808")
 			}
 			if sess.device != nil {
 				fix.SourceProtocol = "jt808"

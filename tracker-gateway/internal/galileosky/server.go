@@ -73,11 +73,11 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 		tags := parseTags(payload)
 		if v, ok := tags[0x03]; ok && len(v) >= 15 {
 			imei = string(v[:15])
-			device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String())
+			device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "galileosky")
 		}
 		fix, hasFix := fixFromTags(tags)
 		if hasFix && device == nil && imei != "" {
-			device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String())
+			device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "galileosky")
 		}
 		if hasFix && device != nil {
 			fix.SourceProtocol = "galileosky"

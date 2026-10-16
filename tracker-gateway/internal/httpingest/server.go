@@ -45,7 +45,7 @@ func Serve(addr string, st *store.Store) error {
 		}
 		if device == nil {
 			if imei, _ := payload["imei"].(string); imei != "" {
-				device = deviceauth.FindByIMEI(ctx, st, strings.TrimSpace(imei), r.RemoteAddr)
+				device = deviceauth.FindByIMEI(ctx, st, strings.TrimSpace(imei), r.RemoteAddr, "json")
 			}
 		}
 		if device == nil {

@@ -75,6 +75,26 @@ func (s *Store) FindByIMEI(ctx context.Context, imei string) (*Device, error) {
 	return &d, nil
 }
 
+// TouchUnassigned records an unknown IMEI for Admin claim (upsert hit count).
+func (s *Store) TouchUnassigned(ctx context.Context, imei, protocol, remote string) {
+	if imei == "" {
+		return
+	}
+	if protocol == "" {
+		protocol = "other"
+	}
+	_, _ = s.pool.Exec(ctx, `
+		INSERT INTO tracker_unassigned (imei, protocol, last_remote, hit_count, first_seen_at, last_seen_at)
+		VALUES ($1, $2, $3, 1, now(), now())
+		ON CONFLICT (imei) DO UPDATE SET
+			protocol = EXCLUDED.protocol,
+			last_remote = EXCLUDED.last_remote,
+			hit_count = tracker_unassigned.hit_count + 1,
+			last_seen_at = now()`,
+		imei, protocol, remote,
+	)
+}
+
 func (s *Store) FindByTokenHash(ctx context.Context, tokenHash string) (*Device, error) {
 	row := s.pool.QueryRow(ctx, `
 		SELECT d.id::text, d.tenant_id::text, d.imei, d.protocol, d.armada_user_id,

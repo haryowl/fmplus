@@ -72,7 +72,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 			if imei == "" {
 				continue
 			}
-			device := deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String())
+			device := deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "ruptela")
 			if device == nil {
 				_ = writeAck(conn, 0)
 				continue
@@ -87,7 +87,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 		case 7: // dynamic records / extended — treat similarly when possible
 			records, imei := parseRecords(data[1:])
 			if imei != "" {
-				if device := deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String()); device != nil {
+				if device := deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "ruptela"); device != nil {
 					for _, fix := range records {
 						fix.SourceProtocol = "ruptela"
 						_ = deviceauth.Ingest(ctx, st, device, fix)

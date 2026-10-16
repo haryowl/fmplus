@@ -240,6 +240,106 @@ export async function deleteTrackerDevice(tenantId, deviceId) {
   return true;
 }
 
+function publicUnassignedRow(row) {
+  if (!row) return null;
+  return {
+    imei: row.imei,
+    protocol: row.protocol || "other",
+    lastRemote: row.last_remote || "",
+    hitCount: Number(row.hit_count) || 1,
+    firstSeenAt:
+      row.first_seen_at instanceof Date
+        ? row.first_seen_at.toISOString()
+        : row.first_seen_at
+          ? String(row.first_seen_at)
+          : null,
+    lastSeenAt:
+      row.last_seen_at instanceof Date
+        ? row.last_seen_at.toISOString()
+        : row.last_seen_at
+          ? String(row.last_seen_at)
+          : null,
+  };
+}
+
+/** Unknown IMEIs seen by the gateway, newest first. */
+export async function listUnassignedTrackerImeis(limit = 100) {
+  const lim = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const rows = await dbQuery(
+    `SELECT imei, protocol, last_remote, hit_count, first_seen_at, last_seen_at
+     FROM tracker_unassigned
+     ORDER BY last_seen_at DESC
+     LIMIT $1`,
+    [lim],
+  );
+  return rows.rows.map(publicUnassignedRow);
+}
+
+/** Drop a quarantined IMEI without claiming it. */
+export async function dismissUnassignedTrackerImei(imei) {
+  const id = normalizeImei(imei);
+  if (!id) {
+    const err = new Error("IMEI is required");
+    err.status = 400;
+    throw err;
+  }
+  const deleted = await dbQuery(
+    `DELETE FROM tracker_unassigned WHERE imei = $1 RETURNING imei`,
+    [id],
+  );
+  if (!deleted.rows[0]) {
+    const err = new Error("Unassigned IMEI not found");
+    err.status = 404;
+    throw err;
+  }
+  return true;
+}
+
+/**
+ * Claim a quarantined IMEI into a tenant device registry, then remove from quarantine.
+ * @param {string} tenantId
+ * @param {{ imei: string, label?: string, protocol?: string, armadaUserId?: number|null, authToken?: string }} body
+ */
+export async function claimUnassignedTrackerImei(tenantId, body) {
+  const imei = normalizeImei(body?.imei);
+  if (imei.length < 5) {
+    const err = new Error("IMEI / unique id is required (min 5 chars)");
+    err.status = 400;
+    throw err;
+  }
+  const found = await dbQuery(
+    `SELECT imei, protocol FROM tracker_unassigned WHERE imei = $1`,
+    [imei],
+  );
+  const row = found.rows[0];
+  if (!row) {
+    const err = new Error("Unassigned IMEI not found");
+    err.status = 404;
+    throw err;
+  }
+  const existing = await dbQuery(
+    `SELECT id FROM tracker_devices WHERE imei = $1 LIMIT 1`,
+    [imei],
+  );
+  if (existing.rows[0]) {
+    await dbQuery(`DELETE FROM tracker_unassigned WHERE imei = $1`, [imei]);
+    const err = new Error("IMEI already registered on another device");
+    err.status = 409;
+    throw err;
+  }
+  const device = await createTrackerDevice(tenantId, {
+    imei,
+    label: body?.label,
+    protocol: body?.protocol || row.protocol || "other",
+    armadaUserId: body?.armadaUserId,
+    authToken: body?.authToken,
+    uniqueId: body?.uniqueId,
+    enabled: body?.enabled !== false,
+  });
+  await dbQuery(`DELETE FROM tracker_unassigned WHERE imei = $1`, [imei]);
+  return device;
+}
+
 export async function findDeviceByImei(imei) {
   const id = normalizeImei(imei);
   if (!id) return null;

@@ -73,7 +73,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 				if imei == "" {
 					continue
 				}
-				device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String())
+				device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "concox")
 				if device == nil {
 					continue
 				}
@@ -82,7 +82,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 				_ = writeReply(conn, 0x13, serial, nil)
 			case 0x12, 0x22: // GPS location
 				if device == nil && imei != "" {
-					device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String())
+					device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "concox")
 				}
 				if device != nil {
 					if fix, ok := parseGPS(info, proto); ok {

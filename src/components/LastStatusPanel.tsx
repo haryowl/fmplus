@@ -18,6 +18,10 @@ import {
   type MaintStatusCell,
 } from "../lib/maintenance";
 import { fullHref, maintenanceHref } from "../lib/routing";
+import {
+  fetchTrackerLastStatus,
+  mergeArmadaRowsWithDeviceFixes,
+} from "../lib/trackerDevices";
 
 type Props = {
   groupId: string;
@@ -79,12 +83,27 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
     setLoading(true);
     setError("");
     const gid = Number(groupId);
-    void fetchUsersStatus({
-      groupId: Number.isFinite(gid) && gid > 0 ? gid : undefined,
-      signal: ac.signal,
-    })
-      .then((next) => {
-        setRows(next);
+    void Promise.all([
+      fetchUsersStatus({
+        groupId: Number.isFinite(gid) && gid > 0 ? gid : undefined,
+        signal: ac.signal,
+      }).catch((err: Error) => {
+        if (err.name === "AbortError") throw err;
+        return [] as LastStatusRow[];
+      }),
+      fetchTrackerLastStatus(ac.signal).catch((err: Error) => {
+        if (err.name === "AbortError") throw err;
+        return { fixes: [], telematicsSource: "both" as const };
+      }),
+    ])
+      .then(([armadaRows, deviceStatus]) => {
+        setRows(
+          mergeArmadaRowsWithDeviceFixes(
+            armadaRows,
+            deviceStatus.fixes,
+            deviceStatus.telematicsSource,
+          ),
+        );
       })
       .catch((err: Error) => {
         if (err.name !== "AbortError") setError(err.message || "Last status unavailable");

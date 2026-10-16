@@ -19,6 +19,8 @@ Ops: `GET /healthz` and `GET /metrics` on the HTTP port (connection counts, fixe
 
 Devices must be registered in **Admin → Tracker devices** with matching **protocol** and **IMEI**. HTTP ingest uses the device Bearer token; TCP protocols authenticate by IMEI.
 
+Unknown IMEIs are rate-limited, written to `tracker_unassigned`, and shown in Admin for **Claim** into a tenant (or Dismiss).
+
 ## Run
 
 ```bash
