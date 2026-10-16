@@ -1338,6 +1338,67 @@ export async function saveDispatchFareRates(body: {
   return { rate: data.rate, rates: data.rates || [] };
 }
 
+/** Field may append or confirm scans, but must not drop/change desk-assigned planned cargo. */
+export const FIELD_ASSIGNED_CARGO_ERROR =
+  "Assigned cargo cannot be removed or changed. Use Delivered qty to under-deliver.";
+
+/**
+ * Every existing planned line must still appear in incoming with the same
+ * catalog/name/qty/unit. Extra lines (Field add) are allowed. Scan metadata may differ.
+ */
+export function fieldCargoPreservesAssigned(
+  existing: DispatchOrderLine[] | undefined,
+  incoming: DispatchOrderLine[] | undefined,
+): { ok: true } | { ok: false; error: string } {
+  const pool = (incoming || []).map((line) => ({ line, used: false }));
+  for (const ex of existing || []) {
+    const exId = String(ex.id || "").trim();
+    const exCat = String(ex.catalogItemId || "").trim();
+    const exName = String(ex.name || "")
+      .trim()
+      .toLowerCase();
+    const exQty = Number(ex.qty);
+    const exUnit = String(ex.unit || "pcs");
+
+    let hit = -1;
+    if (exId) {
+      hit = pool.findIndex((p) => !p.used && String(p.line.id || "").trim() === exId);
+    }
+    if (hit < 0) {
+      hit = pool.findIndex((p) => {
+        if (p.used) return false;
+        const inc = p.line;
+        const incCat = String(inc.catalogItemId || "").trim();
+        const incName = String(inc.name || "")
+          .trim()
+          .toLowerCase();
+        const incQty = Number(inc.qty);
+        const incUnit = String(inc.unit || "pcs");
+        if (incQty !== exQty || incUnit !== exUnit || exName !== incName) return false;
+        return exCat === incCat;
+      });
+    }
+    if (hit < 0) {
+      return { ok: false, error: FIELD_ASSIGNED_CARGO_ERROR };
+    }
+    const inc = pool[hit].line;
+    const incCat = String(inc.catalogItemId || "").trim();
+    const incName = String(inc.name || "")
+      .trim()
+      .toLowerCase();
+    if (
+      Number(inc.qty) !== exQty ||
+      String(inc.unit || "pcs") !== exUnit ||
+      exCat !== incCat ||
+      exName !== incName
+    ) {
+      return { ok: false, error: FIELD_ASSIGNED_CARGO_ERROR };
+    }
+    pool[hit].used = true;
+  }
+  return { ok: true };
+}
+
 export function formatCargoSummary(lines: DispatchOrderLine[] | undefined, maxItems = 3): string {
   const list = (lines || []).filter((l) => l && String(l.name || "").trim());
   if (!list.length) return "";

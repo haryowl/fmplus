@@ -39,6 +39,8 @@ export type CatalogScanOpts = {
   codeFormat?: string;
   onlyKnownSerial?: boolean;
   confirmMode?: boolean;
+  /** Do not bump qty on lines that already have a server id (Field assigned cargo). */
+  lockAssigned?: boolean;
 };
 
 export type ScanApplyResult<T> = { lines: T; error?: string };
@@ -286,6 +288,13 @@ export function applyGoodsScanResult(
   if (!opts?.serialMode) {
     const idx = lines.findIndex((l) => l.catalogItemId === item.id);
     if (idx >= 0) {
+      if (opts?.lockAssigned && lines[idx]?.id) {
+        return {
+          lines: lines.map((line, i) =>
+            i === idx ? { ...line, scannedCode, scannedAt: now } : line,
+          ),
+        };
+      }
       return {
         lines: lines.map((line, i) => {
           if (i !== idx) return line;

@@ -28,6 +28,64 @@ export function parseGoodsUnit(v) {
   return GOODS_UNITS.includes(s) ? s : "pcs";
 }
 
+/** Field may append or confirm scans, but must not drop/change desk-assigned planned cargo. */
+export const FIELD_ASSIGNED_CARGO_ERROR =
+  "Assigned cargo cannot be removed or changed. Use Delivered qty to under-deliver.";
+
+/**
+ * Every existing planned line must still appear in incoming with the same
+ * catalog/name/qty/unit. Extra lines (Field add) are allowed. Scan metadata may differ.
+ */
+export function fieldCargoPreservesAssigned(existing, incoming) {
+  const pool = (Array.isArray(incoming) ? incoming : []).map((line) => ({ line, used: false }));
+  for (const ex of existing || []) {
+    const exId = String(ex.id || "").trim();
+    const exCat = String(ex.catalogItemId || ex.catalog_item_id || "").trim();
+    const exName = String(ex.name || "")
+      .trim()
+      .toLowerCase();
+    const exQty = Number(ex.qty);
+    const exUnit = parseGoodsUnit(ex.unit);
+
+    let hit = -1;
+    if (exId) {
+      hit = pool.findIndex((p) => !p.used && String(p.line.id || "").trim() === exId);
+    }
+    if (hit < 0) {
+      hit = pool.findIndex((p) => {
+        if (p.used) return false;
+        const inc = p.line;
+        const incCat = String(inc.catalogItemId || inc.catalog_item_id || "").trim();
+        const incName = String(inc.name || "")
+          .trim()
+          .toLowerCase();
+        const incQty = Number(inc.qty);
+        const incUnit = parseGoodsUnit(inc.unit);
+        if (incQty !== exQty || incUnit !== exUnit || exName !== incName) return false;
+        return exCat === incCat;
+      });
+    }
+    if (hit < 0) {
+      return { ok: false, error: FIELD_ASSIGNED_CARGO_ERROR };
+    }
+    const inc = pool[hit].line;
+    const incCat = String(inc.catalogItemId || inc.catalog_item_id || "").trim();
+    const incName = String(inc.name || "")
+      .trim()
+      .toLowerCase();
+    if (
+      Number(inc.qty) !== exQty ||
+      parseGoodsUnit(inc.unit) !== exUnit ||
+      exCat !== incCat ||
+      exName !== incName
+    ) {
+      return { ok: false, error: FIELD_ASSIGNED_CARGO_ERROR };
+    }
+    pool[hit].used = true;
+  }
+  return { ok: true };
+}
+
 export function goodsUnitIsPackable(unit) {
   return PACKABLE_GOODS_UNITS.includes(parseGoodsUnit(unit));
 }

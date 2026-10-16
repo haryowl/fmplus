@@ -98,4 +98,39 @@ describe("offline field snapshot", () => {
     const hit = offlineCatalogScan(saved, "am1:v1:goods:OIL-01", "dispatch_cargo");
     expect(hit.json).toMatchObject({ match: "goods", item: { sku: "OIL-01" } });
   });
+
+  it("rejects offline cargo saves that drop assigned lines", () => {
+    const saved = rememberOfflineGet(
+      emptyOfflineSnap(),
+      "/api/field/dispatch/jobs?date=2026-10-02",
+      {
+        jobs: [
+          {
+            id: "job-1",
+            status: "arrived",
+            stops: [
+              {
+                id: "stop-1",
+                status: "arrived",
+                orderId: "order-1",
+                lines: [{ id: "l1", catalogItemId: "g1", name: "blokA", qty: 1, unit: "pcs" }],
+              },
+            ],
+          },
+        ],
+        serviceDate: "2026-10-02",
+      },
+      "2026-10-02T01:00:00.000Z",
+    );
+    const removed = applyOfflineWrite(
+      saved,
+      "PUT",
+      "/api/field/dispatch/orders/order-1/lines",
+      { lines: [] },
+      "2026-10-02T02:00:00.000Z",
+    );
+    expect(removed).toMatchObject({
+      error: "Assigned cargo cannot be removed or changed. Use Delivered qty to under-deliver.",
+    });
+  });
 });

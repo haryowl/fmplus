@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  FIELD_ASSIGNED_CARGO_ERROR,
+  fieldCargoPreservesAssigned,
   formatCargoSummary,
   formatPackHint,
   goodsSkuFromCsvRow,
@@ -82,6 +84,36 @@ describe("dispatch goods helpers", () => {
       ]),
     ).toBe("3 pcs Oil · 2 box Filter · 1 bag Rice +1");
     expect(formatCargoSummary([])).toBe("");
+  });
+
+  it("locks Field from removing or changing assigned cargo", () => {
+    const assigned = [
+      { id: "l1", catalogItemId: "g1", name: "blokA", qty: 1, unit: "pcs" },
+      { id: "l2", catalogItemId: "g2", name: "Oil", qty: 2, unit: "L" },
+    ];
+    expect(fieldCargoPreservesAssigned(assigned, assigned)).toEqual({ ok: true });
+    expect(
+      fieldCargoPreservesAssigned(assigned, [
+        ...assigned,
+        { catalogItemId: "g3", name: "Extra", qty: 1, unit: "pcs" },
+      ]),
+    ).toEqual({ ok: true });
+    expect(fieldCargoPreservesAssigned(assigned, [assigned[0]])).toEqual({
+      ok: false,
+      error: FIELD_ASSIGNED_CARGO_ERROR,
+    });
+    expect(
+      fieldCargoPreservesAssigned(assigned, [
+        { id: "l1", catalogItemId: "g1", name: "blokA", qty: 1, unit: "pcs" },
+        { id: "l2", catalogItemId: "g2", name: "Oil", qty: 1, unit: "L" },
+      ]),
+    ).toEqual({ ok: false, error: FIELD_ASSIGNED_CARGO_ERROR });
+    expect(
+      fieldCargoPreservesAssigned(assigned, [
+        { id: "l1", catalogItemId: "g1", name: "blokA", qty: 1, unit: "pcs", scannedAt: "2026-10-16T01:00:00Z" },
+        { id: "l2", catalogItemId: "g2", name: "Oil", qty: 2, unit: "L" },
+      ]),
+    ).toEqual({ ok: true });
   });
 
   it("parses optional order-CSV goods cells", () => {

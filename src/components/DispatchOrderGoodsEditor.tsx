@@ -42,6 +42,8 @@ type Props = {
   scanKnownSerialOnly?: boolean;
   scanConfirm?: boolean;
   scanManualAdd?: boolean;
+  /** When true, lines that already have a server `id` cannot be removed or re-planned. */
+  lockAssigned?: boolean;
   onScanError?: (message: string) => void;
   onScanInfo?: (message: string) => void;
 };
@@ -74,6 +76,7 @@ export function DispatchOrderGoodsEditor({
   scanKnownSerialOnly = false,
   scanConfirm = false,
   scanManualAdd = true,
+  lockAssigned = false,
   onScanError,
   onScanInfo,
 }: Props) {
@@ -115,6 +118,7 @@ export function DispatchOrderGoodsEditor({
       codeFormat: extra?.codeFormat,
       onlyKnownSerial: scanKnownSerialOnly,
       confirmMode: scanConfirm,
+      lockAssigned,
     });
     if (result.error) {
       onScanError?.(result.error);
@@ -277,12 +281,15 @@ export function DispatchOrderGoodsEditor({
         </p>
       ) : (
         <ul className="dispatch-goods-lines">
-          {lines.map((line, i) => (
-            <li key={`${line.catalogItemId || "f"}-${i}`}>
+          {lines.map((line, i) => {
+            const assignedLocked = lockAssigned && Boolean(line.id);
+            const lineDisabled = Boolean(disabled || assignedLocked);
+            return (
+            <li key={`${line.id || line.catalogItemId || "f"}-${i}`}>
               <input
                 aria-label="Item name"
                 value={line.name}
-                disabled={disabled}
+                disabled={lineDisabled}
                 onChange={(e) => patchLine(i, { name: e.target.value, catalogItemId: null })}
                 placeholder="Item"
                 size={1}
@@ -291,7 +298,7 @@ export function DispatchOrderGoodsEditor({
                 aria-label="Quantity"
                 inputMode="decimal"
                 value={String(line.qty)}
-                disabled={disabled}
+                disabled={lineDisabled}
                 onChange={(e) => patchLine(i, { qty: Number(e.target.value) || 0 })}
                 size={1}
               />
@@ -304,7 +311,7 @@ export function DispatchOrderGoodsEditor({
                 aria-label="Unit (qty)"
                 title="Unit (qty)"
                 value={line.unit}
-                disabled={disabled}
+                disabled={lineDisabled}
                 onChange={(e) => patchLine(i, { unit: e.target.value as DispatchGoodsUnit })}
               >
                 {DISPATCH_GOODS_UNITS.map((u) => (
@@ -318,7 +325,7 @@ export function DispatchOrderGoodsEditor({
                 title="Volume each (m³)"
                 inputMode="decimal"
                 value={line.volumeM3Each == null ? "" : String(line.volumeM3Each)}
-                disabled={disabled}
+                disabled={lineDisabled}
                 placeholder="m³/unit"
                 onChange={(e) =>
                   patchLine(i, {
@@ -332,7 +339,7 @@ export function DispatchOrderGoodsEditor({
                 title="Weight each (kg)"
                 inputMode="decimal"
                 value={line.weightKgEach == null ? "" : String(line.weightKgEach)}
-                disabled={disabled}
+                disabled={lineDisabled}
                 placeholder="kg/unit"
                 onChange={(e) =>
                   patchLine(i, {
@@ -361,7 +368,7 @@ export function DispatchOrderGoodsEditor({
                   />
                 </>
               ) : null}
-              {!disabled ? (
+              {!disabled && !assignedLocked ? (
                 <button
                   type="button"
                   className="btn-ghost btn-compact"
@@ -371,7 +378,8 @@ export function DispatchOrderGoodsEditor({
                 </button>
               ) : null}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
 

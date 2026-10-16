@@ -871,10 +871,10 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
               <h3>Cargo</h3>
               <p className="muted">
                 {scan?.cargoConfirm
-                  ? "Scan expected items. Extra SKUs are rejected."
+                  ? "Scan expected items. Assigned lines stay fixed — use Delivered qty to under-deliver."
                   : scan?.cargoSerial
-                    ? "Each tap is one unit. Drop only accepts serials already on this order."
-                    : "Catalog or free text. Same list on pickup and drop."}
+                    ? "Each tap is one unit. Drop only accepts serials already on this order. Assigned lines stay fixed."
+                    : "Assigned cargo is fixed. Add extras if needed; use Delivered qty to under-deliver."}
               </p>
             </header>
             <DispatchOrderGoodsEditor
@@ -894,6 +894,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
                 }
               }}
               compact
+              lockAssigned
               scanSource="field"
               scanAllow={allowCargoScan}
               scanCamera={scan?.camera !== false}
@@ -1415,6 +1416,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
                                 lines={cargoDraft}
                                 onChange={setCargoDraft}
                                 compact
+                                lockAssigned
                                 scanSource="field"
                                 scanAllow={allowCargoScan}
                                 scanCamera={scan?.camera !== false}

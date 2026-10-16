@@ -47,7 +47,9 @@ import { lookupCatalogScan } from "./catalog-codes.mjs";
 import {
   applyCargoTotals,
   decorateJobsWithLines,
+  fieldCargoPreservesAssigned,
   listGoodsItems,
+  loadLinesByOrderIds,
   replaceOrderLines,
 } from "./dispatch-goods.mjs";
 import { applyFieldStopStock, returnTruckStockToDepot } from "./dispatch-stock.mjs";
@@ -843,6 +845,13 @@ export async function handleFieldRequest(req, res) {
           return true;
         }
         const body = await readJson(req);
+        const existingMap = await loadLinesByOrderIds(user.tenantId, [order.id]);
+        const existing = existingMap.get(order.id) || [];
+        const preserve = fieldCargoPreservesAssigned(existing, body.lines || []);
+        if (!preserve.ok) {
+          json(res, 403, { error: preserve.error });
+          return true;
+        }
         const lines = await replaceOrderLines(user.tenantId, order.id, body.lines || []);
         if (order.cargo_totals_locked !== true) {
           await applyCargoTotals(user.tenantId, order.id, { locked: false });

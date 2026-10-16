@@ -1,5 +1,7 @@
 /** Pure snapshot updates for the offline Field app. No network, no IndexedDB. */
 
+import { fieldCargoPreservesAssigned, type DispatchOrderLine } from "./dispatch";
+
 export type OfflineSnap = {
   dispatchByDate: Record<string, { jobs: Job[]; serviceDate: string }>;
   events: EventRow[] | null;
@@ -338,7 +340,19 @@ export function applyOfflineWrite(
 
   const linesPut = m === "PUT" ? /^\/api\/field\/dispatch\/orders\/([^/]+)\/lines$/i.exec(path) : null;
   if (linesPut) {
-    const lines = Array.isArray(payload.lines) ? payload.lines : [];
+    const lines = Array.isArray(payload.lines) ? (payload.lines as DispatchOrderLine[]) : [];
+    let existing: DispatchOrderLine[] = [];
+    for (const list of Object.values(snap.dispatchByDate)) {
+      for (const job of list.jobs || []) {
+        for (const stop of job.stops || []) {
+          if (stop.orderId === linesPut[1] && Array.isArray(stop.lines)) {
+            existing = stop.lines as DispatchOrderLine[];
+          }
+        }
+      }
+    }
+    const preserve = fieldCargoPreservesAssigned(existing, lines);
+    if (!preserve.ok) return { error: preserve.error };
     let updated: Job | null = null;
     const next = clone(snap);
     for (const list of Object.values(next.dispatchByDate)) {
