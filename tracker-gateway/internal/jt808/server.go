@@ -8,6 +8,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
@@ -44,7 +46,11 @@ type session struct {
 }
 
 func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
-	defer conn.Close()
+	metrics.ConnOpen()
+	defer func() {
+		metrics.ConnClose()
+		_ = conn.Close()
+	}()
 	sess := &session{}
 	buf := make([]byte, 0, 4096)
 	tmp := make([]byte, 2048)
@@ -190,13 +196,10 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sess *sess
 	case 0x0100: // terminal register
 		return reply(conn, sess, 0x8100, buildRegisterAck(seq, 0, "FM1"))
 	case 0x0102: // auth
-		device, err := st.FindByIMEI(ctx, phone)
-		if err != nil {
-			// try full BCD without trim
-			device, err = st.FindByIMEI(ctx, bcdPhone(msg[4:10]))
-		}
-		if err == nil {
-			sess.device = device
+		remote := conn.RemoteAddr().String()
+		sess.device = deviceauth.FindByIMEI(ctx, st, phone, remote)
+		if sess.device == nil {
+			sess.device = deviceauth.FindByIMEI(ctx, st, bcdPhone(msg[4:10]), remote)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0002: // heartbeat
@@ -205,17 +208,13 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sess *sess
 		fix, ok := parseLocation(body)
 		if ok {
 			if sess.device == nil {
-				if d, err := st.FindByIMEI(ctx, phone); err == nil {
-					sess.device = d
-				}
+				sess.device = deviceauth.FindByIMEI(ctx, st, phone, conn.RemoteAddr().String())
 			}
 			if sess.device != nil {
 				fix.SourceProtocol = "jt808"
-				if err := st.Ingest(ctx, sess.device, fix); err != nil {
+				if err := deviceauth.Ingest(ctx, st, sess.device, fix); err != nil {
 					log.Printf("[jt808] ingest %s: %v", phone, err)
 				}
-			} else {
-				log.Printf("[jt808] unknown phone/IMEI %s", phone)
 			}
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)

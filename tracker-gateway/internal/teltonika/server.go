@@ -8,6 +8,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
@@ -38,7 +40,11 @@ func Serve(ctx context.Context, addr string, st *store.Store) error {
 }
 
 func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
-	defer conn.Close()
+	metrics.ConnOpen()
+	defer func() {
+		metrics.ConnClose()
+		_ = conn.Close()
+	}()
 	_ = conn.SetDeadline(time.Now().Add(2 * time.Minute))
 
 	imeiLenBuf := make([]byte, 2)
@@ -56,9 +62,8 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 	}
 	imei := string(imeiBuf)
 
-	device, err := st.FindByIMEI(ctx, imei)
-	if err != nil || device == nil {
-		log.Printf("[teltonika] unknown IMEI %s", imei)
+	device := deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String())
+	if device == nil {
 		_, _ = conn.Write([]byte{0x00})
 		return
 	}
@@ -95,7 +100,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 		count, fixes := parseAVL(payload)
 		for _, fix := range fixes {
 			fix.SourceProtocol = "teltonika"
-			if err := st.Ingest(ctx, device, fix); err != nil {
+			if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 				log.Printf("[teltonika] ingest %s: %v", imei, err)
 			}
 		}

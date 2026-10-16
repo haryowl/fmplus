@@ -474,3 +474,44 @@ export async function tenantTelematicsSource(tenantId) {
   const rows = await dbQuery(`SELECT telematics_source FROM tenants WHERE id = $1`, [tenantId]);
   return normalizeTelematicsSource(rows.rows[0]?.telematics_source);
 }
+
+/**
+ * Day polylines from vehicle_fixes for Live maps.
+ * @param {string} tenantId
+ * @param {Array<{ armadaUserId: number, date: string }>} days
+ * @returns {Promise<Map<string, Array<{ lat: number, lon: number, recordedAt: string }>>>}
+ */
+export async function deviceTrailsByArmadaDays(tenantId, days) {
+  /** @type {Map<string, Array<{ lat: number, lon: number, recordedAt: string }>>} */
+  const out = new Map();
+  const list = Array.isArray(days) ? days.slice(0, 320) : [];
+  for (const day of list) {
+    const uid = Number(day.armadaUserId ?? day.userId);
+    const date = String(day.date || "").trim().slice(0, 10);
+    if (!Number.isInteger(uid) || uid < 1 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const key = `${uid}|${date}`;
+    const rows = await dbQuery(
+      `SELECT vf.lat, vf.lon, vf.recorded_at
+       FROM vehicle_fixes vf
+       JOIN tracker_devices d ON d.id = vf.device_id
+       WHERE d.tenant_id = $1
+         AND d.enabled = true
+         AND d.armada_user_id = $2
+         AND vf.recorded_at >= ($3::date AT TIME ZONE 'Asia/Jakarta')
+         AND vf.recorded_at < (($3::date + 1) AT TIME ZONE 'Asia/Jakarta')
+       ORDER BY vf.recorded_at ASC
+       LIMIT 2000`,
+      [tenantId, uid, date],
+    );
+    out.set(
+      key,
+      rows.rows.map((r) => ({
+        lat: Number(r.lat),
+        lon: Number(r.lon),
+        recordedAt:
+          r.recorded_at instanceof Date ? r.recorded_at.toISOString() : String(r.recorded_at),
+      })),
+    );
+  }
+  return out;
+}

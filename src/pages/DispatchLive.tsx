@@ -7,6 +7,7 @@ import { ViewNav } from "../components/ViewNav";
 import {
   ackDispatchOpsException,
   fetchArmadaDayTracks,
+  fetchDeviceDayTracks,
   fetchDispatchLive,
   fetchDispatchSla,
   fetchPhoneTrailForDate,
@@ -183,6 +184,7 @@ export default function DispatchLive() {
   const [actionNote, setActionNote] = useState("");
   /** Armada day polylines keyed by `${userId}|${date}` — loaded separately from the 20s live poll. */
   const [armadaTracks, setArmadaTracks] = useState<Map<string, TimedMapPoint[]>>(new Map());
+  const [deviceTracks, setDeviceTracks] = useState<Map<string, TimedMapPoint[]>>(new Map());
   const [armadaTracksLoading, setArmadaTracksLoading] = useState(false);
   const [phoneTracks, setPhoneTracks] = useState<Map<string, TimedMapPoint[]>>(new Map());
   const [folded, setFolded] = useState<FoldState>(() => loadFoldState());
@@ -301,12 +303,16 @@ export default function DispatchLive() {
     const load = (refresh = false) => {
       const ac = new AbortController();
       if (!refresh) setArmadaTracksLoading(true);
-      fetchArmadaDayTracks(days, ac.signal, refresh ? { refresh: true } : undefined)
-        .then((map) => {
-          if (!cancelled) setArmadaTracks(map);
-        })
-        .catch(() => {
-          /* keep prior tracks if a refetch fails */
+      Promise.all([
+        fetchArmadaDayTracks(days, ac.signal, refresh ? { refresh: true } : undefined).catch(
+          () => new Map<string, TimedMapPoint[]>(),
+        ),
+        fetchDeviceDayTracks(days, ac.signal).catch(() => new Map<string, TimedMapPoint[]>()),
+      ])
+        .then(([armadaMap, deviceMap]) => {
+          if (cancelled) return;
+          setArmadaTracks(armadaMap);
+          setDeviceTracks(deviceMap);
         })
         .finally(() => {
           if (!cancelled) setArmadaTracksLoading(false);
@@ -329,6 +335,7 @@ export default function DispatchLive() {
 
   useEffect(() => {
     setArmadaTracks(new Map());
+    setDeviceTracks(new Map());
     setArmadaTracksLoading(false);
     setPhoneTracks(new Map());
   }, [serviceDate]);
@@ -443,11 +450,17 @@ export default function DispatchLive() {
         return { ...d, phoneTrail };
       }
       const key = `${d.armadaUserId}|${serviceDate}`;
-      const timed = armadaTracks.get(key) || [];
+      const deviceTimed = deviceTracks.get(key) || [];
+      const armadaTimed = armadaTracks.get(key) || [];
+      // Prefer direct-tracker breadcrumb when present; fall back to Armada day track.
+      const timed = deviceTimed.length >= 2 ? deviceTimed : armadaTimed;
       let track = timed.length
         ? clipTimedTrackToWindow(timed, d.startedAt, d.completedAt, now)
         : [];
-      const live = d.vehiclePos;
+      const live = d.vehiclePos ||
+        (d.livePosition && d.livePosition.source !== "phone"
+          ? { lat: d.livePosition.lat, lon: d.livePosition.lon }
+          : null);
       if (
         live &&
         Number.isFinite(live.lat) &&
@@ -478,8 +491,8 @@ export default function DispatchLive() {
       }
       return { ...d, phoneTrail, armadaTrack: track.length >= 2 ? track : d.armadaTrack };
     });
-  }, [snapshot?.drivers, armadaTracks, phoneTracks, serviceDate]);
-  const mapFitKey = `${serviceDate}:${focusJobId || "all"}:${drivers.length}:${armadaTracks.size}:${phoneTracks.size}`;
+  }, [snapshot?.drivers, armadaTracks, deviceTracks, phoneTracks, serviceDate]);
+  const mapFitKey = `${serviceDate}:${focusJobId || "all"}:${drivers.length}:${armadaTracks.size}:${deviceTracks.size}:${phoneTracks.size}`;
   const exceptions = snapshot?.exceptions || [];
   const exceptionSummary = snapshot?.exceptionSummary;
   const sla = snapshot?.sla;

@@ -15,6 +15,8 @@ Terminates public GPS tracker protocols and writes normalized fixes into the sam
 | `DATABASE_URL` | required | Postgres |
 | `VEHICLE_FIX_RETENTION_DAYS` | `14` | History prune |
 
+Ops: `GET /healthz` and `GET /metrics` on the HTTP port (connection counts, fixes ingested, unknown IMEI drops).
+
 Devices must be registered in **Admin → Tracker devices** with matching **protocol** and **IMEI**. HTTP ingest uses the device Bearer token; TCP protocols authenticate by IMEI.
 
 ## Run

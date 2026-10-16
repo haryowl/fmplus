@@ -2884,6 +2884,45 @@ export async function fetchArmadaDayPolylines(
   return out;
 }
 
+/** Direct-tracker day polylines keyed by `${armadaUserId}|${date}`. */
+export async function fetchDeviceDayTracks(
+  days: Array<{ userId: number; date: string }>,
+  signal?: AbortSignal,
+): Promise<Map<string, TimedMapPoint[]>> {
+  const out = new Map<string, TimedMapPoint[]>();
+  if (!days.length) return out;
+  const res = await fetch("/api/dispatch/device-day-tracks", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      ...tenantHeaders(),
+    },
+    body: JSON.stringify({
+      days: days.map((d) => ({ armadaUserId: d.userId, date: d.date })),
+    }),
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    tracks?: Record<string, TimedMapPoint[]>;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Device day tracks ${res.status}`);
+  for (const [key, pts] of Object.entries(data.tracks || {})) {
+    out.set(
+      key,
+      (pts || []).filter(
+        (p) =>
+          p &&
+          Number.isFinite(Number(p.lat)) &&
+          Number.isFinite(Number(p.lon)) &&
+          typeof p.recordedAt === "string",
+      ),
+    );
+  }
+  return out;
+}
+
 export async function fetchPhoneTrailForDate(
   fieldUserId: string,
   serviceDate: string,

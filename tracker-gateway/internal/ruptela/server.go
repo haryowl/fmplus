@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
@@ -39,7 +41,11 @@ func Serve(ctx context.Context, addr string, st *store.Store) error {
 }
 
 func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
-	defer conn.Close()
+	metrics.ConnOpen()
+	defer func() {
+		metrics.ConnClose()
+		_ = conn.Close()
+	}()
 	for {
 		_ = conn.SetDeadline(time.Now().Add(5 * time.Minute))
 		lenBuf := make([]byte, 2)
@@ -66,15 +72,14 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 			if imei == "" {
 				continue
 			}
-			device, err := st.FindByIMEI(ctx, imei)
-			if err != nil {
-				log.Printf("[ruptela] unknown IMEI %s", imei)
+			device := deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String())
+			if device == nil {
 				_ = writeAck(conn, 0)
 				continue
 			}
 			for _, fix := range records {
 				fix.SourceProtocol = "ruptela"
-				if err := st.Ingest(ctx, device, fix); err != nil {
+				if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 					log.Printf("[ruptela] ingest %s: %v", imei, err)
 				}
 			}
@@ -82,10 +87,10 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 		case 7: // dynamic records / extended — treat similarly when possible
 			records, imei := parseRecords(data[1:])
 			if imei != "" {
-				if device, err := st.FindByIMEI(ctx, imei); err == nil {
+				if device := deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String()); device != nil {
 					for _, fix := range records {
 						fix.SourceProtocol = "ruptela"
-						_ = st.Ingest(ctx, device, fix)
+						_ = deviceauth.Ingest(ctx, st, device, fix)
 					}
 					_ = writeAck(conn, len(records))
 					continue

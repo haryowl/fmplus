@@ -9,6 +9,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
@@ -39,7 +41,11 @@ func Serve(ctx context.Context, addr string, st *store.Store) error {
 }
 
 func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
-	defer conn.Close()
+	metrics.ConnOpen()
+	defer func() {
+		metrics.ConnClose()
+		_ = conn.Close()
+	}()
 	var device *store.Device
 	var imei string
 	buf := make([]byte, 0, 2048)
@@ -67,25 +73,21 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 				if imei == "" {
 					continue
 				}
-				d, err := st.FindByIMEI(ctx, imei)
-				if err != nil {
-					log.Printf("[concox] unknown IMEI %s", imei)
+				device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String())
+				if device == nil {
 					continue
 				}
-				device = d
 				_ = writeReply(conn, 0x01, serial, nil)
 			case 0x13: // heartbeat / status
 				_ = writeReply(conn, 0x13, serial, nil)
 			case 0x12, 0x22: // GPS location
 				if device == nil && imei != "" {
-					if d, err := st.FindByIMEI(ctx, imei); err == nil {
-						device = d
-					}
+					device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String())
 				}
 				if device != nil {
 					if fix, ok := parseGPS(info, proto); ok {
 						fix.SourceProtocol = "concox"
-						if err := st.Ingest(ctx, device, fix); err != nil {
+						if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 							log.Printf("[concox] ingest %s: %v", imei, err)
 						}
 					}
@@ -95,7 +97,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 				if device != nil {
 					if fix, ok := parseGPS(info, proto); ok {
 						fix.SourceProtocol = "concox"
-						_ = st.Ingest(ctx, device, fix)
+						_ = deviceauth.Ingest(ctx, st, device, fix)
 					}
 				}
 				_ = writeReply(conn, 0x16, serial, nil)

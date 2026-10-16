@@ -11,14 +11,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
 func Serve(addr string, st *store.Store) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]any{"ok": true, "service": "tracker-gateway"})
+		writeJSON(w, 200, metrics.Snapshot())
 	})
+	mux.HandleFunc("/metrics", metrics.Handler)
 	mux.HandleFunc("/ingest/v1/fix", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, map[string]any{"error": "Method not allowed"})
@@ -42,7 +45,7 @@ func Serve(addr string, st *store.Store) error {
 		}
 		if device == nil {
 			if imei, _ := payload["imei"].(string); imei != "" {
-				device, _ = st.FindByIMEI(ctx, strings.TrimSpace(imei))
+				device = deviceauth.FindByIMEI(ctx, st, strings.TrimSpace(imei), r.RemoteAddr)
 			}
 		}
 		if device == nil {
@@ -72,7 +75,7 @@ func Serve(addr string, st *store.Store) error {
 		if attrs, ok := payload["attrs"].(map[string]any); ok {
 			fix.RawAttrs = attrs
 		}
-		if err := st.Ingest(ctx, device, fix); err != nil {
+		if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 			writeJSON(w, 403, map[string]any{"error": err.Error()})
 			return
 		}

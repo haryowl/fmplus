@@ -118,6 +118,11 @@ import { csvBool, csvNum, parseCsv } from "./csv-parse.mjs";
 import { buildDispatchLiveSnapshot } from "./dispatch-live.mjs";
 import { pingTrailForServiceDate } from "./driver-pings.mjs";
 import {
+  deviceTrailsByArmadaDays,
+  telematicsUsesDevices,
+  tenantTelematicsSource,
+} from "./tracker-devices.mjs";
+import {
   addDays,
   dayDiff,
   formatServiceDate,
@@ -2943,6 +2948,31 @@ export async function handleDispatchRequest(req, res) {
       }
       const trail = slimTimed.map((p) => [p.lat, p.lon]);
       json(res, 200, { trail, points: slimTimed, date, fieldUserId });
+      return true;
+    }
+
+    if (url.pathname === "/api/dispatch/device-day-tracks" && req.method === "POST") {
+      const source = await tenantTelematicsSource(dbTenant.id);
+      if (!telematicsUsesDevices(source)) {
+        json(res, 200, { tracks: {}, telematicsSource: source });
+        return true;
+      }
+      const body = await readJson(req);
+      const days = Array.isArray(body.days) ? body.days : [];
+      const map = await deviceTrailsByArmadaDays(dbTenant.id, days);
+      /** @type {Record<string, Array<{ lat: number, lon: number, recordedAt: string }>>} */
+      const tracks = {};
+      for (const [key, pts] of map) {
+        const max = 800;
+        let slim = pts;
+        if (pts.length > max) {
+          const step = (pts.length - 1) / (max - 1);
+          slim = [];
+          for (let i = 0; i < max; i++) slim.push(pts[Math.round(i * step)]);
+        }
+        tracks[key] = slim;
+      }
+      json(res, 200, { tracks, telematicsSource: source });
       return true;
     }
 

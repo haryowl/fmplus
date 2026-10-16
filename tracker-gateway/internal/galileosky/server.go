@@ -8,6 +8,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
@@ -38,7 +40,11 @@ func Serve(ctx context.Context, addr string, st *store.Store) error {
 }
 
 func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
-	defer conn.Close()
+	metrics.ConnOpen()
+	defer func() {
+		metrics.ConnClose()
+		_ = conn.Close()
+	}()
 	var device *store.Device
 	var imei string
 	for {
@@ -67,21 +73,15 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 		tags := parseTags(payload)
 		if v, ok := tags[0x03]; ok && len(v) >= 15 {
 			imei = string(v[:15])
-			if d, err := st.FindByIMEI(ctx, imei); err == nil {
-				device = d
-			} else {
-				log.Printf("[galileosky] unknown IMEI %s", imei)
-			}
+			device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String())
 		}
 		fix, hasFix := fixFromTags(tags)
 		if hasFix && device == nil && imei != "" {
-			if d, err := st.FindByIMEI(ctx, imei); err == nil {
-				device = d
-			}
+			device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String())
 		}
 		if hasFix && device != nil {
 			fix.SourceProtocol = "galileosky"
-			if err := st.Ingest(ctx, device, fix); err != nil {
+			if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 				log.Printf("[galileosky] ingest %s: %v", imei, err)
 			}
 		}
