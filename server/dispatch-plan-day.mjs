@@ -135,6 +135,7 @@ export async function handlePlanDayPost(req, res, api) {
     saveJobRouteAnchors,
     reorderJobStopsRoad,
     geometryPointsFromStopsAndAnchors,
+    requirePlanPrivilege,
   } = api;
 
     const body = await readJson(req);
@@ -152,6 +153,9 @@ export async function handlePlanDayPost(req, res, api) {
     const depotPathMode = parseDepotPathMode(body.depotPathMode ?? body.pathMode);
     const openStartMode = parseOpenStartMode(body.openStartMode);
     const apply = body.apply === true;
+    if (typeof requirePlanPrivilege === "function") {
+      if (!(await requirePlanPrivilege(apply))) return true;
+    }
     const roundtrip = body.roundtrip === true;
     const onlyEmptyJobs = body.onlyEmptyJobs === true;
     const selectedJobIds = Array.isArray(body.jobIds)

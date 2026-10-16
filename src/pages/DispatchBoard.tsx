@@ -22,6 +22,7 @@ import {
 } from "../lib/entitlements";
 import { locationNameFromScan, lookupCatalogScan } from "../lib/catalogScan";
 import { useDeskSession } from "../lib/deskSession";
+import { deskCanWrite } from "../lib/deskPrivileges";
 import { isNativeDispatchApp } from "../lib/nativeField";
 import { customersHref, goodsHref, navigateView } from "../lib/routing";
 import { nextDatedCode } from "../lib/datedCode";
@@ -248,8 +249,12 @@ export default function DispatchBoard() {
     allowsGroup,
     entitlements,
   } = useEmbedTenant();
-  const { privileges: deskPrivileges } = useDeskSession();
+  const { user: deskUser, privileges: deskPrivileges } = useDeskSession();
   const canEditCustomers = deskPrivileges.editDispatchCustomers === true;
+  const canPlanDispatch = deskCanWrite(deskUser, deskPrivileges, "planDispatch");
+  const canEditJobs = deskCanWrite(deskUser, deskPrivileges, "editDispatchJobs");
+  const canEditOrders = deskCanWrite(deskUser, deskPrivileges, "editDispatchOrders");
+  const canManageSettings = deskCanWrite(deskUser, deskPrivileges, "manageDispatchSettings");
   const profiles = useMemo(() => dispatchProfiles(entitlements), [entitlements]);
   const [deskModePref, setDeskModePref] = useState<DispatchDeskMode>(() => {
     try {
@@ -2433,11 +2438,14 @@ export default function DispatchBoard() {
             <button
               type="button"
               className="btn btn-primary"
+              disabled={!canEditJobs && !showNewJob}
+              title={!canEditJobs ? "Missing desk privilege: editDispatchJobs" : undefined}
               onClick={() => {
                 if (showNewJob) {
                   setShowNewJob(false);
                   return;
                 }
+                if (!canEditJobs) return;
                 jobTitleDirty.current = false;
                 setJobTitle(jobCode);
                 setShowNewJob(true);
@@ -3089,6 +3097,10 @@ export default function DispatchBoard() {
                     <button
                       type="button"
                       className={`btn-secondary${pinningDepot ? " is-active" : ""}`}
+                      disabled={!canManageSettings}
+                      title={
+                        !canManageSettings ? "Missing desk privilege: manageDispatchSettings" : undefined
+                      }
                       onClick={() => setPinningDepot((v) => !v)}
                     >
                       {pinningDepot
@@ -3102,7 +3114,12 @@ export default function DispatchBoard() {
                         <button
                           type="button"
                           className="btn-secondary"
-                          disabled={busy || selectedDepot?.isDefault}
+                          disabled={busy || !canManageSettings || selectedDepot?.isDefault}
+                          title={
+                            !canManageSettings
+                              ? "Missing desk privilege: manageDispatchSettings"
+                              : undefined
+                          }
                           onClick={() => {
                             void patchDispatchDepot(selectedDepotId, { isDefault: true })
                               .then((d) => {
@@ -3242,8 +3259,10 @@ export default function DispatchBoard() {
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={busy || !planPreview}
+                disabled={busy || !planPreview || !canPlanDispatch}
+                title={!canPlanDispatch ? "Missing desk privilege: planDispatch" : undefined}
                 onClick={() => {
+                  if (!canPlanDispatch) return;
                   if (
                     !window.confirm(
                       `Apply plan for ${formatServiceDateLabel(planDate)}? This assigns orders to jobs (and may create jobs from presets).`,
@@ -3361,7 +3380,13 @@ export default function DispatchBoard() {
                 : "Caps follow the vehicle preset when you pick a vehicle. Change them here for this job only, or save as default from the vehicle pane after create."}
             </p>
             <div className="dispatch-create-actions">
-              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void handleCreateJob()}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy || !canEditJobs}
+                title={!canEditJobs ? "Missing desk privilege: editDispatchJobs" : undefined}
+                onClick={() => void handleCreateJob()}
+              >
                 Create job
               </button>
             </div>
@@ -4492,14 +4517,17 @@ export default function DispatchBoard() {
                 className="btn btn-primary dispatch-assign-btn"
                 disabled={
                   busy ||
+                  !canEditJobs ||
                   !selected ||
                   !selectedOrderIds.length ||
                   dispatchJobIsClosed(selected.status)
                 }
                 title={
-                  selected && dispatchJobIsClosed(selected.status)
-                    ? "Completed jobs cannot take more orders. Start a new trip for this driver."
-                    : undefined
+                  !canEditJobs
+                    ? "Missing desk privilege: editDispatchJobs"
+                    : selected && dispatchJobIsClosed(selected.status)
+                      ? "Completed jobs cannot take more orders. Start a new trip for this driver."
+                      : undefined
                 }
                 onClick={() => void handleAssignSelected()}
               >
@@ -4516,8 +4544,12 @@ export default function DispatchBoard() {
                     ? "btn btn-primary dispatch-assign-btn"
                     : "btn-secondary"
                 }
-                disabled={busy || !selected || !selectedOrderIds.length}
-                title="Keep this job as-is and start a new trip for the same driver and vehicle"
+                disabled={busy || !canEditJobs || !selected || !selectedOrderIds.length}
+                title={
+                  !canEditJobs
+                    ? "Missing desk privilege: editDispatchJobs"
+                    : "Keep this job as-is and start a new trip for the same driver and vehicle"
+                }
                 onClick={() => void handleCreateNextTrip()}
               >
                 {selectedOrderIds.length
@@ -4531,8 +4563,12 @@ export default function DispatchBoard() {
               <button
                 type="button"
                 className="btn-secondary"
-                disabled={busy || !selectedOrderIds.length}
-                title="Move selected pending orders to the next day (same order numbers)"
+                disabled={busy || !canEditOrders || !selectedOrderIds.length}
+                title={
+                  !canEditOrders
+                    ? "Missing desk privilege: editDispatchOrders"
+                    : "Move selected pending orders to the next day (same order numbers)"
+                }
                 onClick={() => void handleCarryOver(true)}
               >
                 {selectedOrderIds.length
@@ -4542,8 +4578,12 @@ export default function DispatchBoard() {
               <button
                 type="button"
                 className="btn-secondary"
-                disabled={busy || orders.length === 0}
-                title="Move all leftover pending orders on this day to the next day"
+                disabled={busy || !canEditOrders || orders.length === 0}
+                title={
+                  !canEditOrders
+                    ? "Missing desk privilege: editDispatchOrders"
+                    : "Move all leftover pending orders on this day to the next day"
+                }
                 onClick={() => void handleCarryOver(false)}
               >
                 Carry all leftover

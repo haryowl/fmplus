@@ -2,6 +2,15 @@
 
 All notable changes to FM Plus (`fms-embed`) are documented in this file.
 
+## [0.2.2] — 2026-10-16
+
+### Added
+- Broader desk RBAC privileges: Auto-plan Apply, Jobs, Orders, Live/replan, and dispatch settings (depots, capacities, rates, zone map).
+- Soft gate: unsigned embed keeps prior tenant-key write access; signed-in desk users need Admin-granted privileges.
+
+### Changed
+- Admin Field-user privilege checklist covers the full desk privilege set.
+
 ## [0.2.1] — 2026-10-16
 
 ### Changed

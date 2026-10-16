@@ -1283,7 +1283,11 @@ export default function AdminConsole() {
                                 />
                               </label>
                               <fieldset className="span-2 admin-fieldset">
-                                <legend>Desk privileges (Goods &amp; Customers)</legend>
+                                <legend>Desk privileges</legend>
+                                <p className="muted admin-hint">
+                                  Goods/Customers need sign-in. Jobs/plan/orders/live/settings apply when the user is signed
+                                  in on the desk.
+                                </p>
                                 <div className="admin-toggle-grid">
                                   {DESK_PRIVILEGE_KEYS.map((key) => (
                                     <label key={key} className={`admin-chip-toggle${edit.privileges[key] ? " is-on" : ""}`}>
@@ -1384,7 +1388,7 @@ export default function AdminConsole() {
                         />
                       </label>
                       <fieldset className="span-2 admin-fieldset">
-                        <legend>Desk privileges (Goods &amp; Customers)</legend>
+                        <legend>Desk privileges</legend>
                         <div className="admin-toggle-grid">
                           {DESK_PRIVILEGE_KEYS.map((key) => (
                             <label key={key} className={`admin-chip-toggle${fuPrivileges[key] ? " is-on" : ""}`}>

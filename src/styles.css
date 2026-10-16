@@ -3260,6 +3260,12 @@ html.onesheet-root body {
   grid-column: 1 / -1;
 }
 
+.admin-fieldset .admin-hint {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .admin-fieldset {
   border: 1px solid var(--admin-line);
   margin: 0;

@@ -31,6 +31,8 @@ import { clipTimedTrackToWindow, type TimedMapPoint } from "../lib/dispatchTrack
 import { phoneTrailOrCrumbs } from "../lib/dispatchPhoneTrail";
 import { formatIdr } from "../lib/format";
 import { writeLocationSearch } from "../lib/routing";
+import { useDeskSession } from "../lib/deskSession";
+import { deskCanWrite } from "../lib/deskPrivileges";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 
 const POLL_MS = 20_000;
@@ -160,6 +162,8 @@ function suggestionTypeLabel(type: string): string {
 
 export default function DispatchLive() {
   const { ready, error: tenantError } = useEmbedTenant();
+  const { user: deskUser, privileges: deskPrivileges } = useDeskSession();
+  const canEditLive = deskCanWrite(deskUser, deskPrivileges, "editDispatchLive");
   const [tab, setTab] = useState<TabId>("live");
   const [serviceDate, setServiceDate] = useState(() => todayServiceDate());
   const [snapshot, setSnapshot] = useState<DispatchLiveSnapshot | null>(null);
@@ -714,8 +718,12 @@ export default function DispatchLive() {
                   <button
                     type="button"
                     className="btn-ghost dispatch-live-safe-auto-btn"
-                    disabled={recoverBusy}
-                    title="Auto-apply only same-vehicle remaining reorders"
+                    disabled={recoverBusy || !canEditLive}
+                    title={
+                      !canEditLive
+                        ? "Missing desk privilege: editDispatchLive"
+                        : "Auto-apply only same-vehicle remaining reorders"
+                    }
                     onClick={() => void applyRecover({ autoSafe: true })}
                   >
                     Safe auto
@@ -940,7 +948,8 @@ export default function DispatchLive() {
               <button
                 type="button"
                 className="btn-ghost"
-                disabled={recoverBusy}
+                disabled={recoverBusy || !canEditLive}
+                title={!canEditLive ? "Missing desk privilege: editDispatchLive" : undefined}
                 onClick={() => void applyRecover({ autoSafe: true })}
               >
                 Safe auto
@@ -1003,6 +1012,8 @@ export default function DispatchLive() {
                           <button
                             type="button"
                             className="btn-ghost"
+                            disabled={!canEditLive}
+                            title={!canEditLive ? "Missing desk privilege: editDispatchLive" : undefined}
                             onClick={() => void ackException(ex)}
                           >
                             Ack
@@ -1035,7 +1046,8 @@ export default function DispatchLive() {
                     <button
                       type="button"
                       className="btn-secondary"
-                      disabled={recoverBusy || selectedSuggestions.length === 0}
+                      disabled={recoverBusy || !canEditLive || selectedSuggestions.length === 0}
+                      title={!canEditLive ? "Missing desk privilege: editDispatchLive" : undefined}
                       onClick={() => void applyRecover({ ids: selectedSuggestions })}
                     >
                       Apply selected

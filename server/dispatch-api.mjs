@@ -781,12 +781,36 @@ async function reorderJobStopsRoad(jobId, depot = null, routing = null) {
  * Desk master writes: field session required + matching tenant + privilege flag.
  * @returns {Promise<boolean>} true if allowed
  */
+/**
+ * Hard gate for Goods/Customers masters: desk sign-in + privilege required.
+ * @param {string} privilege
+ */
 async function requireDeskMasterPrivilege(req, res, tenantId, privilege) {
   const user = await fieldFromRequest(req);
   if (!user) {
     json(res, 401, { error: "Desk sign-in required to change master data" });
     return false;
   }
+  if (String(user.tenantId) !== String(tenantId)) {
+    json(res, 403, { error: "Signed-in user does not match this tenant" });
+    return false;
+  }
+  if (!user.privileges || user.privileges[privilege] !== true) {
+    json(res, 403, { error: `Missing desk privilege: ${privilege}` });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Soft gate for Jobs / orders / plan / live / settings:
+ * no desk session → allow (tenant embed auth unchanged);
+ * desk session present → named privilege required.
+ * @param {string} privilege
+ */
+async function requireDeskPrivilege(req, res, tenantId, privilege) {
+  const user = await fieldFromRequest(req);
+  if (!user) return true;
   if (String(user.tenantId) !== String(tenantId)) {
     json(res, 403, { error: "Signed-in user does not match this tenant" });
     return false;
@@ -1391,6 +1415,7 @@ export async function handleDispatchRequest(req, res) {
       return true;
     }
     if (url.pathname === "/api/dispatch/cost-rates" && (req.method === "PUT" || req.method === "POST")) {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageDispatchSettings"))) return true;
       const body = await readJson(req);
       const rate = await upsertCostRates(dbTenant.id, body);
       json(res, 200, { rate, rates: await listCostRates(dbTenant.id) });
@@ -1405,6 +1430,7 @@ export async function handleDispatchRequest(req, res) {
       return true;
     }
     if (url.pathname === "/api/dispatch/fare-rates" && (req.method === "PUT" || req.method === "POST")) {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageDispatchSettings"))) return true;
       const body = await readJson(req);
       const rate = await upsertFareRates(dbTenant.id, body);
       json(res, 200, { rate, rates: await listFareRates(dbTenant.id) });
@@ -1584,6 +1610,7 @@ export async function handleDispatchRequest(req, res) {
 
     const vehicleCapOne = /^\/api\/dispatch\/vehicle-capacities\/(\d+)$/i.exec(url.pathname);
     if (vehicleCapOne && req.method === "PUT") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageDispatchSettings"))) return true;
       const armadaUserId = Number(vehicleCapOne[1]);
       if (!Number.isInteger(armadaUserId) || armadaUserId <= 0) {
         json(res, 400, { error: "Invalid armada user id" });
@@ -1708,6 +1735,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (url.pathname === "/api/dispatch/depot" && req.method === "PUT") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageDispatchSettings"))) return true;
       const body = await readJson(req);
       const clear = body.depot === null || body.clear === true;
       if (clear) {
@@ -1779,6 +1807,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (url.pathname === "/api/dispatch/depots" && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageDispatchSettings"))) return true;
       const body = await readJson(req);
       const lat = numOrNull(body.lat);
       const lon = numOrNull(body.lon);
@@ -1815,6 +1844,7 @@ export async function handleDispatchRequest(req, res) {
 
     const depotOne = /^\/api\/dispatch\/depots\/([0-9a-f-]{36})$/i.exec(url.pathname);
     if (depotOne && req.method === "PATCH") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageDispatchSettings"))) return true;
       const depotId = depotOne[1];
       const body = await readJson(req);
       const existing = await dbQuery(
@@ -1863,6 +1893,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (depotOne && req.method === "DELETE") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageDispatchSettings"))) return true;
       const depotId = depotOne[1];
       const existing = await dbQuery(
         `SELECT * FROM dispatch_depots WHERE id = $1 AND tenant_id = $2`,
@@ -1906,6 +1937,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (url.pathname === "/api/dispatch/zone-depot-map" && req.method === "PUT") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageDispatchSettings"))) return true;
       const body = await readJson(req);
       const raw = Array.isArray(body.mappings) ? body.mappings : [];
       const depots = await listDepotsForTenant(dbTenant.id);
@@ -1948,6 +1980,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (url.pathname === "/api/dispatch/order-templates" && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchOrders"))) return true;
       const body = await readJson(req);
       const customerName = String(body.customerName || body.name || "").trim().slice(0, 200);
       if (!customerName) {
@@ -2000,6 +2033,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (url.pathname === "/api/dispatch/order-templates/generate" && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchOrders"))) return true;
       const body = await readJson(req);
       const serviceDate = parseServiceDate(body.serviceDate || body.date) || todayYmd();
       const templates = await dbQuery(
@@ -2066,6 +2100,7 @@ export async function handleDispatchRequest(req, res) {
 
     const templateOne = /^\/api\/dispatch\/order-templates\/([0-9a-f-]{36})$/i.exec(url.pathname);
     if (templateOne && req.method === "PATCH") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchOrders"))) return true;
       const existing = await dbQuery(
         `SELECT * FROM dispatch_order_templates WHERE id = $1 AND tenant_id = $2`,
         [templateOne[1], dbTenant.id],
@@ -2159,6 +2194,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (templateOne && req.method === "DELETE") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchOrders"))) return true;
       const deleted = await dbQuery(
         `DELETE FROM dispatch_order_templates WHERE id = $1 AND tenant_id = $2 RETURNING id`,
         [templateOne[1], dbTenant.id],
@@ -2221,6 +2257,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (url.pathname === "/api/dispatch/orders" && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchOrders"))) return true;
       const body = await readJson(req);
       const customerName = String(body.customerName || body.name || "").trim().slice(0, 200);
       if (!customerName) {
@@ -2326,6 +2363,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (url.pathname === "/api/dispatch/orders/import" && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchOrders"))) return true;
       const body = await readJson(req);
       const defaultDate = parseServiceDate(body.serviceDate) || todayYmd();
       let rawRows = Array.isArray(body.rows) ? body.rows : null;
@@ -2516,6 +2554,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (url.pathname === "/api/dispatch/orders/carry-over" && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchOrders"))) return true;
       const body = await readJson(req);
       const fromDate = parseServiceDate(body.fromDate || body.serviceDate) || todayYmd();
       let toDate = parseServiceDate(body.toDate);
@@ -2566,6 +2605,7 @@ export async function handleDispatchRequest(req, res) {
 
     const orderOne = /^\/api\/dispatch\/orders\/([0-9a-f-]{36})$/i.exec(url.pathname);
     if (orderOne && req.method === "PATCH") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchOrders"))) return true;
       const existing = await dbQuery(
         `SELECT * FROM dispatch_orders WHERE id = $1 AND tenant_id = $2`,
         [orderOne[1], dbTenant.id],
@@ -2800,6 +2840,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (orderOne && req.method === "DELETE") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchOrders"))) return true;
       const existing = await dbQuery(
         `SELECT * FROM dispatch_orders WHERE id = $1 AND tenant_id = $2`,
         [orderOne[1], dbTenant.id],
@@ -2941,6 +2982,7 @@ export async function handleDispatchRequest(req, res) {
       url.pathname,
     );
     if (opsAck && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchLive"))) return true;
       const body = await readJson(req);
       const row = await ackOpsException(dbTenant.id, opsAck[1], body.note || "");
       if (!row) {
@@ -2952,6 +2994,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (url.pathname === "/api/dispatch/replan-remaining" && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchLive"))) return true;
       const body = await readJson(req);
       const serviceDate = parseServiceDate(body.serviceDate || body.date) || todayYmd();
       const apply = body.apply === true;
@@ -3039,6 +3082,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (url.pathname === "/api/dispatch/jobs" && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchJobs"))) return true;
       const body = await readJson(req);
       const title = String(body.title || "").trim().slice(0, 200);
       if (!title) {
@@ -3158,6 +3202,7 @@ export async function handleDispatchRequest(req, res) {
       url.pathname,
     );
     if (assignOrders && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchJobs"))) return true;
       const job = await loadJob(dbTenant.id, assignOrders[1]);
       if (!job) {
         json(res, 404, { error: "Job not found" });
@@ -3199,6 +3244,7 @@ export async function handleDispatchRequest(req, res) {
 
     const returnStock = /^\/api\/dispatch\/jobs\/([0-9a-f-]{36})\/return-stock$/i.exec(url.pathname);
     if (returnStock && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchJobs"))) return true;
       const job = await loadJob(dbTenant.id, returnStock[1]);
       if (!job) {
         json(res, 404, { error: "Job not found" });
@@ -3218,6 +3264,7 @@ export async function handleDispatchRequest(req, res) {
 
     const nextTrip = /^\/api\/dispatch\/jobs\/([0-9a-f-]{36})\/next-trip$/i.exec(url.pathname);
     if (nextTrip && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchJobs"))) return true;
       const source = await loadJob(dbTenant.id, nextTrip[1]);
       if (!source) {
         json(res, 404, { error: "Job not found" });
@@ -3304,6 +3351,7 @@ export async function handleDispatchRequest(req, res) {
       url.pathname,
     );
     if (optimizeStops && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchJobs"))) return true;
       const job = await loadJob(dbTenant.id, optimizeStops[1]);
       if (!job) {
         json(res, 404, { error: "Job not found" });
@@ -3448,6 +3496,7 @@ export async function handleDispatchRequest(req, res) {
     }
 
     if (one && req.method === "PATCH") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchJobs"))) return true;
       const existing = await loadJob(dbTenant.id, one[1]);
       if (!existing) {
         json(res, 404, { error: "Job not found" });
@@ -3643,6 +3692,7 @@ export async function handleDispatchRequest(req, res) {
       url.pathname,
     );
     if (stopPatch && req.method === "PATCH") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchJobs"))) return true;
       const job = await loadJob(dbTenant.id, stopPatch[1]);
       if (!job) {
         json(res, 404, { error: "Job not found" });
@@ -3681,6 +3731,7 @@ export async function handleDispatchRequest(req, res) {
     const stopDay =
       /^\/api\/dispatch\/jobs\/([0-9a-f-]{36})\/stops\/([0-9a-f-]{36})\/day$/i.exec(url.pathname);
     if (stopDay && req.method === "PATCH") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchJobs"))) return true;
       const job = await loadJob(dbTenant.id, stopDay[1]);
       if (!job) {
         json(res, 404, { error: "Job not found" });
@@ -3743,6 +3794,7 @@ export async function handleDispatchRequest(req, res) {
     const stopReturn =
       /^\/api\/dispatch\/jobs\/([0-9a-f-]{36})\/stops\/([0-9a-f-]{36})\/return$/i.exec(url.pathname);
     if (stopReturn && req.method === "POST") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "editDispatchJobs"))) return true;
       const job = await loadJob(dbTenant.id, stopReturn[1]);
       if (!job) {
         json(res, 404, { error: "Job not found" });
@@ -3812,6 +3864,10 @@ export async function handleDispatchRequest(req, res) {
         saveJobRouteAnchors,
         reorderJobStopsRoad,
         geometryPointsFromStopsAndAnchors,
+        requirePlanPrivilege: async (apply) => {
+          if (!apply) return true;
+          return requireDeskPrivilege(req, res, dbTenant.id, "planDispatch");
+        },
       });
     }
 

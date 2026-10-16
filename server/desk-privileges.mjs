@@ -1,6 +1,10 @@
 /**
- * Per-field-user desk privileges for Goods & Customers master writes.
- * Missing keys default to false (view-only until Admin grants).
+ * Per-field-user desk privileges.
+ * Missing keys default to false (denied until Admin grants).
+ *
+ * Goods/Customers writes always require desk sign-in + privilege.
+ * Jobs / orders / plan / live / settings: when a desk session is present,
+ * privilege is required; with no desk session, tenant-key embed auth still applies.
  */
 
 export const DESK_PRIVILEGE_KEYS = [
@@ -8,25 +12,25 @@ export const DESK_PRIVILEGE_KEYS = [
   "deleteDispatchGoods",
   "editDispatchCustomers",
   "deleteDispatchCustomers",
+  "planDispatch",
+  "editDispatchJobs",
+  "editDispatchOrders",
+  "editDispatchLive",
+  "manageDispatchSettings",
 ];
 
 /**
  * @param {unknown} raw
- * @returns {{
- *   editDispatchGoods: boolean,
- *   deleteDispatchGoods: boolean,
- *   editDispatchCustomers: boolean,
- *   deleteDispatchCustomers: boolean,
- * }}
+ * @returns {Record<string, boolean>}
  */
 export function mergeDeskPrivileges(raw) {
   const src = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
-  return {
-    editDispatchGoods: src.editDispatchGoods === true,
-    deleteDispatchGoods: src.deleteDispatchGoods === true,
-    editDispatchCustomers: src.editDispatchCustomers === true,
-    deleteDispatchCustomers: src.deleteDispatchCustomers === true,
-  };
+  /** @type {Record<string, boolean>} */
+  const out = {};
+  for (const key of DESK_PRIVILEGE_KEYS) {
+    out[key] = src[key] === true;
+  }
+  return out;
 }
 
 /**
@@ -34,6 +38,5 @@ export function mergeDeskPrivileges(raw) {
  * @param {unknown} raw
  */
 export function normalizeDeskPrivilegesInput(raw) {
-  const merged = mergeDeskPrivileges(raw);
-  return { ...merged };
+  return { ...mergeDeskPrivileges(raw) };
 }
