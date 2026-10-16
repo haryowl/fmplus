@@ -1,0 +1,92 @@
+package teltonika
+
+import (
+	"encoding/binary"
+	"encoding/hex"
+	"math"
+	"testing"
+	"time"
+)
+
+// Golden Codec 8 AVL payload: 1 record near Jakarta, empty IO block.
+const goldenCodec8Hex = "" +
+	"08" + // codec
+	"01" + // 1 record
+	"0000000000000000" + // timestamp ms (stamped in test)
+	"00" + // priority
+	"3fa86300" + // lon 106.8 * 1e7
+	"fc4df480" + // lat -6.2 * 1e7
+	"001e" + // alt 30
+	"005a" + // angle 90
+	"0c" + // sats 12
+	"0028" + // speed 40
+	"00" + // event IO
+	"00" + // total IO
+	"00" + // N1
+	"00" + // N2
+	"00" + // N4
+	"00" // N8
+
+func TestParseAVL_Codec8Golden(t *testing.T) {
+	payload := mustHex(t, goldenCodec8Hex)
+	ts := time.Date(2024, 6, 1, 10, 30, 0, 0, time.UTC)
+	binary.BigEndian.PutUint64(payload[2:10], uint64(ts.UnixMilli()))
+
+	n, fixes := parseAVL(payload)
+	if n != 1 {
+		t.Fatalf("count=%d want 1", n)
+	}
+	if len(fixes) != 1 {
+		t.Fatalf("fixes=%d want 1", len(fixes))
+	}
+	f := fixes[0]
+	if math.Abs(f.Lat-(-6.2)) > 1e-5 {
+		t.Errorf("lat=%v want ~-6.2", f.Lat)
+	}
+	if math.Abs(f.Lon-106.8) > 1e-5 {
+		t.Errorf("lon=%v want ~106.8", f.Lon)
+	}
+	if f.Speed == nil || *f.Speed != 40 {
+		t.Errorf("speed=%v want 40", f.Speed)
+	}
+	if f.Heading == nil || *f.Heading != 90 {
+		t.Errorf("heading=%v want 90", f.Heading)
+	}
+	if f.Satellites == nil || *f.Satellites != 12 {
+		t.Errorf("sats=%v want 12", f.Satellites)
+	}
+	if !f.RecordedAt.Equal(ts) {
+		t.Errorf("recordedAt=%v want %v", f.RecordedAt, ts)
+	}
+}
+
+func TestParseAVL_Empty(t *testing.T) {
+	n, fixes := parseAVL([]byte{0x08, 0x00})
+	if n != 0 || len(fixes) != 0 {
+		t.Fatalf("got n=%d fixes=%d", n, len(fixes))
+	}
+	n, fixes = parseAVL(nil)
+	if n != 0 || fixes != nil {
+		t.Fatalf("nil payload: n=%d fixes=%v", n, fixes)
+	}
+}
+
+func TestParseAVL_BuiltCodec8MatchesGoldenLayout(t *testing.T) {
+	lonRaw := int32(math.Round(106.8 * 1e7))
+	latRaw := int32(math.Round(-6.2 * 1e7))
+	if uint32(lonRaw) != 0x3fa86300 {
+		t.Fatalf("lon raw=%08x", uint32(lonRaw))
+	}
+	if uint32(latRaw) != 0xfc4df480 {
+		t.Fatalf("lat raw=%08x", uint32(latRaw))
+	}
+}
+
+func mustHex(t *testing.T, s string) []byte {
+	t.Helper()
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}

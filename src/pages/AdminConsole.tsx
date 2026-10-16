@@ -60,6 +60,9 @@ type TrackerDeviceRow = {
   enabled: boolean;
   hasAuthToken: boolean;
   authToken?: string;
+  videoChannelId?: string;
+  videoRtspUrl?: string;
+  videoNotes?: string;
   lastSeenAt?: string | null;
   lastFix?: { lat: number; lon: number; recordedAt: string | null; speed: number | null } | null;
 };
@@ -404,6 +407,8 @@ export default function AdminConsole() {
   const [tdLabel, setTdLabel] = useState("");
   const [tdProtocol, setTdProtocol] = useState("teltonika");
   const [tdArmadaUserId, setTdArmadaUserId] = useState("");
+  const [tdVideoChannelId, setTdVideoChannelId] = useState("");
+  const [tdVideoRtspUrl, setTdVideoRtspUrl] = useState("");
   const [lastDeviceToken, setLastDeviceToken] = useState("");
 
   const refreshMe = useCallback(async () => {
@@ -730,6 +735,8 @@ export default function AdminConsole() {
             label: tdLabel.trim(),
             protocol: tdProtocol,
             armadaUserId: tdArmadaUserId.trim() ? Number(tdArmadaUserId) : null,
+            videoChannelId: tdVideoChannelId.trim() || null,
+            videoRtspUrl: tdVideoRtspUrl.trim() || null,
           }),
         },
       );
@@ -738,6 +745,8 @@ export default function AdminConsole() {
       setTdImei("");
       setTdLabel("");
       setTdArmadaUserId("");
+      setTdVideoChannelId("");
+      setTdVideoRtspUrl("");
       await loadTrackerDevices(selectedId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create device");
@@ -1704,6 +1713,7 @@ export default function AdminConsole() {
                               </div>
                               <span className="muted">
                                 IMEI {d.imei}
+                                {d.videoChannelId ? ` · ch ${d.videoChannelId}` : ""}
                                 {d.lastFix
                                   ? ` · last ${d.lastFix.lat.toFixed(5)}, ${d.lastFix.lon.toFixed(5)}`
                                   : " · no fix yet"}
@@ -1773,6 +1783,22 @@ export default function AdminConsole() {
                           onChange={(e) => setTdArmadaUserId(e.target.value)}
                           inputMode="numeric"
                           placeholder="Link to fleet vehicle"
+                        />
+                      </label>
+                      <label>
+                        Video channel id (optional)
+                        <input
+                          value={tdVideoChannelId}
+                          onChange={(e) => setTdVideoChannelId(e.target.value)}
+                          placeholder="cam-1 / GB28181 channel"
+                        />
+                      </label>
+                      <label>
+                        RTSP / stream URL (optional)
+                        <input
+                          value={tdVideoRtspUrl}
+                          onChange={(e) => setTdVideoRtspUrl(e.target.value)}
+                          placeholder="rtsp://…"
                         />
                       </label>
                       <div className="span-2 admin-actions">

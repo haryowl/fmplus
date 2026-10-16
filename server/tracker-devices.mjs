@@ -66,6 +66,11 @@ function cleanCoord(lat, lon) {
   return { lat: a, lon: b };
 }
 
+function cleanVideoField(v, max) {
+  const s = String(v || "").trim().slice(0, max);
+  return s || null;
+}
+
 export function publicTrackerDevice(row, { includeTokenHint = false } = {}) {
   if (!row) return null;
   const out = {
@@ -78,6 +83,9 @@ export function publicTrackerDevice(row, { includeTokenHint = false } = {}) {
     armadaUserId: row.armada_user_id == null ? null : Number(row.armada_user_id),
     enabled: row.enabled !== false,
     hasAuthToken: Boolean(row.auth_token_hash),
+    videoChannelId: row.video_channel_id || "",
+    videoRtspUrl: row.video_rtsp_url || "",
+    videoNotes: row.video_notes || "",
     lastSeenAt: row.last_seen_at || null,
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null,
@@ -146,10 +154,14 @@ export async function createTrackerDevice(tenantId, body) {
     ? String(body.authToken).trim()
     : generateDeviceToken();
   const tokenHash = hashDeviceToken(plainToken);
+  const videoChannelId = cleanVideoField(body.videoChannelId ?? body.video_channel_id, 64);
+  const videoRtspUrl = cleanVideoField(body.videoRtspUrl ?? body.video_rtsp_url, 500);
+  const videoNotes = cleanVideoField(body.videoNotes ?? body.video_notes, 500);
   const inserted = await dbQuery(
     `INSERT INTO tracker_devices (
-       tenant_id, imei, unique_id, protocol, label, armada_user_id, auth_token_hash, enabled
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       tenant_id, imei, unique_id, protocol, label, armada_user_id, auth_token_hash, enabled,
+       video_channel_id, video_rtsp_url, video_notes
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      RETURNING *`,
     [
       tenantId,
@@ -160,6 +172,9 @@ export async function createTrackerDevice(tenantId, body) {
       armadaUserId,
       tokenHash,
       body.enabled !== false,
+      videoChannelId,
+      videoRtspUrl,
+      videoNotes,
     ],
   );
   const row = inserted.rows[0];
@@ -214,13 +229,40 @@ export async function updateTrackerDevice(tenantId, deviceId, body) {
     tokenHash = hashDeviceToken(plainToken);
   }
   const enabled = body.enabled !== undefined ? body.enabled !== false : current.enabled !== false;
+  const videoChannelId =
+    body.videoChannelId !== undefined || body.video_channel_id !== undefined
+      ? cleanVideoField(body.videoChannelId ?? body.video_channel_id, 64)
+      : current.video_channel_id;
+  const videoRtspUrl =
+    body.videoRtspUrl !== undefined || body.video_rtsp_url !== undefined
+      ? cleanVideoField(body.videoRtspUrl ?? body.video_rtsp_url, 500)
+      : current.video_rtsp_url;
+  const videoNotes =
+    body.videoNotes !== undefined || body.video_notes !== undefined
+      ? cleanVideoField(body.videoNotes ?? body.video_notes, 500)
+      : current.video_notes;
   const updated = await dbQuery(
     `UPDATE tracker_devices SET
        imei = $3, unique_id = $4, protocol = $5, label = $6,
-       armada_user_id = $7, auth_token_hash = $8, enabled = $9, updated_at = now()
+       armada_user_id = $7, auth_token_hash = $8, enabled = $9,
+       video_channel_id = $10, video_rtsp_url = $11, video_notes = $12,
+       updated_at = now()
      WHERE tenant_id = $1 AND id = $2
      RETURNING *`,
-    [tenantId, deviceId, imei, uniqueId, protocol, label, armadaUserId, tokenHash, enabled],
+    [
+      tenantId,
+      deviceId,
+      imei,
+      uniqueId,
+      protocol,
+      label,
+      armadaUserId,
+      tokenHash,
+      enabled,
+      videoChannelId,
+      videoRtspUrl,
+      videoNotes,
+    ],
   );
   const row = updated.rows[0];
   if (plainToken) row._plainToken = plainToken;

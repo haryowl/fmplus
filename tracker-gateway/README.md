@@ -21,6 +21,8 @@ Devices must be registered in **Admin → Tracker devices** with matching **prot
 
 Unknown IMEIs are rate-limited, written to `tracker_unassigned`, and shown in Admin for **Claim** into a tenant (or Dismiss).
 
+Video is out of band: store optional `video_channel_id` / RTSP URL on the device row; do not terminate RTSP/GB28181 in this process. Golden hex fixtures live in `internal/{teltonika,jt808,concox}/*_test.go`.
+
 ## Run
 
 ```bash
