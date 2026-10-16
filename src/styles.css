@@ -13102,17 +13102,30 @@ a.dispatch-master-nav-tab:hover {
 [data-theme="modern"] .maintenance-page,
 [data-theme="modern"] .dispatch-live-page,
 [data-theme="modern"] .dispatch-page,
+[data-theme="modern"] .dispatch-master-page,
 [data-theme="modern"] .live-ops-page {
   background: transparent;
 }
 
 [data-theme="modern"] .dispatch-page .dispatch-toolbar,
 [data-theme="modern"] .dispatch-page .dispatch-rail,
+[data-theme="modern"] .dispatch-master-page .dispatch-master-shell > *,
 [data-theme="modern"] .live-ops-page .filters,
 [data-theme="modern"] .live-ops-page .live-ops-list,
 [data-theme="modern"] .live-ops-page .live-ops-map-wrap {
   border-radius: 12px;
   box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+[data-theme="modern"] .dispatch-master-page .dispatch-master-nav-tab.is-on {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent-ink);
+}
+
+[data-theme="modern"] .dispatch-master-page .catalog-v2-card,
+[data-theme="modern"] .dispatch-master-page .dispatch-goods-catalog {
+  border-radius: 12px;
 }
 
 [data-theme="modern"] .dispatch-page .dispatch-kpi-actions .btn-primary,

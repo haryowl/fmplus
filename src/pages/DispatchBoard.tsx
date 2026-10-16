@@ -7,13 +7,10 @@ import { CatalogScanButton } from "../components/CatalogScanButton";
 import { DispatchJobMap } from "../components/DispatchJobMap";
 import { DispatchFareRatesPanel } from "../components/DispatchFareRatesPanel";
 import { DispatchOrderGoodsEditor } from "../components/DispatchOrderGoodsEditor";
+import { DispatchPlanBalanceGoals } from "../components/DispatchPlanBalanceGoals";
 import { DispatchPlanDayPreview } from "../components/DispatchPlanDayPreview";
 import { ViewNav } from "../components/ViewNav";
-import {
-  PLAN_BALANCE_GOAL_OPTIONS,
-  PLAN_BALANCE_GOALS_KEY,
-  loadPlanBalanceGoals,
-} from "../lib/dispatchPlanBalance";
+import { PLAN_BALANCE_GOALS_KEY, loadPlanBalanceGoals } from "../lib/dispatchPlanBalance";
 import {
   dispatchProfiles,
   enabledDeskModes,
@@ -2567,29 +2564,10 @@ export default function DispatchBoard() {
                   title="Clock start for planned ETAs (vehicle leaves / first stop clock)"
                 />
               </div>
-              <div className="field dispatch-plan-balance-goals">
-                <span className="dispatch-plan-balance-label">Balance across vehicles</span>
-                {PLAN_BALANCE_GOAL_OPTIONS.map((opt) => (
-                  <label key={opt.id} className="dispatch-plan-check">
-                    <input
-                      type="checkbox"
-                      checked={planBalanceGoals.includes(opt.id)}
-                      onChange={() => {
-                        setPlanBalanceGoals((prev) =>
-                          prev.includes(opt.id)
-                            ? prev.filter((g) => g !== opt.id)
-                            : [...prev, opt.id],
-                        );
-                      }}
-                    />
-                    {opt.label}
-                  </label>
-                ))}
-                <p className="dispatch-search-hint">
-                  Capacity limits always apply. Checked items even out work across vehicles after
-                  packing.
-                </p>
-              </div>
+              <DispatchPlanBalanceGoals
+                value={planBalanceGoals}
+                onChange={setPlanBalanceGoals}
+              />
               <div className="field">
                 <label htmlFor="dispatch-day-end">Day end</label>
                 <input

@@ -2,6 +2,13 @@
 
 All notable changes to FM Plus (`fms-embed`) are documented in this file.
 
+## [0.2.3] — 2026-10-16
+
+### Changed
+- Archived LookFeelDesign mocks under `docs/design/` (reference only; not the shipping UI).
+- Extended Modern theme polish to Goods/Customers master desks.
+- Extracted Auto-plan balance-goal checkboxes into `DispatchPlanBalanceGoals`.
+
 ## [0.2.2] — 2026-10-16
 
 ### Added
