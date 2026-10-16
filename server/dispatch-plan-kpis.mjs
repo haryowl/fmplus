@@ -59,7 +59,7 @@ export function computePlanDayKpis(input = {}) {
   const unassignedCount = unassigned.length;
   const assignedOrderEstimate = Math.max(0, orderCount - unassignedCount);
 
-  return {
+  const kpis = {
     routeCount: active.length,
     assignedStops,
     assignedOrders: assignedOrderEstimate,
@@ -73,4 +73,18 @@ export function computePlanDayKpis(input = {}) {
     balanceMoves: Math.max(0, Math.floor(num(input.balanceMoves, 0))),
     solveMs,
   };
+  return {
+    ...kpis,
+    suggestImprove: planKpisSuggestImprove(kpis),
+  };
+}
+
+/** True when an Improve pass is likely to help (unassigned / late / fill imbalance). */
+export function planKpisSuggestImprove(kpis) {
+  if (!kpis || typeof kpis !== "object") return false;
+  return (
+    num(kpis.unassignedCount, 0) > 0 ||
+    num(kpis.lateStops, 0) > 0 ||
+    num(kpis.utilizationSpreadPct, 0) >= 25
+  );
 }

@@ -202,6 +202,7 @@ export async function handlePlanDayPost(req, res, api) {
         ? body.balanceGoals
         : undefined,
     );
+    const improvePass = body.improvePass === true;
     let dayStartMin = 8 * 60;
     if (body.dayStart) {
       const parsed = String(body.dayStart).trim();
@@ -523,6 +524,7 @@ export async function handlePlanDayPost(req, res, api) {
       multiTripMode,
       reloadMinutes,
       balanceGoals,
+      improvePass,
     };
 
     /** @type {any[]} */
@@ -532,6 +534,7 @@ export async function handlePlanDayPost(req, res, api) {
     let planEngine = "haversine";
     let planWarning = null;
     let planBalanceMoves = 0;
+    let planImproveMoves = 0;
     let planRoundtrip = false;
     /** @type {{ lat: number, lon: number } | null} */
     let previewDepot = null;
@@ -612,6 +615,7 @@ export async function handlePlanDayPost(req, res, api) {
         if (planned.warning) warnings.push(planned.warning);
         const plan = planned.plan;
         planBalanceMoves += plan.balanceMoves || 0;
+        planImproveMoves += plan.improveMoves || 0;
         planRoundtrip = planRoundtrip || plan.roundtrip;
         for (const route of plan.routes) {
           planRoutes.push(
@@ -716,6 +720,7 @@ export async function handlePlanDayPost(req, res, api) {
         if (planned.warning) warnings.push(planned.warning);
         const plan = planned.plan;
         planBalanceMoves += plan.balanceMoves || 0;
+        planImproveMoves += plan.improveMoves || 0;
         planRoundtrip = planRoundtrip || plan.roundtrip;
         for (const route of plan.routes) {
           planRoutes.push(
@@ -786,6 +791,7 @@ export async function handlePlanDayPost(req, res, api) {
       planEngine = planned.engine;
       planWarning = planned.warning || null;
       planBalanceMoves = plan.balanceMoves || 0;
+      planImproveMoves = plan.improveMoves || 0;
       planRoundtrip = plan.roundtrip;
       previewDepot = useDepot ? { lat: depotLat, lon: depotLon } : null;
     }
@@ -801,7 +807,9 @@ export async function handlePlanDayPost(req, res, api) {
     console.info("[dispatch/plan-day]", {
       serviceDate,
       apply,
+      improvePass,
       engine: planEngine,
+      improveMoves: planImproveMoves,
       ...kpis,
     });
 
@@ -818,6 +826,8 @@ export async function handlePlanDayPost(req, res, api) {
       depots: previewDepots,
       roundtrip: planRoundtrip,
       balanceMoves: planBalanceMoves,
+      improvePass,
+      improveMoves: planImproveMoves,
       balanceGoals,
       twMode,
       serviceMinutes,

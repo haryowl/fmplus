@@ -12,6 +12,7 @@ export function DispatchPlanDayPreview({ planPreview }: Props) {
     <div className="dispatch-plan-preview">
       <p className="dispatch-eyebrow">
         Preview · {planPreview.engine}
+        {planPreview.improvePass ? " · improved" : ""}
         {planPreview.warning ? ` · ${planPreview.warning}` : ""}
       </p>
       <p className="dispatch-search-hint">

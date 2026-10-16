@@ -2073,7 +2073,7 @@ export default function DispatchBoard() {
     }
   }
 
-  async function runPlanDay(apply: boolean) {
+  async function runPlanDay(apply: boolean, improvePass = false) {
     setBusy(true);
     setError("");
     try {
@@ -2086,6 +2086,7 @@ export default function DispatchBoard() {
         depotPathMode,
         openStartMode: depotMode === "open" ? openStartMode : "none",
         apply,
+        improvePass: improvePass || undefined,
         roundtrip:
           depotMode === "depot" ||
           depotMode === "multi" ||
@@ -3234,6 +3235,20 @@ export default function DispatchBoard() {
               >
                 Preview plan
               </button>
+              {planPreview?.kpis?.suggestImprove ? (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={busy}
+                  title="Re-pack with a stronger multi-metric balance pass (fill, stops, distance, time)"
+                  onClick={() => void runPlanDay(false, true)}
+                >
+                  Improve plan
+                  {planPreview.improvePass && planPreview.improveMoves
+                    ? ` · +${planPreview.improveMoves}`
+                    : ""}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn btn-primary"
@@ -3248,7 +3263,7 @@ export default function DispatchBoard() {
                   ) {
                     return;
                   }
-                  void runPlanDay(true);
+                  void runPlanDay(true, Boolean(planPreview?.improvePass));
                 }}
               >
                 Apply plan

@@ -416,6 +416,15 @@ export function balanceRelocate(
   const serviceMinutes = opts.serviceMinutes ?? DEFAULT_SERVICE_MIN;
   const maxStops = opts.maxStopsPerVehicle || 0;
   const preferSameZone = Boolean(opts.preferSameZone);
+  const maxPasses = Math.max(1, Math.min(96, Math.floor(Number(opts.maxPasses) || 24)));
+  const kmGrowthFactor = Math.max(
+    1,
+    Math.min(1.25, Number(opts.kmGrowthFactor) || 1.08),
+  );
+  const overloadMargin = Math.max(
+    0,
+    Math.min(0.25, Number(opts.overloadMargin) || 0.08),
+  );
 
   const metricOf = (vs) =>
     balanceRawMetrics(
@@ -439,7 +448,7 @@ export function balanceRelocate(
   });
 
   let moves = 0;
-  for (let pass = 0; pass < 24; pass++) {
+  for (let pass = 0; pass < maxPasses; pass++) {
     if (vehicleStates.length < 2) break;
     const active = vehicleStates.filter((v) => v.orderIndexes.length > 0);
     if (!active.length) break;
@@ -467,7 +476,7 @@ export function balanceRelocate(
 
     for (const from of active) {
       const fromLoad = loads.get(from.key) || 0;
-      if (fromLoad <= avg + 0.08) continue;
+      if (fromLoad <= avg + overloadMargin) continue;
       for (let i = 0; i < from.orderIndexes.length; i++) {
         const oi = from.orderIndexes[i];
         if (isPairDrop(orders[oi])) continue;
@@ -515,7 +524,7 @@ export function balanceRelocate(
             const after =
               pathKm(fromProbe.route, matrix, depotIdx, roundtrip) +
               pathKm(toProbe.route, matrix, depotIdx, roundtrip);
-            if (after > (fromBefore + toBefore) * 1.08 + 0.5) continue;
+            if (after > (fromBefore + toBefore) * kmGrowthFactor + 0.5) continue;
             const fromLoadAfter = combinedLoadFromRaw(metricOf(fromProbe), goals, maxima);
             const toLoadAfter = combinedLoadFromRaw(metricOf(toProbe), goals, maxima);
             const gapAfter = Math.abs(fromLoadAfter - toLoadAfter);
@@ -578,7 +587,7 @@ export function balanceRelocate(
 
           const fromAfter = pathKm(fromRouteNext, matrix, depotIdx, roundtrip);
           const toAfter = pathKm(toRouteNext, matrix, depotIdx, roundtrip);
-          if (fromAfter + toAfter > (fromBefore + toBefore) * 1.08 + 0.5) continue;
+          if (fromAfter + toAfter > (fromBefore + toBefore) * kmGrowthFactor + 0.5) continue;
 
           const fromProbe = snapshotVs(from);
           fromProbe.orderIndexes = from.orderIndexes.filter((_, idx) => idx !== i);
@@ -703,6 +712,7 @@ export function assignVehiclesToDepots(vehicles, depots, demandByDepot) {
  * @param {"off"|"max2"|"unlimited"} [input.multiTripMode]
  * @param {number} [input.reloadMinutes] — depot dwell between trips
  * @param {BalanceGoal[]|null|undefined} [input.balanceGoals] — omit → fill; [] → skip balance
+ * @param {boolean} [input.improvePass] — second, more aggressive multi-metric balance relocate
  */
 export function planCvrp({
   orders,
@@ -720,6 +730,7 @@ export function planCvrp({
   multiTripMode = "off",
   reloadMinutes = DEFAULT_RELOAD_MIN,
   balanceGoals: balanceGoalsIn,
+  improvePass = false,
 }) {
   const mode = ["off", "soft", "hard"].includes(twMode) ? twMode : "soft";
   const svcMin = Math.max(0, Math.min(120, Number(serviceMinutes) || DEFAULT_SERVICE_MIN));
@@ -728,6 +739,7 @@ export function planCvrp({
   const reloadMin = Math.max(0, Math.min(120, Number(reloadMinutes) || DEFAULT_RELOAD_MIN));
   const maxStops = Math.max(0, Math.floor(Number(maxStopsPerVehicle) || 0));
   const sameZone = Boolean(preferSameZone);
+  const doImprove = improvePass === true;
   const balanceGoals = normalizeBalanceGoals(
     balanceGoalsIn === undefined ? undefined : balanceGoalsIn,
   );
@@ -780,6 +792,7 @@ export function planCvrp({
   /** @type {any[]} */
   const collectedRoutes = [];
   let balanceMoves = 0;
+  let improveMoves = 0;
 
   for (let trip = 1; trip <= maxTrips; trip++) {
     if (unassigned.size === 0) break;
@@ -955,6 +968,15 @@ export function planCvrp({
     }
 
     // Balance only within this trip (shared start times roughly similar).
+    const balanceOpts = {
+      twMode: mode,
+      dayStartMin: startMin,
+      serviceMinutes: svcMin,
+      maxStopsPerVehicle: maxStops,
+      preferSameZone: sameZone,
+      perVehicleDayStart: true,
+      balanceGoals,
+    };
     balanceMoves += balanceRelocate(
       eligible,
       orders,
@@ -962,16 +984,26 @@ export function planCvrp({
       depotIndex,
       forceRoundtrip,
       orderMatrixIndex,
-      {
-        twMode: mode,
-        dayStartMin: startMin,
-        serviceMinutes: svcMin,
-        maxStopsPerVehicle: maxStops,
-        preferSameZone: sameZone,
-        perVehicleDayStart: true,
-        balanceGoals,
-      },
+      balanceOpts,
     );
+    // Optional second pass: all metrics, more relocate budget, slightly looser km growth.
+    if (doImprove) {
+      improveMoves += balanceRelocate(
+        eligible,
+        orders,
+        matrixKm,
+        depotIndex,
+        forceRoundtrip,
+        orderMatrixIndex,
+        {
+          ...balanceOpts,
+          balanceGoals: [...BALANCE_GOAL_KEYS],
+          maxPasses: 48,
+          kmGrowthFactor: 1.12,
+          overloadMargin: 0.05,
+        },
+      );
+    }
 
     let anyTripBuilt = false;
     for (const vs of eligible) {
@@ -1102,7 +1134,9 @@ export function planCvrp({
     pointCount: points.length,
     depotIndex,
     roundtrip: forceRoundtrip,
-    balanceMoves,
+    balanceMoves: balanceMoves + improveMoves,
+    improveMoves,
+    improvePass: doImprove,
     balanceGoals,
     twMode: mode,
     serviceMinutes: svcMin,

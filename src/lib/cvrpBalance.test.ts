@@ -98,6 +98,27 @@ describe("planCvrp balanceGoals", () => {
     expect(plan.balanceGoals).toEqual([]);
     expect(plan.balanceMoves).toBe(0);
   });
+
+  it("improvePass runs a second multi-metric balance even when goals were empty", () => {
+    const orders = [0, 1, 2, 3, 4, 5].map((i) => mkOrder(`o${i}`, i, 8));
+    const points = [depot, ...orders.map((o) => ({ lat: o.lat, lon: o.lon }))];
+    const plan = planCvrp({
+      orders,
+      vehicles,
+      matrixKm: gridMatrix(points.length, 3),
+      points,
+      depotIndex: 0,
+      roundtrip: true,
+      dayStartMin: 8 * 60,
+      dayEndMin: 18 * 60,
+      twMode: "off",
+      balanceGoals: [],
+      improvePass: true,
+    });
+    expect(plan.improvePass).toBe(true);
+    expect(typeof plan.improveMoves).toBe("number");
+    expect(plan.balanceMoves).toBe(plan.improveMoves);
+  });
 });
 
 describe("balanceRelocate stops-only", () => {

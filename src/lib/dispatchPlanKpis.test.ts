@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { computePlanDayKpis } from "../../server/dispatch-plan-kpis.mjs";
+import {
+  computePlanDayKpis,
+  planKpisSuggestImprove,
+} from "../../server/dispatch-plan-kpis.mjs";
 
 describe("computePlanDayKpis", () => {
   it("summarizes empty plans", () => {
@@ -24,6 +27,7 @@ describe("computePlanDayKpis", () => {
       utilizationSpreadPct: 0,
       balanceMoves: 0,
       solveMs: 100,
+      suggestImprove: false,
     });
   });
 
@@ -62,5 +66,23 @@ describe("computePlanDayKpis", () => {
     expect(kpis.utilizationSpreadPct).toBe(40);
     expect(kpis.balanceMoves).toBe(2);
     expect(kpis.solveMs).toBe(250);
+    expect(kpis.suggestImprove).toBe(true);
+  });
+});
+
+describe("planKpisSuggestImprove", () => {
+  it("flags unassigned, late stops, or wide fill spread", () => {
+    expect(planKpisSuggestImprove({ unassignedCount: 1, lateStops: 0, utilizationSpreadPct: 0 })).toBe(
+      true,
+    );
+    expect(planKpisSuggestImprove({ unassignedCount: 0, lateStops: 2, utilizationSpreadPct: 0 })).toBe(
+      true,
+    );
+    expect(
+      planKpisSuggestImprove({ unassignedCount: 0, lateStops: 0, utilizationSpreadPct: 25 }),
+    ).toBe(true);
+    expect(
+      planKpisSuggestImprove({ unassignedCount: 0, lateStops: 0, utilizationSpreadPct: 24 }),
+    ).toBe(false);
   });
 });

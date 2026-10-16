@@ -2,6 +2,11 @@
 
 All notable changes to FM Plus (`fms-embed`) are documented in this file.
 
+## [0.2.5] — 2026-10-16
+
+### Added
+- Auto-plan **Improve plan** pass when KPIs suggest it (unassigned, late stops, or fill spread ≥ 25 pp): second multi-metric balance with more relocate budget.
+
 ## [0.2.4] — 2026-10-16
 
 ### Added

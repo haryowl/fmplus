@@ -776,6 +776,8 @@ export type DispatchPlanDayKpis = {
   utilizationSpreadPct: number;
   balanceMoves: number;
   solveMs: number | null;
+  /** True when an Improve pass is likely to help. */
+  suggestImprove?: boolean;
 };
 
 export type DispatchPlanDayResult = {
@@ -798,6 +800,10 @@ export type DispatchPlanDayResult = {
   }[] | null;
   roundtrip: boolean;
   balanceMoves?: number;
+  /** Second, more aggressive balance pass was requested. */
+  improvePass?: boolean;
+  /** Extra relocate moves from the improve pass (included in balanceMoves). */
+  improveMoves?: number;
   /** Active load-balance goals after packing (omit treated as fill on older servers). */
   balanceGoals?: DispatchBalanceGoal[];
   twMode?: DispatchTwMode;
@@ -989,6 +995,11 @@ export async function planDispatchDay(body: {
    * Pass `[]` to pack only (no inter-route relocate).
    */
   balanceGoals?: DispatchBalanceGoal[];
+  /**
+   * Second balance pass with all metrics, more relocate budget, and slightly
+   * looser km growth — use when KPIs suggestImprove.
+   */
+  improvePass?: boolean;
   /** When set, only plan orders/jobs for this desk profile. */
   profile?: DispatchProfileKind;
   routing?: {
