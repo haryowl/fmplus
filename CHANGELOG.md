@@ -2,6 +2,11 @@
 
 All notable changes to FM Plus (`fms-embed`) are documented in this file.
 
+## [0.2.4] — 2026-10-16
+
+### Added
+- Auto-plan day quality KPIs on preview/apply: assigned/unassigned, late stops, total km, fill avg/spread, solve time (also logged server-side).
+
 ## [0.2.3] — 2026-10-16
 
 ### Changed

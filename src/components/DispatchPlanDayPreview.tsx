@@ -7,6 +7,7 @@ type Props = {
 
 /** Auto-plan day preview summary: routes, balance goals, unassigned. */
 export function DispatchPlanDayPreview({ planPreview }: Props) {
+  const kpis = planPreview.kpis;
   return (
     <div className="dispatch-plan-preview">
       <p className="dispatch-eyebrow">
@@ -32,6 +33,49 @@ export function DispatchPlanDayPreview({ planPreview }: Props) {
           ? ` · multi-trip ${planPreview.multiTripMode}`
           : ""}
       </p>
+      {kpis ? (
+        <ul className="dispatch-plan-kpis" aria-label="Plan quality">
+          <li>
+            <em>Assigned</em>
+            <strong>
+              {kpis.assignedOrders}/{planPreview.orderCount}
+            </strong>
+          </li>
+          <li>
+            <em>Unassigned</em>
+            <strong className={kpis.unassignedCount > 0 ? "is-warn" : undefined}>
+              {kpis.unassignedCount}
+            </strong>
+          </li>
+          <li>
+            <em>Late stops</em>
+            <strong className={kpis.lateStops > 0 ? "is-warn" : undefined}>{kpis.lateStops}</strong>
+          </li>
+          <li>
+            <em>Distance</em>
+            <strong>{kpis.totalDistanceKm} km</strong>
+          </li>
+          <li>
+            <em>Fill avg</em>
+            <strong>{kpis.avgUtilizationPct}%</strong>
+          </li>
+          <li>
+            <em>Fill spread</em>
+            <strong
+              className={kpis.utilizationSpreadPct >= 25 ? "is-warn" : undefined}
+              title={`${kpis.minUtilizationPct}% – ${kpis.maxUtilizationPct}%`}
+            >
+              {kpis.utilizationSpreadPct} pp
+            </strong>
+          </li>
+          {kpis.solveMs != null ? (
+            <li>
+              <em>Solve</em>
+              <strong>{kpis.solveMs} ms</strong>
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
       <ul className="dispatch-plan-routes">
         {planPreview.routes.map((r) => {
           const tripIndex = Number(r.meta?.tripIndex) || 1;

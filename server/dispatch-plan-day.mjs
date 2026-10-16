@@ -31,6 +31,7 @@ import { parseRoutingOptions } from "./routing-options.mjs";
 import { parseServiceDate, todayServiceDate as todayYmd } from "./service-day.mjs";
 import { tenantFromRequest } from "./tenants.mjs";
 import { fetchVehiclePositions } from "./vehicle-positions.mjs";
+import { computePlanDayKpis } from "./dispatch-plan-kpis.mjs";
 
 export function rowToPlanOrder(o) {
   const pickupMin =
@@ -138,6 +139,7 @@ export async function handlePlanDayPost(req, res, api) {
     requirePlanPrivilege,
   } = api;
 
+    const planStartedAtMs = Date.now();
     const body = await readJson(req);
     const serviceDate = parseServiceDate(body.serviceDate) || todayYmd();
     const fleetMode = String(body.fleetMode || "both").toLowerCase();
@@ -788,6 +790,21 @@ export async function handlePlanDayPost(req, res, api) {
       previewDepot = useDepot ? { lat: depotLat, lon: depotLon } : null;
     }
 
+    const kpis = computePlanDayKpis({
+      routes: planRoutes,
+      unassigned: planUnassigned,
+      orderCount: orders.length,
+      balanceMoves: planBalanceMoves,
+      startedAtMs: planStartedAtMs,
+      endedAtMs: Date.now(),
+    });
+    console.info("[dispatch/plan-day]", {
+      serviceDate,
+      apply,
+      engine: planEngine,
+      ...kpis,
+    });
+
     const preview = {
       serviceDate,
       fleetMode,
@@ -819,6 +836,7 @@ export async function handlePlanDayPost(req, res, api) {
       unassigned: planUnassigned,
       vehicleCount: vehicles.length,
       orderCount: orders.length,
+      kpis,
     };
 
     if (!apply) {

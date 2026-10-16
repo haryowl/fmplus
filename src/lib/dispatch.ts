@@ -761,6 +761,23 @@ export type DispatchPlanDayRoute = {
   routeEnd?: DispatchRouteAnchor | null;
 };
 
+/** Post-pack plan quality summary (Auto-plan day preview / apply). */
+export type DispatchPlanDayKpis = {
+  routeCount: number;
+  assignedStops: number;
+  assignedOrders: number;
+  unassignedCount: number;
+  lateStops: number;
+  totalDistanceKm: number;
+  avgUtilizationPct: number;
+  minUtilizationPct: number;
+  maxUtilizationPct: number;
+  /** max − min fill % across active routes (0 if ≤1 route). */
+  utilizationSpreadPct: number;
+  balanceMoves: number;
+  solveMs: number | null;
+};
+
 export type DispatchPlanDayResult = {
   serviceDate: string;
   fleetMode: DispatchFleetMode;
@@ -807,6 +824,8 @@ export type DispatchPlanDayResult = {
   unassigned: { orderId: string; label?: string; reason: string; depotId?: string }[];
   vehicleCount: number;
   orderCount: number;
+  /** Plan quality KPIs for preview and solver improvement gates. */
+  kpis?: DispatchPlanDayKpis;
 };
 
 export async function fetchDispatchDepot(): Promise<{
