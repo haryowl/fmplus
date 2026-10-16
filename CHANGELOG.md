@@ -2,6 +2,12 @@
 
 All notable changes to FM Plus (`fms-embed`) are documented in this file.
 
+## [0.2.1] — 2026-10-16
+
+### Changed
+- Extracted `POST /api/dispatch/plan-day` into `server/dispatch-plan-day.mjs` (thinner `dispatch-api` router).
+- Extracted Auto-plan preview UI and balance-goal helpers from `DispatchBoard`.
+
 ## [0.2.0] — 2026-10-16
 
 ### Added

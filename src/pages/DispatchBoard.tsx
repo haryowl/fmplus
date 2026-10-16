@@ -7,7 +7,13 @@ import { CatalogScanButton } from "../components/CatalogScanButton";
 import { DispatchJobMap } from "../components/DispatchJobMap";
 import { DispatchFareRatesPanel } from "../components/DispatchFareRatesPanel";
 import { DispatchOrderGoodsEditor } from "../components/DispatchOrderGoodsEditor";
+import { DispatchPlanDayPreview } from "../components/DispatchPlanDayPreview";
 import { ViewNav } from "../components/ViewNav";
+import {
+  PLAN_BALANCE_GOAL_OPTIONS,
+  PLAN_BALANCE_GOALS_KEY,
+  loadPlanBalanceGoals,
+} from "../lib/dispatchPlanBalance";
 import {
   dispatchProfiles,
   enabledDeskModes,
@@ -229,56 +235,6 @@ function activeWindowPreset(start: string, end: string): string | null {
   const b = normalizeClockHm(end);
   const hit = WINDOW_PRESETS.find((p) => p.start === a && p.end === b);
   return hit?.id || null;
-}
-
-const PLAN_BALANCE_GOALS_KEY = "dispatchPlanBalanceGoals";
-const PLAN_BALANCE_GOAL_OPTIONS: { id: DispatchBalanceGoal; label: string }[] = [
-  { id: "fill", label: "Capacity fill %" },
-  { id: "stops", label: "Stop count" },
-  { id: "distance", label: "Distance (km)" },
-  { id: "duration", label: "Time (drive + service)" },
-];
-
-function loadPlanBalanceGoals(): DispatchBalanceGoal[] {
-  try {
-    const raw = localStorage.getItem(PLAN_BALANCE_GOALS_KEY);
-    if (raw == null) return ["fill"];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return ["fill"];
-    const allowed = new Set(PLAN_BALANCE_GOAL_OPTIONS.map((o) => o.id));
-    const out: DispatchBalanceGoal[] = [];
-    for (const g of parsed) {
-      const id = String(g || "") as DispatchBalanceGoal;
-      if (allowed.has(id) && !out.includes(id)) out.push(id);
-    }
-    return out;
-  } catch {
-    return ["fill"];
-  }
-}
-
-/** Human label for Auto-plan day unassigned[].reason codes. */
-function planUnassignedReasonLabel(reason: string): string {
-  switch (String(reason || "").toLowerCase()) {
-    case "no_coords":
-      return "No coordinates";
-    case "no_vehicle_at_depot":
-      return "No vehicle at depot";
-    case "exceeds_all_vehicle_capacity":
-      return "Exceeds all vehicle capacity";
-    case "no_feasible_insertion":
-      return "No feasible insertion";
-    case "time_window_or_capacity":
-      return "Time window or capacity";
-    case "no_shift_time_for_next_trip":
-      return "No shift time for next trip";
-    case "pair_requires_depot":
-      return "Pickup/drop needs depot or multi-depot";
-    case "cross_depot_pair":
-      return "Pickup and drop in different depot areas";
-    default:
-      return reason ? reason.replace(/_/g, " ") : "Unassigned";
-  }
 }
 
 export default function DispatchBoard() {
@@ -3301,107 +3257,7 @@ export default function DispatchBoard() {
                 Apply plan
               </button>
             </div>
-            {planPreview ? (
-              <div className="dispatch-plan-preview">
-                <p className="dispatch-eyebrow">
-                  Preview · {planPreview.engine}
-                  {planPreview.warning ? ` · ${planPreview.warning}` : ""}
-                </p>
-                <p className="dispatch-search-hint">
-                  {planPreview.routes.length} route(s) · {planPreview.orderCount} orders considered ·{" "}
-                  {planPreview.unassigned.length} unassigned
-                  {Array.isArray(planPreview.balanceGoals)
-                    ? ` · Balance: ${
-                        planPreview.balanceGoals.length
-                          ? `${planPreview.balanceGoals.join(" · ")}${
-                              planPreview.balanceMoves
-                                ? ` · ${planPreview.balanceMoves} moves`
-                                : ""
-                            }`
-                          : "off"
-                      }`
-                    : planPreview.balanceMoves
-                      ? ` · ${planPreview.balanceMoves} balance move(s)`
-                      : ""}
-                  {planPreview.depots?.length
-                    ? ` · ${planPreview.depots.length} depot(s)`
-                    : ""}
-                  {planPreview.multiTripMode && planPreview.multiTripMode !== "off"
-                    ? ` · multi-trip ${planPreview.multiTripMode}`
-                    : ""}
-                </p>
-                <ul className="dispatch-plan-routes">
-                  {planPreview.routes.map((r) => {
-                    const tripIndex = Number(r.meta?.tripIndex) || 1;
-                    return (
-                    <li key={r.key}>
-                      <strong>
-                        {r.label}
-                        {tripIndex > 1 ? (
-                          <em className="dispatch-live-pill tone-in_transit"> trip {tripIndex}</em>
-                        ) : null}
-                        {r.depotName ? ` · ${r.depotName}` : ""}
-                      </strong>
-                      <span>
-                        {r.orderIds.length} stops · {r.utilizationPct}% · {r.distanceKm} km · {r.volumeUsed}/
-                        {r.volumeCapacityM3} m³ · {r.weightUsed}/{r.weightCapacityKg} kg
-                        {r.lateStops ? ` · ${r.lateStops} late` : ""}
-                      </span>
-                      {r.stops && r.stops.length > 0 ? (
-                        <ol className="dispatch-plan-stop-etas">
-                          {r.pathMode === "sequence" && r.routeStart ? (
-                            <li key={`${r.key}-start`}>
-                              Start · {r.routeStart.label}
-                            </li>
-                          ) : null}
-                          {r.stops.map((s, idx) => (
-                            <li key={`${r.key}-${s.orderId || idx}`} className={s.late ? "is-late" : undefined}>
-                              {s.arriveAt} · {s.label || s.orderId || `Stop ${idx + 1}`}
-                              {s.serviceMinutes != null ? ` · ${s.serviceMinutes} min stop` : ""}
-                              {s.windowEnd ? ` (≤${s.windowEnd})` : ""}
-                              {s.late ? " · late" : ""}
-                            </li>
-                          ))}
-                          {r.pathMode === "sequence" && r.routeEnd ? (
-                            <li key={`${r.key}-end`}>Return · {r.routeEnd.label}</li>
-                          ) : null}
-                        </ol>
-                      ) : null}
-                    </li>
-                    );
-                  })}
-                </ul>
-                {planPreview.unassigned.length > 0 ? (
-                  <div className="dispatch-plan-unassigned">
-                    <p className="dispatch-eyebrow">
-                      Unassigned · {planPreview.unassigned.length}
-                    </p>
-                    <ul>
-                      {planPreview.unassigned.slice(0, 12).map((u) => {
-                        const depotName =
-                          u.depotId && planPreview.depots
-                            ? planPreview.depots.find((d) => d.id === u.depotId)?.name
-                            : null;
-                        return (
-                          <li key={u.orderId}>
-                            <strong>{u.label || u.orderId}</strong>
-                            <span>
-                              {planUnassignedReasonLabel(u.reason)}
-                              {depotName ? ` · ${depotName}` : ""}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    {planPreview.unassigned.length > 12 ? (
-                      <p className="dispatch-search-hint">
-                        +{planPreview.unassigned.length - 12} more
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
+            {planPreview ? <DispatchPlanDayPreview planPreview={planPreview} /> : null}
           </section>
         )}
 
