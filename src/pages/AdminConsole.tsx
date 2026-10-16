@@ -1284,11 +1284,11 @@ export default function AdminConsole() {
                               </label>
                               <fieldset className="span-2 admin-fieldset">
                                 <legend>Desk privileges</legend>
-                                <p className="muted admin-hint">
+                                <p className="admin-hint">
                                   Goods/Customers need sign-in. Jobs/plan/orders/live/settings apply when the user is signed
                                   in on the desk.
                                 </p>
-                                <div className="admin-toggle-grid">
+                                <div className="admin-toggle-grid" role="group" aria-label="Desk privileges">
                                   {DESK_PRIVILEGE_KEYS.map((key) => (
                                     <label key={key} className={`admin-chip-toggle${edit.privileges[key] ? " is-on" : ""}`}>
                                       <input
@@ -1301,7 +1301,7 @@ export default function AdminConsole() {
                                           })
                                         }
                                       />
-                                      {DESK_PRIVILEGE_LABELS[key]}
+                                      <span>{DESK_PRIVILEGE_LABELS[key]}</span>
                                     </label>
                                   ))}
                                 </div>
@@ -1389,7 +1389,11 @@ export default function AdminConsole() {
                       </label>
                       <fieldset className="span-2 admin-fieldset">
                         <legend>Desk privileges</legend>
-                        <div className="admin-toggle-grid">
+                        <p className="admin-hint">
+                          Goods/Customers need sign-in. Jobs/plan/orders/live/settings apply when the user is signed in on
+                          the desk.
+                        </p>
+                        <div className="admin-toggle-grid" role="group" aria-label="Desk privileges">
                           {DESK_PRIVILEGE_KEYS.map((key) => (
                             <label key={key} className={`admin-chip-toggle${fuPrivileges[key] ? " is-on" : ""}`}>
                               <input
@@ -1400,7 +1404,7 @@ export default function AdminConsole() {
                                   setFuPrivileges((prev) => ({ ...prev, [key]: e.target.checked }))
                                 }
                               />
-                              {DESK_PRIVILEGE_LABELS[key]}
+                              <span>{DESK_PRIVILEGE_LABELS[key]}</span>
                             </label>
                           ))}
                         </div>
