@@ -18,6 +18,7 @@ ssl/*.pem
 .idea
 *.apk
 *.aab
+tracker-gateway/bin/
 android-offline/.gradle
 android-offline/app/build
 android-offline/build

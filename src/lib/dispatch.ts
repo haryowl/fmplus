@@ -2426,9 +2426,9 @@ export type DispatchLiveStop = {
 export type DispatchLivePosition = {
   lat: number;
   lon: number;
-  /** "phone" is the driver PWA; "armada" is the vehicle tracker. */
-  source: "phone" | "armada";
-  /** Only the phone stream carries a timestamp. */
+  /** "phone" = driver PWA; "device" = direct tracker gateway; "armada" = GpsGate. */
+  source: "phone" | "device" | "armada";
+  /** Phone and direct device streams carry a timestamp; Armada often does not. */
   recordedAt: string | null;
   ageSec: number | null;
   accuracyM: number | null;

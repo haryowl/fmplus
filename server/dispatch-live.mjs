@@ -23,6 +23,12 @@ import {
 } from "./service-day.mjs";
 import { contributionMargin, moneyIdr } from "./dispatch-opex.mjs";
 import { tallyVisitOutcomes } from "./dispatch-sales.mjs";
+import {
+  lastFixesByArmadaUserIds,
+  telematicsUsesArmada,
+  telematicsUsesDevices,
+  tenantTelematicsSource,
+} from "./tracker-devices.mjs";
 
 /** Batch goods sell/cost per job for Live money rollup. */
 async function goodsMoneyByJob(tenantId, jobIds) {
@@ -120,8 +126,10 @@ export function rollupLiveMoney(drivers) {
 }
 
 const DEFAULT_SERVICE_MIN = 8;
-/** Phone fixes newer than this win over the Armada vehicle position. */
+/** Phone fixes newer than this win over vehicle telematics. */
 const PHONE_FIX_FRESH_SEC = 5 * 60;
+/** Direct device fixes older than this yield to Armada (when both exist). */
+const DEVICE_FIX_FRESH_SEC = 15 * 60;
 
 function coordOrNull(v) {
   if (v == null || v === "") return null;
@@ -184,25 +192,33 @@ function pickCompleteCoords(stop) {
 /**
  * Choose the position Live should trust.
  *
- * The driver handset wins while it is fresh: it reports the person doing the
- * work, and it exists for jobs with no Armada vehicle at all. Armada has no
- * timestamp in `usersstatus`, so it cannot be aged — it is the fallback once the
- * phone has gone quiet, and `phoneSeparationKm` exposes any disagreement.
+ * Order: fresh phone → fresh/present direct device → Armada → stale phone.
+ * Armada usersstatus often has no usable age, so a timed device fix wins when present.
  *
- * @returns {{ lat: number, lon: number, source: "phone"|"armada", recordedAt: string|null,
+ * @param {object|null|undefined} phonePos
+ * @param {object|null|undefined} armadaPos
+ * @param {object|null|undefined} [devicePos]
+ * @param {number} [freshSec]
+ * @returns {{ lat: number, lon: number, source: "phone"|"device"|"armada", recordedAt: string|null,
  *   ageSec: number|null, accuracyM: number|null, phoneSeparationKm: number|null } | null}
  */
-export function pickLivePosition(phonePos, vehiclePos, freshSec = PHONE_FIX_FRESH_SEC) {
+export function pickLivePosition(
+  phonePos,
+  armadaPos,
+  devicePos = null,
+  freshSec = PHONE_FIX_FRESH_SEC,
+) {
   const phoneFresh =
     phonePos &&
     phonePos.lat != null &&
     phonePos.lon != null &&
     (phonePos.ageSec == null || phonePos.ageSec <= freshSec);
 
+  const vehicleForSep = devicePos?.lat != null ? devicePos : armadaPos;
   const separationKm =
-    phonePos && vehiclePos && phonePos.lat != null && vehiclePos.lat != null
+    phonePos && vehicleForSep && phonePos.lat != null && vehicleForSep.lat != null
       ? Math.round(
-          haversineKm(phonePos.lat, phonePos.lon, vehiclePos.lat, vehiclePos.lon) * 100,
+          haversineKm(phonePos.lat, phonePos.lon, vehicleForSep.lat, vehicleForSep.lon) * 100,
         ) / 100
       : null;
 
@@ -217,17 +233,49 @@ export function pickLivePosition(phonePos, vehiclePos, freshSec = PHONE_FIX_FRES
       phoneSeparationKm: separationKm,
     };
   }
-  if (vehiclePos && vehiclePos.lat != null && vehiclePos.lon != null) {
+
+  const deviceOk =
+    devicePos &&
+    devicePos.lat != null &&
+    devicePos.lon != null &&
+    (devicePos.ageSec == null || devicePos.ageSec <= DEVICE_FIX_FRESH_SEC);
+  if (deviceOk) {
     return {
-      lat: vehiclePos.lat,
-      lon: vehiclePos.lon,
+      lat: devicePos.lat,
+      lon: devicePos.lon,
+      source: "device",
+      recordedAt: devicePos.recordedAt || null,
+      ageSec: devicePos.ageSec ?? null,
+      accuracyM: devicePos.accuracyM ?? null,
+      phoneSeparationKm: separationKm,
+    };
+  }
+
+  if (armadaPos && armadaPos.lat != null && armadaPos.lon != null) {
+    return {
+      lat: armadaPos.lat,
+      lon: armadaPos.lon,
       source: "armada",
-      recordedAt: null,
-      ageSec: null,
+      recordedAt: armadaPos.recordedAt || null,
+      ageSec: armadaPos.ageSec ?? null,
       accuracyM: null,
       phoneSeparationKm: separationKm,
     };
   }
+
+  // Stale device still beats nothing when Armada is absent.
+  if (devicePos && devicePos.lat != null && devicePos.lon != null) {
+    return {
+      lat: devicePos.lat,
+      lon: devicePos.lon,
+      source: "device",
+      recordedAt: devicePos.recordedAt || null,
+      ageSec: devicePos.ageSec ?? null,
+      accuracyM: devicePos.accuracyM ?? null,
+      phoneSeparationKm: separationKm,
+    };
+  }
+
   // A stale phone still beats nothing — the age tells the dispatcher how much to
   // trust it, and stuck detection reads the same age.
   if (phonePos && phonePos.lat != null && phonePos.lon != null) {
@@ -476,11 +524,27 @@ export async function buildDispatchLiveSnapshot(opts) {
     }
   }
 
+  const telematicsSource = await tenantTelematicsSource(opts.tenantId).catch(() => "both");
+
   let posMap = new Map();
-  try {
-    posMap = await fetchVehiclePositions(opts.vaultTenant || {});
-  } catch {
-    posMap = new Map();
+  if (telematicsUsesArmada(telematicsSource)) {
+    try {
+      posMap = await fetchVehiclePositions(opts.vaultTenant || {});
+    } catch {
+      posMap = new Map();
+    }
+  }
+
+  let deviceMap = new Map();
+  if (telematicsUsesDevices(telematicsSource)) {
+    try {
+      deviceMap = await lastFixesByArmadaUserIds(
+        opts.tenantId,
+        jobsRes.rows.map((j) => j.armada_user_id).filter((id) => id != null),
+      );
+    } catch {
+      deviceMap = new Map();
+    }
   }
 
   // Driver phones are the primary source: a job with no Armada vehicle link is
@@ -645,10 +709,11 @@ export async function buildDispatchLiveSnapshot(opts) {
 
     const uid = job.armada_user_id != null ? Number(job.armada_user_id) : null;
     const vehiclePos = uid != null && Number.isFinite(uid) ? posMap.get(uid) : null;
+    const devicePos = uid != null && Number.isFinite(uid) ? deviceMap.get(uid) : null;
     const phonePos = job.assigned_field_user_id
       ? pingMap.get(String(job.assigned_field_user_id))
       : null;
-    const livePosition = pickLivePosition(phonePos, vehiclePos);
+    const livePosition = pickLivePosition(phonePos, vehiclePos, devicePos);
     const livePos = livePosition;
     if (shouldAutoCompleteJob(job.status, allStops)) {
       const healed = await markJobDoneIfNoOpenStops(job.id, allStops);

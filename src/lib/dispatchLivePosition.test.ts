@@ -51,6 +51,24 @@ describe("pickLivePosition", () => {
   it("returns null when nothing is reporting", () => {
     expect(pickLivePosition(null, null)).toBeNull();
   });
+
+  it("prefers a fresh direct device fix over Armada", () => {
+    const device = {
+      lat: -6.21,
+      lon: 106.81,
+      ageSec: 30,
+      recordedAt: "2026-09-17T10:00:30Z",
+    };
+    const pos = pickLivePosition({ ...PHONE, ageSec: 900 }, VEHICLE, device);
+    expect(pos?.source).toBe("device");
+    expect(pos?.lat).toBeCloseTo(device.lat);
+  });
+
+  it("falls back to Armada when the device fix is stale", () => {
+    const device = { lat: -6.21, lon: 106.81, ageSec: 3600, recordedAt: "2026-09-17T09:00:00Z" };
+    const pos = pickLivePosition({ ...PHONE, ageSec: 900 }, VEHICLE, device);
+    expect(pos?.source).toBe("armada");
+  });
 });
 
 describe("downsampleLatLon", () => {

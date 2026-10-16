@@ -17,6 +17,10 @@ import { fetchDriverMap } from "../lib/driverFields";
 import { fullHref, maintenanceHref, tripsHref, writeLocationSearch } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
+import {
+  fetchTrackerLastStatus,
+  mergeArmadaRowsWithDeviceFixes,
+} from "../lib/trackerDevices";
 import { BrandMark } from "../components/BrandMark";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
@@ -132,12 +136,27 @@ export default function LiveOps() {
       setLoading(true);
       setFetchError("");
       const gid = Number(groupId);
-      return fetchUsersStatus({
-        groupId: Number.isFinite(gid) && gid > 0 ? gid : undefined,
-        signal,
-      })
-        .then((next) => {
-          setRows(next);
+      return Promise.all([
+        fetchUsersStatus({
+          groupId: Number.isFinite(gid) && gid > 0 ? gid : undefined,
+          signal,
+        }).catch((err: Error) => {
+          if (err.name === "AbortError") throw err;
+          return [] as LastStatusRow[];
+        }),
+        fetchTrackerLastStatus(signal).catch((err: Error) => {
+          if (err.name === "AbortError") throw err;
+          return { fixes: [], telematicsSource: "both" as const };
+        }),
+      ])
+        .then(([armadaRows, deviceStatus]) => {
+          setRows(
+            mergeArmadaRowsWithDeviceFixes(
+              armadaRows,
+              deviceStatus.fixes,
+              deviceStatus.telematicsSource,
+            ),
+          );
           setNow(Date.now());
         })
         .catch((err: Error) => {

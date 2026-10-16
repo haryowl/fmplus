@@ -29,6 +29,7 @@ import { handlePlacesRequest } from "./server/places-api.mjs";
 import { handleRoutePlanRequest } from "./server/route-plan-api.mjs";
 import { handleDispatchRequest } from "./server/dispatch-api.mjs";
 import { handleGeocodeRequest } from "./server/geocode-api.mjs";
+import { handleTrackerIngestRequest } from "./server/tracker-ingest-api.mjs";
 import { initTenantVault, tenantFromRequest } from "./server/tenants.mjs";
 import { runMigrations } from "./server/db/migrate.mjs";
 
@@ -113,6 +114,7 @@ function serveStatic(req, res) {
 function onRequest(req, res) {
   void (async () => {
     if (await handleHealthRequest(req, res)) return;
+    if (await handleTrackerIngestRequest(req, res)) return;
     if (await handleArmadaNotifyRequest(req, res)) return;
     if (await handleExceptionsRequest(req, res)) return;
     if (await handlePlacesRequest(req, res)) return;
@@ -191,6 +193,20 @@ async function boot() {
       })
       .catch((err) => console.error("[driver-pings]", err instanceof Error ? err.message : err));
   }, pingPruneMs).unref?.();
+
+  const fixPruneMs = Math.max(
+    60 * 60_000,
+    Number(process.env.VEHICLE_FIX_PRUNE_INTERVAL_MS) || 6 * 60 * 60_000,
+  );
+  const fixRetentionDays = Number(process.env.VEHICLE_FIX_RETENTION_DAYS) || 14;
+  setInterval(() => {
+    void import("./server/tracker-devices.mjs")
+      .then((m) => m.pruneVehicleFixes(fixRetentionDays))
+      .then((deleted) => {
+        if (deleted > 0) console.log(`[vehicle-fixes] pruned=${deleted}`);
+      })
+      .catch((err) => console.error("[vehicle-fixes]", err instanceof Error ? err.message : err));
+  }, fixPruneMs).unref?.();
 }
 
 void boot();

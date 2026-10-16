@@ -1,0 +1,177 @@
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type Device struct {
+	ID               string
+	TenantID         string
+	IMEI             string
+	Protocol         string
+	ArmadaUserID     *int
+	TelematicsSource string
+	Enabled          bool
+}
+
+type Fix struct {
+	Lat            float64
+	Lon            float64
+	RecordedAt     time.Time
+	Speed          *float64
+	Heading        *float64
+	Ignition       *bool
+	Odometer       *float64
+	Altitude       *float64
+	Satellites     *int
+	SourceProtocol string
+	RawAttrs       map[string]any
+}
+
+type Store struct {
+	pool *pgxpool.Pool
+}
+
+func Connect(ctx context.Context, databaseURL string) (*Store, error) {
+	if databaseURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL is required")
+	}
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return nil, err
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	return &Store{pool: pool}, nil
+}
+
+func (s *Store) Close() {
+	if s != nil && s.pool != nil {
+		s.pool.Close()
+	}
+}
+
+func (s *Store) FindByIMEI(ctx context.Context, imei string) (*Device, error) {
+	row := s.pool.QueryRow(ctx, `
+		SELECT d.id::text, d.tenant_id::text, d.imei, d.protocol, d.armada_user_id,
+		       COALESCE(t.telematics_source, 'both'), d.enabled
+		FROM tracker_devices d
+		JOIN tenants t ON t.id = d.tenant_id
+		WHERE d.imei = $1 AND d.enabled = true AND t.enabled = true
+		LIMIT 1`, imei)
+	var d Device
+	var armada *int
+	if err := row.Scan(&d.ID, &d.TenantID, &d.IMEI, &d.Protocol, &armada, &d.TelematicsSource, &d.Enabled); err != nil {
+		return nil, err
+	}
+	d.ArmadaUserID = armada
+	return &d, nil
+}
+
+func (s *Store) FindByTokenHash(ctx context.Context, tokenHash string) (*Device, error) {
+	row := s.pool.QueryRow(ctx, `
+		SELECT d.id::text, d.tenant_id::text, d.imei, d.protocol, d.armada_user_id,
+		       COALESCE(t.telematics_source, 'both'), d.enabled
+		FROM tracker_devices d
+		JOIN tenants t ON t.id = d.tenant_id
+		WHERE d.auth_token_hash = $1 AND d.enabled = true AND t.enabled = true
+		LIMIT 1`, tokenHash)
+	var d Device
+	var armada *int
+	if err := row.Scan(&d.ID, &d.TenantID, &d.IMEI, &d.Protocol, &armada, &d.TelematicsSource, &d.Enabled); err != nil {
+		return nil, err
+	}
+	d.ArmadaUserID = armada
+	return &d, nil
+}
+
+func acceptsDevices(source string) bool {
+	return source == "devices" || source == "both" || source == ""
+}
+
+func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
+	if device == nil {
+		return fmt.Errorf("device required")
+	}
+	if !acceptsDevices(device.TelematicsSource) {
+		return fmt.Errorf("tenant telematics_source does not accept devices")
+	}
+	if fix.RecordedAt.IsZero() {
+		fix.RecordedAt = time.Now().UTC()
+	}
+	if fix.SourceProtocol == "" {
+		fix.SourceProtocol = device.Protocol
+	}
+	if fix.RawAttrs == nil {
+		fix.RawAttrs = map[string]any{}
+	}
+	raw, _ := json.Marshal(fix.RawAttrs)
+
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO vehicle_fixes (
+			tenant_id, device_id, recorded_at, lat, lon, speed, heading, ignition,
+			odometer, altitude, satellites, raw_attrs, source_protocol
+		) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13)`,
+		device.TenantID, device.ID, fix.RecordedAt, fix.Lat, fix.Lon,
+		fix.Speed, fix.Heading, fix.Ignition, fix.Odometer, fix.Altitude, fix.Satellites,
+		string(raw), fix.SourceProtocol,
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO vehicle_last_fix (
+			device_id, tenant_id, recorded_at, lat, lon, speed, heading, ignition,
+			odometer, altitude, satellites, raw_attrs, source_protocol, updated_at
+		) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13, now())
+		ON CONFLICT (device_id) DO UPDATE SET
+			recorded_at = EXCLUDED.recorded_at,
+			lat = EXCLUDED.lat,
+			lon = EXCLUDED.lon,
+			speed = EXCLUDED.speed,
+			heading = EXCLUDED.heading,
+			ignition = EXCLUDED.ignition,
+			odometer = EXCLUDED.odometer,
+			altitude = EXCLUDED.altitude,
+			satellites = EXCLUDED.satellites,
+			raw_attrs = EXCLUDED.raw_attrs,
+			source_protocol = EXCLUDED.source_protocol,
+			updated_at = now()
+		WHERE vehicle_last_fix.recorded_at <= EXCLUDED.recorded_at`,
+		device.ID, device.TenantID, fix.RecordedAt, fix.Lat, fix.Lon,
+		fix.Speed, fix.Heading, fix.Ignition, fix.Odometer, fix.Altitude, fix.Satellites,
+		string(raw), fix.SourceProtocol,
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.pool.Exec(ctx, `
+		UPDATE tracker_devices
+		SET last_seen_at = GREATEST(COALESCE(last_seen_at, $3), $3), updated_at = now()
+		WHERE id = $1::uuid AND tenant_id = $2::uuid`,
+		device.ID, device.TenantID, fix.RecordedAt,
+	)
+	return err
+}
+
+func (s *Store) PruneFixes(ctx context.Context, days int) (int64, error) {
+	if days < 1 {
+		days = 14
+	}
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM vehicle_fixes
+		WHERE recorded_at < now() - ($1::text || ' days')::interval`, fmt.Sprintf("%d", days))
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}

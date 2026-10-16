@@ -37,14 +37,19 @@ export function livePositionLabel(driver: Pick<DispatchLiveDriver, "livePosition
     return { text: "Position reported", stale: false };
   }
   const parts: string[] = [];
+  const age = formatFixAge(pos.ageSec);
   if (pos.source === "phone") {
-    const age = formatFixAge(pos.ageSec);
     parts.push(age ? `Driver phone · ${age} ago` : "Driver phone");
+  } else if (pos.source === "device") {
+    parts.push(age ? `Tracker · ${age} ago` : "Tracker");
   } else {
-    parts.push("Vehicle GPS");
+    parts.push(age ? `Vehicle GPS · ${age} ago` : "Vehicle GPS");
   }
   const gap = liveSeparationPhrase(pos.source, pos.phoneSeparationKm);
   if (gap) parts.push(gap);
-  const stale = pos.source === "phone" && pos.ageSec != null && pos.ageSec > 300;
+  const stale =
+    (pos.source === "phone" || pos.source === "device") &&
+    pos.ageSec != null &&
+    pos.ageSec > 300;
   return { text: parts.join(" · "), stale };
 }

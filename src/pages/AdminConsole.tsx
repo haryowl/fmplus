@@ -43,9 +43,25 @@ type AdminTenant = {
   hasWablasToken?: boolean;
   hasWablasSecret?: boolean;
   dutyLocation?: { intervalSec: number; quietSec: number; minMoveM: number };
+  telematicsSource?: "armada" | "devices" | "both";
+  trackerIngestUrl?: string;
   notifierUrlTemplate: string;
   notifierUrlMaintenance?: string;
   updatedAt?: string;
+};
+
+type TrackerDeviceRow = {
+  id: string;
+  imei: string;
+  uniqueId?: string;
+  protocol: string;
+  label: string;
+  armadaUserId: number | null;
+  enabled: boolean;
+  hasAuthToken: boolean;
+  authToken?: string;
+  lastSeenAt?: string | null;
+  lastFix?: { lat: number; lon: number; recordedAt: string | null; speed: number | null } | null;
 };
 
 type FieldUserRow = {
@@ -99,7 +115,19 @@ type Draft = {
   dutyIntervalSec: string;
   dutyQuietSec: string;
   dutyMinMoveM: string;
+  telematicsSource: "armada" | "devices" | "both";
 };
+
+const TRACKER_PROTOCOL_OPTIONS = [
+  { value: "json", label: "JSON / HTTP (:5080)" },
+  { value: "teltonika", label: "Teltonika (:5027)" },
+  { value: "jt808", label: "JT/T 808 (:7611)" },
+  { value: "concox", label: "Concox / GT06 (:5023)" },
+  { value: "ruptela", label: "Ruptela (:3047)" },
+  { value: "galileosky", label: "Galileosky (:30175)" },
+  { value: "video", label: "Video (meta)" },
+  { value: "other", label: "Other" },
+];
 
 const FIELD_ROLE_OPTIONS = [
   { value: "operator", label: "Operator" },
@@ -131,6 +159,7 @@ function emptyDraft(): Draft {
     dutyIntervalSec: "15",
     dutyQuietSec: "60",
     dutyMinMoveM: "25",
+    telematicsSource: "both",
   };
 }
 
@@ -153,6 +182,7 @@ function draftFromTenant(t: AdminTenant): Draft {
     dutyIntervalSec: String(t.dutyLocation?.intervalSec ?? 15),
     dutyQuietSec: String(t.dutyLocation?.quietSec ?? 60),
     dutyMinMoveM: String(t.dutyLocation?.minMoveM ?? 25),
+    telematicsSource: t.telematicsSource || "both",
   };
 }
 
@@ -359,6 +389,12 @@ export default function AdminConsole() {
   const [fuPrivileges, setFuPrivileges] = useState<DeskPrivileges>(() => emptyDeskPrivileges());
   const [fuEdits, setFuEdits] = useState<Record<string, FieldUserEdit>>({});
   const [fuEditingId, setFuEditingId] = useState<string | null>(null);
+  const [trackerDevices, setTrackerDevices] = useState<TrackerDeviceRow[]>([]);
+  const [tdImei, setTdImei] = useState("");
+  const [tdLabel, setTdLabel] = useState("");
+  const [tdProtocol, setTdProtocol] = useState("teltonika");
+  const [tdArmadaUserId, setTdArmadaUserId] = useState("");
+  const [lastDeviceToken, setLastDeviceToken] = useState("");
 
   const refreshMe = useCallback(async () => {
     try {
@@ -382,6 +418,13 @@ export default function AdminConsole() {
     setFuEdits(Object.fromEntries(data.users.map((u) => [u.id, editFromRow(u)])));
   }, []);
 
+  const loadTrackerDevices = useCallback(async (tenantId: string) => {
+    const data = await api<{ devices: TrackerDeviceRow[] }>(
+      `/api/admin/tenants/${tenantId}/tracker-devices`,
+    );
+    setTrackerDevices(data.devices);
+  }, []);
+
   useEffect(() => {
     document.title = "Admin · ARMADA M.1";
     void refreshMe().then((ok) => {
@@ -394,10 +437,13 @@ export default function AdminConsole() {
       setFieldUsers([]);
       setFuEdits({});
       setFuEditingId(null);
+      setTrackerDevices([]);
+      setLastDeviceToken("");
       return;
     }
     void loadFieldUsers(selectedId).catch((err: Error) => setError(err.message));
-  }, [selectedId, loadFieldUsers]);
+    void loadTrackerDevices(selectedId).catch((err: Error) => setError(err.message));
+  }, [selectedId, loadFieldUsers, loadTrackerDevices]);
 
   const filteredTenants = useMemo(() => {
     const q = tenantQuery.trim().toLowerCase();
@@ -491,6 +537,7 @@ export default function AdminConsole() {
           quietSec: Number(draft.dutyQuietSec),
           minMoveM: Number(draft.dutyMinMoveM),
         },
+        telematicsSource: draft.telematicsSource,
       };
       if (selectedId === "new") {
         if (!payload.token) throw new Error("Armada token is required for new tenants");
@@ -642,6 +689,73 @@ export default function AdminConsole() {
       setNotice("Field user deleted");
       setFuEditingId((id) => (id === userId ? null : id));
       await loadFieldUsers(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createTrackerDevice(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedId || selectedId === "new") return;
+    setBusy(true);
+    setError("");
+    setLastDeviceToken("");
+    try {
+      const created = await api<{ device: TrackerDeviceRow }>(
+        `/api/admin/tenants/${selectedId}/tracker-devices`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            imei: tdImei.trim(),
+            label: tdLabel.trim(),
+            protocol: tdProtocol,
+            armadaUserId: tdArmadaUserId.trim() ? Number(tdArmadaUserId) : null,
+          }),
+        },
+      );
+      setNotice(`Registered device ${created.device.imei}`);
+      if (created.device.authToken) setLastDeviceToken(created.device.authToken);
+      setTdImei("");
+      setTdLabel("");
+      setTdArmadaUserId("");
+      await loadTrackerDevices(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create device");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rotateDeviceToken(deviceId: string) {
+    if (!selectedId || selectedId === "new") return;
+    setBusy(true);
+    setError("");
+    try {
+      const updated = await api<{ device: TrackerDeviceRow }>(
+        `/api/admin/tenants/${selectedId}/tracker-devices/${deviceId}`,
+        { method: "PATCH", body: JSON.stringify({ rotateAuthToken: true }) },
+      );
+      if (updated.device.authToken) setLastDeviceToken(updated.device.authToken);
+      setNotice("Device token rotated — copy it now");
+      await loadTrackerDevices(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Rotate failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteTrackerDevice(deviceId: string, imei: string) {
+    if (!selectedId || selectedId === "new") return;
+    if (!window.confirm(`Delete tracker “${imei}”?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/admin/tenants/${selectedId}/tracker-devices/${deviceId}`, { method: "DELETE" });
+      setNotice("Tracker device deleted");
+      await loadTrackerDevices(selectedId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     } finally {
@@ -937,6 +1051,22 @@ export default function AdminConsole() {
                       value={draft.dutyMinMoveM}
                       onChange={(e) => setDraft({ ...draft, dutyMinMoveM: e.target.value })}
                     />
+                  </label>
+                  <label className="span-2">
+                    Vehicle telematics source
+                    <select
+                      value={draft.telematicsSource}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          telematicsSource: e.target.value as Draft["telematicsSource"],
+                        })
+                      }
+                    >
+                      <option value="both">Both Armada + direct devices</option>
+                      <option value="armada">Armada only</option>
+                      <option value="devices">Direct devices only</option>
+                    </select>
                   </label>
                 </div>
               </section>
@@ -1412,6 +1542,127 @@ export default function AdminConsole() {
                       <div className="span-2 admin-actions">
                         <button type="submit" className="btn btn-primary" disabled={busy}>
                           Add field user
+                        </button>
+                      </div>
+                    </form>
+                  </details>
+                </section>
+              )}
+
+              {selectedId !== "new" && (
+                <section className="admin-panel admin-field-users">
+                  <header className="admin-panel-head">
+                    <h3>
+                      Tracker devices{" "}
+                      <span className="admin-count-badge">{trackerDevices.length}</span>
+                    </h3>
+                    <p className="muted">
+                      Direct GPS ingest ·{" "}
+                      <code>{selected?.trackerIngestUrl || "/api/tracker/ingest/v1/fix"}</code>
+                    </p>
+                  </header>
+                  {lastDeviceToken ? (
+                    <p className="admin-notice">
+                      Device token (copy now): <code>{lastDeviceToken}</code>{" "}
+                      <button
+                        type="button"
+                        className="btn-ghost btn-compact"
+                        onClick={() => void copyText(lastDeviceToken)}
+                      >
+                        Copy
+                      </button>
+                    </p>
+                  ) : null}
+                  <ul className="admin-field-list">
+                    {trackerDevices.map((d) => (
+                      <li key={d.id}>
+                        <div className="admin-field-summary">
+                          <div className="admin-field-identity">
+                            <div className="admin-field-identity-text">
+                              <strong>{d.label || d.imei}</strong>
+                              <div className="admin-field-tags">
+                                <span className="admin-pill is-muted">{d.protocol}</span>
+                                {d.armadaUserId != null ? (
+                                  <span className="admin-pill is-muted">Armada #{d.armadaUserId}</span>
+                                ) : null}
+                                {!d.enabled ? <span className="admin-pill is-off">disabled</span> : null}
+                              </div>
+                              <span className="muted">
+                                IMEI {d.imei}
+                                {d.lastFix
+                                  ? ` · last ${d.lastFix.lat.toFixed(5)}, ${d.lastFix.lon.toFixed(5)}`
+                                  : " · no fix yet"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="admin-field-row-actions">
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              disabled={busy}
+                              onClick={() => void rotateDeviceToken(d.id)}
+                            >
+                              Rotate token
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-ghost"
+                              disabled={busy}
+                              onClick={() => void deleteTrackerDevice(d.id, d.imei)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                    {trackerDevices.length === 0 ? (
+                      <li className="muted admin-empty">No tracker devices yet.</li>
+                    ) : null}
+                  </ul>
+                  <details className="admin-add-details">
+                    <summary>Add tracker device</summary>
+                    <form className="admin-form-grid" onSubmit={(e) => void createTrackerDevice(e)}>
+                      <label>
+                        IMEI / unique id
+                        <input
+                          value={tdImei}
+                          onChange={(e) => setTdImei(e.target.value)}
+                          required
+                          minLength={5}
+                          placeholder="35209408…"
+                        />
+                      </label>
+                      <label>
+                        Label
+                        <input
+                          value={tdLabel}
+                          onChange={(e) => setTdLabel(e.target.value)}
+                          placeholder="Truck 12"
+                        />
+                      </label>
+                      <label>
+                        Protocol
+                        <select value={tdProtocol} onChange={(e) => setTdProtocol(e.target.value)}>
+                          {TRACKER_PROTOCOL_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Armada user id (optional)
+                        <input
+                          value={tdArmadaUserId}
+                          onChange={(e) => setTdArmadaUserId(e.target.value)}
+                          inputMode="numeric"
+                          placeholder="Link to fleet vehicle"
+                        />
+                      </label>
+                      <div className="span-2 admin-actions">
+                        <button type="submit" className="btn btn-primary" disabled={busy}>
+                          Register device
                         </button>
                       </div>
                     </form>

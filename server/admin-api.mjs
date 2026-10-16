@@ -26,6 +26,13 @@ import {
 import { mergeDeskPrivileges, normalizeDeskPrivilegesInput } from "./desk-privileges.mjs";
 import { initTenantVault, isTenantKey } from "./tenants.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
+import {
+  createTrackerDevice,
+  deleteTrackerDevice,
+  listTrackerDevices,
+  normalizeTelematicsSource,
+  updateTrackerDevice,
+} from "./tracker-devices.mjs";
 
 function send(res, status, headers, body) {
   res.writeHead(status, securityHeaders(headers));
@@ -103,6 +110,8 @@ function publicTenantRow(row) {
     notifierUrlTemplate: `${base}/api/armada/notify?k=${k}&secret=<webhook-secret>&kind=exception`,
     notifierUrlMaintenance: `${base}/api/armada/notify?k=${k}&secret=<webhook-secret>&kind=maintenance`,
     dutyLocation: dutyLocationFromTenantRow(row),
+    telematicsSource: normalizeTelematicsSource(row.telematics_source),
+    trackerIngestUrl: `${base}/api/tracker/ingest/v1/fix`,
   };
 }
 
@@ -221,6 +230,7 @@ export async function handleAdminRequest(req, res) {
                 notify_emails, notify_whatsapp, wablas_base_url,
                 wablas_token_ciphertext, wablas_secret_ciphertext,
                 duty_ping_interval_sec, duty_ping_quiet_sec, duty_ping_min_move_m,
+                telematics_source,
                 created_at, updated_at
          FROM tenants
          ORDER BY created_at DESC`,
@@ -296,6 +306,59 @@ export async function handleAdminRequest(req, res) {
       await writeAudit(admin.id, "tenant.create", { key, appId });
       await initTenantVault();
       json(res, 201, { tenant: publicTenantRow(inserted.rows[0]) });
+      return true;
+    }
+
+    const devicesListMatch = /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-devices$/i.exec(path);
+    if (devicesListMatch) {
+      const tenantId = devicesListMatch[1];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      const tenantOk = await dbQuery(`SELECT id FROM tenants WHERE id = $1`, [tenantId]);
+      if (!tenantOk.rows[0]) {
+        json(res, 404, { error: "Tenant not found" });
+        return true;
+      }
+      if (req.method === "GET") {
+        json(res, 200, { devices: await listTrackerDevices(tenantId) });
+        return true;
+      }
+      if (req.method === "POST") {
+        const body = await readJson(req);
+        const device = await createTrackerDevice(tenantId, body);
+        await writeAudit(admin.id, "tracker_device.create", {
+          tenantId,
+          deviceId: device.id,
+          imei: device.imei,
+        });
+        json(res, 201, { device });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const deviceOneMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-devices\/([0-9a-f-]{36})$/i.exec(path);
+    if (deviceOneMatch) {
+      const tenantId = deviceOneMatch[1];
+      const deviceId = deviceOneMatch[2];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "PATCH") {
+        const body = await readJson(req);
+        const device = await updateTrackerDevice(tenantId, deviceId, body);
+        await writeAudit(admin.id, "tracker_device.update", { tenantId, deviceId });
+        json(res, 200, { device });
+        return true;
+      }
+      if (req.method === "DELETE") {
+        await deleteTrackerDevice(tenantId, deviceId);
+        await writeAudit(admin.id, "tracker_device.delete", { tenantId, deviceId });
+        json(res, 200, { ok: true });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
       return true;
     }
 
@@ -499,6 +562,7 @@ export async function handleAdminRequest(req, res) {
                   notify_emails, notify_whatsapp, wablas_base_url,
                   wablas_token_ciphertext, wablas_secret_ciphertext,
                   duty_ping_interval_sec, duty_ping_quiet_sec, duty_ping_min_move_m,
+                  telematics_source,
                   created_at, updated_at
            FROM tenants WHERE id = $1`,
           [id],
@@ -590,6 +654,10 @@ export async function handleAdminRequest(req, res) {
                 minMoveM: current.duty_ping_min_move_m,
               },
         );
+        const telematicsSource =
+          body.telematicsSource !== undefined
+            ? normalizeTelematicsSource(body.telematicsSource)
+            : normalizeTelematicsSource(current.telematics_source);
 
         const updated = await dbQuery(
           `UPDATE tenants SET
@@ -610,6 +678,7 @@ export async function handleAdminRequest(req, res) {
              duty_ping_interval_sec = $16,
              duty_ping_quiet_sec = $17,
              duty_ping_min_move_m = $18,
+             telematics_source = $19,
              updated_at = now()
            WHERE id = $1
            RETURNING id, key, app_id, display_name, enabled, user_ids, group_ids, entitlements,
@@ -617,6 +686,7 @@ export async function handleAdminRequest(req, res) {
                      notify_emails, notify_whatsapp, wablas_base_url,
                      wablas_token_ciphertext, wablas_secret_ciphertext,
                      duty_ping_interval_sec, duty_ping_quiet_sec, duty_ping_min_move_m,
+                     telematics_source,
                      created_at, updated_at`,
           [
             id,
@@ -637,6 +707,7 @@ export async function handleAdminRequest(req, res) {
             dutyLocation.intervalSec,
             dutyLocation.quietSec,
             dutyLocation.minMoveM,
+            telematicsSource,
           ],
         );
         await writeAudit(admin.id, "tenant.update", {
@@ -671,7 +742,9 @@ export async function handleAdminRequest(req, res) {
       json(res, 409, {
         error: message.includes("field_users")
           ? "Username already exists for this tenant"
-          : "Embed key already exists",
+          : message.includes("tracker_devices")
+            ? "IMEI already registered for this tenant"
+            : "Embed key already exists",
       });
       return true;
     }

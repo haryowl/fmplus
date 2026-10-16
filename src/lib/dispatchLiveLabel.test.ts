@@ -44,4 +44,13 @@ describe("livePositionLabel", () => {
     });
     expect(label?.text).toBe("Driver phone · 9s ago · 13.8 km from vehicle");
   });
+
+  it("labels a direct tracker fix with age", () => {
+    const label = livePositionLabel({
+      liveLat: -6.2,
+      liveLon: 106.8,
+      livePosition: pos({ source: "device", ageSec: 45 }),
+    });
+    expect(label?.text).toBe("Tracker · 45s ago");
+  });
 });
