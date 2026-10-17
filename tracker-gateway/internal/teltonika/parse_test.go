@@ -362,6 +362,22 @@ func TestPromoteTeltonikaScalars_IButton(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_VINRFIDUserFault(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{
+		"256": "VF1ABCDEF12345678",
+		"207": "rfiddeadbeef",
+		"238": "aabbccddeeff",
+		"281": "P0300,P0420",
+	})
+	if raw["vehicle.vin"] != "VF1ABCDEF12345678" || raw["rfid.id"] != "rfiddeadbeef" {
+		t.Fatalf("vin/rfid=%v", raw)
+	}
+	if raw["user.id"] != "aabbccddeeff" || raw["obd.fault_codes"] != "P0300,P0420" {
+		t.Fatalf("user/dtc=%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_GNSSQuality(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{"181": 15, "182": 12, "69": 1})

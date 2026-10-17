@@ -181,6 +181,18 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["78"]; ok {
 		raw["ibutton.id"] = fmt.Sprintf("%v", v)
 	}
+	if v, ok := io["207"]; ok {
+		raw["rfid.id"] = fmt.Sprintf("%v", v)
+	}
+	if v, ok := io["238"]; ok {
+		raw["user.id"] = fmt.Sprintf("%v", v)
+	}
+	if v, ok := io["256"]; ok {
+		raw["vehicle.vin"] = fmt.Sprintf("%v", v)
+	}
+	if v, ok := io["281"]; ok {
+		raw["obd.fault_codes"] = fmt.Sprintf("%v", v)
+	}
 	if v, ok := io["250"]; ok {
 		raw["trip.distance"] = asIOFloat(v)
 	}

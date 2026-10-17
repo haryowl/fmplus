@@ -291,6 +291,14 @@ func TestPromoteRuptelaScalars_IButton(t *testing.T) {
 	}
 }
 
+func TestPromoteRuptelaScalars_RFIDUser(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{"207": "rfid01", "238": "user01"})
+	if raw["rfid.id"] != "rfid01" || raw["user.id"] != "user01" {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteRuptelaScalars_SpeedTripHumidity(t *testing.T) {
 	raw := map[string]any{}
 	promoteRuptelaScalars(raw, map[string]any{"24": 62, "199": 5000, "29": 55})
