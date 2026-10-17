@@ -1,0 +1,27 @@
+-- JT808 backup APN creds, collision/rollover params, image quality; Teltonika/Ruptela pcb.temp.
+INSERT INTO tracker_protocol_params (protocol, vendor_key, label, value_type, description) VALUES
+  ('jt808', 'apn.backup_user', 'Backup APN user', 'string', 'Terminal param 0x0015'),
+  ('jt808', 'apn.backup_password', 'Backup APN password', 'string', 'Terminal param 0x0016'),
+  ('jt808', 'collision.param', 'Collision param', 'number', 'Terminal param 0x005D'),
+  ('jt808', 'collision.time_4ms', 'Collision time 4ms units', 'number', '0x005D byte0'),
+  ('jt808', 'collision.accel_count', 'Collision accel count', 'number', '0x005D byte1'),
+  ('jt808', 'rollover.param', 'Rollover param', 'number', 'Terminal param 0x005E'),
+  ('jt808', 'image.quality', 'Image quality', 'number', 'Terminal param 0x0070'),
+  ('jt808', 'image.brightness', 'Image brightness', 'number', 'Terminal param 0x0071'),
+  ('jt808', 'image.contrast', 'Image contrast', 'number', 'Terminal param 0x0072'),
+  ('jt808', 'image.saturation', 'Image saturation', 'number', 'Terminal param 0x0073'),
+  ('jt808', 'image.chroma', 'Image chroma', 'number', 'Terminal param 0x0074'),
+  ('subiao', 'apn.backup_user', 'Backup APN user', 'string', 'Inherited JT808 0x0015'),
+  ('subiao', 'apn.backup_password', 'Backup APN password', 'string', 'Inherited JT808 0x0016'),
+  ('subiao', 'collision.param', 'Collision param', 'number', 'Inherited JT808 0x005D'),
+  ('subiao', 'collision.time_4ms', 'Collision time 4ms units', 'number', 'Inherited JT808 0x005D'),
+  ('subiao', 'collision.accel_count', 'Collision accel count', 'number', 'Inherited JT808 0x005D'),
+  ('subiao', 'rollover.param', 'Rollover param', 'number', 'Inherited JT808 0x005E'),
+  ('subiao', 'image.quality', 'Image quality', 'number', 'Inherited JT808 0x0070'),
+  ('subiao', 'image.brightness', 'Image brightness', 'number', 'Inherited JT808 0x0071'),
+  ('subiao', 'image.contrast', 'Image contrast', 'number', 'Inherited JT808 0x0072'),
+  ('subiao', 'image.saturation', 'Image saturation', 'number', 'Inherited JT808 0x0073'),
+  ('subiao', 'image.chroma', 'Image chroma', 'number', 'Inherited JT808 0x0074'),
+  ('teltonika', 'pcb.temp', 'PCB temperature C', 'number', 'AVL IO 70 ×0.1 (PRO/FT)'),
+  ('ruptela', 'pcb.temp', 'PCB temperature C', 'number', 'IO 70 ×0.1 (Teltonika-parity)')
+ON CONFLICT (protocol, vendor_key) DO NOTHING;

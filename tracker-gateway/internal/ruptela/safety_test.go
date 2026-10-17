@@ -196,6 +196,11 @@ func TestPromoteRuptelaScalars_FuelAVL(t *testing.T) {
 	if raw5["engine.maf"] != 20.0 {
 		t.Fatalf("maf=%v", raw5["engine.maf"])
 	}
+	raw6 := map[string]any{}
+	promoteRuptelaScalars(raw6, map[string]any{"70": 301})
+	if raw6["pcb.temp"] != 30.1 {
+		t.Fatalf("pcb=%v", raw6["pcb.temp"])
+	}
 	raw2 := map[string]any{}
 	promoteRuptelaScalars(raw2, map[string]any{"48": 500})
 	if raw2["fuel.used"] != 500.0 || raw2["fuel.used_total"] != 500.0 {

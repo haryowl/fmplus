@@ -533,6 +533,9 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["69"]; ok {
 		raw["gnss.status"] = asFloat64(v)
 	}
+	if v, ok := io["70"]; ok {
+		raw["pcb.temp"] = asFloat64(v) / 10.0 // °C ×10 (PRO/FT parity)
+	}
 	if v, ok := io["246"]; ok {
 		raw["status.towing"] = asTruthy(v)
 	}

@@ -184,6 +184,35 @@ func TestHoistTerminalParam_PhoneAlarmShoot(t *testing.T) {
 	}
 }
 
+func TestHoistTerminalParam_BackupAPNCreds(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0015, nil, []byte("user"), out)
+	hoistTerminalParam(0x0016, nil, []byte("pass"), out)
+	if out["apn.backup_user"] != "user" || out["apn.backup_password"] != "pass" {
+		t.Fatalf("%v", out)
+	}
+}
+
+func TestHoistTerminalParam_CollisionRolloverImage(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x005d, 0x0a14, []byte{0x0a, 0x14}, out)
+	hoistTerminalParam(0x005e, 30, nil, out)
+	hoistTerminalParam(0x0070, 5, nil, out)
+	hoistTerminalParam(0x0071, 50, nil, out)
+	hoistTerminalParam(0x0072, 60, nil, out)
+	hoistTerminalParam(0x0073, 70, nil, out)
+	hoistTerminalParam(0x0074, 80, nil, out)
+	if out["collision.param"] != 0x0a14 || out["collision.time_4ms"] != 10 || out["collision.accel_count"] != 20 {
+		t.Fatalf("collision=%v", out)
+	}
+	if out["rollover.param"] != 30 {
+		t.Fatalf("rollover=%v", out)
+	}
+	if out["image.quality"] != 5 || out["image.brightness"] != 50 || out["image.chroma"] != 80 {
+		t.Fatalf("image=%v", out)
+	}
+}
+
 func TestHoistTerminalParam_BackupDialAddr(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x0025, nil, []byte("13800138000"), out)

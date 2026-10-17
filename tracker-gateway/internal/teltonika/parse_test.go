@@ -262,6 +262,11 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 	if raw4["engine.maf"] != 12.5 {
 		t.Fatalf("maf=%v", raw4["engine.maf"])
 	}
+	raw5 := map[string]any{}
+	promoteTeltonikaScalars(raw5, map[string]any{"70": 255})
+	if raw5["pcb.temp"] != 25.5 {
+		t.Fatalf("pcb=%v", raw5["pcb.temp"])
+	}
 }
 
 func TestPromoteTeltonikaScalars_SleepIdling(t *testing.T) {

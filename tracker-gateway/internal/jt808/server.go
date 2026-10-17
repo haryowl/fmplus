@@ -1408,6 +1408,10 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["apn.password"] = string(raw)
 	case 0x0014:
 		out["apn.backup"] = string(raw)
+	case 0x0015:
+		out["apn.backup_user"] = string(raw)
+	case 0x0016:
+		out["apn.backup_password"] = string(raw)
 	case 0x0040:
 		out["phone.monitor"] = string(raw)
 	case 0x0041:
@@ -1454,6 +1458,24 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["overspeed.warn_delta"] = decoded
 	case 0x005c:
 		out["fatigue.warn_delta"] = decoded
+	case 0x005d:
+		out["collision.param"] = decoded
+		if len(raw) >= 2 {
+			out["collision.time_4ms"] = int(raw[0])
+			out["collision.accel_count"] = int(raw[1])
+		}
+	case 0x005e:
+		out["rollover.param"] = decoded
+	case 0x0070:
+		out["image.quality"] = decoded
+	case 0x0071:
+		out["image.brightness"] = decoded
+	case 0x0072:
+		out["image.contrast"] = decoded
+	case 0x0073:
+		out["image.saturation"] = decoded
+	case 0x0074:
+		out["image.chroma"] = decoded
 	case 0x0080:
 		out["mileage.factor"] = decoded
 	case 0x0081:
