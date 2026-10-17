@@ -167,6 +167,27 @@ func TestPromoteRuptelaScalars_IButton(t *testing.T) {
 	}
 }
 
+func TestPromoteRuptelaScalars_SpeedTripHumidity(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{"24": 62, "199": 5000, "29": 55})
+	if raw["speed.io"] != 62.0 || raw["trip.odometer"] != 5000.0 || raw["ble.humidity"] != 55.0 {
+		t.Fatalf("%v", raw)
+	}
+}
+
+func TestFlattenEventAlarm_GenericExtVoltage(t *testing.T) {
+	raw := map[string]any{"event_io": 236}
+	flattenEventAlarm(raw)
+	if raw["alarm.generic"] != true {
+		t.Fatalf("generic=%v", raw)
+	}
+	raw2 := map[string]any{"event_io": 66}
+	flattenEventAlarm(raw2)
+	if raw2["alarm.ext_voltage"] != true {
+		t.Fatalf("ext=%v", raw2)
+	}
+}
+
 func TestPromoteRuptelaScalars_OverspeedICCID(t *testing.T) {
 	raw := map[string]any{}
 	promoteRuptelaScalars(raw, map[string]any{"255": 90, "11": 898600123})

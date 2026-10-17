@@ -193,6 +193,14 @@ func TestPromoteTeltonikaScalars_Battery(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_SpeedTripOdo(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"24": 62, "199": 5000})
+	if raw["speed.io"] != 62.0 || raw["trip.odometer"] != 5000.0 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_GreenDriving(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{"253": 3, "243": 12, "15": 85})

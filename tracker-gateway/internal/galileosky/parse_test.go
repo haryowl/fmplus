@@ -204,3 +204,28 @@ func TestDigitalIO_Din8AndInputs(t *testing.T) {
 		t.Fatalf("dout=%v", fix.RawAttrs)
 	}
 }
+
+func TestDigitalIO_Dout8AndOutputsHi(t *testing.T) {
+	tags := map[byte][]byte{
+		0x30: append([]byte{0x07}, append(make([]byte, 4), make([]byte, 4)...)...),
+		0x47: {0x02, 0x01}, // dout1 + dout8
+	}
+	fix, ok := fixFromTags(tags)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["status.dout1"] != true || fix.RawAttrs["status.dout8"] != true {
+		t.Fatalf("dout1/8=%v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["status.outputs"] != 2 || fix.RawAttrs["status.outputs_hi"] != 1 {
+		t.Fatalf("outputs=%v", fix.RawAttrs)
+	}
+	tags2 := map[byte][]byte{
+		0x30: append([]byte{0x07}, append(make([]byte, 4), make([]byte, 4)...)...),
+		0x47: {0x00, 0x80}, // dout15
+	}
+	fix2, ok2 := fixFromTags(tags2)
+	if !ok2 || fix2.RawAttrs["status.dout15"] != true {
+		t.Fatalf("dout15=%v ok=%v", fix2.RawAttrs, ok2)
+	}
+}

@@ -304,6 +304,12 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		for i := 0; i < 8; i++ {
 			fix.RawAttrs[fmt.Sprintf("status.dout%d", i)] = out[0]&(1<<uint(i)) != 0
 		}
+		if len(out) >= 2 {
+			fix.RawAttrs["status.outputs_hi"] = int(out[1])
+			for i := 0; i < 8; i++ {
+				fix.RawAttrs[fmt.Sprintf("status.dout%d", i+8)] = out[1]&(1<<uint(i)) != 0
+			}
+		}
 	}
 	if odo, ok := tags[0xd4]; ok && len(odo) >= 4 {
 		f := float64(binary.LittleEndian.Uint32(odo)) / 1000.0

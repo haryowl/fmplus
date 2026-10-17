@@ -42,6 +42,9 @@ func TestParseSignalingPayload_PTZ(t *testing.T) {
 	if m["av_payload_len"] != 4 {
 		t.Fatalf("%v", m)
 	}
+	if m["av_payload_hex"] != "0102aa05" {
+		t.Fatalf("hex=%v", m["av_payload_hex"])
+	}
 }
 
 func TestParseSignalingPayload_VideoSSRC(t *testing.T) {

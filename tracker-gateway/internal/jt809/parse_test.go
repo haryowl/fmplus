@@ -82,6 +82,49 @@ func TestParseVehicleUplink_AltitudeState(t *testing.T) {
 	if fix.RawAttrs["alarm.gnss"] != true {
 		t.Fatalf("alarm %v", fix.RawAttrs)
 	}
+	if fix.RawAttrs["encrypt"] != 0 {
+		t.Fatalf("encrypt=%v", fix.RawAttrs["encrypt"])
+	}
+	if _, ok := fix.RawAttrs["gnss_time_bcd"].(string); !ok {
+		t.Fatalf("gnss_time_bcd missing: %v", fix.RawAttrs)
+	}
+}
+
+func TestParseVehicleUplink_EncryptAndTimeBCD(t *testing.T) {
+	rest := make([]byte, 24+1+6+8+2+2+2+4+4)
+	copy(rest[0:21], []byte("B9999ENC"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 0x0200)
+	off := 24
+	rest[off] = 1 // encrypt
+	off++
+	bcd := []byte{0x26, 0x03, 0x17, 0x12, 0x30, 0x45}
+	copy(rest[off:], bcd)
+	off += 6
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(106.8*1e6))))
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(-6.2*1e6))))
+	off += 4
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint32(rest[off:], 0)
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], 0)
+
+	fix, _, ok := parseVehicleUplink(0x1202, rest)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["encrypt"] != 1 {
+		t.Fatalf("encrypt=%v", fix.RawAttrs["encrypt"])
+	}
+	if fix.RawAttrs["gnss_time_bcd"] != "260317123045" {
+		t.Fatalf("bcd=%v", fix.RawAttrs["gnss_time_bcd"])
+	}
 }
 
 func TestParseVehicleUplink_Door2AndLock(t *testing.T) {
