@@ -23,6 +23,12 @@ var jsonAlarmKeys = []struct {
 	{"alarm.illegal_move", "illegal_move", 1},
 	{"alarm.fence_in", "fence_in", 1},
 	{"alarm.fence_out", "fence_out", 1},
+	{"alarm.remove", "remove", 2},
+	{"alarm.fall", "fall", 2},
+	{"alarm.wear", "wear", 1},
+	{"alarm.moving", "moving", 1},
+	{"alarm.power_on", "power_on", 1},
+	{"alarm.power_off", "power_off", 1},
 }
 
 // Teltonika-style event_io IDs that HTTP clients may send after flatten.

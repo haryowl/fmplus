@@ -34,3 +34,15 @@ func TestSafetyFromJSONAttrs_None(t *testing.T) {
 		t.Fatal("expected nil")
 	}
 }
+
+func TestSafetyFromJSONAttrs_ConcoxParity(t *testing.T) {
+	for _, key := range []string{"alarm.remove", "alarm.fall", "alarm.wear"} {
+		ev := safetyFromJSONAttrs(store.Fix{
+			Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+			RawAttrs: map[string]any{key: true},
+		})
+		if ev == nil {
+			t.Fatalf("expected safety for %s", key)
+		}
+	}
+}

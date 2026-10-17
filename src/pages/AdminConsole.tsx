@@ -1240,6 +1240,8 @@ export default function AdminConsole() {
           fixesIngested?: number;
           decodeErrors?: number;
           ingestErrors?: number;
+          unknownImei?: number;
+          unknownImeiDropped?: number;
           commandsSent?: number;
           commandsAcked?: number;
           commandsFailed?: number;
@@ -1283,8 +1285,12 @@ export default function AdminConsole() {
         .filter((k) => cmds[k] != null)
         .map((k) => `${k}=${cmds[k]}`)
         .join(" ");
+      const unknown =
+        data.health?.unknownImei != null || data.health?.unknownImeiDropped != null
+          ? ` · unknown_imei=${data.health?.unknownImei ?? 0}/${data.health?.unknownImeiDropped ?? 0}`
+          : "";
       setGatewayStatus(
-        `Online sessions: ${online}${byProto ? ` (${byProto})` : ""} · fixes=${data.health?.fixesIngested ?? "—"} · decode_err=${data.health?.decodeErrors ?? 0} · ${catalog || "no adapters"}`,
+        `Online sessions: ${online}${byProto ? ` (${byProto})` : ""} · fixes=${data.health?.fixesIngested ?? "—"} · decode_err=${data.health?.decodeErrors ?? 0}${unknown} · ${catalog || "no adapters"}`,
       );
       setGatewayDetail(
         [

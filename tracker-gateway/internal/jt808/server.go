@@ -213,16 +213,12 @@ func bindSession(sessions *protocol.Registry, sess *session, conn net.Conn) {
 }
 
 func tryFlushCommands(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry, sess *session) {
-	if sess.device == nil {
-		return
+	if sess.device == nil || sess.phone == "" {
+		return // peek-then-claim: never claim until phone is known
 	}
 	for i := 0; i < 8; i++ {
 		cmd, err := st.NextPendingCommand(ctx, sess.device.ID)
 		if err != nil || cmd == nil {
-			return
-		}
-		if sess.phone == "" {
-			_ = st.RequeueCommand(ctx, cmd.ID)
 			return
 		}
 		payload := encodeJT808DownlinkVer(sess.phone, &sess.seq, cmd, sess.version2019)
@@ -830,6 +826,7 @@ func parseTerminalAttrs(body []byte) map[string]any {
 }
 
 // safetyFromEventID maps common JT808 0x0301 event ids to safety (partial set).
+// IDs follow common platform tables (vendor-specific beyond 1–3).
 func safetyFromEventID(evID int, protocol string) *store.SafetyEvent {
 	name := ""
 	level := 1
@@ -842,6 +839,29 @@ func safetyFromEventID(evID int, protocol string) *store.SafetyEvent {
 		name, level = "speeding", 1
 	case 3:
 		name, level = "fatigue", 2
+	case 4:
+		name, level = "danger", 2
+	case 5:
+		name = "enter_area" // geofence in
+	case 6:
+		name = "leave_area" // geofence out
+	case 7:
+		name = "enter_route"
+	case 8:
+		name = "leave_route"
+	case 9:
+		name, level = "overspeed_road", 1
+	case 10:
+		name, level = "underspeed_road", 1
+	case 11:
+		name = "depart_route" // route deviation
+	case 12:
+		name, level = "collision", 2
+	case 13:
+		name = "rollover"
+		level = 2
+	case 14:
+		name = "driver_change"
 	default:
 		name = fmt.Sprintf("event_%d", evID)
 	}

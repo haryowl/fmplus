@@ -79,7 +79,9 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		calc := crc16Modbus(packetForCRC)
 		if calc != gotCRC {
 			metrics.DecodeErr()
-			log.Printf("[galileosky] bad CRC from %s got=%04x want=%04x — still parsing", conn.RemoteAddr(), gotCRC, calc)
+			log.Printf("[galileosky] bad CRC from %s got=%04x want=%04x — ack only, skip ingest", conn.RemoteAddr(), gotCRC, calc)
+			_ = writeAck(conn, gotCRC)
+			continue
 		}
 
 		records := parseTagRecords(tagsBytes)

@@ -72,7 +72,8 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		gotCRC := binary.BigEndian.Uint16(payload[length : length+2])
 		if calc := crc16Kermit(data); calc != gotCRC {
 			metrics.DecodeErr()
-			log.Printf("[ruptela] bad CRC got=%04x want=%04x — still parsing", gotCRC, calc)
+			log.Printf("[ruptela] bad CRC got=%04x want=%04x — dropping frame", gotCRC, calc)
+			continue
 		}
 
 		cmd, imei, rest := dissectPacket(data)

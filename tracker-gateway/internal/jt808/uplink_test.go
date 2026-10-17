@@ -55,6 +55,18 @@ func TestParseUpgradeResult(t *testing.T) {
 	}
 }
 
+func TestSafetyFromEventID_Expanded(t *testing.T) {
+	cases := map[int]string{
+		5: "enter_area", 6: "leave_area", 12: "collision", 14: "driver_change",
+	}
+	for id, want := range cases {
+		ev := safetyFromEventID(id, "jt808")
+		if ev == nil || ev.AlarmType != want {
+			t.Fatalf("id=%d ev=%+v want %s", id, ev, want)
+		}
+	}
+}
+
 func TestBuildDownlink_OutboundSubpkg(t *testing.T) {
 	body := make([]byte, jt808MaxBody+10)
 	for i := range body {

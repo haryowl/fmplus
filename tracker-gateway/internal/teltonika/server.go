@@ -115,7 +115,8 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 
 		if !verifyAVLCRC(payload, crcBuf) {
 			metrics.DecodeErr()
-			log.Printf("[teltonika] bad CRC for %s — still attempting parse", imei)
+			log.Printf("[teltonika] bad CRC for %s — dropping frame", imei)
+			continue
 		}
 		// Codec 12/13 GPRS command response (not AVL records).
 		if len(payload) > 0 && (payload[0] == 0x0c || payload[0] == 0x0d) {

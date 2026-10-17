@@ -193,6 +193,14 @@ func TestDecodeInfo94_MileageFuelSats(t *testing.T) {
 	if s["satellites"] != 12 {
 		t.Fatalf("sats=%v", s["satellites"])
 	}
+	acc := decodeInfo94([]byte{0x04, 0x12})
+	if acc["status.acc"] != true {
+		t.Fatalf("acc=%v", acc)
+	}
+	door := decodeInfo94([]byte{0x05, 0x01})
+	if door["status.door"] != true || door["door"] != 1 {
+		t.Fatalf("door=%v", door)
+	}
 }
 
 func TestCRC16ITU_KnownVector(t *testing.T) {
