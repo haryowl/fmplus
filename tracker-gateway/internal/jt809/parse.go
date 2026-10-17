@@ -53,6 +53,7 @@ var knownInfoTypes = map[int]infoTypeAlarm{
 	26: {"illegal_ignition", 2, "alarm.illegal_ignition"},
 	27: {"illegal_move", 2, "alarm.illegal_move"},
 	28: {"collision", 2, "alarm.collision"},
+	29: {"collision_rollover", 2, "alarm.collision_rollover"},
 }
 
 // flatten809InfoType writes remappable alarm.* onto dest for known info_type values.

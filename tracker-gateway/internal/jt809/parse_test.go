@@ -433,6 +433,20 @@ func TestParseVehicleAlarm_Collision(t *testing.T) {
 	}
 }
 
+func TestParseVehicleAlarm_CollisionRollover(t *testing.T) {
+	rest := make([]byte, 24)
+	copy(rest[0:21], []byte("B6666ROL"))
+	rest[21] = 2
+	binary.BigEndian.PutUint16(rest[22:24], 29)
+	_, ev, ok := parseVehicleAlarm(0x1402, rest)
+	if !ok || ev == nil || ev.AlarmType != "collision_rollover" || ev.AlarmLevel != 2 {
+		t.Fatalf("%+v ok=%v", ev, ok)
+	}
+	if ev.RawAttrs["alarm.collision_rollover"] != true {
+		t.Fatalf("raw=%v", ev.RawAttrs)
+	}
+}
+
 func TestParseVehicleAlarm_WarnBodyAndGNSS(t *testing.T) {
 	rest := make([]byte, 38+5+8)
 	copy(rest[0:21], []byte("B5555WRN"))

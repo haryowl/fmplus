@@ -1440,6 +1440,16 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["gnss.nmea_collect_freq"] = decoded
 	case 0x0094:
 		out["gnss.nmea_collect"] = decoded
+	case 0x0095:
+		out["gnss.upload_set"] = decoded
+	case 0x0100:
+		out["can1.collect_ms"] = decoded
+	case 0x0101:
+		out["can1.upload_s"] = decoded
+	case 0x0102:
+		out["can2.collect_ms"] = decoded
+	case 0x0103:
+		out["can2.upload_s"] = decoded
 	}
 }
 

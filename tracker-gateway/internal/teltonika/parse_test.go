@@ -239,9 +239,9 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 		t.Fatalf("fuel avl=%v", raw)
 	}
 	raw2 := map[string]any{}
-	promoteTeltonikaScalars(raw2, map[string]any{"84": 45.5})
-	if raw2["fuel.volume"] != 45.5 {
-		t.Fatalf("volume=%v", raw2)
+	promoteTeltonikaScalars(raw2, map[string]any{"84": 45.5, "36": 1800})
+	if raw2["fuel.volume"] != 45.5 || raw2["engine.rpm"] != 1800.0 {
+		t.Fatalf("volume/rpm=%v", raw2)
 	}
 }
 

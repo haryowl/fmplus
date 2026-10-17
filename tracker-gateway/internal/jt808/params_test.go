@@ -116,11 +116,29 @@ func TestHoistTerminalParam_GNSS(t *testing.T) {
 	hoistTerminalParam(0x0092, 1, nil, out)
 	hoistTerminalParam(0x0093, 10, nil, out)
 	hoistTerminalParam(0x0094, 0xff, nil, out)
+	hoistTerminalParam(0x0095, 0x01020304, nil, out)
 	if out["gnss.mode"] != 3 || out["gnss.baud"] != 9600 {
 		t.Fatalf("%v", out)
 	}
 	if out["gnss.nmea_out"] != 1 || out["gnss.nmea_collect_freq"] != 10 || out["gnss.nmea_collect"] != 0xff {
 		t.Fatalf("nmea=%v", out)
+	}
+	if out["gnss.upload_set"] != 0x01020304 {
+		t.Fatalf("upload=%v", out["gnss.upload_set"])
+	}
+}
+
+func TestHoistTerminalParam_CANChannels(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0100, 100, nil, out)
+	hoistTerminalParam(0x0101, 5, nil, out)
+	hoistTerminalParam(0x0102, 200, nil, out)
+	hoistTerminalParam(0x0103, 10, nil, out)
+	if out["can1.collect_ms"] != 100 || out["can1.upload_s"] != 5 {
+		t.Fatalf("can1=%v", out)
+	}
+	if out["can2.collect_ms"] != 200 || out["can2.upload_s"] != 10 {
+		t.Fatalf("can2=%v", out)
 	}
 }
 

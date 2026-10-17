@@ -433,6 +433,9 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["84"]; ok {
 		raw["fuel.volume"] = asFloat64(v)
 	}
+	if v, ok := io["36"]; ok {
+		raw["engine.rpm"] = asFloat64(v)
+	}
 	if v, ok := io["12"]; ok {
 		raw["fuel.used"] = asFloat64(v)
 	}
