@@ -253,6 +253,78 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["309"]; ok {
 		raw["ble.fuel_freq4"] = asIOFloat(v)
 	}
+	if v, ok := io["331"]; ok {
+		raw["ble.custom1_1"] = asIOFloat(v)
+	}
+	if v, ok := io["332"]; ok {
+		raw["ble.custom1_2"] = asIOFloat(v)
+	}
+	if v, ok := io["333"]; ok {
+		raw["ble.custom1_3"] = asIOFloat(v)
+	}
+	if v, ok := io["334"]; ok {
+		raw["ble.custom1_4"] = asIOFloat(v)
+	}
+	if v, ok := io["335"]; ok {
+		raw["ble.luminosity1"] = asIOFloat(v)
+	}
+	if v, ok := io["336"]; ok {
+		raw["ble.luminosity2"] = asIOFloat(v)
+	}
+	if v, ok := io["337"]; ok {
+		raw["ble.luminosity3"] = asIOFloat(v)
+	}
+	if v, ok := io["338"]; ok {
+		raw["ble.luminosity4"] = asIOFloat(v)
+	}
+	if v, ok := io["463"]; ok {
+		raw["ble.custom2_1"] = asIOFloat(v)
+	}
+	if v, ok := io["464"]; ok {
+		raw["ble.custom2_2"] = asIOFloat(v)
+	}
+	if v, ok := io["465"]; ok {
+		raw["ble.custom2_3"] = asIOFloat(v)
+	}
+	if v, ok := io["466"]; ok {
+		raw["ble.custom2_4"] = asIOFloat(v)
+	}
+	if v, ok := io["467"]; ok {
+		raw["ble.custom3_1"] = asIOFloat(v)
+	}
+	if v, ok := io["468"]; ok {
+		raw["ble.custom3_2"] = asIOFloat(v)
+	}
+	if v, ok := io["469"]; ok {
+		raw["ble.custom3_3"] = asIOFloat(v)
+	}
+	if v, ok := io["470"]; ok {
+		raw["ble.custom3_4"] = asIOFloat(v)
+	}
+	if v, ok := io["471"]; ok {
+		raw["ble.custom4_1"] = asIOFloat(v)
+	}
+	if v, ok := io["472"]; ok {
+		raw["ble.custom4_2"] = asIOFloat(v)
+	}
+	if v, ok := io["473"]; ok {
+		raw["ble.custom4_3"] = asIOFloat(v)
+	}
+	if v, ok := io["474"]; ok {
+		raw["ble.custom4_4"] = asIOFloat(v)
+	}
+	if v, ok := io["475"]; ok {
+		raw["ble.custom5_1"] = asIOFloat(v)
+	}
+	if v, ok := io["476"]; ok {
+		raw["ble.custom5_2"] = asIOFloat(v)
+	}
+	if v, ok := io["477"]; ok {
+		raw["ble.custom5_3"] = asIOFloat(v)
+	}
+	if v, ok := io["478"]; ok {
+		raw["ble.custom5_4"] = asIOFloat(v)
+	}
 	if v, ok := io["390"]; ok {
 		raw["fuel.oem_level"] = asIOFloat(v) / 10.0 // L ×0.1
 	}

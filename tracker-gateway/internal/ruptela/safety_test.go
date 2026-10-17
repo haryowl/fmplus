@@ -339,6 +339,17 @@ func TestPromoteRuptelaScalars_BLEEnvFuelFreq(t *testing.T) {
 	}
 }
 
+func TestPromoteRuptelaScalars_BLELuminosityCustom(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{
+		"331": 1, "334": 4, "335": 10, "338": 40,
+		"463": 11, "478": 44,
+	})
+	if raw["ble.custom1_1"] != 1.0 || raw["ble.luminosity1"] != 10.0 || raw["ble.custom2_1"] != 11.0 || raw["ble.custom5_4"] != 44.0 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteRuptelaScalars_SpeedTripHumidity(t *testing.T) {
 	raw := map[string]any{}
 	promoteRuptelaScalars(raw, map[string]any{"24": 62, "199": 5000, "29": 55})

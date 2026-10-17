@@ -431,6 +431,28 @@ func TestPromoteTeltonikaScalars_BLEEnvFuelFreq(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_BLELuminosityCustom(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{
+		"331": 1, "332": 2, "333": 3, "334": 4,
+		"335": 10, "336": 20, "337": 30, "338": 40,
+		"463": 11, "466": 14, "467": 21, "470": 24,
+		"471": 31, "474": 34, "475": 41, "478": 44,
+	})
+	if raw["ble.custom1_1"] != 1.0 || raw["ble.custom1_4"] != 4.0 {
+		t.Fatalf("custom1=%v", raw)
+	}
+	if raw["ble.luminosity1"] != 10.0 || raw["ble.luminosity4"] != 40.0 {
+		t.Fatalf("luminosity=%v", raw)
+	}
+	if raw["ble.custom2_1"] != 11.0 || raw["ble.custom2_4"] != 14.0 {
+		t.Fatalf("custom2=%v", raw)
+	}
+	if raw["ble.custom3_1"] != 21.0 || raw["ble.custom5_4"] != 44.0 {
+		t.Fatalf("custom3-5=%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_GNSSQuality(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{"181": 15, "182": 12, "69": 1})
