@@ -87,10 +87,11 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 		} else if codec == 0x8e {
 			off, eventID, io = extractIO8E(payload, off)
 		} else {
+			// Unknown AVL codec: keep GPS fix, stop record loop (IO length unknown).
 			fixes = append(fixes, store.Fix{
 				Lat: lat, Lon: lon, RecordedAt: time.UnixMilli(tsMs).UTC(),
 				Speed: &spd, Heading: &hdg, Altitude: &altF, Satellites: &sats,
-				RawAttrs: map[string]any{"codec": codec, "io": io},
+				RawAttrs: map[string]any{"codec": codec, "io": io, "codec_unsupported": true},
 			})
 			break
 		}
@@ -195,7 +196,20 @@ func extractIO8E(b []byte, off int) (int, any, map[string]any) {
 		if off+l > len(b) {
 			break
 		}
-		io[fmt.Sprintf("%d", id)] = fmt.Sprintf("%x", b[off:off+l])
+		key := fmt.Sprintf("%d", id)
+		switch l {
+		case 0:
+			io[key] = 0
+		case 1, 2, 4, 8:
+			io[key] = readIntBE(b[off:off+l], l)
+		default:
+			chunk := b[off : off+l]
+			if isPrintableASCII(chunk) {
+				io[key] = string(chunk)
+			} else {
+				io[key] = fmt.Sprintf("%x", chunk)
+			}
+		}
 		off += l
 	}
 	return off, event, io
@@ -229,6 +243,18 @@ func readIntBE(b []byte, size int) any {
 	default:
 		return fmt.Sprintf("%x", b)
 	}
+}
+
+func isPrintableASCII(b []byte) bool {
+	if len(b) == 0 {
+		return false
+	}
+	for _, c := range b {
+		if c < 0x20 || c > 0x7e {
+			return false
+		}
+	}
+	return true
 }
 
 func asIOBool(v any) bool {

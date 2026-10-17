@@ -138,16 +138,7 @@ func ingestJSONFix(ctx context.Context, st *store.Store, device *store.Device, p
 			rawAttrs[k] = v
 		}
 	}
-	if ioMap, ok := rawAttrs["io"].(map[string]any); ok {
-		for k, v := range ioMap {
-			rawAttrs["io."+k] = v
-		}
-	}
-	if stMap, ok := rawAttrs["status"].(map[string]any); ok {
-		for k, v := range stMap {
-			rawAttrs["status."+k] = v
-		}
-	}
+	flattenNestedVendorKeys(rawAttrs)
 	if acc := asBoolPtr(rawAttrs["status.acc"], rawAttrs["acc"]); acc != nil {
 		rawAttrs["status.acc"] = *acc
 	}
@@ -169,7 +160,13 @@ func ingestJSONFix(ctx context.Context, st *store.Store, device *store.Device, p
 	if sats := asInt(payload["satellites"], payload["sats"]); sats != nil {
 		fix.Satellites = sats
 	}
-	return deviceauth.Ingest(ctx, st, device, fix)
+	if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
+		return err
+	}
+	if ev := safetyFromJSONAttrs(fix); ev != nil {
+		_ = st.InsertSafetyEvent(ctx, device, *ev)
+	}
+	return nil
 }
 
 var errHeartbeat = &heartbeatError{}
@@ -177,6 +174,28 @@ var errHeartbeat = &heartbeatError{}
 type heartbeatError struct{}
 
 func (e *heartbeatError) Error() string { return "heartbeat" }
+
+// flattenNestedVendorKeys promotes nested io/tags/add/status maps to dotted
+// vendor keys so Device Manager remaps match TCP adapters.
+func flattenNestedVendorKeys(rawAttrs map[string]any) {
+	if rawAttrs == nil {
+		return
+	}
+	promote := func(nest string, prefix string) {
+		m, ok := rawAttrs[nest].(map[string]any)
+		if !ok {
+			return
+		}
+		for k, v := range m {
+			rawAttrs[prefix+k] = v
+		}
+	}
+	promote("io", "io.")
+	promote("tags", "tag.")
+	promote("add", "add.")
+	promote("status", "status.")
+	promote("alarm", "alarm.")
+}
 
 func bearer(r *http.Request) string {
 	auth := r.Header.Get("Authorization")

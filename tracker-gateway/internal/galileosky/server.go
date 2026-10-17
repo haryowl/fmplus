@@ -112,6 +112,12 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			for k, v := range tagRaw {
 				fix.RawAttrs["tag."+k] = v
 			}
+			if ev := applyStatusTags(tags, fix.RawAttrs); ev != nil {
+				ev.RecordedAt = fix.RecordedAt
+				lat, lon := fix.Lat, fix.Lon
+				ev.Lat, ev.Lon = &lat, &lon
+				_ = st.InsertSafetyEvent(ctx, device, *ev)
+			}
 			if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 				log.Printf("[galileosky] ingest %s: %v", imei, err)
 			}

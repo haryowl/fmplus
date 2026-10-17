@@ -50,16 +50,17 @@ func serveLabeled(ctx context.Context, addr string, st *store.Store, sessions *p
 }
 
 type session struct {
-	phone  string
-	device *store.Device
-	seq    uint16
-	label  string
-	bound  *protocol.ConnSession
+	phone   string
+	device  *store.Device
+	seq     uint16
+	label   string
+	bound   *protocol.ConnSession
+	subpkgs *subpkgTracker
 }
 
 func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry, label string) {
 	metrics.ConnOpen()
-	sess := &session{label: label}
+	sess := &session{label: label, subpkgs: newSubpkgTracker()}
 	defer func() {
 		metrics.ConnClose()
 		if sessions != nil && sess.bound != nil {
@@ -223,6 +224,37 @@ func tryFlushCommands(ctx context.Context, conn net.Conn, st *store.Store, sessi
 	}
 }
 
+// wrap8103Body uses admin hex as-is when it already has a valid param count+TLVs;
+// otherwise prepends count=1 (single TLV paste from Device Manager).
+func wrap8103Body(raw []byte) []byte {
+	if len(raw) == 0 {
+		return []byte{0}
+	}
+	if looksLike8103Body(raw) {
+		return raw
+	}
+	return append([]byte{1}, raw...)
+}
+
+func looksLike8103Body(raw []byte) bool {
+	n := int(raw[0])
+	if n < 1 || n > 64 {
+		return false
+	}
+	i := 1
+	for p := 0; p < n; p++ {
+		if i+5 > len(raw) {
+			return false
+		}
+		l := int(raw[i+4])
+		i += 5 + l
+		if i > len(raw) {
+			return false
+		}
+	}
+	return i == len(raw)
+}
+
 func encodeJT808Downlink(phone string, seq *uint16, cmd *store.Command) []byte {
 	if cmd == nil {
 		return nil
@@ -240,15 +272,16 @@ func encodeJT808Downlink(phone string, seq *uint16, cmd *store.Command) []byte {
 		if len(raw) == 0 {
 			raw = []byte(text)
 		}
-		body = append([]byte{1}, raw...)
+		body = wrap8103Body(raw)
 	case "jt808_8500", "control", "vehicle_control":
 		msgID = 0x8500
 		flag := byte(0)
-		if text == "1" || text == "cut" || text == "oil_cut" {
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				flag = raw[0]
+			}
+		} else if text == "1" || text == "cut" || text == "oil_cut" {
 			flag = 1
-		}
-		if len(cmd.PayloadBytes()) > 0 {
-			flag = cmd.PayloadBytes()[0]
 		}
 		body = []byte{flag}
 	default:
@@ -299,7 +332,18 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 	bodyLen := int(bodyProps & 0x3ff)
 	phone := bcdPhone(msg[4:10])
 	seq := binary.BigEndian.Uint16(msg[10:12])
-	body := msg[12:]
+	off := 12
+	var totalPkgs, pkgIndex int
+	subpackaged := bodyProps&0x2000 != 0
+	if subpackaged {
+		if len(msg) < 16 {
+			return nil
+		}
+		totalPkgs = int(binary.BigEndian.Uint16(msg[12:14]))
+		pkgIndex = int(binary.BigEndian.Uint16(msg[14:16]))
+		off = 16
+	}
+	body := msg[off:]
 	if bodyLen > len(body) {
 		bodyLen = len(body)
 	}
@@ -309,6 +353,18 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 	protoHint := sess.label
 	if protoHint == "" {
 		protoHint = "jt808"
+	}
+
+	if subpackaged {
+		if sess.subpkgs == nil {
+			sess.subpkgs = newSubpkgTracker()
+		}
+		full, done := sess.subpkgs.feed(phone, msgID, totalPkgs, pkgIndex, body)
+		if !done {
+			// ACK fragment; wait for remaining packages before processing body.
+			return replyGeneral(conn, sess, msgID, seq, 0)
+		}
+		body = full
 	}
 
 	switch msgID {

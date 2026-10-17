@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
@@ -97,7 +98,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					flushPending(ctx, conn, st, device.ID)
 				}
 				_ = writeReply(conn, 0x13, serial, nil)
-			case 0x12, 0x22: // GPS location
+			case 0x12, 0x22, 0x17: // GPS location / offline GPS re-upload
 				if device == nil && imei != "" {
 					device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "concox")
 				}
@@ -111,6 +112,12 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					flushPending(ctx, conn, st, device.ID)
 				}
 				_ = writeReply(conn, proto, serial, nil)
+			case 0x18: // LBS-only (no GPS fix — patch cell attrs)
+				if device != nil {
+					_ = st.PatchLastStatus(ctx, device, parseLBS(info), nil)
+					flushPending(ctx, conn, st, device.ID)
+				}
+				_ = writeReply(conn, 0x18, serial, nil)
 			case 0x15: // string / command response from terminal
 				if device != nil {
 					resp := string(info)
@@ -123,8 +130,29 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					}
 					_ = st.AckLatestSent(ctx, device.ID, true, resp)
 					_ = st.TouchSeen(ctx, device)
+					flushPending(ctx, conn, st, device.ID)
 				}
 				_ = writeReply(conn, 0x15, serial, nil)
+			case 0x8a: // time calibration request (GT06 family)
+				if device != nil {
+					_ = st.TouchSeen(ctx, device)
+				}
+				now := time.Now().UTC()
+				cal := []byte{
+					byte(now.Year() - 2000),
+					byte(now.Month()),
+					byte(now.Day()),
+					byte(now.Hour()),
+					byte(now.Minute()),
+					byte(now.Second()),
+				}
+				_ = writeReply(conn, 0x8a, serial, cal)
+			case 0x94: // general info transmission
+				if device != nil {
+					_ = st.PatchLastStatus(ctx, device, decodeInfo94(info), nil)
+					flushPending(ctx, conn, st, device.ID)
+				}
+				_ = writeReply(conn, 0x94, serial, nil)
 			case 0x16: // alarm (often includes GPS)
 				if device != nil {
 					if fix, ok := parseGPS(info, proto); ok {
@@ -367,6 +395,65 @@ func parseGPS(info []byte, proto byte) (store.Fix, bool) {
 		SourceProtocol: "concox",
 	}
 	return fix, true
+}
+
+// parseLBS extracts MCC/MNC/LAC/CI from GT06 0x18 (layout varies by firmware).
+func parseLBS(info []byte) map[string]any {
+	patch := map[string]any{"proto": 0x18, "lbs": true, "info_hex": fmt.Sprintf("%x", info)}
+	if len(info) >= 9 {
+		patch["mcc"] = int(binary.BigEndian.Uint16(info[0:2]))
+		patch["mnc"] = int(info[2])
+		patch["lac"] = int(binary.BigEndian.Uint16(info[3:5]))
+		// 3-byte cell id common on GT06
+		ci := int(info[5])<<16 | int(info[6])<<8 | int(info[7])
+		patch["cell_id"] = ci
+		if len(info) >= 9 {
+			patch["rssi"] = int(info[8])
+		}
+	}
+	return patch
+}
+
+// decodeInfo94 maps GT06/CMS 0x94 info-type byte to remappable status keys.
+func decodeInfo94(info []byte) map[string]any {
+	patch := map[string]any{"proto": 0x94, "info_hex": fmt.Sprintf("%x", info)}
+	if len(info) < 1 {
+		return patch
+	}
+	typ := info[0]
+	patch["info_type"] = int(typ)
+	data := info[1:]
+	switch typ {
+	case 0x00: // external voltage (WORD, 0.01 V) — CMS family
+		if len(data) >= 2 {
+			mv := float64(binary.BigEndian.Uint16(data[0:2])) * 0.01
+			patch["ext_voltage"] = mv
+		}
+	case 0x04: // terminal status sync
+		if len(data) >= 1 {
+			patch["terminal_info"] = int(data[0])
+			acc := data[0]&0x02 != 0 || data[0]&0x10 != 0
+			patch["status.acc"] = acc
+		}
+	case 0x05: // door / status
+		if len(data) >= 1 {
+			patch["door"] = int(data[0])
+			patch["status.door"] = data[0] != 0
+		}
+	case 0x0a: // ICCID (ASCII)
+		if len(data) > 0 {
+			patch["iccid"] = strings.TrimSpace(string(data))
+		}
+	case 0x0e: // IMSI
+		if len(data) > 0 {
+			patch["imsi"] = strings.TrimSpace(string(data))
+		}
+	default:
+		if len(data) > 0 {
+			patch["info_data_hex"] = fmt.Sprintf("%x", data)
+		}
+	}
+	return patch
 }
 
 // parseHeartbeat decodes GT06 0x13 terminal info / voltage / GSM.

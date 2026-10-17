@@ -97,6 +97,22 @@ func TestExtractIO8E_EventIDTwoBytes(t *testing.T) {
 	}
 }
 
+func TestExtractIO8E_NXScalarAndASCII(t *testing.T) {
+	// event 0, total 0, empty N1..N8, NX count=2:
+	// id 1000 len4 = 0x0000002a (42), id 1001 len3 = "ABC"
+	b := mustHex(t, "0000"+"0000"+"0000"+"0000"+"0000"+"0000"+
+		"0002"+
+		"03e8"+"0004"+"0000002a"+
+		"03e9"+"0003"+"414243")
+	_, _, io := extractIO8E(b, 0)
+	if io["1000"] != int64(42) && io["1000"] != 42 {
+		t.Fatalf("1000=%v (%T)", io["1000"], io["1000"])
+	}
+	if io["1001"] != "ABC" {
+		t.Fatalf("1001=%v", io["1001"])
+	}
+}
+
 func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)
