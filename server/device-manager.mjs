@@ -17,6 +17,7 @@ const COMMAND_TYPE_PROTOCOLS = {
   jt808_8600: ["jt808", "subiao"],
   jt808_8601: ["jt808", "subiao"],
   jt808_8602: ["jt808", "subiao"],
+  jt808_8604: ["jt808", "subiao"],
   jt808_8608: ["jt808", "subiao"],
   jt808_8801: ["jt808", "subiao"],
   jt808_8802: ["jt808", "subiao"],
@@ -26,8 +27,10 @@ const COMMAND_TYPE_PROTOCOLS = {
   jt808_9102: ["jt808", "subiao"],
   jt808_8301: ["jt808", "subiao"],
   jt808_8302: ["jt808", "subiao"],
+  jt808_8304: ["jt808", "subiao"],
   event_set: ["jt808", "subiao"],
   question: ["jt808", "subiao"],
+  info: ["jt808", "subiao"],
   geofence_del: ["jt808", "subiao"],
   geofence_set: ["jt808", "subiao"],
   geofence_query: ["jt808", "subiao"],
@@ -326,6 +329,7 @@ export async function enqueueCommand(tenantId, deviceId, body) {
     "jt808_8600",
     "jt808_8601",
     "jt808_8602",
+    "jt808_8604",
     "jt808_8608",
     "jt808_8801",
     "jt808_8802",
@@ -335,6 +339,7 @@ export async function enqueueCommand(tenantId, deviceId, body) {
     "jt808_9102",
     "jt808_8301",
     "jt808_8302",
+    "jt808_8304",
     "terminal_control",
     "teltonika_codec12",
     "teltonika_codec14",
@@ -364,6 +369,7 @@ export async function enqueueCommand(tenantId, deviceId, body) {
     "alarm_confirm",
     "event_set",
     "question",
+    "info",
   ].includes(body.commandType)
     ? body.commandType
     : "text";

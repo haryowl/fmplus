@@ -474,22 +474,29 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 		}
 		body = wrap8203Body(text)
 	case "jt808_8600", "geofence_set":
-		// Set circular (0x8600) or rectangular (0x8602 when type=rect) area.
+		// Set circular (0x8600), rectangular (0x8602), or polygon (0x8604).
 		if cmd.PayloadHex != "" {
 			if raw := cmd.PayloadBytes(); len(raw) > 0 {
-				if strings.Contains(strings.ToLower(text), "type=rect") {
+				switch {
+				case strings.Contains(strings.ToLower(text), "type=poly"):
+					msgID = 0x8604
+				case strings.Contains(strings.ToLower(text), "type=rect"):
 					msgID = 0x8602
-				} else {
+				default:
 					msgID = 0x8600
 				}
 				body = raw
 				break
 			}
 		}
-		if looksLikeRectGeofence(text) {
+		switch {
+		case looksLikePolyGeofence(text):
+			msgID = 0x8604
+			body = wrap8604Body(text)
+		case looksLikeRectGeofence(text):
 			msgID = 0x8602
 			body = wrap8602Body(text)
-		} else {
+		default:
 			msgID = 0x8600
 			body = wrap8600Body(text)
 		}
@@ -502,6 +509,15 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			}
 		}
 		body = wrap8602Body(text)
+	case "jt808_8604":
+		msgID = 0x8604
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8604Body(text)
 	case "jt808_8601", "geofence_del":
 		// Delete circular area(s): count=0 → all; else DWORD area ids (hex or csv).
 		msgID = 0x8601
@@ -562,6 +578,16 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			}
 		}
 		body = wrap8302Body(text)
+	case "jt808_8304", "info":
+		// Information service push (type + content).
+		msgID = 0x8304
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8304Body(text)
 	default:
 		// 0x8300: flag(1)+text. Prefixes tts:/urgent:/display: set flag bits.
 		if cmd.PayloadHex != "" {
@@ -1344,6 +1370,12 @@ func looksLikeRectGeofence(text string) bool {
 		(strings.Contains(t, "lat1=") && strings.Contains(t, "lat2="))
 }
 
+// looksLikePolyGeofence detects type=poly or pts= vertex list.
+func looksLikePolyGeofence(text string) bool {
+	t := strings.ToLower(text)
+	return strings.Contains(t, "type=poly") || strings.Contains(t, "pts=")
+}
+
 // wrap8600Body builds a minimal 0x8600 single circular area.
 // text: "id=1,lat=-6.2,lon=106.8,r=500" (degrees, radius meters).
 func wrap8600Body(text string) []byte {
@@ -1444,6 +1476,101 @@ func wrap8602Body(text string) []byte {
 	return body
 }
 
+// wrap8604Body builds a minimal 0x8604 single polygon (≥3 vertices).
+// text: "id=1,pts=-6.1,106.7;-6.2,106.8;-6.1,106.9" (lat,lon pairs separated by ;).
+func wrap8604Body(text string) []byte {
+	var id uint32 = 1
+	var pts [][2]float64
+	t := strings.TrimSpace(text)
+	lower := strings.ToLower(t)
+	if i := strings.Index(lower, "id="); i >= 0 {
+		rest := t[i+3:]
+		end := strings.IndexAny(rest, ",;")
+		token := rest
+		if end >= 0 {
+			token = rest[:end]
+		}
+		if n, err := strconv.ParseUint(strings.TrimSpace(token), 10, 32); err == nil {
+			id = uint32(n)
+		}
+	}
+	ptsStart := -1
+	ptsKeyLen := 0
+	for _, key := range []string{"pts=", "points=", "vertices="} {
+		if i := strings.Index(lower, key); i >= 0 {
+			ptsStart, ptsKeyLen = i, len(key)
+			break
+		}
+	}
+	if ptsStart >= 0 {
+		for _, pair := range strings.Split(t[ptsStart+ptsKeyLen:], ";") {
+			coords := strings.Split(strings.TrimSpace(pair), ",")
+			if len(coords) < 2 {
+				continue
+			}
+			lat, err1 := strconv.ParseFloat(strings.TrimSpace(coords[0]), 64)
+			lon, err2 := strconv.ParseFloat(strings.TrimSpace(coords[1]), 64)
+			if err1 == nil && err2 == nil {
+				pts = append(pts, [2]float64{lat, lon})
+			}
+		}
+	}
+	if len(pts) < 3 {
+		pts = [][2]float64{{0, 0}, {0.001, 0}, {0, 0.001}}
+	}
+	if len(pts) > 255 {
+		pts = pts[:255]
+	}
+	body := make([]byte, 2+4+2+2+8*len(pts))
+	body[0] = 0
+	body[1] = 1
+	off := 2
+	binary.BigEndian.PutUint32(body[off:], id)
+	off += 4
+	binary.BigEndian.PutUint16(body[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(body[off:], uint16(len(pts)))
+	off += 2
+	for _, p := range pts {
+		binary.BigEndian.PutUint32(body[off:], uint32(int32(p[0]*1e6)))
+		off += 4
+		binary.BigEndian.PutUint32(body[off:], uint32(int32(p[1]*1e6)))
+		off += 4
+	}
+	return body
+}
+
+// wrap8304Body builds 0x8304 info service: type BYTE + len DWORD + content.
+// text: "type=1,text=Hello" or plain content (type=0).
+func wrap8304Body(text string) []byte {
+	infoType := byte(0)
+	msg := strings.TrimSpace(text)
+	for _, part := range strings.Split(msg, ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		k, v := strings.ToLower(kv[0]), kv[1]
+		switch k {
+		case "type":
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
+				infoType = byte(n)
+			}
+		case "text", "msg", "info":
+			msg = v
+		}
+	}
+	if !strings.Contains(strings.ToLower(text), "text=") && !strings.Contains(strings.ToLower(text), "type=") {
+		msg = strings.TrimSpace(text)
+	}
+	content := []byte(msg)
+	body := make([]byte, 5+len(content))
+	body[0] = infoType
+	binary.BigEndian.PutUint32(body[1:5], uint32(len(content)))
+	copy(body[5:], content)
+	return body
+}
+
 // wrap8601Body builds 0x8601 delete circular area: 0=all, else count + DWORD ids.
 func wrap8601Body(text string) []byte {
 	t := strings.TrimSpace(strings.ToLower(text))
@@ -1513,6 +1640,14 @@ func parseAreaQueryResp(body []byte) map[string]any {
 			out["geofence.lon1"] = float64(int32(binary.BigEndian.Uint32(rec[10:14]))) / 1e6
 			out["geofence.lat2"] = float64(int32(binary.BigEndian.Uint32(rec[14:18]))) / 1e6
 			out["geofence.lon2"] = float64(int32(binary.BigEndian.Uint32(rec[18:22]))) / 1e6
+		}
+	case 3: // polygon: vertex count + first vertex
+		if len(rec) >= 8 {
+			out["geofence.vertex_count"] = int(binary.BigEndian.Uint16(rec[6:8]))
+		}
+		if len(rec) >= 16 {
+			out["geofence.lat"] = float64(int32(binary.BigEndian.Uint32(rec[8:12]))) / 1e6
+			out["geofence.lon"] = float64(int32(binary.BigEndian.Uint32(rec[12:16]))) / 1e6
 		}
 	}
 	snip := body

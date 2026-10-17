@@ -233,6 +233,11 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
     protocols: ["jt808", "subiao"],
   },
   {
+    value: "jt808_8604",
+    label: "JT808 set poly area (0x8604)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
     value: "jt808_8601",
     label: "JT808 delete circle area (0x8601)",
     protocols: ["jt808", "subiao"],
@@ -260,6 +265,11 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
   {
     value: "jt808_8302",
     label: "JT808 question (0x8302)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8304",
+    label: "JT808 info service (0x8304)",
     protocols: ["jt808", "subiao"],
   },
   { value: "concox_gprs", label: "Concox GPRS (0x80)", protocols: ["concox"] },
@@ -305,6 +315,8 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "id=1,lat=-6.2,lon=106.8,r=500", hex: "full 0x8600 body" };
     case "jt808_8602":
       return { text: "id=1,lat1=-6.1,lon1=106.7,lat2=-6.3,lon2=106.9", hex: "full 0x8602 body" };
+    case "jt808_8604":
+      return { text: "id=1,pts=-6.1,106.7;-6.2,106.8;-6.1,106.9", hex: "full 0x8604 body" };
     case "jt808_8601":
       return { text: "all or 1,2,3", hex: "count + DWORD ids" };
     case "jt808_8608":
@@ -317,6 +329,8 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "id=1,text=SOS or 1:SOS;2:Call", hex: "full 0x8301 body" };
     case "jt808_8302":
       return { text: "id=1,q=Over speed?", hex: "full 0x8302 body" };
+    case "jt808_8304":
+      return { text: "type=1,text=Service notice", hex: "full 0x8304 body" };
     case "teltonika_codec14":
       return { text: "getinfo (IMEI from session)", hex: "" };
     case "jt808_8103":

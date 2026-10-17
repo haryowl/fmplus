@@ -407,6 +407,41 @@ func TestEncodeDownlink_GeofenceSetRect(t *testing.T) {
 	}
 }
 
+func TestWrap8604Body(t *testing.T) {
+	b := wrap8604Body("id=5,pts=-6.1,106.7;-6.2,106.8;-6.1,106.9")
+	if b[0] != 0 || b[1] != 1 || binary.BigEndian.Uint32(b[2:6]) != 5 {
+		t.Fatalf("%x", b)
+	}
+	if binary.BigEndian.Uint16(b[8:10]) != 3 {
+		t.Fatalf("vertex count %x", b)
+	}
+	if !looksLikePolyGeofence("type=poly,id=1") || !looksLikePolyGeofence("pts=1,2;3,4;5,6") {
+		t.Fatal("looksLikePolyGeofence")
+	}
+}
+
+func TestWrap8304Body(t *testing.T) {
+	b := wrap8304Body("type=2,text=Hi")
+	if b[0] != 2 || binary.BigEndian.Uint32(b[1:5]) != 2 || string(b[5:]) != "Hi" {
+		t.Fatalf("%x", b)
+	}
+}
+
+func TestEncodeDownlink_PolyGeofence(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{
+		CommandType: "geofence_set",
+		PayloadText: "type=poly,id=1,pts=0,0;0.001,0;0,0.001",
+	}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := unescape(out)
+	if !bytes.Contains(raw, []byte{0x86, 0x04}) {
+		t.Fatalf("expected 0x8604: %x", raw)
+	}
+}
+
 func TestWrap8301Body(t *testing.T) {
 	b := wrap8301Body("id=2,text=SOS")
 	if b[0] != 1 || b[1] != 2 || b[2] != 3 || string(b[3:]) != "SOS" {
