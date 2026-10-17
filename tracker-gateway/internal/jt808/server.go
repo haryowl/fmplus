@@ -2920,6 +2920,7 @@ func parseLocation(body []byte) (store.Fix, bool) {
 	if status&0x02 != 0 {
 		raw["status.gps"] = true
 	}
+	hoistLocationStatusBits(status, raw)
 	flattenAlarmBits(alarm, raw)
 	return store.Fix{
 		Lat:        lat,

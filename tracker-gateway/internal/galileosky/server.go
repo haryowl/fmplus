@@ -318,6 +318,16 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw["device.id"] = id
 		raw["tag.0x04"] = id
 	}
+	if v, ok := tags[0x10]; ok && len(v) >= 2 {
+		n := int(binary.LittleEndian.Uint16(v[0:2]))
+		raw["archive.record"] = n
+		raw["tag.0x10"] = n
+	}
+	if v, ok := tags[0xd4]; ok && len(v) >= 4 {
+		n := float64(binary.LittleEndian.Uint32(v[0:4]))
+		raw["odometer"] = n
+		raw["tag.0xd4"] = n
+	}
 	if v, ok := tags[0x20]; ok && len(v) >= 4 {
 		raw["unix_time"] = int64(binary.LittleEndian.Uint32(v[0:4]))
 		raw["tag.0x20"] = raw["unix_time"]

@@ -118,6 +118,18 @@ func TestPromoteSensorTags_Sensor78(t *testing.T) {
 	}
 }
 
+func TestPromoteSensorTags_OdometerAndArchive(t *testing.T) {
+	raw := map[string]any{}
+	odo := make([]byte, 4)
+	binary.LittleEndian.PutUint32(odo, 98765)
+	arch := make([]byte, 2)
+	binary.LittleEndian.PutUint16(arch, 42)
+	promoteSensorTags(raw, map[byte][]byte{0xd4: odo, 0x10: arch})
+	if raw["odometer"] != float64(98765) || raw["archive.record"] != 42 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteSensorTags_IButtonAndAccel(t *testing.T) {
 	raw := map[string]any{}
 	key := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}

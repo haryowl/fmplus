@@ -166,6 +166,17 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["199"]; ok {
 		raw["trip.odometer"] = asIOFloat(v)
 	}
+	if v, ok := io["16"]; ok {
+		raw["odometer"] = asIOFloat(v)
+	}
+	if v, ok := io["89"]; ok {
+		raw["fuel.level"] = asIOFloat(v)
+	}
+	if v, ok := io["239"]; ok {
+		raw["status.ignition"] = asIOBool(v)
+	} else if v, ok := io["1"]; ok {
+		raw["status.ignition"] = asIOBool(v)
+	}
 	if v, ok := io["200"]; ok {
 		raw["sleep.mode"] = asIOFloat(v)
 	}

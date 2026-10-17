@@ -194,6 +194,14 @@ func TestPromoteTeltonikaScalars_Accel(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"89": 75, "239": 1, "16": 12345})
+	if raw["fuel.level"] != 75.0 || raw["status.ignition"] != true || raw["odometer"] != 12345.0 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)

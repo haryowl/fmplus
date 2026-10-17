@@ -124,3 +124,11 @@ func TestPromoteRuptelaScalars_EcoSleep(t *testing.T) {
 		t.Fatalf("ain/ble %v", raw)
 	}
 }
+
+func TestPromoteRuptelaScalars_Ignition(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{"239": 1, "89": 40})
+	if raw["status.ignition"] != true || raw["fuel.level"] != 40.0 {
+		t.Fatalf("%v", raw)
+	}
+}

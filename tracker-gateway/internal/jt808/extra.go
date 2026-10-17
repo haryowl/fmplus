@@ -431,6 +431,43 @@ func flattenManualAlarmID(id int, add map[string]any) {
 	}
 }
 
+// hoistLocationStatusBits maps JT/T 808 location status DWORD bits onto remappable status.* keys.
+func hoistLocationStatusBits(status uint32, raw map[string]any) {
+	if raw == nil {
+		return
+	}
+	if status&0x10 != 0 {
+		raw["status.out_of_service"] = true
+	}
+	if status&0x0400 != 0 {
+		raw["status.oil_cut"] = true
+	}
+	if status&0x0800 != 0 {
+		raw["status.circuit_cut"] = true
+	}
+	if status&0x1000 != 0 {
+		raw["status.door_lock"] = true
+	}
+	if status&0x2000 != 0 {
+		raw["status.door1"] = true
+	}
+	if status&0x4000 != 0 {
+		raw["status.door2"] = true
+	}
+	if status&0x8000 != 0 {
+		raw["status.door3"] = true
+	}
+	if status&0x10000 != 0 {
+		raw["status.door4"] = true
+	}
+	if status&0x20000 != 0 {
+		raw["status.door5"] = true
+	}
+	if status&(0x2000|0x4000|0x8000|0x10000|0x20000) != 0 {
+		raw["status.door"] = true
+	}
+}
+
 func isRemappableSafetyKey(k string) bool {
 	switch k {
 	case "alarm_level", "tpms.alarm", "gsm_signal", "gnss_sats",

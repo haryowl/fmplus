@@ -83,6 +83,22 @@ func TestParseLocation_WestNorth(t *testing.T) {
 	}
 }
 
+func TestParseLocation_StatusBitsOilDoor(t *testing.T) {
+	body := mustHex(t, goldenLocationHex)
+	// bit10 oil_cut + bit11 circuit_cut + bit13 door1
+	binary.BigEndian.PutUint32(body[4:8], 0x0400|0x0800|0x2000)
+	fix, ok := parseLocation(body)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["status.oil_cut"] != true || fix.RawAttrs["status.circuit_cut"] != true {
+		t.Fatalf("cut bits: %v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["status.door1"] != true || fix.RawAttrs["status.door"] != true {
+		t.Fatalf("door: %v", fix.RawAttrs)
+	}
+}
+
 func TestParseLocation_TooShort(t *testing.T) {
 	_, ok := parseLocation([]byte{1, 2, 3})
 	if ok {
