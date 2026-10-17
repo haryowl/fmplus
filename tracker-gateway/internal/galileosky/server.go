@@ -271,6 +271,7 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		fix.Heading = &hdg
 		fix.RawAttrs["speed.gps"] = spd
 		fix.RawAttrs["heading.gps"] = hdg
+		fix.RawAttrs["tag.0x33"] = true
 	}
 	if h, ok := tags[0x34]; ok && len(h) >= 2 {
 		alt := float64(int16(binary.LittleEndian.Uint16(h[0:2])))

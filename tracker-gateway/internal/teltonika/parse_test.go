@@ -460,6 +460,17 @@ func TestPromoteTeltonikaScalars_ISO6709(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_GeofenceZone10(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"65": 1})
+	if raw["geofence.zone10"] != 1.0 {
+		t.Fatalf("%v", raw)
+	}
+	if _, ok := raw["odometer"]; ok {
+		t.Fatalf("AVL 65 must not map to odometer: %v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_BLELuminosityCustom(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{

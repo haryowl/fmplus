@@ -79,6 +79,7 @@ func parseAdditionalInfo(body []byte) map[string]any {
 			}
 		case 0x11: // overspeed extra: loc type + optional region id
 			if l >= 1 {
+				add[key] = int(val[0])
 				add["overspeed_loc_type"] = int(val[0])
 				add["alarm.overspeed"] = true
 			}
@@ -87,6 +88,7 @@ func parseAdditionalInfo(body []byte) map[string]any {
 			}
 		case 0x12: // in/out area/line
 			if l >= 1 {
+				add[key] = int(val[0])
 				add["area_loc_type"] = int(val[0])
 			}
 			if l >= 6 {
@@ -101,6 +103,7 @@ func parseAdditionalInfo(body []byte) map[string]any {
 			}
 		case 0x13: // route driving time insufficient / too long
 			if l >= 1 {
+				add[key] = int(val[0])
 				add["route_time_loc_type"] = int(val[0])
 			}
 			if l >= 6 {
@@ -213,12 +216,14 @@ func parseAdditionalInfo(body []byte) map[string]any {
 		case 0x30: // wireless network signal strength
 			if l >= 1 {
 				n := int(val[0])
+				add[key] = n
 				add["gsm_signal"] = n
 				add["gsm.signal"] = n
 			}
 		case 0x31: // GNSS satellite count
 			if l >= 1 {
 				n := int(val[0])
+				add[key] = n
 				add["gnss_sats"] = n
 				add["gnss.sats"] = n
 			}

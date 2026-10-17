@@ -229,6 +229,9 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["215"]; ok {
 		raw["fuel.lls_temp5"] = float64(int8(uint8(asIOFloat(v))))
 	}
+	if v, ok := io["65"]; ok {
+		raw["geofence.zone10"] = asIOFloat(v) // FMB geofence zone 10 event (not odometer)
+	}
 	if v, ok := io["381"]; ok {
 		raw["ground.sense"] = asIOBool(v)
 	}

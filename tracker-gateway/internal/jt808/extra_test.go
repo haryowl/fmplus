@@ -194,6 +194,9 @@ func TestParseAdditionalInfo_RouteTimeAndIO(t *testing.T) {
 	if add["alarm.route_time_long"] != true || add["route_id"] != 7 || add["route_drive_time"] != 120 {
 		t.Fatalf("route=%v", add)
 	}
+	if add["0x13"] != 1 || add["0x18"] != 5 {
+		t.Fatalf("raw tlv keys=%v", add)
+	}
 	if add["status.din1"] != true || add["status.din3"] != true || add["status.din2"] != false {
 		t.Fatalf("io=%v", add)
 	}
