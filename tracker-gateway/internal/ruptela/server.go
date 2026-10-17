@@ -17,7 +17,8 @@ import (
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
-// Serve Ruptela FM TCP (records packet id 1, ACK id 100).
+// Serve Ruptela FM TCP per official protocol:
+// records cmd 1 / extended 68 → server ACK cmd 100; SMS via GPRS cmd 108.
 func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol.Registry) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -68,20 +69,21 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			return
 		}
 		data := payload[:length]
-		if len(data) < 1 {
-			continue
+		gotCRC := binary.BigEndian.Uint16(payload[length : length+2])
+		if calc := crc16Kermit(data); calc != gotCRC {
+			log.Printf("[ruptela] bad CRC got=%04x want=%04x — still parsing", gotCRC, calc)
 		}
-		packetID := data[0]
-		switch packetID {
-		case 1, 7: // classic + dynamic/extended records
-			records, imei := parseRecords(data[1:])
+
+		cmd, imei, rest := dissectPacket(data)
+		switch cmd {
+		case 1, 68: // classic + extended records
 			if imei == "" {
-				_ = writeAck(conn, 0)
+				_ = writeRecordsAck(conn, false)
 				continue
 			}
 			device := deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "ruptela")
 			if device == nil {
-				_ = writeAck(conn, 0)
+				_ = writeRecordsAck(conn, false)
 				continue
 			}
 			if sessions != nil && bound == nil {
@@ -90,6 +92,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				}
 				sessions.Bind(bound)
 			}
+			records := parseRecordPayload(rest, cmd == 68)
 			for _, fix := range records {
 				fix.SourceProtocol = "ruptela"
 				if ev := safetyFromEventIO(fix); ev != nil {
@@ -99,41 +102,66 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					log.Printf("[ruptela] ingest %s: %v", imei, err)
 				}
 			}
-			_ = writeAck(conn, len(records))
+			_ = writeRecordsAck(conn, true)
 			flushPending(ctx, conn, st, device.ID)
-		case 2, 105, 107: // config / command responses (IMEI may be present)
-			imei := ""
-			if len(data) >= 9 {
-				imeiNum := binary.BigEndian.Uint64(data[1:9])
-				imei = strconv.FormatUint(imeiNum, 10)
-			}
+		case 7: // SMS-via-GPRS response from device
 			device := boundDevice(bound)
 			if device == nil && imei != "" {
 				device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "ruptela")
 			}
 			if device != nil {
-				resp := fmt.Sprintf("ruptela_cmd_%d %x", packetID, data)
-				if packetID == 2 && len(data) > 9 {
-					resp = string(data[9:])
+				resp := strings.TrimSpace(string(rest))
+				if resp == "" {
+					resp = fmt.Sprintf("ruptela_cmd_7 %x", data)
 				}
-				_ = st.AckLatestSent(ctx, device.ID, true, strings.TrimSpace(resp))
+				_ = st.AckLatestSent(ctx, device.ID, true, resp)
 				_ = st.TouchSeen(ctx, device)
 			}
-			_ = writeAck(conn, 0)
+			_ = writeRecordsAck(conn, true)
+		case 2, 105, 107: // config / command responses
+			device := boundDevice(bound)
+			if device == nil && imei != "" {
+				device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "ruptela")
+			}
+			if device != nil {
+				resp := fmt.Sprintf("ruptela_cmd_%d %x", cmd, data)
+				if len(rest) > 0 {
+					resp = strings.TrimSpace(string(rest))
+				}
+				_ = st.AckLatestSent(ctx, device.ID, true, resp)
+				_ = st.TouchSeen(ctx, device)
+			}
+			_ = writeRecordsAck(conn, true)
 		default:
 			if device := boundDevice(bound); device != nil {
 				_ = st.TouchSeen(ctx, device)
 			}
-			_ = writeAck(conn, 0)
+			_ = writeRecordsAck(conn, true)
 		}
 	}
+}
+
+// dissectPacket handles official IMEI-first framing (records/SMS response)
+// and cmd-first framing (rare / legacy).
+func dissectPacket(data []byte) (cmd byte, imei string, rest []byte) {
+	if len(data) >= 9 {
+		maybe := data[8]
+		switch maybe {
+		case 1, 7, 2, 68, 105, 107:
+			imeiNum := binary.BigEndian.Uint64(data[0:8])
+			return maybe, strconv.FormatUint(imeiNum, 10), data[9:]
+		}
+	}
+	if len(data) >= 1 {
+		return data[0], "", data[1:]
+	}
+	return 0, "", nil
 }
 
 func boundDevice(bound *protocol.ConnSession) *store.Device {
 	if bound == nil {
 		return nil
 	}
-	// Lightweight stub — callers that need full Device should FindByIMEI; Ack only needs ID.
 	return &store.Device{ID: bound.DeviceID, IMEI: bound.IMEI, Protocol: bound.Protocol}
 }
 
@@ -146,72 +174,55 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 		}
 		payload, err := enc.EncodeDownlink(*cmd)
 		if err != nil || len(payload) == 0 {
-			return
+			_ = st.MarkCommandFailed(ctx, cmd.ID, "ruptela encode failed")
+			continue
 		}
 		if _, err := conn.Write(payload); err != nil {
+			_ = st.MarkCommandFailed(ctx, cmd.ID, "write failed: "+err.Error())
 			return
 		}
 		_ = st.MarkCommandSent(ctx, cmd.ID)
 	}
 }
 
-func writeAck(conn net.Conn, count int) error {
-	// length=3, packet id=100, records received (uint16 BE), crc
-	body := []byte{100, 0, 0}
-	binary.BigEndian.PutUint16(body[1:3], uint16(count))
-	crc := crc16IBM(append([]byte{0, 3}, body...))
-	out := make([]byte, 0, 7)
-	out = append(out, 0, 3)
-	out = append(out, body...)
-	crcBuf := make([]byte, 2)
-	binary.BigEndian.PutUint16(crcBuf, crc)
-	out = append(out, crcBuf...)
+// writeRecordsAck sends official cmd 100 ACK: 00 02 64 01 [CRC] (or ACK=0 NACK).
+func writeRecordsAck(conn net.Conn, ok bool) error {
+	ack := byte(0)
+	if ok {
+		ack = 1
+	}
+	body := []byte{0x64, ack}
+	crc := crc16Kermit(body)
+	out := []byte{0x00, 0x02, 0x64, ack, byte(crc >> 8), byte(crc)}
 	_, err := conn.Write(out)
 	return err
 }
 
-func crc16IBM(data []byte) uint16 {
-	var crc uint16
-	for _, b := range data {
-		crc ^= uint16(b)
-		for i := 0; i < 8; i++ {
-			if crc&1 != 0 {
-				crc = (crc >> 1) ^ 0xA001
-			} else {
-				crc >>= 1
-			}
-		}
+// parseRecordPayload parses records after records_left + count (classic cmd 1 header = 23 bytes).
+func parseRecordPayload(data []byte, extended bool) []store.Fix {
+	if len(data) < 2 {
+		return nil
 	}
-	return crc
-}
-
-func parseRecords(data []byte) ([]store.Fix, string) {
-	if len(data) < 8 {
-		return nil, ""
-	}
-	imeiNum := binary.BigEndian.Uint64(data[0:8])
-	imei := strconv.FormatUint(imeiNum, 10)
-	off := 8
-	if off >= len(data) {
-		return nil, imei
-	}
-	// some firmwares insert a records-left / flags byte
-	count := int(data[off])
-	off++
+	// records_left := data[0] — unused beyond protocol completeness
+	count := int(data[1])
+	off := 2
 	var fixes []store.Fix
-	for i := 0; i < count && off+30 <= len(data); i++ {
+	for i := 0; i < count && off+23 <= len(data); i++ {
+		headerLen := 23
+		if extended {
+			headerLen = 25 // extended protocol: 2-byte event IO id
+		}
+		if off+headerLen > len(data) {
+			break
+		}
 		ts := int64(binary.BigEndian.Uint32(data[off : off+4]))
 		off += 4
-		// timestamp is unix seconds on classic Ruptela
+		off++ // timestamp extension
+		off++ // priority
 		lonRaw := int32(binary.BigEndian.Uint32(data[off : off+4]))
 		off += 4
 		latRaw := int32(binary.BigEndian.Uint32(data[off : off+4]))
 		off += 4
-		// altitude int16, angle uint16, satellites, speed — order varies; use common FM layout:
-		// altitude(2) angle(2) satellites(1) speed(2) then IO
-		if off+7 > len(data) {
-			break
-		}
 		alt := int16(binary.BigEndian.Uint16(data[off : off+2]))
 		off += 2
 		angle := binary.BigEndian.Uint16(data[off : off+2])
@@ -220,20 +231,36 @@ func parseRecords(data []byte) ([]store.Fix, string) {
 		off++
 		speed := binary.BigEndian.Uint16(data[off : off+2])
 		off += 2
-		ioMap := map[string]any{}
+		hdop := data[off]
+		off++
 		var eventID any
-		if off < len(data) {
-			off, eventID, ioMap = extractRuptelaIO(data, off)
+		if extended {
+			if off+2 > len(data) {
+				break
+			}
+			eventID = int(binary.BigEndian.Uint16(data[off : off+2]))
+			off += 2
+		} else {
+			eventID = int(data[off])
+			off++
+		}
+		ioMap := map[string]any{}
+		if extended {
+			off = extractRuptelaIOExt(data, off, ioMap)
+		} else {
+			off = extractRuptelaIO(data, off, eventID, ioMap)
 		}
 		lon := float64(lonRaw) / 1e7
 		lat := float64(latRaw) / 1e7
 		spd := float64(speed)
-		hdg := float64(angle)
-		altF := float64(alt)
+		hdg := float64(angle) / 100.0
+		altF := float64(alt) / 10.0
 		raw := map[string]any{
 			"io":           ioMap,
 			"event_io":     eventID,
+			"hdop":         int(hdop),
 			"record_index": i,
+			"extended":     extended,
 		}
 		for k, v := range ioMap {
 			raw["io."+k] = v
@@ -250,7 +277,6 @@ func parseRecords(data []byte) ([]store.Fix, string) {
 			SourceProtocol: "ruptela",
 			RawAttrs:       raw,
 		}
-		// Common Ruptela IO IDs (model-dependent; Device Manager remaps io.* too).
 		if v, ok := ioMap["5"]; ok {
 			b := asTruthy(v)
 			fix.Ignition = &b
@@ -267,19 +293,13 @@ func parseRecords(data []byte) ([]store.Fix, string) {
 		}
 		fixes = append(fixes, fix)
 	}
-	return fixes, imei
+	return fixes
 }
 
-func extractRuptelaIO(b []byte, off int) (int, any, map[string]any) {
-	io := map[string]any{}
-	var event any
+func extractRuptelaIO(b []byte, off int, event any, io map[string]any) int {
+	_ = event
 	if off >= len(b) {
-		return off, event, io
-	}
-	event = int(b[off])
-	off++
-	if off >= len(b) {
-		return off, event, io
+		return off
 	}
 	n1 := int(b[off])
 	off++
@@ -290,7 +310,7 @@ func extractRuptelaIO(b []byte, off int) (int, any, map[string]any) {
 		off++
 	}
 	if off >= len(b) {
-		return off, event, io
+		return off
 	}
 	n2 := int(b[off])
 	off++
@@ -301,7 +321,7 @@ func extractRuptelaIO(b []byte, off int) (int, any, map[string]any) {
 		off += 2
 	}
 	if off >= len(b) {
-		return off, event, io
+		return off
 	}
 	n4 := int(b[off])
 	off++
@@ -312,7 +332,7 @@ func extractRuptelaIO(b []byte, off int) (int, any, map[string]any) {
 		off += 4
 	}
 	if off >= len(b) {
-		return off, event, io
+		return off
 	}
 	n8 := int(b[off])
 	off++
@@ -322,7 +342,34 @@ func extractRuptelaIO(b []byte, off int) (int, any, map[string]any) {
 		io[fmt.Sprintf("%d", id)] = int64(binary.BigEndian.Uint64(b[off : off+8]))
 		off += 8
 	}
-	return off, event, io
+	return off
+}
+
+// extractRuptelaIOExt: extended protocol uses 2-byte IO IDs and 2-byte counts.
+func extractRuptelaIOExt(b []byte, off int, io map[string]any) int {
+	for _, size := range []int{1, 2, 4, 8} {
+		if off+2 > len(b) {
+			return off
+		}
+		n := int(binary.BigEndian.Uint16(b[off : off+2]))
+		off += 2
+		for i := 0; i < n && off+2+size <= len(b); i++ {
+			id := int(binary.BigEndian.Uint16(b[off : off+2]))
+			off += 2
+			switch size {
+			case 1:
+				io[fmt.Sprintf("%d", id)] = int(b[off])
+			case 2:
+				io[fmt.Sprintf("%d", id)] = int(binary.BigEndian.Uint16(b[off : off+2]))
+			case 4:
+				io[fmt.Sprintf("%d", id)] = int64(binary.BigEndian.Uint32(b[off : off+4]))
+			case 8:
+				io[fmt.Sprintf("%d", id)] = int64(binary.BigEndian.Uint64(b[off : off+8]))
+			}
+			off += size
+		}
+	}
+	return off
 }
 
 func asTruthy(v any) bool {
