@@ -117,6 +117,11 @@ export function publicTrackerDevice(row, { includeTokenHint = false } = {}) {
       lon: Number(row.last_lon),
       recordedAt: row.last_recorded_at || null,
       speed: row.last_speed == null ? null : Number(row.last_speed),
+      heading: row.last_heading == null ? null : Number(row.last_heading),
+      ignition:
+        row.last_ignition === undefined || row.last_ignition === null
+          ? null
+          : Boolean(row.last_ignition),
       sourceProtocol: row.last_source_protocol || row.protocol,
     };
   }
@@ -127,7 +132,8 @@ export async function listTrackerDevices(tenantId) {
   const rows = await dbQuery(
     `SELECT d.*,
             lf.lat AS last_lat, lf.lon AS last_lon, lf.recorded_at AS last_recorded_at,
-            lf.speed AS last_speed, lf.source_protocol AS last_source_protocol
+            lf.speed AS last_speed, lf.heading AS last_heading, lf.ignition AS last_ignition,
+            lf.source_protocol AS last_source_protocol
      FROM tracker_devices d
      LEFT JOIN vehicle_last_fix lf ON lf.device_id = d.id
      WHERE d.tenant_id = $1

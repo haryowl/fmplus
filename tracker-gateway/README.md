@@ -9,7 +9,7 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat | — | `/ingest/v1/fix`, `/healthz`, `/adapters` |
 | Teltonika Codec 8/8E | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | event IO → safety for known alarms |
 | JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/batch | 0x8300/8103/8500 | alarm dword + Su Biao TLVs → safety |
-| Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **mvp** | 808 + safety | same as 808 | dedicated port / label |
+| Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
 | JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/heartbeat | — | platform link only |
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling | — | A/V hooks only |
 | Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm | 0x80 GPRS | heartbeat patches ACC without 0,0 fix |
@@ -63,7 +63,7 @@ curl -X POST http://localhost:5080/ingest/v1/fix \
   -d '{"lat":-6.2,"lon":106.8,"speed":40,"ignition":true,"attrs":{"io":{"239":1}}}'
 ```
 
-Heartbeat without coords: `{"heartbeat":true}` or omit lat/lon (updates `last_seen_at` only).
+Batch: `{"imei":"…","fixes":[{"lat":…,"lon":…}, …]}` (same auth). Heartbeat without coords: `{"heartbeat":true}` (updates `last_seen_at` only).
 
 Also: `GET /healthz`, `GET /metrics`, `GET /adapters`.
 

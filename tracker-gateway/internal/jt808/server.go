@@ -428,6 +428,12 @@ func ingestLocation(ctx context.Context, conn net.Conn, st *store.Store, session
 	}
 	if len(add) > 0 {
 		fix.RawAttrs["add"] = add
+		for k, v := range add {
+			fix.RawAttrs["add."+k] = v
+		}
+		if v, ok := add["0x01"].(float64); ok {
+			fix.Odometer = &v
+		}
 		if ev := safetyFromAdditional(add, fix, protoHint); ev != nil {
 			_ = st.InsertSafetyEvent(ctx, sess.device, *ev)
 		}

@@ -65,7 +65,15 @@ type TrackerDeviceRow = {
   videoNotes?: string;
   profileId?: string | null;
   lastSeenAt?: string | null;
-  lastFix?: { lat: number; lon: number; recordedAt: string | null; speed: number | null } | null;
+  lastFix?: {
+    lat: number;
+    lon: number;
+    recordedAt: string | null;
+    speed: number | null;
+    heading?: number | null;
+    ignition?: boolean | null;
+    sourceProtocol?: string;
+  } | null;
 };
 
 type UnassignedTrackerRow = {
@@ -1000,26 +1008,50 @@ export default function AdminConsole() {
     }
   }
 
-  async function loadRemapPreview() {
-    if (!selectedId || selectedId === "new" || !previewDeviceId) return;
+  async function loadRemapPreview(deviceId = previewDeviceId) {
+    if (!selectedId || selectedId === "new" || !deviceId) {
+      setRemapPreview("");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
       const data = await api<{
-        last: { rawAttrs: Record<string, unknown>; mappedAttrs: Record<string, unknown> } | null;
+        last: {
+          lat?: number;
+          lon?: number;
+          recordedAt?: string;
+          sourceProtocol?: string;
+          rawAttrs: Record<string, unknown>;
+          mappedAttrs: Record<string, unknown>;
+        } | null;
         preview: { mapped: Record<string, unknown>; rulesApplied: number };
-      }>(`/api/admin/tenants/${selectedId}/tracker-devices/${previewDeviceId}/remap-preview`);
+      }>(`/api/admin/tenants/${selectedId}/tracker-devices/${deviceId}/remap-preview`);
+      if (!data.last) {
+        setRemapPreview("No last fix stored for this device yet.");
+        return;
+      }
+      const head = [
+        data.last.sourceProtocol || "?",
+        data.last.lat != null && data.last.lon != null
+          ? `${Number(data.last.lat).toFixed(5)}, ${Number(data.last.lon).toFixed(5)}`
+          : "no coords",
+        data.last.recordedAt ? new Date(data.last.recordedAt).toLocaleString() : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
       setRemapPreview(
-        JSON.stringify(
-          {
-            storedMapped: data.last?.mappedAttrs || {},
-            previewMapped: data.preview.mapped,
-            rulesApplied: data.preview.rulesApplied,
-            rawSample: data.last?.rawAttrs || null,
-          },
-          null,
-          2,
-        ),
+        `${head}\n` +
+          JSON.stringify(
+            {
+              storedMapped: data.last.mappedAttrs || {},
+              previewMapped: data.preview.mapped,
+              rulesApplied: data.preview.rulesApplied,
+              rawSample: data.last.rawAttrs || null,
+            },
+            null,
+            2,
+          ),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Preview failed");
@@ -2114,7 +2146,11 @@ export default function AdminConsole() {
                       Remap preview device
                       <select
                         value={previewDeviceId}
-                        onChange={(e) => setPreviewDeviceId(e.target.value)}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          setPreviewDeviceId(id);
+                          void loadRemapPreview(id);
+                        }}
                       >
                         <option value="">Select device…</option>
                         {trackerDevices.map((d) => (
@@ -2266,6 +2302,11 @@ export default function AdminConsole() {
                                   Date.now() - new Date(d.lastSeenAt).getTime() < 5 * 60 * 1000 ? (
                                   <span className="admin-pill is-muted">seen</span>
                                 ) : null}
+                                {d.lastFix?.ignition === true ? (
+                                  <span className="admin-pill is-on">ACC</span>
+                                ) : d.lastFix?.ignition === false ? (
+                                  <span className="admin-pill is-muted">ACC off</span>
+                                ) : null}
                                 {d.armadaUserId != null ? (
                                   <span className="admin-pill is-muted">Armada #{d.armadaUserId}</span>
                                 ) : null}
@@ -2275,8 +2316,13 @@ export default function AdminConsole() {
                                 IMEI {d.imei}
                                 {d.videoChannelId ? ` · ch ${d.videoChannelId}` : ""}
                                 {d.lastFix
-                                  ? ` · last ${d.lastFix.lat.toFixed(5)}, ${d.lastFix.lon.toFixed(5)}`
+                                  ? ` · last ${d.lastFix.lat.toFixed(5)}, ${d.lastFix.lon.toFixed(5)}${
+                                      d.lastFix.speed != null ? ` · ${Math.round(d.lastFix.speed)} km/h` : ""
+                                    }`
                                   : " · no fix yet"}
+                                {d.lastSeenAt
+                                  ? ` · seen ${new Date(d.lastSeenAt).toLocaleString()}`
+                                  : ""}
                               </span>
                               <label className="muted" style={{ display: "block", marginTop: 6 }}>
                                 Profile{" "}

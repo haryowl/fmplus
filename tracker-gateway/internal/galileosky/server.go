@@ -108,7 +108,11 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			if fix.RawAttrs == nil {
 				fix.RawAttrs = map[string]any{}
 			}
-			fix.RawAttrs["tags"] = tagsToRaw(tags)
+			tagRaw := tagsToRaw(tags)
+			fix.RawAttrs["tags"] = tagRaw
+			for k, v := range tagRaw {
+				fix.RawAttrs["tag."+k] = v
+			}
 			if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 				log.Printf("[galileosky] ingest %s: %v", imei, err)
 			}

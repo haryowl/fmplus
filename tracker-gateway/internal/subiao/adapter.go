@@ -12,7 +12,7 @@ type Adapter struct{}
 
 func (Adapter) Name() string        { return "subiao" }
 func (Adapter) DisplayName() string { return "Su Biao / regional active safety (JT808 overlay)" }
-func (Adapter) Status() string      { return protocol.StatusMVP }
+func (Adapter) Status() string      { return protocol.StatusPartial } // 808 path + Su Biao safety TLVs
 func (Adapter) DefaultAddr() string { return ":7612" }
 
 func (Adapter) Serve(ctx context.Context, addr string, deps protocol.Deps) error {

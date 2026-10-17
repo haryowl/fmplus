@@ -70,6 +70,8 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 		}
 		if _, werr := sess.Conn.Write(payload); werr != nil {
 			log.Printf("[dispatch] write %s: %v", cmd.ID, werr)
+			_ = st.MarkCommandFailed(ctx, cmd.ID, "write failed: "+werr.Error())
+			sessions.Unbind(sess)
 			continue
 		}
 		_ = st.MarkCommandSent(ctx, cmd.ID)

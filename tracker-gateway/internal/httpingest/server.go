@@ -46,7 +46,7 @@ func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol
 			return
 		}
 		token := bearer(r)
-		body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+		body, err := io.ReadAll(io.LimitReader(r.Body, 256<<10))
 		if err != nil {
 			writeJSON(w, 400, map[string]any{"error": "bad body"})
 			return
@@ -71,63 +71,32 @@ func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol
 			return
 		}
 
-		heartbeat := asBool(payload["heartbeat"], payload["ping"])
-		lat := asFloat(payload["lat"], payload["latitude"])
-		lon := asFloat(payload["lon"], payload["lng"], payload["longitude"])
-		if heartbeat || lat == nil || lon == nil {
-			if err := st.TouchSeen(reqCtx, device); err != nil {
-				writeJSON(w, 500, map[string]any{"error": err.Error()})
-				return
+		// Batch: { "imei": "...", "fixes": [ {...}, ... ] }
+		if rawFixes, ok := payload["fixes"].([]any); ok && len(rawFixes) > 0 {
+			accepted := 0
+			for _, item := range rawFixes {
+				one, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				if err := ingestJSONFix(reqCtx, st, device, one); err != nil {
+					if err != errHeartbeat {
+						continue
+					}
+				}
+				accepted++
 			}
-			writeJSON(w, 200, map[string]any{"ok": true, "imei": device.IMEI, "heartbeat": true})
+			writeJSON(w, 200, map[string]any{
+				"ok": true, "imei": device.IMEI, "accepted": accepted, "total": len(rawFixes),
+			})
 			return
 		}
 
-		rawAttrs := map[string]any{}
-		for k, v := range payload {
-			if k == "lat" || k == "lon" || k == "latitude" || k == "longitude" || k == "lng" {
-				continue
+		if err := ingestJSONFix(reqCtx, st, device, payload); err != nil {
+			if err == errHeartbeat {
+				writeJSON(w, 200, map[string]any{"ok": true, "imei": device.IMEI, "heartbeat": true})
+				return
 			}
-			rawAttrs[k] = v
-		}
-		if attrs, ok := payload["attrs"].(map[string]any); ok {
-			for k, v := range attrs {
-				rawAttrs[k] = v
-			}
-		}
-		// Flatten nested io / status for Device Manager vendor keys.
-		if ioMap, ok := rawAttrs["io"].(map[string]any); ok {
-			for k, v := range ioMap {
-				rawAttrs["io."+k] = v
-			}
-		}
-		if stMap, ok := rawAttrs["status"].(map[string]any); ok {
-			for k, v := range stMap {
-				rawAttrs["status."+k] = v
-			}
-		}
-		if acc := asBoolPtr(rawAttrs["status.acc"], rawAttrs["acc"]); acc != nil {
-			rawAttrs["status.acc"] = *acc
-		}
-
-		fix := store.Fix{
-			Lat:            *lat,
-			Lon:            *lon,
-			RecordedAt:     parseTime(payload["recordedAt"], payload["recorded_at"], payload["utc"], payload["timestamp"]),
-			Speed:          asFloat(payload["speed"]),
-			Heading:        asFloat(payload["heading"], payload["course"]),
-			Odometer:       asFloat(payload["odometer"], payload["odometerKm"]),
-			Altitude:       asFloat(payload["altitude"], payload["alt"]),
-			SourceProtocol: "json",
-			RawAttrs:       rawAttrs,
-		}
-		if v := asBoolPtr(payload["ignition"], rawAttrs["status.acc"], rawAttrs["acc"]); v != nil {
-			fix.Ignition = v
-		}
-		if sats := asInt(payload["satellites"], payload["sats"]); sats != nil {
-			fix.Satellites = sats
-		}
-		if err := deviceauth.Ingest(reqCtx, st, device, fix); err != nil {
 			writeJSON(w, 403, map[string]any{"error": err.Error()})
 			return
 		}
@@ -145,6 +114,69 @@ func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol
 	}
 	return err
 }
+
+func ingestJSONFix(ctx context.Context, st *store.Store, device *store.Device, payload map[string]any) error {
+	heartbeat := asBool(payload["heartbeat"], payload["ping"])
+	lat := asFloat(payload["lat"], payload["latitude"])
+	lon := asFloat(payload["lon"], payload["lng"], payload["longitude"])
+	if heartbeat || lat == nil || lon == nil {
+		if err := st.TouchSeen(ctx, device); err != nil {
+			return err
+		}
+		return errHeartbeat
+	}
+
+	rawAttrs := map[string]any{}
+	for k, v := range payload {
+		if k == "lat" || k == "lon" || k == "latitude" || k == "longitude" || k == "lng" || k == "fixes" {
+			continue
+		}
+		rawAttrs[k] = v
+	}
+	if attrs, ok := payload["attrs"].(map[string]any); ok {
+		for k, v := range attrs {
+			rawAttrs[k] = v
+		}
+	}
+	if ioMap, ok := rawAttrs["io"].(map[string]any); ok {
+		for k, v := range ioMap {
+			rawAttrs["io."+k] = v
+		}
+	}
+	if stMap, ok := rawAttrs["status"].(map[string]any); ok {
+		for k, v := range stMap {
+			rawAttrs["status."+k] = v
+		}
+	}
+	if acc := asBoolPtr(rawAttrs["status.acc"], rawAttrs["acc"]); acc != nil {
+		rawAttrs["status.acc"] = *acc
+	}
+
+	fix := store.Fix{
+		Lat:            *lat,
+		Lon:            *lon,
+		RecordedAt:     parseTime(payload["recordedAt"], payload["recorded_at"], payload["utc"], payload["timestamp"]),
+		Speed:          asFloat(payload["speed"]),
+		Heading:        asFloat(payload["heading"], payload["course"]),
+		Odometer:       asFloat(payload["odometer"], payload["odometerKm"]),
+		Altitude:       asFloat(payload["altitude"], payload["alt"]),
+		SourceProtocol: "json",
+		RawAttrs:       rawAttrs,
+	}
+	if v := asBoolPtr(payload["ignition"], rawAttrs["status.acc"], rawAttrs["acc"]); v != nil {
+		fix.Ignition = v
+	}
+	if sats := asInt(payload["satellites"], payload["sats"]); sats != nil {
+		fix.Satellites = sats
+	}
+	return deviceauth.Ingest(ctx, st, device, fix)
+}
+
+var errHeartbeat = &heartbeatError{}
+
+type heartbeatError struct{}
+
+func (e *heartbeatError) Error() string { return "heartbeat" }
 
 func bearer(r *http.Request) string {
 	auth := r.Header.Get("Authorization")

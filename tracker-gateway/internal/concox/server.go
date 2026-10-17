@@ -334,14 +334,18 @@ func parseGPS(info []byte, proto byte) (store.Fix, bool) {
 	hdg := float64(courseStatus & 0x03FF)
 	// Course/status high bits also carry ACC on many GT06 clones (bit 15 / 0x8000).
 	acc := courseStatus&0x8000 != 0
+	status := map[string]any{
+		"acc":   acc,
+		"north": courseStatus&0x0400 != 0,
+		"west":  courseStatus&0x0800 != 0,
+	}
 	raw := map[string]any{
 		"proto":         proto,
 		"course_status": courseStatus,
-		"status": map[string]any{
-			"acc":   acc,
-			"north": courseStatus&0x0400 != 0,
-			"west":  courseStatus&0x0800 != 0,
-		},
+		"status":        status,
+		"status.acc":    acc,
+		"status.north":  status["north"],
+		"status.west":   status["west"],
 	}
 	// Remaining bytes often include MCC/MNC/LAC/Cell — stash hex for Device Manager.
 	if rem := off + 2; rem < len(info) {
