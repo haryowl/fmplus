@@ -20,6 +20,9 @@ func TestParseDriverIdentity(t *testing.T) {
 	if m["driver.ic_login"] != true || m["driver.ic_name"] != "John" {
 		t.Fatalf("login keys=%v", m)
 	}
+	if m["driver.ic_time"] != "2024-06-01T10:30:00Z" {
+		t.Fatalf("ic_time=%v", m["driver.ic_time"])
+	}
 	ev := safetyFromDriverIdentity(m, "jt808")
 	if ev == nil || ev.AlarmType != "driver_ic_login" {
 		t.Fatalf("safety=%+v", ev)
@@ -119,7 +122,7 @@ func TestParseCANBus(t *testing.T) {
 	// count=1, BCD 5 bytes, one item: id=0x18FEEF00 + 8 data
 	body := make([]byte, 2+5+12)
 	binary.BigEndian.PutUint16(body[0:2], 1)
-	copy(body[2:7], []byte{0x12, 0x30, 0x00, 0x00, 0x00})
+	copy(body[2:7], []byte{0x24, 0x06, 0x01, 0x10, 0x30})
 	binary.BigEndian.PutUint32(body[7:11], 0x18FEEF00)
 	copy(body[11:19], []byte{1, 2, 3, 4, 5, 6, 7, 8})
 	m := parseCANBus(body)
@@ -135,8 +138,11 @@ func TestParseCANBus(t *testing.T) {
 	if m["can.first_data"] != "0102030405060708" {
 		t.Fatalf("first_data=%v", m["can.first_data"])
 	}
-	if m["can_time_bcd"] != "1230000000" {
+	if m["can_time_bcd"] != "2406011030" {
 		t.Fatalf("bcd=%v", m["can_time_bcd"])
+	}
+	if m["can_time"] != "2024-06-01T10:30:00Z" {
+		t.Fatalf("can_time=%v", m["can_time"])
 	}
 }
 

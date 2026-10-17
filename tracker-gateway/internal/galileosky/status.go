@@ -40,8 +40,10 @@ func applyStatusTags(tags map[byte][]byte, raw map[string]any) []*store.SafetyEv
 			}
 		case 0x41:
 			// Common: bit0 ignition / DIN1 on many Easy firmwares.
-			raw["status.acc"] = val&0x01 != 0
-			if val&0x01 != 0 {
+			on := val&0x01 != 0
+			raw["status.acc"] = on
+			raw["status.ignition"] = on
+			if on {
 				raw["ignition"] = true
 			}
 		case 0x42:

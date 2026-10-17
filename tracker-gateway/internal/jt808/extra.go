@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
@@ -171,7 +172,9 @@ func parseAdditionalInfo(body []byte) map[string]any {
 				}
 			}
 			if l >= 7 {
-				add["driver.ic_time_bcd"] = fmt.Sprintf("%x", val[1:7])
+				bcd := val[1:7]
+				add["driver.ic_time_bcd"] = fmt.Sprintf("%x", bcd)
+				add["driver.ic_time"] = parseBcdTime(bcd).UTC().Format(time.RFC3339)
 			}
 			if l >= 8 {
 				add["driver.ic_result"] = int(val[7])
@@ -526,7 +529,7 @@ func isRemappableSafetyKey(k string) bool {
 		"mileage", "fuel.level", "speed.extra", "speed.pulse", "io.status", "io.status32", "manual_alarm_id",
 		"oil.quantity", "temp.cargo", "analog.ad", "analog.ad2", "vehicle.load",
 		"route_id", "route_time_loc_type", "route_time_result", "route_drive_time",
-		"driver.ic_status", "driver.ic_card", "driver.ic_name", "driver.ic_result", "driver.ic_time_bcd":
+		"driver.ic_status", "driver.ic_card", "driver.ic_name", "driver.ic_result", "driver.ic_time_bcd", "driver.ic_time":
 		return true
 	}
 	return strings.HasPrefix(k, "adas.") ||

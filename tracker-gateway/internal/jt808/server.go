@@ -1247,8 +1247,11 @@ func parseDriverIdentity(body []byte) map[string]any {
 	}
 	off := 1
 	if len(body) >= off+6 {
-		out["driver_time"] = fmt.Sprintf("%x", body[off:off+6])
+		bcd := body[off : off+6]
+		out["driver_time"] = fmt.Sprintf("%x", bcd)
 		out["driver.ic_time_bcd"] = out["driver_time"]
+		ts := parseBcdTime(bcd)
+		out["driver.ic_time"] = ts.UTC().Format(time.RFC3339)
 		off += 6
 	}
 	if len(body) >= off+1 {
@@ -1427,6 +1430,16 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["vehicle.plate"] = string(raw)
 	case 0x0084:
 		out["vehicle.plate_color"] = decoded
+	case 0x0090:
+		out["gnss.mode"] = decoded
+	case 0x0091:
+		out["gnss.baud"] = decoded
+	case 0x0092:
+		out["gnss.nmea_out"] = decoded
+	case 0x0093:
+		out["gnss.nmea_collect_freq"] = decoded
+	case 0x0094:
+		out["gnss.nmea_collect"] = decoded
 	}
 }
 
@@ -2816,7 +2829,11 @@ func parseCANBus(body []byte) map[string]any {
 	out["can_item_count"] = count
 	off := 2
 	if off+5 <= len(body) {
-		out["can_time_bcd"] = fmt.Sprintf("%x", body[off:off+5])
+		bcd := body[off : off+5]
+		out["can_time_bcd"] = fmt.Sprintf("%x", bcd)
+		if ts, ok := parseBcdTime5(bcd); ok {
+			out["can_time"] = ts.UTC().Format(time.RFC3339)
+		}
 		off += 5
 	}
 	const itemSize = 12 // DWORD id + 8 data
@@ -3249,4 +3266,21 @@ func parseBcdTime(b []byte) time.Time {
 	min := decode(b[4])
 	sec := decode(b[5])
 	return time.Date(year, time.Month(month), day, hour, min, sec, 0, time.UTC)
+}
+
+// parseBcdTime5 parses YYMMDDhhmm BCD (CAN 0x0705); seconds default to 0.
+func parseBcdTime5(b []byte) (time.Time, bool) {
+	if len(b) < 5 {
+		return time.Time{}, false
+	}
+	decode := func(v byte) int { return int(v>>4)*10 + int(v&0x0f) }
+	year := 2000 + decode(b[0])
+	month := decode(b[1])
+	day := decode(b[2])
+	hour := decode(b[3])
+	min := decode(b[4])
+	if month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || min > 59 {
+		return time.Time{}, false
+	}
+	return time.Date(year, time.Month(month), day, hour, min, 0, 0, time.UTC), true
 }

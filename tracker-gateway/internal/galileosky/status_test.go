@@ -30,7 +30,7 @@ func TestApplyStatusTags_Ignition(t *testing.T) {
 	if len(applyStatusTags(map[byte][]byte{0x41: {0x01}}, raw)) != 0 {
 		t.Fatal("no safety for ignition-only")
 	}
-	if raw["status.acc"] != true {
+	if raw["status.acc"] != true || raw["status.ignition"] != true {
 		t.Fatalf("raw=%v", raw)
 	}
 }

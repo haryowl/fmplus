@@ -192,6 +192,9 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["89"]; ok {
 		raw["fuel.level"] = asIOFloat(v)
 	}
+	if v, ok := io["84"]; ok {
+		raw["fuel.volume"] = asIOFloat(v)
+	}
 	if v, ok := io["12"]; ok {
 		raw["fuel.used"] = asIOFloat(v)
 	}

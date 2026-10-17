@@ -165,9 +165,12 @@ func TestPromoteRuptelaScalars_OdometerIO16(t *testing.T) {
 
 func TestPromoteRuptelaScalars_FuelAVL(t *testing.T) {
 	raw := map[string]any{}
-	promoteRuptelaScalars(raw, map[string]any{"12": 10, "13": 2.5, "48": 1000})
+	promoteRuptelaScalars(raw, map[string]any{"12": 10, "13": 2.5, "48": 1000, "84": 45.5})
 	if raw["fuel.used"] != 10.0 || raw["fuel.rate"] != 2.5 || raw["fuel.used_total"] != 1000.0 {
 		t.Fatalf("%v", raw)
+	}
+	if raw["fuel.volume"] != 45.5 {
+		t.Fatalf("volume=%v", raw)
 	}
 	raw2 := map[string]any{}
 	promoteRuptelaScalars(raw2, map[string]any{"48": 500})

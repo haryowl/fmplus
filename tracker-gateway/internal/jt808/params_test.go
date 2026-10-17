@@ -109,6 +109,21 @@ func TestHoistTerminalParam_AlarmMask(t *testing.T) {
 	}
 }
 
+func TestHoistTerminalParam_GNSS(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0090, 3, nil, out)
+	hoistTerminalParam(0x0091, 9600, nil, out)
+	hoistTerminalParam(0x0092, 1, nil, out)
+	hoistTerminalParam(0x0093, 10, nil, out)
+	hoistTerminalParam(0x0094, 0xff, nil, out)
+	if out["gnss.mode"] != 3 || out["gnss.baud"] != 9600 {
+		t.Fatalf("%v", out)
+	}
+	if out["gnss.nmea_out"] != 1 || out["gnss.nmea_collect_freq"] != 10 || out["gnss.nmea_collect"] != 0xff {
+		t.Fatalf("nmea=%v", out)
+	}
+}
+
 func TestHoistTerminalParam_PhoneAlarmShoot(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x0042, nil, []byte("RESTORE"), out)

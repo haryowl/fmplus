@@ -238,6 +238,11 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 	if raw["fuel.used"] != 10.0 || raw["fuel.rate"] != 2.5 || raw["fuel.used_total"] != 1000.0 {
 		t.Fatalf("fuel avl=%v", raw)
 	}
+	raw2 := map[string]any{}
+	promoteTeltonikaScalars(raw2, map[string]any{"84": 45.5})
+	if raw2["fuel.volume"] != 45.5 {
+		t.Fatalf("volume=%v", raw2)
+	}
 }
 
 func TestPromoteTeltonikaScalars_SleepIdling(t *testing.T) {

@@ -170,6 +170,9 @@ func TestParseAdditionalInfo_DriverIC32(t *testing.T) {
 	if add["driver.ic_time_bcd"] != "260101120100" {
 		t.Fatalf("bcd=%v", add["driver.ic_time_bcd"])
 	}
+	if add["driver.ic_time"] != "2026-01-01T12:01:00Z" {
+		t.Fatalf("ic_time=%v", add["driver.ic_time"])
+	}
 	if add["driver.ic_name"] != "Bob" || add["driver.ic_card"] != "IC99" {
 		t.Fatalf("name/card=%v", add)
 	}
