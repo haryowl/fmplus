@@ -468,6 +468,16 @@ func TestWrap8304Body(t *testing.T) {
 	}
 }
 
+func TestWrap8303Body(t *testing.T) {
+	if wrap8303Body("clear")[0] != 0 {
+		t.Fatal("clear")
+	}
+	b := wrap8303Body("type=1,items=1:News;2:Wx")
+	if b[0] != 1 || b[1] != 2 || b[2] != 1 || b[3] != 4 || string(b[4:8]) != "News" {
+		t.Fatalf("%x", b)
+	}
+}
+
 func TestEncodeDownlink_PolyGeofence(t *testing.T) {
 	ad := Adapter{}
 	out, err := ad.EncodeDownlink(store.Command{

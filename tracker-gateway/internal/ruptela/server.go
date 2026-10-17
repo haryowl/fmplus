@@ -306,6 +306,21 @@ func parseRecordPayload(data []byte, extended bool) []store.Fix {
 		if v, ok := ioMap["72"]; ok {
 			raw["temp.1"] = asFloat64(v)
 		}
+		if v, ok := ioMap["73"]; ok {
+			raw["temp.2"] = asFloat64(v)
+		}
+		if v, ok := ioMap["74"]; ok {
+			raw["temp.3"] = asFloat64(v)
+		}
+		if v, ok := ioMap["21"]; ok {
+			raw["gsm.signal"] = asFloat64(v)
+		}
+		if v, ok := ioMap["24"]; ok {
+			raw["speed.io"] = asFloat64(v)
+		}
+		if v, ok := ioMap["251"]; ok {
+			raw["idling"] = asTruthy(v)
+		}
 		flattenEventAlarm(raw)
 		fix := store.Fix{
 			Lat:            lat,

@@ -616,6 +616,16 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			}
 		}
 		body = wrap8302Body(text)
+	case "jt808_8303", "info_menu":
+		// Information on-demand menu setting (0=clear, 1=update, …).
+		msgID = 0x8303
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8303Body(text)
 	case "jt808_8304", "info":
 		// Information service push (type + content).
 		msgID = 0x8304
@@ -911,6 +921,16 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			}
 			_ = st.AckCommand(ctx, sess.device.ID, corr, true,
 				fmt.Sprintf("jt808_0302 id=%v", patch["answer_id"]))
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0303: // info on-demand / cancel
+		if sess.device != nil && len(body) >= 2 {
+			patch := map[string]any{
+				"proto_msg":   "0x0303",
+				"info_type":   int(body[0]),
+				"info_flag":   int(body[1]), // 0=cancel/order per standard variants
+			}
+			_ = st.PatchLastStatus(ctx, sess.device, patch, nil)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0702: // driver identity information report
@@ -1587,6 +1607,71 @@ func wrap8604Body(text string) []byte {
 		off += 4
 		binary.BigEndian.PutUint32(body[off:], uint32(int32(p[1]*1e6)))
 		off += 4
+	}
+	return body
+}
+
+// wrap8303Body builds 0x8303 info menu setting.
+// text: "clear" | "type=1,items=1:News;2:Weather" (set_type + id:name pairs).
+func wrap8303Body(text string) []byte {
+	t := strings.TrimSpace(strings.ToLower(text))
+	if t == "" || t == "clear" || t == "delete" || t == "0" {
+		return []byte{0} // delete all
+	}
+	setType := byte(1) // update
+	itemsPart := text
+	for _, part := range strings.Split(text, ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		k, v := strings.ToLower(kv[0]), kv[1]
+		switch k {
+		case "type", "set":
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
+				setType = byte(n)
+			}
+		case "items", "menu":
+			itemsPart = v
+		}
+	}
+	type item struct {
+		id  byte
+		name string
+	}
+	var items []item
+	src := itemsPart
+	if i := strings.Index(strings.ToLower(text), "items="); i >= 0 {
+		src = text[i+6:]
+	} else if j := strings.Index(strings.ToLower(text), "menu="); j >= 0 {
+		src = text[j+5:]
+	}
+	for _, part := range strings.Split(src, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		kv := strings.SplitN(part, ":", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(kv[0]))
+		if err != nil || n < 0 || n > 255 {
+			continue
+		}
+		items = append(items, item{byte(n), strings.TrimSpace(kv[1])})
+	}
+	if len(items) > 255 {
+		items = items[:255]
+	}
+	body := []byte{setType, byte(len(items))}
+	for _, it := range items {
+		name := []byte(it.name)
+		if len(name) > 255 {
+			name = name[:255]
+		}
+		body = append(body, it.id, byte(len(name)))
+		body = append(body, name...)
 	}
 	return body
 }

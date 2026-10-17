@@ -27,3 +27,13 @@ func TestPromoteSensorTags_FuelAndUser(t *testing.T) {
 		t.Fatalf("user=%v", raw["user.0"])
 	}
 }
+
+func TestPromoteSensorTags_Counters(t *testing.T) {
+	raw := map[string]any{}
+	c := make([]byte, 4)
+	binary.LittleEndian.PutUint32(c, 42)
+	promoteSensorTags(raw, map[byte][]byte{0xd5: c})
+	if raw["counter.1"] != float64(42) {
+		t.Fatalf("%v", raw)
+	}
+}

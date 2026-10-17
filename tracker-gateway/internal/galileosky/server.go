@@ -326,4 +326,14 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		}
 		raw[fmt.Sprintf("user.%d", i)] = int(v[0])
 	}
+	// 0xd5–0xd7: additional counters (units model-dependent).
+	for i, id := range []byte{0xd5, 0xd6, 0xd7} {
+		v, ok := tags[id]
+		if !ok || len(v) < 4 {
+			continue
+		}
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw[fmt.Sprintf("counter.%d", i+1)] = float64(n)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+	}
 }

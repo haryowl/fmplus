@@ -288,6 +288,11 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
     protocols: ["jt808", "subiao"],
   },
   {
+    value: "jt808_8303",
+    label: "JT808 info menu (0x8303)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
     value: "jt808_8304",
     label: "JT808 info service (0x8304)",
     protocols: ["jt808", "subiao"],
@@ -356,6 +361,8 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "id=1,text=SOS or 1:SOS;2:Call", hex: "full 0x8301 body" };
     case "jt808_8302":
       return { text: "id=1,q=Over speed?", hex: "full 0x8302 body" };
+    case "jt808_8303":
+      return { text: "clear or type=1,items=1:News;2:Weather", hex: "full 0x8303 body" };
     case "jt808_8304":
       return { text: "type=1,text=Service notice", hex: "full 0x8304 body" };
     case "teltonika_codec14":
