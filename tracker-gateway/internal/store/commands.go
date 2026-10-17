@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"time"
+
+	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
 )
 
 type Command struct {
@@ -90,19 +92,25 @@ func (s *Store) MarkCommandSent(ctx context.Context, commandID string) error {
 // MarkCommandSentCorr marks pending→sent and optionally stores a protocol correlation id
 // (e.g. JT808 downlink sequence) for precise terminal acks.
 func (s *Store) MarkCommandSentCorr(ctx context.Context, commandID, corrID string) error {
-	_, err := s.pool.Exec(ctx, `
+	tag, err := s.pool.Exec(ctx, `
 		UPDATE tracker_commands
 		SET status = 'sent', sent_at = now(),
 		    corr_id = CASE WHEN $2 <> '' THEN $2 ELSE corr_id END
 		WHERE id = $1::uuid AND status = 'pending'`, commandID, corrID)
+	if err == nil && tag.RowsAffected() > 0 {
+		metrics.CommandSent()
+	}
 	return err
 }
 
 func (s *Store) MarkCommandFailed(ctx context.Context, commandID string, reason string) error {
-	_, err := s.pool.Exec(ctx, `
+	tag, err := s.pool.Exec(ctx, `
 		UPDATE tracker_commands
 		SET status = 'failed', response_text = $2, completed_at = now()
 		WHERE id = $1::uuid AND status IN ('pending', 'sent')`, commandID, reason)
+	if err == nil && tag.RowsAffected() > 0 {
+		metrics.CommandFailed()
+	}
 	return err
 }
 
@@ -157,6 +165,16 @@ func (s *Store) AckCommand(ctx context.Context, deviceID, corrID string, ok bool
 	if !ok {
 		status = "failed"
 	}
+	note := func(n int64) {
+		if n <= 0 {
+			return
+		}
+		if ok {
+			metrics.CommandAcked()
+		} else {
+			metrics.CommandFailed()
+		}
+	}
 	if corrID != "" {
 		tag, err := s.pool.Exec(ctx, `
 			UPDATE tracker_commands
@@ -171,10 +189,11 @@ func (s *Store) AckCommand(ctx context.Context, deviceID, corrID string, ok bool
 			return err
 		}
 		if tag.RowsAffected() > 0 {
+			note(tag.RowsAffected())
 			return nil
 		}
 	}
-	_, err := s.pool.Exec(ctx, `
+	tag, err := s.pool.Exec(ctx, `
 		UPDATE tracker_commands
 		SET status = $2, response_text = $3, completed_at = now()
 		WHERE id = (
@@ -183,7 +202,33 @@ func (s *Store) AckCommand(ctx context.Context, deviceID, corrID string, ok bool
 			ORDER BY COALESCE(sent_at, created_at) DESC
 			LIMIT 1
 		)`, deviceID, status, response)
+	if err == nil {
+		note(tag.RowsAffected())
+	}
 	return err
+}
+
+// CountCommandsByStatus returns pending/sent/acked/failed/expired counts (gateway health).
+func (s *Store) CountCommandsByStatus(ctx context.Context) (map[string]int64, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT status, count(*)::bigint FROM tracker_commands
+		WHERE status IN ('pending', 'sent', 'acked', 'failed', 'expired')
+		  AND created_at > now() - interval '7 days'
+		GROUP BY status`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var st string
+		var n int64
+		if err := rows.Scan(&st, &n); err != nil {
+			continue
+		}
+		out[st] = n
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) InsertSafetyEvent(ctx context.Context, device *Device, ev SafetyEvent) error {

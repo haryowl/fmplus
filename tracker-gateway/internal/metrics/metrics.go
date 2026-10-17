@@ -16,6 +16,9 @@ var (
 	unknownIMEI        atomic.Int64
 	unknownIMEIDropped atomic.Int64
 	decodeErrors       atomic.Int64
+	commandsSent       atomic.Int64
+	commandsAcked      atomic.Int64
+	commandsFailed     atomic.Int64
 )
 
 func ConnOpen()  { connectionsOpen.Add(1); connectionsTotal.Add(1) }
@@ -27,6 +30,9 @@ func UnknownIMEI() {
 }
 func UnknownIMEIDrop() { unknownIMEIDropped.Add(1) }
 func DecodeErr()       { decodeErrors.Add(1) }
+func CommandSent()     { commandsSent.Add(1) }
+func CommandAcked()    { commandsAcked.Add(1) }
+func CommandFailed()   { commandsFailed.Add(1) }
 
 func Snapshot() map[string]any {
 	return map[string]any{
@@ -40,6 +46,9 @@ func Snapshot() map[string]any {
 		"unknownImei":        unknownIMEI.Load(),
 		"unknownImeiDropped": unknownIMEIDropped.Load(),
 		"decodeErrors":       decodeErrors.Load(),
+		"commandsSent":       commandsSent.Load(),
+		"commandsAcked":      commandsAcked.Load(),
+		"commandsFailed":     commandsFailed.Load(),
 	}
 }
 

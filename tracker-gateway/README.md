@@ -38,6 +38,7 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `jt808_8104` / `query_params` | jt808/subiao | query params (`all` or id list) |
 | `jt808_8107` / `query_attrs` | jt808/subiao | query terminal attributes |
 | `jt808_8201` / `query_location` | jt808/subiao | query current location |
+| `jt808_8105` / `terminal_control` | jt808/subiao | reset/shutdown/factory/… |
 | `jt808_8500` / `control` | jt808/subiao | vehicle control |
 | `teltonika_codec12` | teltonika | Codec 12 GPRS |
 | `concox_gprs` | concox | GT06 0x80 |
@@ -77,6 +78,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   062_jt808_location_tlv_params.sql
 #   063_jt808_driver_params.sql
 #   064_jt808_8201_ruptela_alarms.sql
+#   065_jt808_8105_terminal_control.sql
 npm run db:migrate
 
 cd tracker-gateway

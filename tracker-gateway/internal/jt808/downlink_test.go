@@ -71,6 +71,27 @@ func TestEncodeDownlink_Query8104_All(t *testing.T) {
 	}
 }
 
+func TestEncodeDownlink_Terminal8105(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{CommandType: "jt808_8105", PayloadText: "reset"}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := unescape(out)
+	msg := raw[:len(raw)-1]
+	if binary.BigEndian.Uint16(msg[0:2]) != 0x8105 {
+		t.Fatalf("msgID=%04x", binary.BigEndian.Uint16(msg[0:2]))
+	}
+	bodyLen := int(binary.BigEndian.Uint16(msg[2:4]) & 0x3ff)
+	body := msg[12 : 12+bodyLen]
+	if len(body) != 1 || body[0] != 3 {
+		t.Fatalf("body=%x want [03]", body)
+	}
+	if wrap8105Flag("", "shutdown") != 2 || wrap8105Flag("04", "") != 4 {
+		t.Fatal("wrap8105Flag")
+	}
+}
+
 func TestEncodeDownlink_Query8201(t *testing.T) {
 	ad := Adapter{}
 	out, err := ad.EncodeDownlink(store.Command{CommandType: "jt808_8201"}, "13800138000")

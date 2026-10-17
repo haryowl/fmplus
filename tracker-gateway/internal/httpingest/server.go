@@ -27,6 +27,9 @@ func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol
 			snap["onlineCount"] = reg["onlineCount"]
 			snap["onlineByProto"] = reg["onlineByProto"]
 		}
+		if counts, err := st.CountCommandsByStatus(r.Context()); err == nil {
+			snap["commandsByStatus"] = counts
+		}
 		writeJSON(w, 200, snap)
 	})
 	mux.HandleFunc("/metrics", metrics.Handler)

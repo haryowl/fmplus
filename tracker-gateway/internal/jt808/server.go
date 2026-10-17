@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -241,6 +242,39 @@ func tryFlushCommands(ctx context.Context, conn net.Conn, st *store.Store, sessi
 	}
 }
 
+// wrap8105Flag maps Admin text/hex to JT808 0x8105 terminal control command byte.
+func wrap8105Flag(payloadHex, text string) byte {
+	if payloadHex != "" {
+		if b, err := hex.DecodeString(payloadHex); err == nil && len(b) > 0 {
+			return b[0]
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(text)) {
+	case "0", "upgrade", "wireless_upgrade":
+		return 0
+	case "1", "connect_upgrade":
+		return 1
+	case "2", "shutdown", "power_off":
+		return 2
+	case "3", "reset", "reboot":
+		return 3
+	case "4", "factory", "restore":
+		return 4
+	case "5", "close_data", "close_comm":
+		return 5
+	case "6", "close_wireless", "airplane":
+		return 6
+	default:
+		if text == "" {
+			return 3 // safe default: reset
+		}
+		if n, err := strconv.Atoi(text); err == nil && n >= 0 && n <= 255 {
+			return byte(n)
+		}
+		return 3
+	}
+}
+
 // wrap8104Body builds 0x8104 query body: count + DWORD ids from hex, or all (0).
 func wrap8104Body(raw []byte, text string) []byte {
 	if len(raw) == 0 && (text == "" || text == "all" || text == "*") {
@@ -356,6 +390,10 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 		// Platform queries terminal location; empty body (terminal replies 0x0201).
 		msgID = 0x8201
 		body = nil
+	case "jt808_8105", "terminal_control":
+		// 0x8105: single command byte (reset/shutdown/factory/…).
+		msgID = 0x8105
+		body = []byte{wrap8105Flag(cmd.PayloadHex, text)}
 	case "jt808_8500", "control", "vehicle_control":
 		msgID = 0x8500
 		flag := byte(0)

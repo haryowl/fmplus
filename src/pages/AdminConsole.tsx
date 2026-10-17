@@ -2222,6 +2222,7 @@ export default function AdminConsole() {
                         <option value="jt808_8104">JT808 query params (0x8104)</option>
                         <option value="jt808_8107">JT808 query attrs (0x8107)</option>
                         <option value="jt808_8201">JT808 query location (0x8201)</option>
+                        <option value="jt808_8105">JT808 terminal control (0x8105)</option>
                         <option value="jt808_8500">JT808 vehicle control (0x8500)</option>
                         <option value="teltonika_codec12">Teltonika Codec12</option>
                         <option value="concox_gprs">Concox GPRS (0x80)</option>
