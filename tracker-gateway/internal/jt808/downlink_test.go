@@ -53,6 +53,48 @@ func TestEncodeDownlink_Control8500(t *testing.T) {
 	}
 }
 
+func TestEncodeDownlink_Query8104_All(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{CommandType: "jt808_8104", PayloadText: "all"}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := unescape(out)
+	msg := raw[:len(raw)-1]
+	if binary.BigEndian.Uint16(msg[0:2]) != 0x8104 {
+		t.Fatalf("msgID=%04x", binary.BigEndian.Uint16(msg[0:2]))
+	}
+	bodyLen := int(binary.BigEndian.Uint16(msg[2:4]) & 0x3ff)
+	body := msg[12 : 12+bodyLen]
+	if len(body) != 1 || body[0] != 0 {
+		t.Fatalf("body=%x want [00]", body)
+	}
+}
+
+func TestEncodeDownlink_Query8107(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{CommandType: "jt808_8107"}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := unescape(out)
+	msg := raw[:len(raw)-1]
+	if binary.BigEndian.Uint16(msg[0:2]) != 0x8107 {
+		t.Fatalf("msgID=%04x", binary.BigEndian.Uint16(msg[0:2]))
+	}
+	bodyLen := int(binary.BigEndian.Uint16(msg[2:4]) & 0x3ff)
+	if bodyLen != 0 {
+		t.Fatalf("bodyLen=%d", bodyLen)
+	}
+}
+
+func TestWrap8104Body_IDs(t *testing.T) {
+	b := wrap8104Body(nil, "0001,0002")
+	if len(b) != 1+8 || b[0] != 2 {
+		t.Fatalf("%x", b)
+	}
+}
+
 func TestEncodeDownlink_Param8103(t *testing.T) {
 	ad := Adapter{}
 	out, err := ad.EncodeDownlink(store.Command{

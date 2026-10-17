@@ -35,6 +35,8 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 |----------------|-----------|--------------|
 | `text` | jt808/subiao (0x8300), generic | JT808 text or raw bytes |
 | `jt808_8103` / `param` | jt808/subiao | set terminal params |
+| `jt808_8104` / `query_params` | jt808/subiao | query params (`all` or id list) |
+| `jt808_8107` / `query_attrs` | jt808/subiao | query terminal attributes |
 | `jt808_8500` / `control` | jt808/subiao | vehicle control |
 | `teltonika_codec12` | teltonika | Codec 12 GPRS |
 | `concox_gprs` | concox | GT06 0x80 |
@@ -70,6 +72,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   058_teltonika_avl_concox_alarms.sql
 #   059_json_alarm_params.sql
 #   060_tracker_command_corr.sql
+#   061_jt808_query_commands.sql
 npm run db:migrate
 
 cd tracker-gateway

@@ -3,6 +3,7 @@ package jt808
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -240,6 +241,53 @@ func tryFlushCommands(ctx context.Context, conn net.Conn, st *store.Store, sessi
 	}
 }
 
+// wrap8104Body builds 0x8104 query body: count + DWORD ids from hex, or all (0).
+func wrap8104Body(raw []byte, text string) []byte {
+	if len(raw) == 0 && (text == "" || text == "all" || text == "*") {
+		return []byte{0}
+	}
+	if len(raw) == 0 {
+		// Allow comma-separated hex DWORDs in text: "0001,0002"
+		parts := strings.FieldsFunc(text, func(r rune) bool {
+			return r == ',' || r == ' ' || r == ';'
+		})
+		ids := make([]byte, 0, 1+4*len(parts))
+		ids = append(ids, 0) // count placeholder
+		n := 0
+		for _, p := range parts {
+			p = strings.TrimPrefix(strings.ToLower(p), "0x")
+			if len(p) == 0 {
+				continue
+			}
+			for len(p) < 8 {
+				p = "0" + p
+			}
+			if len(p) > 8 {
+				p = p[len(p)-8:]
+			}
+			b, err := hex.DecodeString(p)
+			if err != nil || len(b) != 4 {
+				continue
+			}
+			ids = append(ids, b...)
+			n++
+		}
+		if n == 0 {
+			return []byte{0}
+		}
+		ids[0] = byte(n)
+		return ids
+	}
+	if len(raw) >= 1 && int(raw[0])*4+1 == len(raw) {
+		return raw
+	}
+	if len(raw)%4 == 0 && len(raw) > 0 {
+		out := append([]byte{byte(len(raw) / 4)}, raw...)
+		return out
+	}
+	return append([]byte{0}, raw...)
+}
+
 // wrap8103Body uses admin hex as-is when it already has a valid param count+TLVs;
 // otherwise prepends count=1 (single TLV paste from Device Manager).
 func wrap8103Body(raw []byte) []byte {
@@ -293,6 +341,17 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			raw = []byte(text)
 		}
 		body = wrap8103Body(raw)
+	case "jt808_8104", "query_params":
+		// Body: count(BYTE) + N×DWORD param ids; empty / "all" → count=0 (query all).
+		msgID = 0x8104
+		var raw []byte
+		if cmd.PayloadHex != "" {
+			raw = cmd.PayloadBytes()
+		}
+		body = wrap8104Body(raw, text)
+	case "jt808_8107", "query_attrs":
+		msgID = 0x8107
+		body = nil // empty body
 	case "jt808_8500", "control", "vehicle_control":
 		msgID = 0x8500
 		flag := byte(0)

@@ -468,6 +468,7 @@ export default function AdminConsole() {
       commandType: string;
       payloadText?: string;
       responseText?: string;
+      corrId?: string;
       createdAt: string;
       sentAt?: string | null;
       completedAt?: string | null;
@@ -1211,6 +1212,7 @@ export default function AdminConsole() {
           commandType: string;
           payloadText?: string;
           responseText?: string;
+          corrId?: string;
           createdAt: string;
           sentAt?: string | null;
           completedAt?: string | null;
@@ -2217,6 +2219,8 @@ export default function AdminConsole() {
                       <select value={cmdType} onChange={(e) => setCmdType(e.target.value)}>
                         <option value="text">Text / GPRS (0x8300 / Codec12)</option>
                         <option value="jt808_8103">JT808 set params (0x8103)</option>
+                        <option value="jt808_8104">JT808 query params (0x8104)</option>
+                        <option value="jt808_8107">JT808 query attrs (0x8107)</option>
                         <option value="jt808_8500">JT808 vehicle control (0x8500)</option>
                         <option value="teltonika_codec12">Teltonika Codec12</option>
                         <option value="concox_gprs">Concox GPRS (0x80)</option>
@@ -2260,6 +2264,7 @@ export default function AdminConsole() {
                           <li key={c.id}>
                             <span>
                               <span className={`admin-pill ${pill}`}>{c.status}</span> · {c.commandType}
+                              {c.corrId ? ` · corr ${c.corrId}` : ""}
                               {c.payloadText ? ` · ${c.payloadText.slice(0, 48)}` : ""}
                               {c.responseText ? ` → ${c.responseText.slice(0, 48)}` : ""}
                               <span className="muted">

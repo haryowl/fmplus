@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
@@ -117,12 +118,13 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		}
 		// Codec 12/13 GPRS command response (not AVL records).
 		if len(payload) > 0 && (payload[0] == 0x0c || payload[0] == 0x0d) {
-			resp := parseCodec12Response(payload)
-			_ = st.AckLatestSent(ctx, device.ID, true, resp)
+			resp, ok := parseCodec12Response(payload)
+			_ = st.AckLatestSent(ctx, device.ID, ok, resp)
 			ack := make([]byte, 4)
 			if _, err := conn.Write(ack); err != nil {
 				return
 			}
+			flushPending(ctx, conn, st, device.ID)
 			continue
 		}
 		count, fixes := parseAVL(payload)
@@ -158,21 +160,51 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 		if _, err := conn.Write(payload); err != nil {
 			return
 		}
-		_ = st.MarkCommandSent(ctx, cmd.ID)
+		_ = st.MarkCommandSentCorr(ctx, cmd.ID, fmt.Sprintf("%d", i+1))
 	}
 }
 
-func parseCodec12Response(payload []byte) string {
+// parseCodec12Response decodes Codec 12/13 type=0x06 response body.
+// ok=false for empty body or ERROR/FAIL style replies (wiki GPRS command responses).
+func parseCodec12Response(payload []byte) (string, bool) {
 	// 0x0C|0x0D | qty | type=0x06 | size u32 BE | body | qty
 	if len(payload) < 8 {
-		return fmt.Sprintf("%x", payload)
+		return fmt.Sprintf("%x", payload), false
 	}
-	sz := int(binary.BigEndian.Uint32(payload[3:7]))
-	if 7+sz > len(payload) {
-		sz = len(payload) - 7
+	typ := payload[2]
+	szOff := 3
+	if typ != 0x06 && typ != 0x05 {
+		// some firmwares omit qty and put type at [1]
+		if payload[1] == 0x06 || payload[1] == 0x05 {
+			szOff = 2
+			typ = payload[1]
+		}
+	}
+	if szOff+4 > len(payload) {
+		return fmt.Sprintf("%x", payload), false
+	}
+	sz := int(binary.BigEndian.Uint32(payload[szOff : szOff+4]))
+	start := szOff + 4
+	if start+sz > len(payload) {
+		sz = len(payload) - start
 	}
 	if sz < 0 {
-		return fmt.Sprintf("%x", payload)
+		return fmt.Sprintf("%x", payload), false
 	}
-	return string(payload[7 : 7+sz])
+	body := string(payload[start : start+sz])
+	ok := typ == 0x06 && sz > 0 && !codec12LooksFailed(body)
+	return body, ok
+}
+
+func codec12LooksFailed(body string) bool {
+	s := strings.TrimSpace(strings.ToUpper(body))
+	if s == "" {
+		return true
+	}
+	for _, p := range []string{"ERROR", "FAIL", "DENIED", "NOT AVAILABLE", "UNKNOWN"} {
+		if strings.HasPrefix(s, p) || strings.Contains(s, " "+p) {
+			return true
+		}
+	}
+	return false
 }

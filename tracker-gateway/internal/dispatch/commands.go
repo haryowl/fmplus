@@ -18,7 +18,9 @@ import (
 func downlinkCorr(protocol, commandType string, payload []byte, sess *protocol.ConnSession) string {
 	switch {
 	case protocol == "jt808" || protocol == "subiao" ||
-		commandType == "jt808" || commandType == "jt808_8103" || commandType == "jt808_8500":
+		commandType == "jt808" || commandType == "jt808_8103" ||
+		commandType == "jt808_8104" || commandType == "jt808_8107" ||
+		commandType == "jt808_8500":
 		return jt808.DownlinkCorrID(payload)
 	case protocol == "concox" || commandType == "concox_gprs":
 		return concox.DownlinkCorrID(payload)
@@ -62,7 +64,9 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 		case cmd.Protocol == "ruptela" || cmd.CommandType == "ruptela_sms":
 			payload, encErr = rup.EncodeDownlink(cmd)
 		case cmd.Protocol == "jt808" || cmd.Protocol == "subiao" ||
-			cmd.CommandType == "jt808" || cmd.CommandType == "jt808_8103" || cmd.CommandType == "jt808_8500":
+			cmd.CommandType == "jt808" || cmd.CommandType == "jt808_8103" ||
+			cmd.CommandType == "jt808_8104" || cmd.CommandType == "jt808_8107" ||
+			cmd.CommandType == "jt808_8500":
 			phone := ""
 			var seq uint16
 			v2019 := false
