@@ -33,6 +33,13 @@ func TestParseVehicleUplink_MinimalGNSS(t *testing.T) {
 	if fix.Speed == nil || *fix.Speed != 40 {
 		t.Fatalf("speed=%v", fix.Speed)
 	}
+	if fix.RawAttrs["location_realtime"] != true {
+		t.Fatalf("realtime=%v", fix.RawAttrs)
+	}
+	fixH, _, okH := parseVehicleUplink(0x1203, rest)
+	if !okH || fixH.RawAttrs["location_history"] != true {
+		t.Fatalf("history=%v", fixH.RawAttrs)
+	}
 }
 
 func TestParseVehicleUplink_AltitudeState(t *testing.T) {

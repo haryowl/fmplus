@@ -407,6 +407,12 @@ func parseVehicleUplink(msgID uint16, rest []byte) (store.Fix, string, bool) {
 			"body_len":  len(rest),
 		},
 	}
+	switch msgID {
+	case 0x1200:
+		out.RawAttrs["location_realtime"] = true
+	case 0x1203:
+		out.RawAttrs["location_history"] = true
+	}
 	if len(rest) < 28 {
 		return out, "", false
 	}

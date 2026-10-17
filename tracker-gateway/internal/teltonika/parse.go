@@ -263,6 +263,21 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["69"]; ok {
 		raw["gnss.status"] = asIOFloat(v)
 	}
+	if v, ok := io["246"]; ok {
+		raw["status.towing"] = asIOBool(v)
+	}
+	if v, ok := io["247"]; ok {
+		raw["status.crash"] = asIOBool(v)
+	}
+	if v, ok := io["248"]; ok {
+		raw["status.geofence"] = asIOBool(v)
+	}
+	if v, ok := io["249"]; ok {
+		raw["status.jamming"] = asIOBool(v)
+	}
+	if v, ok := io["252"]; ok {
+		raw["status.unplug"] = asIOBool(v)
+	}
 }
 
 func extractIO8(b []byte, off int) (int, any, map[string]any) {

@@ -240,6 +240,17 @@ func TestPromoteTeltonikaScalars_GNSSQuality(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_SafetyStatus(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"246": 1, "247": 1, "249": 1, "252": 1})
+	if raw["status.towing"] != true || raw["status.crash"] != true {
+		t.Fatalf("%v", raw)
+	}
+	if raw["status.jamming"] != true || raw["status.unplug"] != true {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)

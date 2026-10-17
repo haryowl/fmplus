@@ -411,6 +411,16 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("can.%d", i+1)] = float64(n)
 		raw[fmt.Sprintf("tag.0x%02x", id)] = n
 	}
+	// 0xC0–0xC3: additional CAN / RS485 channels (4-byte LE).
+	for i, id := range []byte{0xc0, 0xc1, 0xc2, 0xc3} {
+		v, ok := tags[id]
+		if !ok || len(v) < 4 {
+			continue
+		}
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw[fmt.Sprintf("can.%d", i+5)] = float64(n)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+	}
 	// 0xE0–0xE6: command / text replies (length-prefixed ASCII).
 	for _, id := range []byte{0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6} {
 		v, ok := tags[id]

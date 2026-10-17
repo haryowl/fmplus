@@ -465,6 +465,21 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["69"]; ok {
 		raw["gnss.status"] = asFloat64(v)
 	}
+	if v, ok := io["246"]; ok {
+		raw["status.towing"] = asTruthy(v)
+	}
+	if v, ok := io["247"]; ok {
+		raw["status.crash"] = asTruthy(v)
+	}
+	if v, ok := io["248"]; ok {
+		raw["status.geofence"] = asTruthy(v)
+	}
+	if v, ok := io["249"]; ok {
+		raw["status.jamming"] = asTruthy(v)
+	}
+	if v, ok := io["252"]; ok {
+		raw["status.unplug"] = asTruthy(v)
+	}
 	if v, ok := io["24"]; ok {
 		raw["speed.io"] = asFloat64(v)
 	}

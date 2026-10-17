@@ -126,6 +126,16 @@ func TestPromoteSensorTags_User15(t *testing.T) {
 	}
 }
 
+func TestPromoteSensorTags_CanC0(t *testing.T) {
+	raw := map[string]any{}
+	reg := make([]byte, 4)
+	binary.LittleEndian.PutUint32(reg, 77)
+	promoteSensorTags(raw, map[byte][]byte{0xc0: reg})
+	if raw["can.5"] != float64(77) {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteSensorTags_CmdReply(t *testing.T) {
 	raw := map[string]any{}
 	promoteSensorTags(raw, map[byte][]byte{0xe1: []byte("OK SET")})
