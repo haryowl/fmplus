@@ -67,6 +67,28 @@ func TestParseVehicleAlarm_1401Attach(t *testing.T) {
 	}
 }
 
+func TestParseVehicleAlarm_RouteDeviation(t *testing.T) {
+	rest := make([]byte, 24)
+	copy(rest[0:21], []byte("B7777RTE"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 22)
+	_, ev, ok := parseVehicleAlarm(0x1400, rest)
+	if !ok || ev == nil || ev.AlarmType != "route_deviation" {
+		t.Fatalf("%+v ok=%v", ev, ok)
+	}
+}
+
+func TestParseVehicleAlarm_Collision(t *testing.T) {
+	rest := make([]byte, 24)
+	copy(rest[0:21], []byte("B6666COL"))
+	rest[21] = 2
+	binary.BigEndian.PutUint16(rest[22:24], 28)
+	_, ev, ok := parseVehicleAlarm(0x1402, rest)
+	if !ok || ev == nil || ev.AlarmType != "collision" || ev.AlarmLevel != 2 {
+		t.Fatalf("%+v ok=%v", ev, ok)
+	}
+}
+
 func TestParseVehicleStatic_Register(t *testing.T) {
 	rest := make([]byte, 28+61)
 	copy(rest[0:21], []byte("B1234REG"))

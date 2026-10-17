@@ -34,6 +34,46 @@ func parseVehicleAlarm(msgID uint16, rest []byte) (plate string, ev *store.Safet
 		alarmType, level = "danger", 2
 	case 5:
 		alarmType, level = "gnss_fault", 1
+	case 6:
+		alarmType, level = "antenna_cut", 2
+	case 7:
+		alarmType, level = "undervoltage", 1
+	case 8:
+		alarmType, level = "power_cut", 2
+	case 9:
+		alarmType, level = "lcd_fault", 1
+	case 10:
+		alarmType, level = "tts_fault", 1
+	case 11:
+		alarmType, level = "camera_fault", 1
+	case 12:
+		alarmType, level = "road_trans_timeout", 1
+	case 13:
+		alarmType, level = "overspeed_warn", 1
+	case 14:
+		alarmType, level = "fatigue_warn", 1
+	case 18:
+		alarmType, level = "day_drive_timeout", 1
+	case 19:
+		alarmType, level = "parking_timeout", 1
+	case 20:
+		alarmType, level = "area_inout", 1
+	case 21:
+		alarmType, level = "route_inout", 1
+	case 22:
+		alarmType, level = "route_deviation", 1
+	case 23:
+		alarmType, level = "vss_fault", 1
+	case 24:
+		alarmType, level = "fuel_abnormal", 2
+	case 25:
+		alarmType, level = "theft", 2
+	case 26:
+		alarmType, level = "illegal_ignition", 2
+	case 27:
+		alarmType, level = "illegal_move", 2
+	case 28:
+		alarmType, level = "collision", 2
 	}
 	ev = &store.SafetyEvent{
 		RecordedAt: time.Now().UTC(),

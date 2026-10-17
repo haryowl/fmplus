@@ -21,21 +21,26 @@ var knownEventIO = map[int]knownEvent{
 	9:   {"sos", 2, "alarm.sos"},
 	14:  {"door", 1, "alarm.door"},
 	15:  {"door", 1, "alarm.door"},
+	66:  {"ext_voltage", 1, "alarm.ext_voltage"},
 	175: {"geofence", 1, "alarm.geofence"},
 	236: {"alarm", 2, "alarm.generic"},
 	239: {"ignition", 1, "alarm.ignition"},
 	240: {"movement", 1, "alarm.movement"},
+	243: {"green_driving", 1, "alarm.green_driving_duration"},
 	246: {"towing", 2, "alarm.towing"},
 	247: {"crash", 2, "alarm.crash"},
+	248: {"autogeofence", 1, "alarm.autogeofence"},
 	249: {"jamming", 2, "alarm.jamming"},
+	250: {"trip", 1, "alarm.trip"},
 	251: {"idling", 1, "alarm.idling"},
 	252: {"unplug", 2, "alarm.unplug"},
 	253: {"green_driving", 1, "alarm.green_driving"},
+	254: {"trip", 1, "alarm.trip"},
 	255: {"overspeed", 1, "alarm.overspeed"},
 }
 
 // highSignalIO raises safety from IO values when event_io is unset (periodic records).
-var highSignalIO = []int{247, 246, 249, 252, 1, 9} // crash, towing, jamming, unplug, sos
+var highSignalIO = []int{247, 246, 249, 252, 255, 253, 248, 1, 9}
 
 // flattenEventAlarm writes remappable alarm.* onto fix raw_attrs when event_io is known.
 func flattenEventAlarm(raw map[string]any) {

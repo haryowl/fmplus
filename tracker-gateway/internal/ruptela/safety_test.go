@@ -83,3 +83,30 @@ func TestSafetyFromIO_SkipsWhenEventSet(t *testing.T) {
 		t.Fatal("expected nil when event_io set")
 	}
 }
+
+func TestSafetyFromIO_Overspeed(t *testing.T) {
+	fix := store.Fix{
+		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{
+			"event_io": 0,
+			"io":       map[string]any{"255": 1},
+		},
+	}
+	ev := safetyFromIO(fix)
+	if ev == nil || ev.AlarmType != "overspeed" {
+		t.Fatalf("%+v", ev)
+	}
+}
+
+func TestPromoteRuptelaScalars(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{
+		"17": 10, "18": -5, "19": 980, "253": 2, "25": 215,
+	})
+	if raw["accel.x"] != 10.0 || raw["accel.y"] != -5.0 || raw["accel.z"] != 980.0 {
+		t.Fatalf("accel %v", raw)
+	}
+	if raw["green_driving.value"] != 2.0 || raw["ble.temp1"] != 21.5 {
+		t.Fatalf("green/ble %v", raw)
+	}
+}

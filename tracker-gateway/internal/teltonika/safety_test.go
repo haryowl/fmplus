@@ -82,3 +82,17 @@ func TestFlattenIOAlarms(t *testing.T) {
 		t.Fatalf("%v", raw)
 	}
 }
+
+func TestSafetyFromIO_Overspeed(t *testing.T) {
+	fix := store.Fix{
+		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{
+			"event_io": 0,
+			"io":       map[string]any{"255": 1},
+		},
+	}
+	ev := safetyFromIO(fix)
+	if ev == nil || ev.AlarmType != "overspeed" {
+		t.Fatalf("%+v", ev)
+	}
+}

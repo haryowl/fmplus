@@ -296,33 +296,7 @@ func parseRecordPayload(data []byte, extended bool) []store.Fix {
 		for k, v := range ioMap {
 			raw["io."+k] = v
 		}
-		if v, ok := ioMap["66"]; ok {
-			raw["voltage.ext"] = asFloat64(v) / 1000.0
-		}
-		if v, ok := ioMap["67"]; ok {
-			raw["voltage.batt"] = asFloat64(v) / 1000.0
-		}
-		if v, ok := ioMap["89"]; ok {
-			raw["fuel.level"] = asFloat64(v)
-		}
-		if v, ok := ioMap["72"]; ok {
-			raw["temp.1"] = asFloat64(v)
-		}
-		if v, ok := ioMap["73"]; ok {
-			raw["temp.2"] = asFloat64(v)
-		}
-		if v, ok := ioMap["74"]; ok {
-			raw["temp.3"] = asFloat64(v)
-		}
-		if v, ok := ioMap["21"]; ok {
-			raw["gsm.signal"] = asFloat64(v)
-		}
-		if v, ok := ioMap["24"]; ok {
-			raw["speed.io"] = asFloat64(v)
-		}
-		if v, ok := ioMap["251"]; ok {
-			raw["idling"] = asTruthy(v)
-		}
+		promoteRuptelaScalars(raw, ioMap)
 		flattenEventAlarm(raw)
 		flattenIOAlarms(raw, ioMap)
 		fix := store.Fix{
@@ -429,6 +403,67 @@ func extractRuptelaIOExt(b []byte, off int, io map[string]any) int {
 		}
 	}
 	return off
+}
+
+// promoteRuptelaScalars lifts common FM IO ids onto remappable keys (partial; overlaps Teltonika AVL).
+func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
+	if raw == nil || io == nil {
+		return
+	}
+	if v, ok := io["66"]; ok {
+		raw["voltage.ext"] = asFloat64(v) / 1000.0
+	}
+	if v, ok := io["67"]; ok {
+		raw["voltage.batt"] = asFloat64(v) / 1000.0
+	}
+	if v, ok := io["89"]; ok {
+		raw["fuel.level"] = asFloat64(v)
+	}
+	if v, ok := io["72"]; ok {
+		raw["temp.1"] = asFloat64(v)
+	}
+	if v, ok := io["73"]; ok {
+		raw["temp.2"] = asFloat64(v)
+	}
+	if v, ok := io["74"]; ok {
+		raw["temp.3"] = asFloat64(v)
+	}
+	if v, ok := io["21"]; ok {
+		raw["gsm.signal"] = asFloat64(v)
+	}
+	if v, ok := io["24"]; ok {
+		raw["speed.io"] = asFloat64(v)
+	}
+	if v, ok := io["251"]; ok {
+		raw["idling"] = asTruthy(v)
+	}
+	if v, ok := io["199"]; ok {
+		raw["trip.odometer"] = asFloat64(v)
+	}
+	if v, ok := io["25"]; ok {
+		raw["ble.temp1"] = asFloat64(v) / 10.0
+	}
+	if v, ok := io["26"]; ok {
+		raw["ble.temp2"] = asFloat64(v) / 10.0
+	}
+	if v, ok := io["29"]; ok {
+		raw["ble.humidity"] = asFloat64(v)
+	}
+	if v, ok := io["253"]; ok {
+		raw["green_driving.value"] = asFloat64(v)
+	}
+	if v, ok := io["243"]; ok {
+		raw["green_driving.duration"] = asFloat64(v)
+	}
+	if v, ok := io["17"]; ok {
+		raw["accel.x"] = asFloat64(v)
+	}
+	if v, ok := io["18"]; ok {
+		raw["accel.y"] = asFloat64(v)
+	}
+	if v, ok := io["19"]; ok {
+		raw["accel.z"] = asFloat64(v)
+	}
 }
 
 func asTruthy(v any) bool {

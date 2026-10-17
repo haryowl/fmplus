@@ -19,7 +19,9 @@ var knownEventIO = map[int]knownEvent{
 	240: {"movement", 1, "alarm.movement"},
 	246: {"towing", 2, "alarm.towing"},
 	247: {"crash", 2, "alarm.crash"},
+	248: {"autogeofence", 1, "alarm.autogeofence"},
 	249: {"jamming", 2, "alarm.jamming"},
+	250: {"trip", 1, "alarm.trip"},
 	251: {"idling", 1, "alarm.idling"},
 	252: {"unplug", 2, "alarm.unplug"},
 	253: {"green_driving", 1, "alarm.green_driving"},
@@ -55,7 +57,7 @@ func flattenEventAlarm(raw map[string]any) {
 
 // highSignalIO is the subset of AVL IDs that raise safety when present as IO values
 // even when event_io is 0 (periodic records).
-var highSignalIO = []int{247, 246, 249, 252, 1, 9} // crash, towing, jamming, unplug, sos
+var highSignalIO = []int{247, 246, 249, 252, 255, 253, 248, 1, 9} // crash, towing, jamming, unplug, overspeed, green, autogeofence, sos
 
 // flattenIOAlarms promotes known high-signal IO element values onto alarm.* keys.
 func flattenIOAlarms(raw map[string]any, io map[string]any) {

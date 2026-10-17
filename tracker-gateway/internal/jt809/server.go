@@ -225,6 +225,44 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 		} else {
 			log.Printf("[jt809] 0x%04x plate=%q online=%v (unregistered)", msgID, plate, online)
 		}
+	case 0x1207: // vehicle ewaybill / static exchange notify (experimental — reuse static parse)
+		plate, patch, ok := parseVehicleStatic(rest)
+		if !ok {
+			log.Printf("[jt809] 0x1207 len=%d (no parse)", length)
+			break
+		}
+		patch["proto_msg"] = "0x1207"
+		device := find809Device(ctx, st, plate, *platformKey, conn.RemoteAddr().String())
+		if device != nil {
+			_ = st.PatchLastStatus(ctx, device, patch, nil)
+			_ = st.TouchSeen(ctx, device)
+		} else {
+			log.Printf("[jt809] 0x1207 plate=%q (unregistered)", plate)
+		}
+	case 0x1210: // alarm attachment / media file info (experimental — plate + size)
+		plate := ""
+		if len(rest) >= 21 {
+			plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
+		}
+		device := find809Device(ctx, st, plate, *platformKey, conn.RemoteAddr().String())
+		patch := map[string]any{
+			"proto_msg":     "0x1210",
+			"vehicle_plate": plate,
+			"body_len":      len(rest),
+			"media_attach":  true,
+		}
+		if len(rest) >= 22 {
+			patch["vehicle_color"] = int(rest[21])
+		}
+		if len(rest) >= 26 {
+			patch["attach_info_len"] = int(binary.BigEndian.Uint32(rest[22:26]))
+		}
+		if device != nil {
+			_ = st.PatchLastStatus(ctx, device, patch, nil)
+			_ = st.TouchSeen(ctx, device)
+		} else {
+			log.Printf("[jt809] 0x1210 plate=%q (unregistered)", plate)
+		}
 	case 0x1400, 0x1401, 0x1402: // alarm / alarm attach / alarm confirm variants
 		plate, ev, ok := parseVehicleAlarm(msgID, rest)
 		if !ok || ev == nil {
