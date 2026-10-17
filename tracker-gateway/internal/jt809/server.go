@@ -282,24 +282,13 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 		} else {
 			log.Printf("[jt809] 0x1209 plate=%q (unregistered)", plate)
 		}
-	case 0x1210: // alarm attachment / media file info (experimental — plate + size)
-		plate := ""
-		if len(rest) >= 21 {
-			plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
+	case 0x1210: // alarm attachment / media file info (experimental)
+		plate, patch, ok := parseMediaAttach1210(rest)
+		if !ok {
+			log.Printf("[jt809] 0x1210 len=%d (no parse)", length)
+			break
 		}
 		device := find809Device(ctx, st, plate, *platformKey, conn.RemoteAddr().String())
-		patch := map[string]any{
-			"proto_msg":     "0x1210",
-			"vehicle_plate": plate,
-			"body_len":      len(rest),
-			"media_attach":  true,
-		}
-		if len(rest) >= 22 {
-			patch["vehicle_color"] = int(rest[21])
-		}
-		if len(rest) >= 26 {
-			patch["attach_info_len"] = int(binary.BigEndian.Uint32(rest[22:26]))
-		}
 		if device != nil {
 			_ = st.PatchLastStatus(ctx, device, patch, nil)
 			_ = st.TouchSeen(ctx, device)

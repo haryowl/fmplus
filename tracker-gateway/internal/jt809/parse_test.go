@@ -159,6 +159,48 @@ func TestParseVehicleAlarm_Collision(t *testing.T) {
 	}
 }
 
+func TestParseVehicleAlarm_WarnBodyAndGNSS(t *testing.T) {
+	rest := make([]byte, 38+5+8)
+	copy(rest[0:21], []byte("B5555WRN"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 1) // SOS
+	// BCD 2026-10-17 12:30:00
+	copy(rest[24:30], []byte{0x26, 0x10, 0x17, 0x12, 0x30, 0x00})
+	binary.BigEndian.PutUint32(rest[30:34], 4242)
+	binary.BigEndian.PutUint32(rest[34:38], 5)
+	copy(rest[38:43], []byte("hello"))
+	binary.BigEndian.PutUint32(rest[43:47], uint32(int32(math.Round(106.8*1e6))))
+	binary.BigEndian.PutUint32(rest[47:51], uint32(int32(math.Round(-6.2*1e6))))
+	_, ev, ok := parseVehicleAlarm(0x1400, rest)
+	if !ok || ev == nil || ev.AlarmType != "sos" {
+		t.Fatalf("%+v ok=%v", ev, ok)
+	}
+	if ev.RawAttrs["info_id"] != 4242 || ev.RawAttrs["info_content"] != "hello" {
+		t.Fatalf("attrs=%v", ev.RawAttrs)
+	}
+	if ev.AttachmentID != "4242" {
+		t.Fatalf("attach=%q", ev.AttachmentID)
+	}
+	if ev.Lat == nil || ev.Lon == nil || math.Abs(*ev.Lon-106.8) > 1e-3 || math.Abs(*ev.Lat-(-6.2)) > 1e-3 {
+		t.Fatalf("lat=%v lon=%v", ev.Lat, ev.Lon)
+	}
+	if ev.RecordedAt.Year() != 2026 || ev.RecordedAt.Month() != 10 || ev.RecordedAt.Day() != 17 {
+		t.Fatalf("time=%v", ev.RecordedAt)
+	}
+}
+
+func TestParseMediaAttach1210_File(t *testing.T) {
+	rest := make([]byte, 26+8)
+	copy(rest[0:21], []byte("B4444MED"))
+	rest[21] = 1
+	binary.BigEndian.PutUint32(rest[22:26], 8)
+	copy(rest[26:], []byte("clip.mp4"))
+	plate, patch, ok := parseMediaAttach1210(rest)
+	if !ok || plate != "B4444MED" || patch["attach_file"] != "clip.mp4" {
+		t.Fatalf("plate=%q patch=%v ok=%v", plate, patch, ok)
+	}
+}
+
 func TestFlatten809InfoType_SOS(t *testing.T) {
 	raw := map[string]any{}
 	flatten809InfoType(1, raw)

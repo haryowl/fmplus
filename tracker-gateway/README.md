@@ -148,6 +148,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   098_jt808_tlv_safety_events.sql
 #   099_galileo_ibutton_jt808_ic_809_driver.sql
 #   100_jt808_status_telt_fuel_galileo_odo.sql
+#   101_jt809_warn_body_attach.sql
 npm run db:migrate
 
 cd tracker-gateway
