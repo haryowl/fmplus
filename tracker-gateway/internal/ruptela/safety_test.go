@@ -339,6 +339,20 @@ func TestPromoteRuptelaScalars_BLEEnvFuelFreq(t *testing.T) {
 	}
 }
 
+func TestPromoteRuptelaScalars_RS232LLSGroundBeacon(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{
+		"201": 100, "202": 25, "203": 200, "204": 251,
+		"214": 500, "215": 32, "381": 1, "385": "aabb",
+	})
+	if raw["fuel.lls1"] != 100.0 || raw["fuel.lls_temp2"] != -5.0 || raw["fuel.lls5"] != 500.0 {
+		t.Fatalf("lls=%v", raw)
+	}
+	if raw["ground.sense"] != true || raw["beacon.ids"] != "aabb" {
+		t.Fatalf("ground/beacon=%v", raw)
+	}
+}
+
 func TestPromoteRuptelaScalars_BLELuminosityCustom(t *testing.T) {
 	raw := map[string]any{}
 	promoteRuptelaScalars(raw, map[string]any{

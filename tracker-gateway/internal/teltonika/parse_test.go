@@ -431,6 +431,27 @@ func TestPromoteTeltonikaScalars_BLEEnvFuelFreq(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_RS232LLSGroundBeacon(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{
+		"201": 100, "202": 25, "203": 200, "204": 251, // temp2=-5 as uint8
+		"210": 300, "211": 30, "212": 400, "213": 31, "214": 500, "215": 32,
+		"381": 1, "385": "aabb",
+	})
+	if raw["fuel.lls1"] != 100.0 || raw["fuel.lls_temp1"] != 25.0 || raw["fuel.lls2"] != 200.0 {
+		t.Fatalf("lls1-2=%v", raw)
+	}
+	if raw["fuel.lls_temp2"] != -5.0 {
+		t.Fatalf("lls_temp2=%v", raw["fuel.lls_temp2"])
+	}
+	if raw["fuel.lls5"] != 500.0 || raw["fuel.lls_temp5"] != 32.0 {
+		t.Fatalf("lls5=%v", raw)
+	}
+	if raw["ground.sense"] != true || raw["beacon.ids"] != "aabb" {
+		t.Fatalf("ground/beacon=%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_BLELuminosityCustom(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{

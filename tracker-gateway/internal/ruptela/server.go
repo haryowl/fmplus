@@ -740,6 +740,42 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["390"]; ok {
 		raw["fuel.oem_level"] = asFloat64(v) / 10.0
 	}
+	if v, ok := io["201"]; ok {
+		raw["fuel.lls1"] = float64(int16(uint16(asFloat64(v))))
+	}
+	if v, ok := io["202"]; ok {
+		raw["fuel.lls_temp1"] = float64(int8(uint8(asFloat64(v))))
+	}
+	if v, ok := io["203"]; ok {
+		raw["fuel.lls2"] = float64(int16(uint16(asFloat64(v))))
+	}
+	if v, ok := io["204"]; ok {
+		raw["fuel.lls_temp2"] = float64(int8(uint8(asFloat64(v))))
+	}
+	if v, ok := io["210"]; ok {
+		raw["fuel.lls3"] = float64(int16(uint16(asFloat64(v))))
+	}
+	if v, ok := io["211"]; ok {
+		raw["fuel.lls_temp3"] = float64(int8(uint8(asFloat64(v))))
+	}
+	if v, ok := io["212"]; ok {
+		raw["fuel.lls4"] = float64(int16(uint16(asFloat64(v))))
+	}
+	if v, ok := io["213"]; ok {
+		raw["fuel.lls_temp4"] = float64(int8(uint8(asFloat64(v))))
+	}
+	if v, ok := io["214"]; ok {
+		raw["fuel.lls5"] = float64(int16(uint16(asFloat64(v))))
+	}
+	if v, ok := io["215"]; ok {
+		raw["fuel.lls_temp5"] = float64(int8(uint8(asFloat64(v))))
+	}
+	if v, ok := io["381"]; ok {
+		raw["ground.sense"] = asTruthy(v)
+	}
+	if v, ok := io["385"]; ok {
+		raw["beacon.ids"] = fmt.Sprintf("%v", v)
+	}
 	if v, ok := io["250"]; ok {
 		raw["trip.distance"] = asFloat64(v)
 	}

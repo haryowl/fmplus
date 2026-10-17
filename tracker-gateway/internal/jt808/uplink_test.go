@@ -144,6 +144,18 @@ func TestParseCANBus(t *testing.T) {
 	if m["can_time"] != "2024-06-01T10:30:00Z" {
 		t.Fatalf("can_time=%v", m["can_time"])
 	}
+	// two items → can.1.*
+	body2 := make([]byte, 2+5+24)
+	binary.BigEndian.PutUint16(body2[0:2], 2)
+	copy(body2[2:7], []byte{0x24, 0x06, 0x01, 0x10, 0x30})
+	binary.BigEndian.PutUint32(body2[7:11], 0x18FEEF00)
+	copy(body2[11:19], []byte{1, 2, 3, 4, 5, 6, 7, 8})
+	binary.BigEndian.PutUint32(body2[19:23], 0x18FEF100)
+	copy(body2[23:31], []byte{9, 8, 7, 6, 5, 4, 3, 2})
+	m2 := parseCANBus(body2)
+	if m2["can.1.id"] != int(0x18FEF100) || m2["can.1.data"] != "0908070605040302" {
+		t.Fatalf("can.1=%v", m2)
+	}
 }
 
 func TestParseSubpkgRetransmit(t *testing.T) {
