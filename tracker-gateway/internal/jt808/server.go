@@ -648,6 +648,13 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 		ingestLocation(ctx, conn, st, sessions, sess, body, protoHint)
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	default:
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, map[string]any{
+				"proto_msg": fmt.Sprintf("0x%04x", msgID),
+				"msg_id":    int(msgID),
+				"body_hex":  fmt.Sprintf("%x", body),
+			}, nil)
+		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	}
 }

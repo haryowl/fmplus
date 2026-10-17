@@ -96,6 +96,22 @@ func (s *Store) ClaimNextPendingCommand(ctx context.Context) (*Command, error) {
 	return c, nil
 }
 
+// ClaimCommand claims a specific pending command by id (peek-then-claim dispatch).
+func (s *Store) ClaimCommand(ctx context.Context, commandID string) (*Command, error) {
+	row := s.pool.QueryRow(ctx, `
+		UPDATE tracker_commands
+		SET status = 'sent', sent_at = now()
+		WHERE id = $1::uuid AND status = 'pending'
+		RETURNING id::text, device_id::text, tenant_id::text, protocol, command_type,
+		          payload_text, payload_hex, created_at`, commandID)
+	c, err := scanCommand(row)
+	if err != nil {
+		return nil, err
+	}
+	metrics.CommandSent()
+	return c, nil
+}
+
 // ListPendingCommands returns up to limit pending rows without claiming (Admin / metrics).
 func (s *Store) ListPendingCommands(ctx context.Context, limit int) ([]Command, error) {
 	if limit < 1 {

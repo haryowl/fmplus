@@ -238,15 +238,36 @@ func decodeFrame(frame []byte) (proto byte, info []byte, serial uint16, err erro
 		return 0, nil, 0, io.ErrUnexpectedEOF
 	}
 	var content []byte
+	var crcIn []byte
+	var gotCRC uint16
 	if frame[0] == 0x78 && frame[1] == 0x78 {
 		plen := int(frame[2])
+		if 3+plen+2 > len(frame) { // content + stop already sized by takeFrame; CRC inside plen
+			return 0, nil, 0, io.ErrUnexpectedEOF
+		}
 		content = frame[3 : 3+plen]
-	} else {
+		// CRC covers length byte + body (proto..serial); CRC itself is last 2 of content.
+		if plen < 5 {
+			return 0, nil, 0, io.ErrUnexpectedEOF
+		}
+		crcIn = frame[2 : 3+plen-2] // len + proto + info + serial
+		gotCRC = binary.BigEndian.Uint16(content[plen-2 : plen])
+	} else if frame[0] == 0x79 && frame[1] == 0x79 {
 		plen := int(binary.BigEndian.Uint16(frame[2:4]))
+		if 4+plen > len(frame) || plen < 5 {
+			return 0, nil, 0, io.ErrUnexpectedEOF
+		}
 		content = frame[4 : 4+plen]
+		crcIn = append(append([]byte{}, frame[2:4]...), content[:plen-2]...)
+		gotCRC = binary.BigEndian.Uint16(content[plen-2 : plen])
+	} else {
+		return 0, nil, 0, io.ErrUnexpectedEOF
 	}
 	if len(content) < 5 {
 		return 0, nil, 0, io.ErrUnexpectedEOF
+	}
+	if crc16ITU(crcIn) != gotCRC {
+		return 0, nil, 0, fmt.Errorf("concox: bad CRC")
 	}
 	proto = content[0]
 	// content = proto + info + serial(2) + crc(2)
@@ -530,6 +551,25 @@ func decodeInfo94(info []byte) map[string]any {
 	case 0x0e: // IMSI
 		if len(data) > 0 {
 			patch["imsi"] = strings.TrimSpace(string(data))
+		}
+	case 0x01: // mileage (DWORD meters → km)
+		if len(data) >= 4 {
+			m := float64(binary.BigEndian.Uint32(data[0:4])) / 1000.0
+			patch["odometer_km"] = m
+		}
+	case 0x02: // residual fuel / percent (WORD or BYTE)
+		if len(data) >= 2 {
+			patch["fuel_level"] = int(binary.BigEndian.Uint16(data[0:2]))
+		} else if len(data) >= 1 {
+			patch["fuel_level"] = int(data[0])
+		}
+	case 0x0c: // satellite count
+		if len(data) >= 1 {
+			patch["satellites"] = int(data[0])
+		}
+	case 0x1a: // steps / activity (DWORD)
+		if len(data) >= 4 {
+			patch["steps"] = int(binary.BigEndian.Uint32(data[0:4]))
 		}
 	default:
 		if len(data) > 0 {

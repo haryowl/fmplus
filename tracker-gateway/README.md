@@ -82,6 +82,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   066_concox_alarm_lbs_maps.sql
 #   067_uplink_remap_seeds.sql
 #   068_uplink_remap_seeds.sql
+#   069_uplink_remap_seeds.sql
 npm run db:migrate
 
 cd tracker-gateway

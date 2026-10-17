@@ -51,32 +51,40 @@ func downlinkCorr(protocol, commandType string, payload []byte, sess *protocol.C
 	}
 }
 
-// FlushPending claims and sends queued tracker_commands to online sessions.
+func sessionReady(cmd store.Command, sess *protocol.ConnSession) bool {
+	if sess == nil || sess.Conn == nil {
+		return false
+	}
+	if isJT808Command(cmd.Protocol, cmd.CommandType) {
+		if sess.Meta == nil || sess.Meta["phone"] == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// FlushPending peeks pending commands and only claims those with a ready session,
+// so offline devices never flip to sent until they can be written.
 func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Registry) {
 	tel := teltonika.Adapter{}
 	cx := concox.Adapter{}
 	rup := ruptela.Adapter{}
 	jt := jt808.Adapter{}
 	gs := galileosky.Adapter{}
-	seen := map[string]struct{}{}
-	for i := 0; i < 50; i++ {
-		cmdPtr, err := st.ClaimNextPendingCommand(ctx)
-		if err != nil || cmdPtr == nil {
-			return
-		}
-		cmd := *cmdPtr
-		if _, again := seen[cmd.ID]; again {
-			// Only offline/not-ready rows left — stop this tick.
-			_ = st.RequeueCommandRotate(ctx, cmd.ID)
-			return
-		}
-		seen[cmd.ID] = struct{}{}
-		sess, ok := sessions.SessionByDevice(cmd.DeviceID)
-		if !ok || sess.Conn == nil {
-			// Not online — rotate to back so other devices are not starved.
-			_ = st.RequeueCommandRotate(ctx, cmd.ID)
+	pending, err := st.ListPendingCommands(ctx, 50)
+	if err != nil || len(pending) == 0 {
+		return
+	}
+	for _, peek := range pending {
+		sess, ok := sessions.SessionByDevice(peek.DeviceID)
+		if !ok || !sessionReady(peek, sess) {
 			continue
 		}
+		cmdPtr, err := st.ClaimCommand(ctx, peek.ID)
+		if err != nil || cmdPtr == nil {
+			continue // raced with session flush or another worker
+		}
+		cmd := *cmdPtr
 		var payload []byte
 		encErr := error(nil)
 		switch {
@@ -93,19 +101,11 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 		case cmd.Protocol == "ruptela" || cmd.CommandType == "ruptela_sms":
 			payload, encErr = rup.EncodeDownlink(cmd)
 		case isJT808Command(cmd.Protocol, cmd.CommandType):
-			phone := ""
+			phone := sess.Meta["phone"]
 			var seq uint16
-			v2019 := false
-			if sess.Meta != nil {
-				phone = sess.Meta["phone"]
-				if n, err := strconv.ParseUint(sess.Meta["seq"], 10, 16); err == nil {
-					seq = uint16(n)
-				}
-				v2019 = sess.Meta["jt808_ver"] == "2019"
-			}
-			if phone == "" {
-				_ = st.RequeueCommandRotate(ctx, cmd.ID)
-				continue // wait for uplink flush with known phone
+			v2019 := sess.Meta["jt808_ver"] == "2019"
+			if n, err := strconv.ParseUint(sess.Meta["seq"], 10, 16); err == nil {
+				seq = uint16(n)
 			}
 			payload, encErr = jt.EncodeDownlinkSeq(cmd, phone, &seq, v2019)
 		case cmd.Protocol == "galileosky" || cmd.CommandType == "galileosky_text":

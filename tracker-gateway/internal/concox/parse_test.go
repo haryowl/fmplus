@@ -164,6 +164,37 @@ func TestParseWiFi23(t *testing.T) {
 	}
 }
 
+func TestDecodeFrame_CRC(t *testing.T) {
+	frame, err := (Adapter{}).EncodeDownlink(store.Command{PayloadText: "STATUS#"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proto, _, _, err := decodeFrame(frame)
+	if err != nil || proto != 0x80 {
+		t.Fatalf("proto=%x err=%v", proto, err)
+	}
+	bad := append([]byte{}, frame...)
+	bad[len(bad)-4] ^= 0xff // flip CRC high byte
+	if _, _, _, err := decodeFrame(bad); err == nil {
+		t.Fatal("expected bad CRC error")
+	}
+}
+
+func TestDecodeInfo94_MileageFuelSats(t *testing.T) {
+	m := decodeInfo94([]byte{0x01, 0x00, 0x00, 0x27, 0x10}) // 10000 m → 10 km
+	if m["odometer_km"] != 10.0 {
+		t.Fatalf("odo=%v", m["odometer_km"])
+	}
+	f := decodeInfo94([]byte{0x02, 0x00, 0x55})
+	if f["fuel_level"] != 0x55 {
+		t.Fatalf("fuel=%v", f["fuel_level"])
+	}
+	s := decodeInfo94([]byte{0x0c, 0x0c})
+	if s["satellites"] != 12 {
+		t.Fatalf("sats=%v", s["satellites"])
+	}
+}
+
 func TestCRC16ITU_KnownVector(t *testing.T) {
 	// Empty → 0xFFFF init leaves 0xFFFF for empty input
 	if crc16ITU(nil) != 0xFFFF {

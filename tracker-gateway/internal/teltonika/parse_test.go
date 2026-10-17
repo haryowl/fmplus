@@ -106,7 +106,8 @@ func TestParseAVL_Codec16IO(t *testing.T) {
 		"00ef"+ // event IO 239
 		"01"+ // total IO
 		"01"+"00ef"+"01"+ // N1: AVL 239 = 1
-		"00"+"00"+"00") // N2 N4 N8 empty
+		"00"+"00"+"00"+ // N2 N4 N8 empty
+		"00") // NX count 0
 	ts := time.Date(2024, 6, 1, 10, 30, 0, 0, time.UTC)
 	binary.BigEndian.PutUint64(payload[2:10], uint64(ts.UnixMilli()))
 	n, fixes := parseAVL(payload)
@@ -122,6 +123,17 @@ func TestParseAVL_Codec16IO(t *testing.T) {
 	}
 	if fixes[0].Ignition == nil || !*fixes[0].Ignition {
 		t.Fatal("expected ignition from io.239")
+	}
+}
+
+func TestExtractIO16_NX(t *testing.T) {
+	// event 0, total 0, empty N1-N8, NX=1 id=1001 len=3 "ABC"
+	b := mustHex(t, "0000"+"00"+
+		"00"+"00"+"00"+"00"+
+		"01"+"03e9"+"0003"+"414243")
+	_, _, io := extractIO16(b, 0)
+	if io["1001"] != "ABC" {
+		t.Fatalf("io=%v", io)
 	}
 }
 

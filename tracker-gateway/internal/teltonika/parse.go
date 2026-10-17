@@ -193,6 +193,36 @@ func extractIO16(b []byte, off int) (int, any, map[string]any) {
 	off = readSizedIO16(b, off, 2, io)
 	off = readSizedIO16(b, off, 4, io)
 	off = readSizedIO16(b, off, 8, io)
+	// NX variable-length IO (same layout idea as Codec 8E; count is 1 byte for Codec 16).
+	if off >= len(b) {
+		return off, event, io
+	}
+	n := int(b[off])
+	off++
+	for i := 0; i < n && off+4 <= len(b); i++ {
+		id := int(binary.BigEndian.Uint16(b[off : off+2]))
+		off += 2
+		l := int(binary.BigEndian.Uint16(b[off : off+2]))
+		off += 2
+		if off+l > len(b) {
+			break
+		}
+		key := fmt.Sprintf("%d", id)
+		switch l {
+		case 0:
+			io[key] = 0
+		case 1, 2, 4, 8:
+			io[key] = readIntBE(b[off:off+l], l)
+		default:
+			chunk := b[off : off+l]
+			if isPrintableASCII(chunk) {
+				io[key] = string(chunk)
+			} else {
+				io[key] = fmt.Sprintf("%x", chunk)
+			}
+		}
+		off += l
+	}
 	return off, event, io
 }
 

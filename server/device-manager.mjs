@@ -25,7 +25,8 @@ const COMMAND_TYPE_PROTOCOLS = {
   galileosky_text: ["galileosky"],
 };
 
-function commandTypeProtocolMismatch(protocol, commandType) {
+/** @returns {string} empty when ok, else human error */
+export function commandTypeProtocolMismatch(protocol, commandType) {
   if (!commandType || commandType === "text" || commandType === "raw") return "";
   const allowed = COMMAND_TYPE_PROTOCOLS[commandType];
   if (!allowed) return "";
