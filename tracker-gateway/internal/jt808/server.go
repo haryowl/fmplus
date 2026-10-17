@@ -1466,6 +1466,10 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		}
 	case 0x005e:
 		out["rollover.param"] = decoded
+	case 0x0064:
+		out["photo.timing"] = decoded
+	case 0x0065:
+		out["photo.distance"] = decoded
 	case 0x0070:
 		out["image.quality"] = decoded
 	case 0x0071:

@@ -451,11 +451,23 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["40"]; ok {
 		raw["engine.maf"] = asFloat64(v) / 100.0 // g/s ×0.01
 	}
+	if v, ok := io["50"]; ok {
+		raw["engine.baro"] = asFloat64(v)
+	}
+	if v, ok := io["51"]; ok {
+		raw["obd.ecu_voltage"] = asFloat64(v) / 1000.0 // mV → V
+	}
+	if v, ok := io["53"]; ok {
+		raw["engine.ambient_temp"] = asFloat64(v)
+	}
 	if v, ok := io["58"]; ok {
 		raw["engine.oil_temp"] = asFloat64(v)
 	}
 	if v, ok := io["32"]; ok {
 		raw["engine.coolant_temp"] = asFloat64(v)
+	}
+	if v, ok := io["30"]; ok {
+		raw["obd.dtc_count"] = asFloat64(v)
 	}
 	if v, ok := io["31"]; ok {
 		raw["engine.load"] = asFloat64(v)

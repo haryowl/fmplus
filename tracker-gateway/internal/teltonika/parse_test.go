@@ -263,9 +263,15 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 		t.Fatalf("maf=%v", raw4["engine.maf"])
 	}
 	raw5 := map[string]any{}
-	promoteTeltonikaScalars(raw5, map[string]any{"70": 255})
+	promoteTeltonikaScalars(raw5, map[string]any{"70": 255, "30": 3, "53": 22, "50": 101, "51": 12500})
 	if raw5["pcb.temp"] != 25.5 {
 		t.Fatalf("pcb=%v", raw5["pcb.temp"])
+	}
+	if raw5["obd.dtc_count"] != 3.0 || raw5["engine.ambient_temp"] != 22.0 {
+		t.Fatalf("dtc/ambient=%v", raw5)
+	}
+	if raw5["engine.baro"] != 101.0 || raw5["obd.ecu_voltage"] != 12.5 {
+		t.Fatalf("baro/ecu=%v", raw5)
 	}
 }
 

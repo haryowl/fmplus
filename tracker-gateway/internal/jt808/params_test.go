@@ -197,6 +197,8 @@ func TestHoistTerminalParam_CollisionRolloverImage(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x005d, 0x0a14, []byte{0x0a, 0x14}, out)
 	hoistTerminalParam(0x005e, 30, nil, out)
+	hoistTerminalParam(0x0064, 0x01020304, nil, out)
+	hoistTerminalParam(0x0065, 0x05060708, nil, out)
 	hoistTerminalParam(0x0070, 5, nil, out)
 	hoistTerminalParam(0x0071, 50, nil, out)
 	hoistTerminalParam(0x0072, 60, nil, out)
@@ -207,6 +209,9 @@ func TestHoistTerminalParam_CollisionRolloverImage(t *testing.T) {
 	}
 	if out["rollover.param"] != 30 {
 		t.Fatalf("rollover=%v", out)
+	}
+	if out["photo.timing"] != 0x01020304 || out["photo.distance"] != 0x05060708 {
+		t.Fatalf("photo=%v", out)
 	}
 	if out["image.quality"] != 5 || out["image.brightness"] != 50 || out["image.chroma"] != 80 {
 		t.Fatalf("image=%v", out)
