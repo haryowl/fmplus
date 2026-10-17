@@ -234,6 +234,13 @@ func TestParseDrivingRecord(t *testing.T) {
 	if m11["drv.timeout_driving_hex"] != "aa" {
 		t.Fatalf("timeout=%v", m11)
 	}
+	ver := make([]byte, 5)
+	ver[0] = 0x00
+	binary.BigEndian.PutUint32(ver[1:5], 0x01020304)
+	m12 := parseDrivingRecord(ver)
+	if m12["drv.exec_std_version"] != 0x01020304 || m12["drv_cmd_name"] != "exec_std_version" {
+		t.Fatalf("exec_std=%v", m12)
+	}
 }
 
 func TestParseRegister(t *testing.T) {

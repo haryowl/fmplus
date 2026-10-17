@@ -361,6 +361,33 @@ func TestPromoteRuptelaScalars_ISO6709(t *testing.T) {
 	}
 }
 
+func TestPromoteRuptelaScalars_GeofenceAlarmParity(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{
+		"155": 1, "231": 2, "175": 1, "65": 9999, "70": 301,
+		"236": 1, "254": 150, "257": "cafebabe", "391": 1,
+		"76": "id1", "79": "id3",
+	})
+	if raw["geofence.zone1"] != 1.0 || raw["geofence.zone50"] != 2.0 || raw["geofence.auto"] != 1.0 {
+		t.Fatalf("geofence=%v", raw)
+	}
+	if _, ok := raw["geofence.zone10"]; ok {
+		t.Fatalf("IO 65 must stay odometer, not zone10: %v", raw)
+	}
+	if raw["odometer"] != 9999.0 {
+		t.Fatalf("odometer=%v", raw["odometer"])
+	}
+	if raw["pcb.temp"] != 30.1 {
+		t.Fatalf("pcb.temp=%v", raw["pcb.temp"])
+	}
+	if raw["alarm.event"] != true || raw["green_driving.magnitude"] != 1.5 || raw["crash.trace"] != "cafebabe" {
+		t.Fatalf("alarm/green/crash=%v", raw)
+	}
+	if raw["temp.id1"] != "id1" || raw["temp.id3"] != "id3" || raw["status.private_mode"] != true {
+		t.Fatalf("temp/private=%v", raw)
+	}
+}
+
 func TestPromoteRuptelaScalars_BLELuminosityCustom(t *testing.T) {
 	raw := map[string]any{}
 	promoteRuptelaScalars(raw, map[string]any{

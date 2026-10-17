@@ -2865,6 +2865,10 @@ func parseDrivingRecord(body []byte) map[string]any {
 		if name, ok := drivingRecordCmdName[cmd]; ok {
 			out["drv_cmd_name"] = name
 		}
+		// cmd 0x00 executive standard version = DWORD BE after cmd (partial).
+		if cmd == 0x00 && len(body) >= 5 {
+			out["drv.exec_std_version"] = int(binary.BigEndian.Uint32(body[1:5]))
+		}
 		// GB/T 19056: cmd 0x03 odometer = DWORD BE after cmd, unit 0.1 km.
 		if cmd == 0x03 && len(body) >= 5 {
 			out["drv.odometer"] = float64(binary.BigEndian.Uint32(body[1:5])) / 10.0

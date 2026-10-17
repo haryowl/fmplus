@@ -893,6 +893,35 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["243"]; ok {
 		raw["green_driving.duration"] = asFloat64(v)
 	}
+	if v, ok := io["254"]; ok {
+		raw["green_driving.magnitude"] = asFloat64(v) / 100.0
+	}
+	if v, ok := io["236"]; ok {
+		raw["alarm.event"] = asTruthy(v)
+	}
+	if v, ok := io["257"]; ok {
+		raw["crash.trace"] = fmt.Sprintf("%v", v)
+	}
+	if v, ok := io["391"]; ok {
+		raw["status.private_mode"] = asTruthy(v)
+	}
+	if v, ok := io["76"]; ok {
+		raw["temp.id1"] = fmt.Sprintf("%v", v)
+	}
+	if v, ok := io["77"]; ok {
+		raw["temp.id2"] = fmt.Sprintf("%v", v)
+	}
+	if v, ok := io["79"]; ok {
+		raw["temp.id3"] = fmt.Sprintf("%v", v)
+	}
+	for id, key := range ruptelaGeofenceIO {
+		if v, ok := io[id]; ok {
+			raw[key] = asFloat64(v)
+		}
+	}
+	if v, ok := io["175"]; ok {
+		raw["geofence.auto"] = asFloat64(v)
+	}
 	if v, ok := io["17"]; ok {
 		raw["accel.x"] = asFloat64(v)
 	}
@@ -902,6 +931,24 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["19"]; ok {
 		raw["accel.z"] = asFloat64(v)
 	}
+}
+
+// ruptelaGeofenceIO maps FM IO → geofence.zoneN (Teltonika FMB parity).
+// Skips IO 65 (Ruptela odometer) and IO 70 (pcb.temp).
+var ruptelaGeofenceIO = map[string]string{
+	"155": "geofence.zone1", "156": "geofence.zone2", "157": "geofence.zone3",
+	"158": "geofence.zone4", "159": "geofence.zone5",
+	"61": "geofence.zone6", "62": "geofence.zone7", "63": "geofence.zone8", "64": "geofence.zone9",
+	"88": "geofence.zone12", "91": "geofence.zone13", "92": "geofence.zone14", "93": "geofence.zone15",
+	"94": "geofence.zone16", "95": "geofence.zone17", "96": "geofence.zone18", "97": "geofence.zone19",
+	"98": "geofence.zone20", "99": "geofence.zone21", "153": "geofence.zone22", "154": "geofence.zone23",
+	"190": "geofence.zone24", "191": "geofence.zone25", "192": "geofence.zone26", "193": "geofence.zone27",
+	"194": "geofence.zone28", "195": "geofence.zone29", "196": "geofence.zone30", "197": "geofence.zone31",
+	"198": "geofence.zone32", "208": "geofence.zone33", "209": "geofence.zone34", "216": "geofence.zone35",
+	"217": "geofence.zone36", "218": "geofence.zone37", "219": "geofence.zone38", "220": "geofence.zone39",
+	"221": "geofence.zone40", "222": "geofence.zone41", "223": "geofence.zone42", "224": "geofence.zone43",
+	"225": "geofence.zone44", "226": "geofence.zone45", "227": "geofence.zone46", "228": "geofence.zone47",
+	"229": "geofence.zone48", "230": "geofence.zone49", "231": "geofence.zone50",
 }
 
 func asTruthy(v any) bool {
