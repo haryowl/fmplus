@@ -1,4 +1,4 @@
-﻿-- Ruptela geofence/alarm/crash/private/temp-id parity; JT808 0x0700 exec std version.
+-- Ruptela geofence/alarm/crash/private/temp-id parity; JT808 0x0700 exec std version.
 -- Skips IO 65 (Ruptela odometer) and IO 70 (pcb.temp).
 INSERT INTO tracker_protocol_params (protocol, vendor_key, label, value_type, description) VALUES
   ('ruptela', 'alarm.event', 'Alarm event', 'bool', 'IO 236'),

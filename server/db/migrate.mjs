@@ -59,7 +59,8 @@ export async function runMigrations() {
     const id = file;
     const exists = await dbQuery("SELECT 1 FROM schema_migrations WHERE id = $1", [id]);
     if (exists.rowCount > 0) continue;
-    const sql = fs.readFileSync(path.join(dir, file), "utf8");
+    // Strip UTF-8 BOM if present (PowerShell Set-Content -Encoding utf8 adds it)
+    const sql = fs.readFileSync(path.join(dir, file), "utf8").replace(/^\uFEFF/, "");
     const client = await getPool().connect();
     try {
       await client.query("BEGIN");

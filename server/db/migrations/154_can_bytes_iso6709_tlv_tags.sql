@@ -1,4 +1,4 @@
-﻿-- CAN data2–7, TLV add.0x04–07, ISO6709, Galileosky tag.0x34–37.
+-- CAN data2–7, TLV add.0x04–07, ISO6709, Galileosky tag.0x34–37.
 INSERT INTO tracker_protocol_params (protocol, vendor_key, label, value_type, description) VALUES
   ('teltonika', 'gnss.iso6709', 'ISO6709 coordinates', 'string', 'AVL IO 387'),
   ('ruptela', 'gnss.iso6709', 'ISO6709 coordinates', 'string', 'IO 387'),
