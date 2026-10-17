@@ -184,6 +184,21 @@ func TestHoistTerminalParam_PhoneAlarmShoot(t *testing.T) {
 	}
 }
 
+func TestHoistTerminalParam_ICAuthServer(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x001b, nil, []byte("ic.apn"), out)
+	hoistTerminalParam(0x001c, nil, []byte("icuser"), out)
+	hoistTerminalParam(0x001d, nil, []byte("icpass"), out)
+	hoistTerminalParam(0x001e, nil, []byte("ic.example"), out)
+	hoistTerminalParam(0x001f, 8080, nil, out)
+	if out["ic.auth_apn"] != "ic.apn" || out["ic.auth_user"] != "icuser" {
+		t.Fatalf("%v", out)
+	}
+	if out["ic.auth_password"] != "icpass" || out["ic.auth_addr"] != "ic.example" || out["ic.auth_tcp_port"] != 8080 {
+		t.Fatalf("auth=%v", out)
+	}
+}
+
 func TestHoistTerminalParam_BackupAPNCreds(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x0015, nil, []byte("user"), out)

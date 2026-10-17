@@ -201,6 +201,12 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["37"]; ok {
 		raw["speed.obd"] = asIOFloat(v)
 	}
+	if v, ok := io["38"]; ok {
+		raw["engine.timing_advance"] = asIOFloat(v)
+	}
+	if v, ok := io["43"]; ok {
+		raw["obd.mil_distance"] = asIOFloat(v)
+	}
 	if v, ok := io["34"]; ok {
 		raw["fuel.pressure"] = asIOFloat(v)
 	}
@@ -227,6 +233,9 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	}
 	if v, ok := io["32"]; ok {
 		raw["engine.coolant_temp"] = asIOFloat(v)
+	}
+	if v, ok := io["33"]; ok {
+		raw["engine.short_fuel_trim"] = asIOFloat(v)
 	}
 	if v, ok := io["30"]; ok {
 		raw["obd.dtc_count"] = asIOFloat(v)

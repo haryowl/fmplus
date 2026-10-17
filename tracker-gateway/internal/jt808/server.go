@@ -1366,6 +1366,16 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["server.udp_port"] = decoded
 	case 0x001a:
 		out["server.udp_port_backup"] = decoded
+	case 0x001b:
+		out["ic.auth_apn"] = string(raw)
+	case 0x001c:
+		out["ic.auth_user"] = string(raw)
+	case 0x001d:
+		out["ic.auth_password"] = string(raw)
+	case 0x001e:
+		out["ic.auth_addr"] = string(raw)
+	case 0x001f:
+		out["ic.auth_tcp_port"] = decoded
 	case 0x0020:
 		out["report.interval"] = decoded
 	case 0x0021:

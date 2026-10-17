@@ -207,6 +207,11 @@ func TestPromoteRuptelaScalars_FuelAVL(t *testing.T) {
 	if raw6["engine.baro"] != 99.0 || raw6["obd.ecu_voltage"] != 13.8 {
 		t.Fatalf("baro/ecu=%v", raw6)
 	}
+	raw7 := map[string]any{}
+	promoteRuptelaScalars(raw7, map[string]any{"33": 3, "38": -2, "43": 80})
+	if raw7["engine.short_fuel_trim"] != 3.0 || raw7["engine.timing_advance"] != -2.0 || raw7["obd.mil_distance"] != 80.0 {
+		t.Fatalf("trim/timing/mil=%v", raw7)
+	}
 	raw2 := map[string]any{}
 	promoteRuptelaScalars(raw2, map[string]any{"48": 500})
 	if raw2["fuel.used"] != 500.0 || raw2["fuel.used_total"] != 500.0 {
