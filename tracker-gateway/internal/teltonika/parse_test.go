@@ -213,6 +213,14 @@ func TestPromoteTeltonikaScalars_DinDout(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_GSMOperator(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"241": 51010, "11": 12345})
+	if raw["gsm.operator"] != 51010.0 || raw["gsm.iccid"] != "12345" {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)

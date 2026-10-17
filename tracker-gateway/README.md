@@ -150,6 +150,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   100_jt808_status_telt_fuel_galileo_odo.sql
 #   101_jt809_warn_body_attach.sql
 #   102_jt808_0702_signal_telt_dio.sql
+#   103_galileo_dio_telt_gsm_jt1078_ts.sql
 npm run db:migrate
 
 cd tracker-gateway

@@ -160,6 +160,12 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["21"]; ok {
 		raw["gsm.signal"] = asIOFloat(v)
 	}
+	if v, ok := io["241"]; ok {
+		raw["gsm.operator"] = asIOFloat(v)
+	}
+	if v, ok := io["11"]; ok {
+		raw["gsm.iccid"] = fmt.Sprintf("%v", v)
+	}
 	if v, ok := io["24"]; ok {
 		raw["speed.io"] = asIOFloat(v)
 	}

@@ -46,6 +46,11 @@ func TestParseSignalingPayload_VideoSSRC(t *testing.T) {
 	if m["av_ssrc"] != uint32(0x12345678) {
 		t.Fatalf("%v", m)
 	}
+	payload := []byte{0x12, 0x34, 0x56, 0x78, 0, 0, 0, 0, 0, 0, 0x01, 0x00}
+	m2 := parseSignalingPayload(0x00, payload)
+	if m2["av_timestamp"] != uint64(0x100) {
+		t.Fatalf("ts=%v", m2["av_timestamp"])
+	}
 }
 
 func TestParseSignalingHeader(t *testing.T) {
@@ -58,5 +63,8 @@ func TestParseSignalingHeader(t *testing.T) {
 	}
 	if m["av_channel"] != 1 || m["av_datatype"] != 0 || m["av_live"] != true {
 		t.Fatalf("%v", m)
+	}
+	if m["av_data_kind"] != "video_i" {
+		t.Fatalf("kind=%v", m["av_data_kind"])
 	}
 }

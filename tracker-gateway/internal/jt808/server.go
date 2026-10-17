@@ -2567,7 +2567,11 @@ func wrap8202Body(text string) []byte {
 func parseDrivingRecord(body []byte) map[string]any {
 	out := map[string]any{"proto_msg": "0x0700", "drv_len": len(body)}
 	if len(body) >= 1 {
-		out["drv_cmd"] = int(body[0])
+		cmd := int(body[0])
+		out["drv_cmd"] = cmd
+		if name, ok := drivingRecordCmdName[cmd]; ok {
+			out["drv_cmd_name"] = name
+		}
 	}
 	snip := body
 	if len(snip) > 48 {
@@ -2575,6 +2579,25 @@ func parseDrivingRecord(body []byte) map[string]any {
 	}
 	out["drv_head_hex"] = fmt.Sprintf("%x", snip)
 	return out
+}
+
+// drivingRecordCmdName maps common GB/T 19056 / JT808 0x0700 command bytes (partial).
+var drivingRecordCmdName = map[int]string{
+	0x00: "exec_std_version",
+	0x01: "current_driver",
+	0x02: "real_time_clock",
+	0x03: "odometer",
+	0x04: "pulse_factor",
+	0x05: "vehicle_info",
+	0x06: "status_signal_config",
+	0x07: "unique_number",
+	0x08: "speed_status_log",
+	0x09: "doubtful_points",
+	0x10: "timeout_driving",
+	0x11: "driver_identity",
+	0x12: "power_log",
+	0x13: "param_modify_log",
+	0x14: "speed_status_log_ext",
 }
 
 // bcdNowUTC6 returns YYMMDDhhmmss as 6 BCD bytes (JT808 server time 0x8004).
@@ -2612,6 +2635,12 @@ func parseCANBus(body []byte) map[string]any {
 		data := body[off+4 : off+12]
 		out[fmt.Sprintf("can.%d.id", i)] = int(id)
 		out[fmt.Sprintf("can.%d.data", i)] = fmt.Sprintf("%x", data)
+		out[fmt.Sprintf("can.%d.data0", i)] = int(data[0])
+		out[fmt.Sprintf("can.%d.data1", i)] = int(data[1])
+		if i == 0 {
+			out["can.first_id"] = int(id)
+			out["can.first_data"] = fmt.Sprintf("%x", data)
+		}
 		off += itemSize
 		parsed++
 	}

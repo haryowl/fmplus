@@ -107,12 +107,19 @@ func TestParseCANBus(t *testing.T) {
 	if m["can.0.id"] != int(0x18FEEF00) || m["can.0.data"] != "0102030405060708" {
 		t.Fatalf("%v", m)
 	}
+	if m["can.0.data0"] != 1 || m["can.first_id"] != int(0x18FEEF00) {
+		t.Fatalf("first=%v", m)
+	}
 }
 
 func TestParseDrivingRecord(t *testing.T) {
 	m := parseDrivingRecord([]byte{0x15, 0x01, 0x02})
 	if m["drv_cmd"] != 0x15 {
 		t.Fatalf("%v", m)
+	}
+	m2 := parseDrivingRecord([]byte{0x03})
+	if m2["drv_cmd_name"] != "odometer" {
+		t.Fatalf("%v", m2)
 	}
 }
 

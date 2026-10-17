@@ -157,9 +157,16 @@ func TestIgnitionFromInputStatus(t *testing.T) {
 	tags := map[byte][]byte{
 		0x30: append([]byte{0x07}, append(make([]byte, 4), make([]byte, 4)...)...),
 		0x46: {0x01, 0x00},
+		0x47: {0x05},
 	}
 	fix, ok := fixFromTags(tags)
 	if !ok || fix.Ignition == nil || !*fix.Ignition {
 		t.Fatalf("expected ignition from 0x46: %+v", fix)
+	}
+	if fix.RawAttrs["status.din0"] != true || fix.RawAttrs["status.ignition"] != true {
+		t.Fatalf("din/ign=%v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["status.dout0"] != true || fix.RawAttrs["status.dout2"] != true {
+		t.Fatalf("dout=%v", fix.RawAttrs)
 	}
 }

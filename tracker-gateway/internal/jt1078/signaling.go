@@ -22,6 +22,7 @@ func parseSignalingHeader(hdr []byte) map[string]any {
 	if kind <= 0x03 {
 		out["av_live"] = true
 	}
+	out["av_data_kind"] = avDataKind(kind)
 	return out
 }
 
@@ -56,9 +57,22 @@ func parseSignalingPayload(dataType byte, payload []byte) map[string]any {
 				out["av_ssrc"] = ssrc
 			}
 		}
+		// Some stacks put an 8-byte RTP/absolute timestamp after SSRC.
+		if len(payload) >= 12 {
+			ts := binary.BigEndian.Uint64(payload[4:12])
+			if ts != 0 {
+				out["av_timestamp"] = ts
+			}
+		}
 	case 0x03: // audio
 		if len(payload) >= 1 {
 			out["av_audio_type"] = int(payload[0])
+		}
+		if len(payload) >= 9 {
+			ts := binary.BigEndian.Uint64(payload[1:9])
+			if ts != 0 {
+				out["av_timestamp"] = ts
+			}
 		}
 	}
 	return out
