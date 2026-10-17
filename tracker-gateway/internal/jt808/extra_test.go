@@ -19,7 +19,7 @@ func TestParseAdditionalInfo_AreaAndSignal(t *testing.T) {
 	if add["alarm.fence_in"] != true {
 		t.Fatalf("fence_in missing: %v", add)
 	}
-	if add["area_loc_type"] != 0 || add["area_id"] != 1 || add["area_direction"] != 0 {
+	if add["area_loc_type"] != 0 || add["area_id"] != 256 || add["area_direction"] != 0 {
 		t.Fatalf("area=%v", add)
 	}
 	if add["status.acc"] != true {
