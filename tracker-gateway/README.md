@@ -8,10 +8,10 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 |---------|----------|---------|--------|--------|----------|-------|
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat + alarm safety | — | nested attrs flatten; `alarm.*` → safety |
 | Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12/14 | Codec13/14 parse; Codec14 encode; soft corr |
-| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | register/attrs/loc/TLV/0003–5/0500/0301/0608/0700–5/0800–5 | 8300/8103–7/8201–4/8500/8601/8700–2/8801 | register parse; geofence del |
+| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | register/auth/loc/TLV/0003–5/0500/0301/0608/0700–5/0800–5 | 8300/8103–7/8201–4/8500/8601/8608/8700–2/8801/9101–2 | AV live + geofence query |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
-| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/logout/disconnect/HB + 0x1200/01 + 0x1400 | — | 0x5B CRC; plate ingest; alarm → safety |
-| JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling + ACK + SIM (ASCII/BCD) | — | no RTP / no 808 media bridge |
+| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/logout/disconnect/HB + 0x1200/01 + 0x1400 | — | 0x5B CRC; skip encrypted bodies |
+| JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling + ACK + SIM + av_kind | — | no RTP / no 808 media bridge |
 | Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS | 0x80 GPRS | paused for depth — GT06 deferred |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records | 108/105/107 | voltage/fuel/temp IO; records_left; soft corr |
 | Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | alt/HDOP/voltage/IO; status safety; soft corr |
@@ -48,6 +48,9 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `teltonika_codec12` | teltonika | Codec 12 GPRS |
 | `teltonika_codec14` | teltonika | Codec 14 GPRS (IMEI gated) |
 | `jt808_8601` / `geofence_del` | jt808/subiao | delete circular area(s) |
+| `jt808_8608` / `geofence_query` | jt808/subiao | query areas/routes (→0x0608) |
+| `jt808_9101` / `av_live` | jt808/subiao | realtime AV request (1078 path) |
+| `jt808_9102` / `av_control` | jt808/subiao | AV realtime control |
 | `concox_gprs` | concox | GT06 0x80 |
 | `ruptela_sms` | ruptela | command 108 |
 | `ruptela_105` / `config` | ruptela | command 105 |
@@ -97,6 +100,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   072_jt808_camera_track.sql
 #   073_jt808_driver_record.sql
 #   074_codec14_geofence.sql
+#   075_jt808_av_geofence_query.sql
 npm run db:migrate
 
 cd tracker-gateway

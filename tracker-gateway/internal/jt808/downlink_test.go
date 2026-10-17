@@ -299,6 +299,37 @@ func TestWrap8700Cmd(t *testing.T) {
 	}
 }
 
+func TestWrap8300FlagText(t *testing.T) {
+	f, msg := wrap8300FlagText("tts:hello")
+	if f != 0x08 || msg != "hello" {
+		t.Fatalf("f=%02x msg=%q", f, msg)
+	}
+}
+
+func TestWrap9101Body(t *testing.T) {
+	b := wrap9101Body("ch=2,ip=10.0.0.1,tcp=1078")
+	if b[0] != 2 || b[3] != byte(len("10.0.0.1")) {
+		t.Fatalf("%x", b)
+	}
+	if string(b[4:4+len("10.0.0.1")]) != "10.0.0.1" {
+		t.Fatalf("%x", b)
+	}
+}
+
+func TestWrap9102Body(t *testing.T) {
+	b := wrap9102Body("ch=3,cmd=2")
+	if b[0] != 3 || b[1] != 2 {
+		t.Fatalf("%x", b)
+	}
+}
+
+func TestParseAuth(t *testing.T) {
+	m := parseAuth([]byte("AUTHCODE\x00"))
+	if m["auth_code"] != "AUTHCODE" {
+		t.Fatalf("%v", m)
+	}
+}
+
 func TestEncodeDownlink_RequiresPhone(t *testing.T) {
 	ad := Adapter{}
 	_, err := ad.EncodeDownlink(store.Command{PayloadText: "x"}, "")

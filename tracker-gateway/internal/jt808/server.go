@@ -463,19 +463,50 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			}
 		}
 		body = wrap8601Body(text)
+	case "jt808_8608", "geofence_query":
+		// Query area/route data (2019) — type BYTE; terminal replies 0x0608.
+		msgID = 0x8608
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = []byte{wrap8608Type(text)}
+	case "jt808_9101", "av_live":
+		// Realtime AV request (JT/T 1078) — experimental; opens terminal→media server path.
+		msgID = 0x9101
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap9101Body(text)
+	case "jt808_9102", "av_control":
+		// AV realtime control (close/pause/…) — channel + command.
+		msgID = 0x9102
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap9102Body(text)
 	default:
-		// 0x8300: flag(1)+text. Hex-only Admin payloads skip UTF-8 mangling.
+		// 0x8300: flag(1)+text. Prefixes tts:/urgent:/display: set flag bits.
 		if cmd.PayloadHex != "" {
 			raw := cmd.PayloadBytes()
 			if len(raw) == 0 {
 				body = append([]byte{0x01}, []byte(text)...)
-			} else if raw[0] <= 0x03 {
+			} else if raw[0] <= 0x1f {
 				body = raw // includes display/flag byte
 			} else {
 				body = append([]byte{0x01}, raw...)
 			}
 		} else {
-			body = append([]byte{0x01}, []byte(text)...)
+			flag, msg := wrap8300FlagText(text)
+			body = append([]byte{flag}, []byte(msg)...)
 		}
 	}
 	return buildDownlinkFrameVer(phone, seq, msgID, body, v2019)
@@ -578,6 +609,9 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 		remote := conn.RemoteAddr().String()
 		sess.device = deviceauth.FindByIMEI(ctx, st, phone, remote, protoHint)
 		bindSession(sessions, sess, conn)
+		if sess.device != nil && len(body) > 0 {
+			_ = st.PatchLastStatus(ctx, sess.device, parseAuth(body), nil)
+		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0001: // terminal general response (command ack)
 		if sess.device != nil && len(body) >= 5 {
@@ -879,6 +913,141 @@ func parseMultimediaMeta(body []byte) map[string]any {
 	}
 	if len(body) >= 7 {
 		out["media_id"] = binary.BigEndian.Uint32(body[3:7])
+	}
+	return out
+}
+
+// wrap8300FlagText maps optional prefixes to JT808 text-flag bits (emergency/TTS/display).
+func wrap8300FlagText(text string) (flag byte, msg string) {
+	flag = 0x01 // default: terminal display
+	msg = text
+	lower := strings.ToLower(strings.TrimSpace(text))
+	switch {
+	case strings.HasPrefix(lower, "urgent:"):
+		flag |= 0x01 // emergency
+		msg = strings.TrimSpace(text[len("urgent:"):])
+	case strings.HasPrefix(lower, "tts:"):
+		flag = 0x08 // TTS broadcast
+		msg = strings.TrimSpace(text[len("tts:"):])
+	case strings.HasPrefix(lower, "display:"):
+		flag = 0x10 // advertising screen
+		msg = strings.TrimSpace(text[len("display:"):])
+	case strings.HasPrefix(lower, "transparent:"):
+		flag = 0x04
+		msg = strings.TrimSpace(text[len("transparent:"):])
+	}
+	return flag, msg
+}
+
+// wrap8608Type: 1=circle 2=rect 3=poly 4=route; default 1.
+func wrap8608Type(text string) byte {
+	switch strings.TrimSpace(strings.ToLower(text)) {
+	case "2", "rect", "rectangle":
+		return 2
+	case "3", "poly", "polygon":
+		return 3
+	case "4", "route":
+		return 4
+	default:
+		return 1
+	}
+}
+
+// wrap9101Body builds a minimal 0x9101 realtime AV request.
+// text: "ip:port" or "ch=1,ip=x.x.x.x,tcp=1078" — defaults ch=1, stream=0 (AV), type=0.
+func wrap9101Body(text string) []byte {
+	ch, dataType, streamType := byte(1), byte(0), byte(0)
+	ip := "127.0.0.1"
+	tcpPort, udpPort := uint16(1078), uint16(0)
+	t := strings.TrimSpace(text)
+	if t != "" && !strings.Contains(t, "=") && strings.Contains(t, ":") {
+		parts := strings.SplitN(t, ":", 2)
+		ip = parts[0]
+		if n, err := strconv.Atoi(parts[1]); err == nil && n > 0 && n < 65536 {
+			tcpPort = uint16(n)
+		}
+	} else {
+		for _, part := range strings.Split(t, ",") {
+			kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			k, v := strings.ToLower(kv[0]), strings.TrimSpace(kv[1])
+			switch k {
+			case "ch", "channel":
+				if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
+					ch = byte(n)
+				}
+			case "ip", "host":
+				ip = v
+			case "tcp", "port":
+				if n, err := strconv.Atoi(v); err == nil && n > 0 && n < 65536 {
+					tcpPort = uint16(n)
+				}
+			case "udp":
+				if n, err := strconv.Atoi(v); err == nil && n >= 0 && n < 65536 {
+					udpPort = uint16(n)
+				}
+			case "type", "datatype":
+				if n, err := strconv.Atoi(v); err == nil {
+					dataType = byte(n)
+				}
+			case "stream":
+				if n, err := strconv.Atoi(v); err == nil {
+					streamType = byte(n)
+				}
+			}
+		}
+	}
+	ipBytes := []byte(ip)
+	if len(ipBytes) > 255 {
+		ipBytes = ipBytes[:255]
+	}
+	body := make([]byte, 0, 8+len(ipBytes))
+	body = append(body, ch, dataType, streamType, byte(len(ipBytes)))
+	body = append(body, ipBytes...)
+	portBuf := make([]byte, 4)
+	binary.BigEndian.PutUint16(portBuf[0:2], tcpPort)
+	binary.BigEndian.PutUint16(portBuf[2:4], udpPort)
+	body = append(body, portBuf...)
+	return body
+}
+
+// wrap9102Body: "ch=1,cmd=0" — cmd 0=close, 1=switch stream, 2=pause, 3=resume, 4=close talk.
+func wrap9102Body(text string) []byte {
+	ch, cmd := byte(1), byte(0)
+	for _, part := range strings.Split(strings.TrimSpace(text), ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			if n, err := strconv.Atoi(strings.TrimSpace(part)); err == nil {
+				cmd = byte(n)
+			}
+			continue
+		}
+		k, v := strings.ToLower(kv[0]), strings.TrimSpace(kv[1])
+		switch k {
+		case "ch", "channel":
+			if n, err := strconv.Atoi(v); err == nil {
+				ch = byte(n)
+			}
+		case "cmd", "command":
+			if n, err := strconv.Atoi(v); err == nil {
+				cmd = byte(n)
+			}
+		}
+	}
+	return []byte{ch, cmd, 0, 0} // channel, cmd, closeType, streamType placeholders
+}
+
+// parseAuth stores 0x0102 auth code string (and optional IMEI suffix on 2019).
+func parseAuth(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0102", "auth_len": len(body)}
+	code := strings.TrimRight(string(body), "\x00 ")
+	if code != "" {
+		if len(code) > 64 {
+			code = code[:64]
+		}
+		out["auth_code"] = code
 	}
 	return out
 }

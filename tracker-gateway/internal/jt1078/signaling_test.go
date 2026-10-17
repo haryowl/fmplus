@@ -14,6 +14,12 @@ func TestExtractSIMHint(t *testing.T) {
 	}
 }
 
+func TestAvDataKind(t *testing.T) {
+	if avDataKind(0x00) != "video_i" || avDataKind(0x03) != "audio" {
+		t.Fatal(avDataKind(0), avDataKind(3))
+	}
+}
+
 func TestBcdSIM(t *testing.T) {
 	// 013800138000 → trim leading 0 → 13800138000
 	b := []byte{0x01, 0x38, 0x00, 0x13, 0x80, 0x00}

@@ -276,11 +276,16 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		f := float64(binary.LittleEndian.Uint32(odo)) / 1000.0
 		fix.Odometer = &f
 	}
-	// Analog 0x50 often external voltage (mV) on Easy firmwares.
+	// Analog 0x50 often external voltage (mV) on Easy firmwares; 0x51 often backup battery.
 	if v, ok := tags[0x50]; ok && len(v) >= 2 {
 		mv := float64(binary.LittleEndian.Uint16(v[0:2]))
 		fix.RawAttrs["voltage.ext"] = mv / 1000.0
 		fix.RawAttrs["tag.0x50"] = mv
+	}
+	if v, ok := tags[0x51]; ok && len(v) >= 2 {
+		mv := float64(binary.LittleEndian.Uint16(v[0:2]))
+		fix.RawAttrs["voltage.batt"] = mv / 1000.0
+		fix.RawAttrs["tag.0x51"] = mv
 	}
 	return fix, true
 }

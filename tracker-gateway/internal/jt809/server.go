@@ -113,9 +113,18 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 		length = len(payload)
 	}
 	msgID := binary.BigEndian.Uint16(payload[8:10])
+	encryptFlag := byte(0)
+	if len(payload) > 18 {
+		encryptFlag = payload[18]
+	}
 	rest := payload[22:]
 	if length > 22 && length <= len(payload) {
 		rest = payload[22:length]
+	}
+	if encryptFlag != 0 && msgID != 0x1001 && msgID != 0x1005 && msgID != 0x1003 && msgID != 0x1007 {
+		// Encrypted vehicle bodies need platform key exchange — skip decode (honest experimental).
+		log.Printf("[jt809] msg 0x%04x encrypt=%d — skip body decode (no key)", msgID, encryptFlag)
+		return
 	}
 	switch msgID {
 	case 0x1001: // login

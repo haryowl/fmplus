@@ -122,11 +122,14 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 						}
 					}
 				}
+				kind := avDataKind(dataType)
+				meta["av_kind"] = kind
 				if device != nil && st != nil {
 					_ = st.PatchLastStatus(ctx, device, map[string]any{
 						"proto_msg":   "jt1078_signaling",
 						"av_channel":  int(channel),
 						"av_datatype": int(dataType),
+						"av_kind":     kind,
 						"av_frames":   channels[channel],
 					}, nil)
 					_ = st.TouchSeen(ctx, device)
@@ -165,6 +168,24 @@ func extractSIMHint(payload []byte) string {
 		return string(digits)
 	}
 	return ""
+}
+
+// avDataKind maps JT1078 data-type nibble/byte to a coarse label (experimental).
+func avDataKind(dataType byte) string {
+	switch dataType & 0x0f {
+	case 0x00:
+		return "video_i"
+	case 0x01:
+		return "video_p"
+	case 0x02:
+		return "video_b"
+	case 0x03:
+		return "audio"
+	case 0x04:
+		return "passthrough"
+	default:
+		return fmt.Sprintf("type_0x%02x", dataType)
+	}
 }
 
 // bcdSIM decodes 6 BCD bytes (phone/SIM) used in many JT1078 RTP-style headers.
