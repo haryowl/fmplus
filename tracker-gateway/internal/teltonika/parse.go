@@ -205,8 +205,26 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["255"]; ok {
 		raw["overspeed.threshold"] = asIOFloat(v)
 	}
+	if v, ok := io["269"]; ok {
+		raw["ble.fuel_temp1"] = float64(int16(uint16(asIOFloat(v)))) // Escort LLS °C signed
+	}
 	if v, ok := io["270"]; ok {
 		raw["ble.fuel1"] = asIOFloat(v)
+	}
+	if v, ok := io["271"]; ok {
+		raw["ble.fuel_batt1"] = asIOFloat(v) / 100.0 // V ×0.01
+	}
+	if v, ok := io["272"]; ok {
+		raw["ble.fuel_temp2"] = float64(int16(uint16(asIOFloat(v)))) // Escort LLS °C signed
+	}
+	if v, ok := io["273"]; ok {
+		raw["ble.fuel2"] = asIOFloat(v)
+	}
+	if v, ok := io["276"]; ok {
+		raw["ble.fuel3"] = asIOFloat(v)
+	}
+	if v, ok := io["279"]; ok {
+		raw["ble.fuel4"] = asIOFloat(v)
 	}
 	if v, ok := io["390"]; ok {
 		raw["fuel.oem_level"] = asIOFloat(v) / 10.0 // L ×0.1

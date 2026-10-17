@@ -389,6 +389,23 @@ func TestPromoteTeltonikaScalars_BarcodeBTFuelOEM(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_BLEFuelLLS(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{
+		"269": 22, "270": 10, "271": 370, "272": 65531, // -5 as uint16
+		"273": 20, "276": 30, "279": 40,
+	})
+	if raw["ble.fuel_temp1"] != 22.0 || raw["ble.fuel_batt1"] != 3.7 {
+		t.Fatalf("lls temp/batt=%v", raw)
+	}
+	if raw["ble.fuel_temp2"] != -5.0 {
+		t.Fatalf("fuel_temp2=%v", raw["ble.fuel_temp2"])
+	}
+	if raw["ble.fuel2"] != 20.0 || raw["ble.fuel3"] != 30.0 || raw["ble.fuel4"] != 40.0 {
+		t.Fatalf("ble fuel 2-4=%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_GNSSQuality(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{"181": 15, "182": 12, "69": 1})

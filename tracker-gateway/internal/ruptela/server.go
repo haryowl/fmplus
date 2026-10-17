@@ -605,6 +605,42 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["238"]; ok {
 		raw["user.id"] = fmt.Sprintf("%v", v)
 	}
+	if v, ok := io["256"]; ok {
+		raw["vehicle.vin"] = fmt.Sprintf("%v", v)
+	}
+	if v, ok := io["281"]; ok {
+		raw["obd.fault_codes"] = fmt.Sprintf("%v", v)
+	}
+	if v, ok := io["263"]; ok {
+		raw["bt.status"] = asFloat64(v)
+	}
+	if v, ok := io["264"]; ok {
+		raw["barcode.id"] = fmt.Sprintf("%v", v)
+	}
+	if v, ok := io["269"]; ok {
+		raw["ble.fuel_temp1"] = float64(int16(uint16(asFloat64(v))))
+	}
+	if v, ok := io["270"]; ok {
+		raw["ble.fuel1"] = asFloat64(v)
+	}
+	if v, ok := io["271"]; ok {
+		raw["ble.fuel_batt1"] = asFloat64(v) / 100.0
+	}
+	if v, ok := io["272"]; ok {
+		raw["ble.fuel_temp2"] = float64(int16(uint16(asFloat64(v))))
+	}
+	if v, ok := io["273"]; ok {
+		raw["ble.fuel2"] = asFloat64(v)
+	}
+	if v, ok := io["276"]; ok {
+		raw["ble.fuel3"] = asFloat64(v)
+	}
+	if v, ok := io["279"]; ok {
+		raw["ble.fuel4"] = asFloat64(v)
+	}
+	if v, ok := io["390"]; ok {
+		raw["fuel.oem_level"] = asFloat64(v) / 10.0
+	}
 	if v, ok := io["250"]; ok {
 		raw["trip.distance"] = asFloat64(v)
 	}

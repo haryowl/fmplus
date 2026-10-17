@@ -299,6 +299,30 @@ func TestPromoteRuptelaScalars_RFIDUser(t *testing.T) {
 	}
 }
 
+func TestPromoteRuptelaScalars_VINBarcodeBLEFuel(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{
+		"256": "VIN123", "281": "P0300", "263": 2, "264": "BC9",
+		"269": 18, "270": 11, "271": 360, "272": 65531,
+		"273": 21, "276": 31, "279": 41, "390": 500,
+	})
+	if raw["vehicle.vin"] != "VIN123" || raw["obd.fault_codes"] != "P0300" {
+		t.Fatalf("vin/dtc=%v", raw)
+	}
+	if raw["bt.status"] != 2.0 || raw["barcode.id"] != "BC9" {
+		t.Fatalf("bt/barcode=%v", raw)
+	}
+	if raw["ble.fuel_temp1"] != 18.0 || raw["ble.fuel_batt1"] != 3.6 || raw["ble.fuel_temp2"] != -5.0 {
+		t.Fatalf("lls=%v", raw)
+	}
+	if raw["ble.fuel1"] != 11.0 || raw["ble.fuel2"] != 21.0 || raw["ble.fuel3"] != 31.0 || raw["ble.fuel4"] != 41.0 {
+		t.Fatalf("fuel=%v", raw)
+	}
+	if raw["fuel.oem_level"] != 50.0 {
+		t.Fatalf("oem=%v", raw["fuel.oem_level"])
+	}
+}
+
 func TestPromoteRuptelaScalars_SpeedTripHumidity(t *testing.T) {
 	raw := map[string]any{}
 	promoteRuptelaScalars(raw, map[string]any{"24": 62, "199": 5000, "29": 55})
