@@ -406,6 +406,31 @@ func TestPromoteTeltonikaScalars_BLEFuelLLS(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_BLEEnvFuelFreq(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{
+		"274": 380, "275": 19, "277": 390, "278": 65530, "280": 400, // temp4=-6
+		"104": 41, "106": 42, "108": 43,
+		"20": 81, "22": 82, "23": 83,
+		"306": 100, "307": 101, "308": 102, "309": 103,
+	})
+	if raw["ble.fuel_batt2"] != 3.8 || raw["ble.fuel_temp3"] != 19.0 || raw["ble.fuel_batt3"] != 3.9 {
+		t.Fatalf("lls3=%v", raw)
+	}
+	if raw["ble.fuel_temp4"] != -6.0 || raw["ble.fuel_batt4"] != 4.0 {
+		t.Fatalf("lls4=%v", raw)
+	}
+	if raw["ble.humidity2"] != 41.0 || raw["ble.humidity3"] != 42.0 || raw["ble.humidity4"] != 43.0 {
+		t.Fatalf("humidity=%v", raw)
+	}
+	if raw["ble.battery2"] != 81.0 || raw["ble.battery3"] != 82.0 || raw["ble.battery4"] != 83.0 {
+		t.Fatalf("battery=%v", raw)
+	}
+	if raw["ble.fuel_freq1"] != 100.0 || raw["ble.fuel_freq4"] != 103.0 {
+		t.Fatalf("freq=%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_GNSSQuality(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{"181": 15, "182": 12, "69": 1})

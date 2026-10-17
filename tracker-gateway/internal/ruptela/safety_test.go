@@ -323,6 +323,22 @@ func TestPromoteRuptelaScalars_VINBarcodeBLEFuel(t *testing.T) {
 	}
 }
 
+func TestPromoteRuptelaScalars_BLEEnvFuelFreq(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{
+		"274": 380, "275": 19, "277": 390, "278": 65530, "280": 400,
+		"104": 41, "106": 42, "108": 43,
+		"20": 81, "22": 82, "23": 83,
+		"306": 100, "307": 101, "308": 102, "309": 103,
+	})
+	if raw["ble.fuel_batt2"] != 3.8 || raw["ble.fuel_temp3"] != 19.0 || raw["ble.fuel_temp4"] != -6.0 {
+		t.Fatalf("lls=%v", raw)
+	}
+	if raw["ble.humidity2"] != 41.0 || raw["ble.battery2"] != 81.0 || raw["ble.fuel_freq1"] != 100.0 {
+		t.Fatalf("env/freq=%v", raw)
+	}
+}
+
 func TestPromoteRuptelaScalars_SpeedTripHumidity(t *testing.T) {
 	raw := map[string]any{}
 	promoteRuptelaScalars(raw, map[string]any{"24": 62, "199": 5000, "29": 55})

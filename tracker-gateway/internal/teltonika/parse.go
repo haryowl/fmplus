@@ -220,11 +220,38 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["273"]; ok {
 		raw["ble.fuel2"] = asIOFloat(v)
 	}
+	if v, ok := io["274"]; ok {
+		raw["ble.fuel_batt2"] = asIOFloat(v) / 100.0 // V ×0.01
+	}
+	if v, ok := io["275"]; ok {
+		raw["ble.fuel_temp3"] = float64(int16(uint16(asIOFloat(v))))
+	}
 	if v, ok := io["276"]; ok {
 		raw["ble.fuel3"] = asIOFloat(v)
 	}
+	if v, ok := io["277"]; ok {
+		raw["ble.fuel_batt3"] = asIOFloat(v) / 100.0
+	}
+	if v, ok := io["278"]; ok {
+		raw["ble.fuel_temp4"] = float64(int16(uint16(asIOFloat(v))))
+	}
 	if v, ok := io["279"]; ok {
 		raw["ble.fuel4"] = asIOFloat(v)
+	}
+	if v, ok := io["280"]; ok {
+		raw["ble.fuel_batt4"] = asIOFloat(v) / 100.0
+	}
+	if v, ok := io["306"]; ok {
+		raw["ble.fuel_freq1"] = asIOFloat(v)
+	}
+	if v, ok := io["307"]; ok {
+		raw["ble.fuel_freq2"] = asIOFloat(v)
+	}
+	if v, ok := io["308"]; ok {
+		raw["ble.fuel_freq3"] = asIOFloat(v)
+	}
+	if v, ok := io["309"]; ok {
+		raw["ble.fuel_freq4"] = asIOFloat(v)
 	}
 	if v, ok := io["390"]; ok {
 		raw["fuel.oem_level"] = asIOFloat(v) / 10.0 // L ×0.1
@@ -415,8 +442,26 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["29"]; ok {
 		raw["ble.humidity"] = asIOFloat(v)
 	}
+	if v, ok := io["104"]; ok {
+		raw["ble.humidity2"] = asIOFloat(v)
+	}
+	if v, ok := io["106"]; ok {
+		raw["ble.humidity3"] = asIOFloat(v)
+	}
+	if v, ok := io["108"]; ok {
+		raw["ble.humidity4"] = asIOFloat(v)
+	}
 	if v, ok := io["86"]; ok {
 		raw["ble.battery"] = asIOFloat(v)
+	}
+	if v, ok := io["20"]; ok {
+		raw["ble.battery2"] = asIOFloat(v)
+	}
+	if v, ok := io["22"]; ok {
+		raw["ble.battery3"] = asIOFloat(v)
+	}
+	if v, ok := io["23"]; ok {
+		raw["ble.battery4"] = asIOFloat(v)
 	}
 	if v, ok := io["113"]; ok {
 		raw["battery.level"] = asIOFloat(v)

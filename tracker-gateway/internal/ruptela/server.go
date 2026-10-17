@@ -632,11 +632,38 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["273"]; ok {
 		raw["ble.fuel2"] = asFloat64(v)
 	}
+	if v, ok := io["274"]; ok {
+		raw["ble.fuel_batt2"] = asFloat64(v) / 100.0
+	}
+	if v, ok := io["275"]; ok {
+		raw["ble.fuel_temp3"] = float64(int16(uint16(asFloat64(v))))
+	}
 	if v, ok := io["276"]; ok {
 		raw["ble.fuel3"] = asFloat64(v)
 	}
+	if v, ok := io["277"]; ok {
+		raw["ble.fuel_batt3"] = asFloat64(v) / 100.0
+	}
+	if v, ok := io["278"]; ok {
+		raw["ble.fuel_temp4"] = float64(int16(uint16(asFloat64(v))))
+	}
 	if v, ok := io["279"]; ok {
 		raw["ble.fuel4"] = asFloat64(v)
+	}
+	if v, ok := io["280"]; ok {
+		raw["ble.fuel_batt4"] = asFloat64(v) / 100.0
+	}
+	if v, ok := io["306"]; ok {
+		raw["ble.fuel_freq1"] = asFloat64(v)
+	}
+	if v, ok := io["307"]; ok {
+		raw["ble.fuel_freq2"] = asFloat64(v)
+	}
+	if v, ok := io["308"]; ok {
+		raw["ble.fuel_freq3"] = asFloat64(v)
+	}
+	if v, ok := io["309"]; ok {
+		raw["ble.fuel_freq4"] = asFloat64(v)
 	}
 	if v, ok := io["390"]; ok {
 		raw["fuel.oem_level"] = asFloat64(v) / 10.0
@@ -709,8 +736,26 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["29"]; ok {
 		raw["ble.humidity"] = asFloat64(v)
 	}
+	if v, ok := io["104"]; ok {
+		raw["ble.humidity2"] = asFloat64(v)
+	}
+	if v, ok := io["106"]; ok {
+		raw["ble.humidity3"] = asFloat64(v)
+	}
+	if v, ok := io["108"]; ok {
+		raw["ble.humidity4"] = asFloat64(v)
+	}
 	if v, ok := io["86"]; ok {
 		raw["ble.battery"] = asFloat64(v)
+	}
+	if v, ok := io["20"]; ok {
+		raw["ble.battery2"] = asFloat64(v)
+	}
+	if v, ok := io["22"]; ok {
+		raw["ble.battery3"] = asFloat64(v)
+	}
+	if v, ok := io["23"]; ok {
+		raw["ble.battery4"] = asFloat64(v)
 	}
 	if v, ok := io["113"]; ok {
 		raw["battery.level"] = asFloat64(v)
