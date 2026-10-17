@@ -317,6 +317,59 @@ func wrap8106Body(raw []byte, text string) []byte {
 	return out
 }
 
+// wrap8108Body builds a partial 0x8108 upgrade notify (type + mfr + version; package len 0).
+// text: "type=0,mfr=MFR01,ver=1.2.3" | "0,MFR01,1.2.3" | plain version string.
+// Full package blobs: pass PayloadHex.
+func wrap8108Body(text string) []byte {
+	typ := byte(0)
+	mfr, ver := "", ""
+	t := strings.TrimSpace(text)
+	lower := strings.ToLower(t)
+	if strings.Contains(lower, "=") {
+		for _, part := range strings.Split(t, ",") {
+			kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			k, v := strings.ToLower(kv[0]), strings.TrimSpace(kv[1])
+			switch k {
+			case "type", "t":
+				if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
+					typ = byte(n)
+				}
+			case "mfr", "manufacturer", "maker":
+				mfr = v
+			case "ver", "version", "v":
+				ver = v
+			}
+		}
+	} else if t != "" {
+		parts := strings.SplitN(t, ",", 3)
+		if n, err := strconv.Atoi(strings.TrimSpace(parts[0])); err == nil && n >= 0 && n <= 255 {
+			typ = byte(n)
+			if len(parts) >= 2 {
+				mfr = strings.TrimSpace(parts[1])
+			}
+			if len(parts) >= 3 {
+				ver = strings.TrimSpace(parts[2])
+			}
+		} else {
+			ver = t
+		}
+	}
+	mfrB := make([]byte, 5)
+	copy(mfrB, []byte(mfr))
+	vb := []byte(ver)
+	if len(vb) > 255 {
+		vb = vb[:255]
+	}
+	body := append([]byte{typ}, mfrB...)
+	body = append(body, byte(len(vb)))
+	body = append(body, vb...)
+	body = append(body, 0, 0, 0, 0) // package length = 0 (metadata-only notify)
+	return body
+}
+
 // wrap8104Body builds 0x8104 query body: count + DWORD ids from hex, or all (0).
 func wrap8104Body(raw []byte, text string) []byte {
 	if len(raw) == 0 && (text == "" || text == "all" || text == "*") {
@@ -438,6 +491,16 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 	case "jt808_8107", "query_attrs":
 		msgID = 0x8107
 		body = nil // empty body
+	case "jt808_8108", "terminal_upgrade":
+		// Terminal upgrade package notify (pairs with 0x0108 result).
+		msgID = 0x8108
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8108Body(text)
 	case "jt808_8201", "query_location":
 		// Platform queries terminal location; empty body (terminal replies 0x0201).
 		msgID = 0x8201
@@ -894,6 +957,22 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			_ = st.TouchSeen(ctx, sess.device)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0106: // designated params response (same TLV layout as 0x0104; reply to 0x8106)
+		if sess.device != nil {
+			corr := ""
+			paramsBody := body
+			if len(body) >= 3 {
+				corr = fmt.Sprintf("%d", binary.BigEndian.Uint16(body[0:2]))
+				paramsBody = body[2:]
+			}
+			parsed, complete := parseTerminalParamsOK(paramsBody)
+			parsed["proto_msg"] = "0x0106"
+			_ = st.PatchLastStatus(ctx, sess.device, parsed, nil)
+			_ = st.AckCommand(ctx, sess.device.ID, corr, complete,
+				fmt.Sprintf("jt808_0106 len=%d complete=%v", len(body), complete))
+			_ = st.TouchSeen(ctx, sess.device)
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0108: // terminal upgrade result (type + result; no reply-seq in body)
 		if sess.device != nil {
 			patch := parseUpgradeResult(body)
@@ -902,7 +981,7 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			if r, has := patch["upgrade_result"].(int); has {
 				ok = r == 0
 			}
-			// Pair with latest 0x8105 / terminal_control — body has no reply-seq.
+			// Pair with latest 0x8108 / terminal_upgrade (or 0x8105) — body has no reply-seq.
 			_ = st.AckLatestSent(ctx, sess.device.ID, ok,
 				fmt.Sprintf("jt808_0108 %v", patch["upgrade_result"]))
 		}

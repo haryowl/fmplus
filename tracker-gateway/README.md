@@ -40,8 +40,11 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `jt808_8304` / `info` | jt808/subiao | information service push |
 | `jt808_8103` / `param` | jt808/subiao | set terminal params |
 | `jt808_8104` / `query_params` | jt808/subiao | query params (`all` or id list) |
-| `jt808_8106` / `query_param_ids` | jt808/subiao | query designated param ids |
+| `jt808_8106` / `query_param_ids` | jt808/subiao | query designated param ids (→0x0106) |
 | `jt808_8107` / `query_attrs` | jt808/subiao | query terminal attributes |
+| `jt808_8108` / `terminal_upgrade` | jt808/subiao | upgrade notify (→0x0108) |
+| `jt808_8400` / `phone_callback` | jt808/subiao | phone callback / listen-in |
+| `jt808_8401` / `phonebook` | jt808/subiao | set / clear phone book |
 | `jt808_8201` / `query_location` | jt808/subiao | query current location |
 | `jt808_8105` / `terminal_control` | jt808/subiao | reset/shutdown/factory/… |
 | `jt808_8500` / `control` | jt808/subiao | vehicle control |
@@ -129,6 +132,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   083_jt808_route_media_ctrl.sql
 #   084_jt808_param_ids_record.sql
 #   085_jt808_phone_ruptela_io.sql
+#   086_jt808_0106_upgrade.sql
 npm run db:migrate
 
 cd tracker-gateway

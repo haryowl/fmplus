@@ -407,6 +407,30 @@ func TestWrap8106Body(t *testing.T) {
 	}
 }
 
+func TestWrap8108Body(t *testing.T) {
+	b := wrap8108Body("type=0,mfr=MFR01,ver=1.2.3")
+	if b[0] != 0 || string(b[1:6]) != "MFR01" || b[6] != 5 || string(b[7:12]) != "1.2.3" {
+		t.Fatalf("%x", b)
+	}
+	if binary.BigEndian.Uint32(b[12:16]) != 0 {
+		t.Fatalf("pkg len %x", b[12:16])
+	}
+}
+
+func TestEncodeDownlink_TerminalUpgrade(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{
+		CommandType: "terminal_upgrade", PayloadText: "0,ABCD,2.0",
+	}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := unescape(out)
+	if binary.BigEndian.Uint16(raw[0:2]) != 0x8108 {
+		t.Fatalf("msgID=%04x", binary.BigEndian.Uint16(raw[0:2]))
+	}
+}
+
 func TestWrap8804Body(t *testing.T) {
 	b := wrap8804Body("cmd=1,time=30,save=1,rate=2")
 	if b[0] != 1 || binary.BigEndian.Uint16(b[1:3]) != 30 || b[3] != 1 || b[4] != 2 {

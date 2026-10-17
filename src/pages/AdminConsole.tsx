@@ -176,6 +176,11 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
     protocols: ["jt808", "subiao"],
   },
   {
+    value: "jt808_8108",
+    label: "JT808 terminal upgrade (0x8108)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
     value: "jt808_8201",
     label: "JT808 query location (0x8201)",
     protocols: ["jt808", "subiao"],
@@ -356,6 +361,8 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "all or 0001,0002", hex: "optional id list as hex" };
     case "jt808_8106":
       return { text: "0001,0002", hex: "N×DWORD param ids" };
+    case "jt808_8108":
+      return { text: "type=0,mfr=MFR01,ver=1.2.3", hex: "full 0x8108 body (pkg optional)" };
     case "jt808_8105":
       return { text: "reset / shutdown / factory", hex: "03 or multi-byte control" };
     case "jt808_8500":

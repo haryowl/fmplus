@@ -56,6 +56,19 @@ func TestParseUpgradeResult(t *testing.T) {
 	}
 }
 
+func TestParseTerminalParamsOK_0106Shape(t *testing.T) {
+	// count=1, id=0x0001, len=1, val=0x2a — same TLV layout for 0x0104 and 0x0106.
+	body := []byte{0x01, 0x00, 0x00, 0x00, 0x01, 0x01, 0x2a}
+	out, ok := parseTerminalParamsOK(body)
+	if !ok || out["param.0x0001"] != 0x2a {
+		t.Fatalf("%v ok=%v", out, ok)
+	}
+	out["proto_msg"] = "0x0106"
+	if out["proto_msg"] != "0x0106" || out["params_parsed"] != 1 {
+		t.Fatalf("%v", out)
+	}
+}
+
 func TestParseMultimediaData(t *testing.T) {
 	body := make([]byte, 12)
 	binary.BigEndian.PutUint32(body[0:4], 99)
