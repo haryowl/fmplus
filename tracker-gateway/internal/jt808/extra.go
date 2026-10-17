@@ -138,6 +138,24 @@ func parseAdditionalInfo(body []byte) map[string]any {
 				add[key] = ad
 				add["analog.ad"] = ad
 			}
+		case 0x2a: // IO status bits (DWORD — 2019 extended)
+			if l >= 4 {
+				io := binary.BigEndian.Uint32(val)
+				add[key] = int(io)
+				add["io.status32"] = int(io)
+				add["status.din1"] = io&0x01 != 0
+				add["status.din2"] = io&0x02 != 0
+				add["status.din3"] = io&0x04 != 0
+				add["status.din4"] = io&0x08 != 0
+				add["status.dout1"] = io&0x0100 != 0
+				add["status.dout2"] = io&0x0200 != 0
+			}
+		case 0x2b: // analog AD2 (DWORD, often 0.01 units)
+			if l >= 4 {
+				ad := float64(binary.BigEndian.Uint32(val)) / 100.0
+				add[key] = ad
+				add["analog.ad2"] = ad
+			}
 		case 0x25: // extended vehicle signal status bits
 			if l >= 4 {
 				sig := binary.BigEndian.Uint32(val)
@@ -384,8 +402,8 @@ func isRemappableSafetyKey(k string) bool {
 	switch k {
 	case "alarm_level", "tpms.alarm", "gsm_signal", "gnss_sats",
 		"overspeed_loc_type", "overspeed_region_id", "area_loc_type", "area_id", "area_direction",
-		"mileage", "fuel.level", "speed.extra", "speed.pulse", "io.status", "manual_alarm_id",
-		"oil.quantity", "temp.cargo", "analog.ad",
+		"mileage", "fuel.level", "speed.extra", "speed.pulse", "io.status", "io.status32", "manual_alarm_id",
+		"oil.quantity", "temp.cargo", "analog.ad", "analog.ad2",
 		"route_id", "route_time_loc_type", "route_time_result", "route_drive_time":
 		return true
 	}

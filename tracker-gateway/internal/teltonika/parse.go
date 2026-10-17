@@ -191,6 +191,12 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["86"]; ok {
 		raw["ble.battery"] = asIOFloat(v)
 	}
+	if v, ok := io["113"]; ok {
+		raw["battery.level"] = asIOFloat(v)
+	}
+	if v, ok := io["114"]; ok {
+		raw["battery.voltage"] = asIOFloat(v) / 1000.0 // mV → V when millivolt
+	}
 	// Green driving / eco metrics (AVL IDs — config dependent).
 	if v, ok := io["253"]; ok {
 		raw["green_driving.value"] = asIOFloat(v)

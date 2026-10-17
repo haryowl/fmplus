@@ -318,6 +318,10 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw["device.id"] = id
 		raw["tag.0x04"] = id
 	}
+	if v, ok := tags[0x20]; ok && len(v) >= 4 {
+		raw["unix_time"] = int64(binary.LittleEndian.Uint32(v[0:4]))
+		raw["tag.0x20"] = raw["unix_time"]
+	}
 	// 0x52–0x57: additional analog channels (mV → V when plausible).
 	for i, id := range []byte{0x52, 0x53, 0x54, 0x55, 0x56, 0x57} {
 		v, ok := tags[id]

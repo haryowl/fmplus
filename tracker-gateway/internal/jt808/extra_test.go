@@ -49,6 +49,19 @@ func TestParseAdditionalInfo_MileageFuel(t *testing.T) {
 	}
 }
 
+func TestParseAdditionalInfo_IO32AndAD2(t *testing.T) {
+	base := make([]byte, 28)
+	// 0x2A DWORD 0x0105 (dout1 + din1 + din3); 0x2B DWORD 500 → 5.00
+	tlv, _ := hex.DecodeString("2a04000001052b04000001f4")
+	add := parseAdditionalInfo(append(base, tlv...))
+	if add["status.din1"] != true || add["status.din3"] != true || add["status.dout1"] != true {
+		t.Fatalf("io %v", add)
+	}
+	if add["analog.ad2"] != 5.0 {
+		t.Fatalf("ad2=%v", add["analog.ad2"])
+	}
+}
+
 func TestParseAdditionalInfo_PulseSpeedAndAD(t *testing.T) {
 	base := make([]byte, 28)
 	// 0x07 WORD 400 → 40.0; 0x19 DWORD 12345 → 123.45
