@@ -34,6 +34,9 @@ func TestParseVehicleUplink_MinimalGNSS(t *testing.T) {
 	if fix.Speed == nil || *fix.Speed != 40 {
 		t.Fatalf("speed=%v", fix.Speed)
 	}
+	if fix.RawAttrs["data_type"] != 0x0200 {
+		t.Fatalf("data_type=%v", fix.RawAttrs["data_type"])
+	}
 	if fix.RawAttrs["location_realtime"] != true {
 		t.Fatalf("realtime=%v", fix.RawAttrs)
 	}

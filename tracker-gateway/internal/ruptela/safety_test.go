@@ -283,6 +283,14 @@ func TestPromoteRuptelaScalars_BLETemp2GNSS(t *testing.T) {
 	}
 }
 
+func TestPromoteRuptelaScalars_GNSSVDOP(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{"181": 30, "182": 20, "183": 15})
+	if raw["gnss.pdop"] != 3.0 || raw["gnss.hdop"] != 2.0 || raw["gnss.vdop"] != 1.5 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteRuptelaScalars_IButton(t *testing.T) {
 	raw := map[string]any{}
 	promoteRuptelaScalars(raw, map[string]any{"78": "deadbeef", "250": 9.5})

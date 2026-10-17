@@ -229,6 +229,14 @@ func TestPromoteTeltonikaScalars_Accel(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_GNSSVDOP(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"181": 25, "182": 18, "183": 22})
+	if raw["gnss.pdop"] != 2.5 || raw["gnss.hdop"] != 1.8 || raw["gnss.vdop"] != 2.2 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{"89": 75, "239": 1, "16": 12345, "12": 10, "13": 2.5, "48": 1000})

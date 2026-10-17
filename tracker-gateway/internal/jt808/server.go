@@ -2979,7 +2979,7 @@ func parseCANBus(body []byte) map[string]any {
 		off += 5
 	}
 	const itemSize = 12 // DWORD id + 8 data
-	maxItems := 8
+	maxItems := 16
 	if count < maxItems {
 		maxItems = count
 	}

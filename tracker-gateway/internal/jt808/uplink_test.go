@@ -162,6 +162,24 @@ func TestParseCANBus(t *testing.T) {
 	if m2["can.1.data0"] != 9 || m2["can.1.data1"] != 8 {
 		t.Fatalf("can.1 bytes=%v", m2)
 	}
+	// 9 items → slots 0–8 (maxItems 16)
+	body9 := make([]byte, 2+5+12*9)
+	binary.BigEndian.PutUint16(body9[0:2], 9)
+	copy(body9[2:7], []byte{0x24, 0x06, 0x01, 0x10, 0x30})
+	for i := 0; i < 9; i++ {
+		off := 7 + i*12
+		binary.BigEndian.PutUint32(body9[off:off+4], uint32(0x1000+i))
+		for b := 0; b < 8; b++ {
+			body9[off+4+b] = byte(i*10 + b)
+		}
+	}
+	m9 := parseCANBus(body9)
+	if m9["can_parsed"] != 9 || m9["can.8.id"] != int(0x1008) {
+		t.Fatalf("slot8=%v", m9)
+	}
+	if m9["can.8.data"] != "5051525354555657" || m9["can.8.data0"] != 80 {
+		t.Fatalf("can.8 bytes=%v", m9)
+	}
 }
 
 func TestParseSubpkgRetransmit(t *testing.T) {

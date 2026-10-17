@@ -209,6 +209,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   159_geofence_41_50_alarm_crash.sql
 #   160_ruptela_geofence_alarm_drv_std.sql
 #   161_can_chip_axle_iccid2.sql
+#   162_vdop_can8_15_drv_meta.sql
 npm run db:migrate
 
 cd tracker-gateway
