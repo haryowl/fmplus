@@ -101,6 +101,20 @@ func TestHoistTerminalParam_AlarmMask(t *testing.T) {
 	}
 }
 
+func TestHoistTerminalParam_InflectionDistance(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0023, 30, nil, out)
+	hoistTerminalParam(0x0024, 100, nil, out)
+	hoistTerminalParam(0x0030, 500, nil, out)
+	hoistTerminalParam(0x0031, 800, nil, out)
+	if out["report.inflection_angle"] != 30 || out["report.inflection_distance"] != 100 {
+		t.Fatalf("inflection=%v", out)
+	}
+	if out["report.distance_interval"] != 500 || out["report.distance_interval_night"] != 800 {
+		t.Fatalf("distance=%v", out)
+	}
+}
+
 func TestHoistTerminalParam_UDPCollisionReport(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x0019, 7611, nil, out)

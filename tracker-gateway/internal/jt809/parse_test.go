@@ -588,6 +588,16 @@ func TestParseVehicleStatic_Register(t *testing.T) {
 	}
 }
 
+func TestEncryptSkipStatus(t *testing.T) {
+	m := encryptSkipStatus(0x1202, 1, 48)
+	if m["encrypt_skip"] != true || m["encrypt_flag"] != 1 || m["body_len"] != 48 {
+		t.Fatalf("%v", m)
+	}
+	if m["proto_msg"] != "0x1202" {
+		t.Fatalf("proto=%v", m["proto_msg"])
+	}
+}
+
 func TestParseDriverReport_Identity(t *testing.T) {
 	rest := make([]byte, 99+9)
 	copy(rest[0:21], []byte("B9999DRV"))

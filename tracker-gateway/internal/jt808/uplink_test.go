@@ -146,6 +146,10 @@ func TestParseSubpkgRetransmit(t *testing.T) {
 	if m["first_packet_id"] != 5 || m["retransmit_count"] != 2 {
 		t.Fatalf("%v", m)
 	}
+	ids, _ := m["retransmit_ids"].([]int)
+	if len(ids) != 2 || ids[0] != 6 || ids[1] != 7 {
+		t.Fatalf("ids=%v", m["retransmit_ids"])
+	}
 	if m["retransmit_hex"] != "00050200060007" {
 		t.Fatalf("hex=%v", m["retransmit_hex"])
 	}
@@ -329,8 +333,8 @@ func TestBuildDownlink_OutboundSubpkg(t *testing.T) {
 	if DownlinkCorrID(framed) != "1" {
 		t.Fatalf("first corr=%s seq=%d", DownlinkCorrID(framed), seq)
 	}
-	if seq < 2 {
-		t.Fatalf("expected multiple seqs, got %d", seq)
+	if seq != 1 {
+		t.Fatalf("all fragments share one seq, got %d", seq)
 	}
 	// two frames both start with 0x7e
 	n7e := 0

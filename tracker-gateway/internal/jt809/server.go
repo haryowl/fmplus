@@ -124,7 +124,13 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 	}
 	if encryptFlag != 0 && msgID != 0x1001 && msgID != 0x1005 && msgID != 0x1003 && msgID != 0x1007 {
 		// Encrypted vehicle bodies need platform key exchange — skip decode (honest experimental).
+		patch := encryptSkipStatus(msgID, encryptFlag, len(rest))
 		log.Printf("[jt809] msg 0x%04x encrypt=%d — skip body decode (no key)", msgID, encryptFlag)
+		if st != nil && *platformKey != "" {
+			if d := deviceauth.FindByIMEI(ctx, st, *platformKey, conn.RemoteAddr().String(), "jt809"); d != nil {
+				_ = st.PatchLastStatus(ctx, d, patch, nil)
+			}
+		}
 		return
 	}
 	switch msgID {

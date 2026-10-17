@@ -849,8 +849,14 @@ func buildDownlinkFrameVer(phone string, seq *uint16, msgID uint16, body []byte,
 		msg = append(msg, bcc(msg))
 		return escape(msg)
 	}
-	// Outbound subpackages: first fragment's seq is the command corr_id.
+	// Outbound subpackages share one message seq (JT808: all fragments of one
+	// logical downlink use the same serial; package index is in the header).
 	total := (len(body) + jt808MaxBody - 1) / jt808MaxBody
+	var n uint16 = 1
+	if seq != nil {
+		*seq++
+		n = *seq
+	}
 	out := make([]byte, 0, len(body)+total*24)
 	for i := 0; i < total; i++ {
 		start := i * jt808MaxBody
@@ -859,11 +865,6 @@ func buildDownlinkFrameVer(phone string, seq *uint16, msgID uint16, body []byte,
 			end = len(body)
 		}
 		frag := body[start:end]
-		var n uint16 = 1
-		if seq != nil {
-			*seq++
-			n = *seq
-		}
 		header := packJT808HeaderSub(msgID, frag, phone, n, v2019, total, i+1)
 		msg := append(header, frag...)
 		msg = append(msg, bcc(msg))
@@ -1325,12 +1326,20 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["report.interval"] = decoded
 	case 0x0022:
 		out["report.interval_unlogin"] = decoded
+	case 0x0023:
+		out["report.inflection_angle"] = decoded
+	case 0x0024:
+		out["report.inflection_distance"] = decoded
 	case 0x0027:
 		out["report.interval_dormant"] = decoded
 	case 0x0028:
 		out["report.interval_urgent"] = decoded
 	case 0x0029:
 		out["report.interval_default"] = decoded
+	case 0x0030:
+		out["report.distance_interval"] = decoded
+	case 0x0031:
+		out["report.distance_interval_night"] = decoded
 	case 0x0012:
 		out["apn.password"] = string(raw)
 	case 0x0014:
@@ -2408,14 +2417,25 @@ func wrap8700Cmd(text string) byte {
 	}
 }
 
-// parseSubpkgRetransmit maps 0x0005 (first packet id + total + id list) for status.
+// parseSubpkgRetransmit maps 0x0005 (orig seq + count + WORD id list) for status.
 func parseSubpkgRetransmit(body []byte) map[string]any {
 	out := map[string]any{"proto_msg": "0x0005", "retransmit_len": len(body)}
 	if len(body) >= 2 {
-		out["first_packet_id"] = int(binary.BigEndian.Uint16(body[0:2]))
+		out["first_packet_id"] = int(binary.BigEndian.Uint16(body[0:2])) // original downlink seq
 	}
+	count := 0
 	if len(body) >= 3 {
-		out["retransmit_count"] = int(body[2])
+		count = int(body[2])
+		out["retransmit_count"] = count
+	}
+	ids := make([]int, 0, count)
+	off := 3
+	for i := 0; i < count && off+2 <= len(body); i++ {
+		ids = append(ids, int(binary.BigEndian.Uint16(body[off:off+2])))
+		off += 2
+	}
+	if len(ids) > 0 {
+		out["retransmit_ids"] = ids
 	}
 	snip := body
 	if len(snip) > 32 {

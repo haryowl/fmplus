@@ -10,6 +10,16 @@ import (
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
+// encryptSkipStatus builds remappable attrs when an encrypted body is not decoded.
+func encryptSkipStatus(msgID uint16, encryptFlag byte, bodyLen int) map[string]any {
+	return map[string]any{
+		"proto_msg":    fmt.Sprintf("0x%04x", msgID),
+		"encrypt_skip": true,
+		"encrypt_flag": int(encryptFlag),
+		"body_len":     bodyLen,
+	}
+}
+
 type infoTypeAlarm struct {
 	name  string
 	level int
