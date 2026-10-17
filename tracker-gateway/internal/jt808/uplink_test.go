@@ -173,6 +173,13 @@ func TestParseDrivingRecord(t *testing.T) {
 	if m2["drv_cmd_name"] != "odometer" {
 		t.Fatalf("%v", m2)
 	}
+	odo := make([]byte, 5)
+	odo[0] = 0x03
+	binary.BigEndian.PutUint32(odo[1:5], 12345) // 1234.5 km
+	m3 := parseDrivingRecord(odo)
+	if m3["drv.odometer"] != 1234.5 {
+		t.Fatalf("odo=%v", m3["drv.odometer"])
+	}
 }
 
 func TestParseRegister(t *testing.T) {

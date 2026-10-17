@@ -173,9 +173,12 @@ func TestPromoteRuptelaScalars_FuelAVL(t *testing.T) {
 		t.Fatalf("volume=%v", raw)
 	}
 	raw3 := map[string]any{}
-	promoteRuptelaScalars(raw3, map[string]any{"36": 2200})
+	promoteRuptelaScalars(raw3, map[string]any{"36": 2200, "32": 90, "31": 55})
 	if raw3["engine.rpm"] != 2200.0 {
 		t.Fatalf("rpm=%v", raw3)
+	}
+	if raw3["engine.coolant_temp"] != 90.0 || raw3["engine.load"] != 55.0 {
+		t.Fatalf("coolant/load=%v", raw3)
 	}
 	raw2 := map[string]any{}
 	promoteRuptelaScalars(raw2, map[string]any{"48": 500})

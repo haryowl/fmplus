@@ -1344,6 +1344,14 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["tcp.timeout"] = decoded
 	case 0x0003:
 		out["tcp.retry"] = decoded
+	case 0x0004:
+		out["udp.timeout"] = decoded
+	case 0x0005:
+		out["udp.retry"] = decoded
+	case 0x0006:
+		out["sms.timeout"] = decoded
+	case 0x0007:
+		out["sms.retry"] = decoded
 	case 0x0010:
 		out["apn.main"] = string(raw)
 	case 0x0011:
@@ -2789,6 +2797,10 @@ func parseDrivingRecord(body []byte) map[string]any {
 		out["drv_cmd"] = cmd
 		if name, ok := drivingRecordCmdName[cmd]; ok {
 			out["drv_cmd_name"] = name
+		}
+		// GB/T 19056: cmd 0x03 odometer = DWORD BE after cmd, unit 0.1 km.
+		if cmd == 0x03 && len(body) >= 5 {
+			out["drv.odometer"] = float64(binary.BigEndian.Uint32(body[1:5])) / 10.0
 		}
 	}
 	snip := body

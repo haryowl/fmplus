@@ -181,6 +181,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   131_jt809_gps_time_media_route_ruptela.sql
 #   132_fuel_volume_bcd_time_gnss.sql
 #   133_gnss_upload_can_rpm_809_rollover.sql
+#   134_drv_odo_udp_sms_engine_obd.sql
 npm run db:migrate
 
 cd tracker-gateway

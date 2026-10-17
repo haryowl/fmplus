@@ -109,6 +109,20 @@ func TestHoistTerminalParam_AlarmMask(t *testing.T) {
 	}
 }
 
+func TestHoistTerminalParam_UDPSMS(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0004, 30, nil, out)
+	hoistTerminalParam(0x0005, 3, nil, out)
+	hoistTerminalParam(0x0006, 60, nil, out)
+	hoistTerminalParam(0x0007, 2, nil, out)
+	if out["udp.timeout"] != 30 || out["udp.retry"] != 3 {
+		t.Fatalf("udp=%v", out)
+	}
+	if out["sms.timeout"] != 60 || out["sms.retry"] != 2 {
+		t.Fatalf("sms=%v", out)
+	}
+}
+
 func TestHoistTerminalParam_GNSS(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x0090, 3, nil, out)
