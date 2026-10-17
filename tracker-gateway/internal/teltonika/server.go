@@ -126,7 +126,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		// Codec 12/13 GPRS command response (not AVL records).
 		if len(payload) > 0 && (payload[0] == 0x0c || payload[0] == 0x0d) {
 			resp, ok := parseCodec12Response(payload)
-			_ = st.AckLatestSent(ctx, device.ID, ok, resp)
+			_ = st.AckSoftOrLatest(ctx, device.ID, ok, resp)
 			ack := make([]byte, 4)
 			if _, err := conn.Write(ack); err != nil {
 				return
@@ -169,8 +169,7 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 			_ = st.RequeueCommand(ctx, cmd.ID)
 			return
 		}
-		// Codec12 responses do not echo a stable corr — empty corr_id, AckLatestSent.
-		_ = st.MarkCommandSentCorr(ctx, cmd.ID, "")
+		_ = st.MarkCommandSentCorr(ctx, cmd.ID, store.SoftTextCorr(cmd.PayloadText))
 	}
 }
 

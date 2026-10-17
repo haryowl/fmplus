@@ -151,7 +151,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			// Command replies often piggyback on a GPS record (tag 0x30 + E0–E6).
 			if device != nil && looksLikeCommandReply(tags) {
 				text, ok := formatCommandReply(tags)
-				_ = st.AckLatestSent(ctx, device.ID, ok, text)
+				_ = st.AckSoftOrLatest(ctx, device.ID, ok, text)
 			}
 		}
 		if device != nil {
@@ -199,8 +199,7 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 			_ = st.RequeueCommand(ctx, cmd.ID)
 			return
 		}
-		// E0–E6 replies have no wire serial — empty corr_id, AckLatestSent on reply tags.
-		_ = st.MarkCommandSentCorr(ctx, cmd.ID, "")
+		_ = st.MarkCommandSentCorr(ctx, cmd.ID, store.SoftTextCorr(cmd.PayloadText))
 	}
 }
 

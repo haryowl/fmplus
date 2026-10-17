@@ -4,10 +4,36 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
 )
+
+const softTextCorrPrefix = "txt:"
+
+// SoftTextCorr builds a stable corr_id from command text for protocols without a wire serial
+// (Teltonika Codec12, Galileosky E-tags). Empty when text is blank.
+func SoftTextCorr(text string) string {
+	t := strings.ToUpper(strings.TrimSpace(text))
+	t = strings.Join(strings.Fields(t), " ")
+	if t == "" {
+		return ""
+	}
+	if len([]rune(t)) > 48 {
+		r := []rune(t)
+		t = string(r[:48])
+	}
+	return softTextCorrPrefix + t
+}
+
+// SoftTextFromCorr returns the normalized text inside a SoftTextCorr id.
+func SoftTextFromCorr(corr string) string {
+	if !strings.HasPrefix(corr, softTextCorrPrefix) {
+		return ""
+	}
+	return corr[len(softTextCorrPrefix):]
+}
 
 type Command struct {
 	ID          string
@@ -248,6 +274,54 @@ func (s *Store) ExpireStaleCommands(ctx context.Context, pendingMaxAge, sentMaxA
 // AckLatestSent marks the most recent sent (or pending) command for a device as acked/failed.
 func (s *Store) AckLatestSent(ctx context.Context, deviceID string, ok bool, response string) error {
 	return s.AckCommand(ctx, deviceID, "", ok, response)
+}
+
+// AckSoftMatch acks a sent command whose SoftTextCorr / payload_text appears in the
+// device response. Returns matched=false without falling back (caller may try corr_id).
+func (s *Store) AckSoftMatch(ctx context.Context, deviceID string, ok bool, response string) (bool, error) {
+	resp := strings.TrimSpace(response)
+	if resp == "" {
+		return false, nil
+	}
+	status := "acked"
+	if !ok {
+		status = "failed"
+	}
+	upper := strings.ToUpper(resp)
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE tracker_commands
+		SET status = $3, response_text = $4, completed_at = now()
+		WHERE id = (
+			SELECT id FROM tracker_commands
+			WHERE device_id = $1::uuid AND status = 'sent'
+			  AND (
+			    (corr_id LIKE 'txt:%' AND position(substring(corr_id from 5) in $2) > 0)
+			    OR (coalesce(payload_text, '') <> '' AND position(upper(payload_text) in $2) > 0)
+			  )
+			ORDER BY COALESCE(sent_at, created_at) DESC
+			LIMIT 1
+		)`, deviceID, upper, status, response)
+	if err != nil {
+		return false, err
+	}
+	if tag.RowsAffected() > 0 {
+		if ok {
+			metrics.CommandAcked()
+		} else {
+			metrics.CommandFailed()
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+// AckSoftOrLatest prefers SoftTextCorr / payload_text echo, else AckLatestSent.
+func (s *Store) AckSoftOrLatest(ctx context.Context, deviceID string, ok bool, response string) error {
+	matched, err := s.AckSoftMatch(ctx, deviceID, ok, response)
+	if err != nil || matched {
+		return err
+	}
+	return s.AckLatestSent(ctx, deviceID, ok, response)
 }
 
 // AckCommand prefers matching corr_id on a sent command; falls back to latest sent/pending.

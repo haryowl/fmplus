@@ -29,21 +29,21 @@ func isJT808Command(protocol, commandType string) bool {
 	return false
 }
 
-func downlinkCorr(protocol, commandType string, payload []byte, sess *protocol.ConnSession) string {
+func downlinkCorr(cmd store.Command, payload []byte, sess *protocol.ConnSession) string {
 	switch {
-	case isJT808Command(protocol, commandType):
+	case isJT808Command(cmd.Protocol, cmd.CommandType):
 		return jt808.DownlinkCorrID(payload)
-	case protocol == "concox" || commandType == "concox_gprs":
+	case cmd.Protocol == "concox" || cmd.CommandType == "concox_gprs":
 		return concox.DownlinkCorrID(payload)
-	case protocol == "ruptela" || commandType == "ruptela_sms" ||
-		commandType == "ruptela_105" || commandType == "ruptela_107" || commandType == "config":
-		return ruptela.DownlinkCorrID(commandType)
-	case protocol == "galileosky" || commandType == "galileosky_text":
-		// Replies are text/tag based — no wire serial; ack uses latest-sent.
-		return ""
-	case protocol == "teltonika" || commandType == "teltonika_codec12":
-		// Codec12 responses do not echo a stable command id — latest-sent only.
-		return ""
+	case cmd.Protocol == "ruptela" || cmd.CommandType == "ruptela_sms" ||
+		cmd.CommandType == "ruptela_105" || cmd.CommandType == "ruptela_107" || cmd.CommandType == "config":
+		return ruptela.DownlinkCorrID(cmd.CommandType)
+	case cmd.Protocol == "galileosky" || cmd.CommandType == "galileosky_text":
+		// No wire serial — soft text corr; AckSoftOrLatest on E0–E6 replies.
+		return store.SoftTextCorr(cmd.PayloadText)
+	case cmd.Protocol == "teltonika" || cmd.CommandType == "teltonika_codec12":
+		// Codec12 has no stable id — soft text corr when payload echoes.
+		return store.SoftTextCorr(cmd.PayloadText)
 	default:
 		if sess != nil && sess.Meta != nil && sess.Meta["seq"] != "" {
 			return sess.Meta["seq"]
@@ -134,7 +134,7 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 			sessions.Unbind(sess)
 			continue
 		}
-		corr := downlinkCorr(cmd.Protocol, cmd.CommandType, payload, sess)
+		corr := downlinkCorr(cmd, payload, sess)
 		_ = st.MarkCommandSentCorr(ctx, cmd.ID, corr)
 		if corr != "" && sess.Meta != nil {
 			sess.Meta["seq"] = corr

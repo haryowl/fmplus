@@ -7,14 +7,14 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | Adapter | Port env | Default | Status | Uplink | Downlink | Notes |
 |---------|----------|---------|--------|--------|----------|-------|
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat + alarm safety | — | nested attrs flatten; `alarm.*` → safety |
-| Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | bad CRC → zero-ack+drop; Codec16 NX; expanded event IO → safety |
-| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/0702/0104–0108/0003/0500/0301/0800/0801/0805/0900 | 0x8300/8103–8107/8201/8500 | bind on register; logout unbind; bad BCC → fail ack |
+| Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | bad CRC → zero-ack+drop; soft text corr; expanded event IO → safety |
+| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/0003–0004/0104–0108/0500/0301/0705/0800/0801/0805/0900 | 0x8300/8103–8107/8201/8500 | bind on register; logout unbind; bad BCC → fail ack |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
 | JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/HB + 0x1200 fix + 0x1400 alarm | — | plate+GNSS ingest; alarm → safety |
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling + ACK + SIM bind | — | no RTP / no 808 media bridge |
 | Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS | 0x80 GPRS | paused for depth — GT06 deferred |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records | 108/105/107 | Kermit; bad CRC → NACK 100; corr by cmd |
-| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | status 0x40–0x43 safety; E0–E6 ack w/ coords |
+| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | status 0x40–0x43 safety; soft text corr; E0–E6 ack w/ coords |
 
 **Do not claim “full JT/T” or production 2-way until an adapter is marked `certified`.** Status lives in each `Adapter.Status()` and Admin protocol labels.
 
@@ -48,7 +48,7 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `galileosky_text` | galileosky | 0x01 + CRC-16 Modbus text |
 | `raw` | any | hex payload as-is |
 
-Stale commands: **pending** > 24h or **sent** > 30m → `expired`. Encode/write errors → `failed`. Admin can **cancel** pending commands (not already sent). Pending rows are **atomically claimed** (`FOR UPDATE SKIP LOCKED`) so dispatch and session flush cannot double-send. Sent commands store `corr_id` (JT808 seq / Concox serial / Ruptela `108`); terminal acks match by corr before falling back to latest-sent. Teltonika Codec12 and Galileosky text replies use latest-sent only (no stable echo id). Remap rules support transforms: `identity`, `scale`, `offset`, `bit_mask`, `invert_bool`, `enum_map`.
+Stale commands: **pending** > 24h or **sent** > 30m → `expired`. Encode/write errors → `failed`. Admin can **cancel** pending commands (not already sent). Pending rows are **atomically claimed** (`FOR UPDATE SKIP LOCKED`) so dispatch and session flush cannot double-send. Sent commands store `corr_id` (JT808 seq / Concox serial / Ruptela `108` / soft `txt:…` for Codec12 & Galileosky). Terminal acks match by corr or payload-text echo (`AckSoftOrLatest`) before falling back to latest-sent. Remap rules support transforms: `identity`, `scale`, `offset`, `bit_mask`, `invert_bool`, `enum_map`.
 
 JT808 location fixes flatten `alarm.*` bits and `status.acc` onto `raw_attrs` for Device Manager remap (same keys as safety events).
 

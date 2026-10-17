@@ -55,21 +55,25 @@ func (discardConn) SetReadDeadline(time.Time) error  { return nil }
 func (discardConn) SetWriteDeadline(time.Time) error { return nil }
 
 func TestDownlinkCorr_protocols(t *testing.T) {
-	// Minimal JT808 escaped frame: 0x7e ... seq ... 0x7e — use empty when not framed.
-	if downlinkCorr("teltonika", "teltonika_codec12", nil, nil) != "" {
-		t.Fatal("teltonika corr must be empty")
+	tel := store.Command{Protocol: "teltonika", CommandType: "teltonika_codec12", PayloadText: "getinfo"}
+	if downlinkCorr(tel, nil, nil) != "txt:GETINFO" {
+		t.Fatalf("teltonika soft corr=%q", downlinkCorr(tel, nil, nil))
 	}
-	if downlinkCorr("galileosky", "galileosky_text", nil, nil) != "" {
-		t.Fatal("galileosky corr must be empty")
+	if downlinkCorr(store.Command{Protocol: "teltonika", CommandType: "teltonika_codec12"}, nil, nil) != "" {
+		t.Fatal("teltonika empty payload → empty corr")
 	}
-	if downlinkCorr("ruptela", "ruptela_sms", nil, nil) != "108" {
+	gs := store.Command{Protocol: "galileosky", CommandType: "galileosky_text", PayloadText: "GETVER"}
+	if downlinkCorr(gs, nil, nil) != "txt:GETVER" {
+		t.Fatal("galileosky soft corr")
+	}
+	if downlinkCorr(store.Command{Protocol: "ruptela", CommandType: "ruptela_sms"}, nil, nil) != "108" {
 		t.Fatal("ruptela sms")
 	}
-	if downlinkCorr("ruptela", "ruptela_105", nil, nil) != "105" {
+	if downlinkCorr(store.Command{Protocol: "ruptela", CommandType: "ruptela_105"}, nil, nil) != "105" {
 		t.Fatal("ruptela 105")
 	}
 	sess := &protocol.ConnSession{Meta: map[string]string{"seq": "9"}}
-	if downlinkCorr("other", "raw", nil, sess) != "9" {
+	if downlinkCorr(store.Command{Protocol: "other", CommandType: "raw"}, nil, sess) != "9" {
 		t.Fatal("meta seq fallback")
 	}
 }

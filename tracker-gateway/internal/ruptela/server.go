@@ -118,7 +118,9 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					resp = fmt.Sprintf("ruptela_cmd_7 %x", data)
 				}
 				ok := !ruptelaCmdFailed(resp)
-				_ = st.AckCommand(ctx, device.ID, "108", ok, resp)
+				if matched, _ := st.AckSoftMatch(ctx, device.ID, ok, resp); !matched {
+					_ = st.AckCommand(ctx, device.ID, "108", ok, resp)
+				}
 				_ = st.TouchSeen(ctx, device)
 				flushPending(ctx, conn, st, device.ID)
 			}
@@ -135,7 +137,9 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				}
 				ok := !ruptelaCmdFailed(resp)
 				corr := fmt.Sprintf("%d", cmd)
-				_ = st.AckCommand(ctx, device.ID, corr, ok, resp)
+				if matched, _ := st.AckSoftMatch(ctx, device.ID, ok, resp); !matched {
+					_ = st.AckCommand(ctx, device.ID, corr, ok, resp)
+				}
 				_ = st.TouchSeen(ctx, device)
 				flushPending(ctx, conn, st, device.ID)
 			}

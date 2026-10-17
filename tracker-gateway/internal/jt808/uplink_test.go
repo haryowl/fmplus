@@ -66,6 +66,22 @@ func TestParseMultimediaData(t *testing.T) {
 	}
 }
 
+func TestBcdNowUTC6(t *testing.T) {
+	b := bcdNowUTC6()
+	if len(b) != 6 {
+		t.Fatalf("len=%d", len(b))
+	}
+}
+
+func TestParseCANBus(t *testing.T) {
+	body := make([]byte, 10)
+	binary.BigEndian.PutUint16(body[0:2], 3)
+	m := parseCANBus(body)
+	if m["can_item_count"] != 3 {
+		t.Fatalf("%v", m)
+	}
+}
+
 func TestParseCameraShootResp(t *testing.T) {
 	body := make([]byte, 4+8)
 	binary.BigEndian.PutUint16(body[0:2], 42)

@@ -571,6 +571,11 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			_ = st.TouchSeen(ctx, sess.device)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0004: // query server time (2019) — reply 0x8004 with UTC BCD
+		if sess.device != nil {
+			_ = st.TouchSeen(ctx, sess.device)
+		}
+		return reply(conn, sess, 0x8004, bcdNowUTC6())
 	case 0x0003: // terminal logout — tear down session binding
 		if sess.device != nil {
 			_ = st.TouchSeen(ctx, sess.device)
@@ -679,6 +684,11 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 				ingestLocation(ctx, conn, st, sessions, sess, body[off:off+itemLen], protoHint)
 				off += itemLen
 			}
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0705: // CAN bus data uplink (status patch only — no full CAN decode)
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, parseCANBus(body), nil)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0200: // location
@@ -803,6 +813,34 @@ func parseMultimediaMeta(body []byte) map[string]any {
 	if len(body) >= 7 {
 		out["media_id"] = binary.BigEndian.Uint32(body[3:7])
 	}
+	return out
+}
+
+// bcdNowUTC6 returns YYMMDDhhmmss as 6 BCD bytes (JT808 server time 0x8004).
+func bcdNowUTC6() []byte {
+	t := time.Now().UTC()
+	dig := func(n int) byte { return byte((n/10)%10<<4 | n%10) }
+	yy := t.Year() % 100
+	return []byte{
+		dig(yy), dig(int(t.Month())), dig(t.Day()),
+		dig(t.Hour()), dig(t.Minute()), dig(t.Second()),
+	}
+}
+
+// parseCANBus stores 0x0705 CAN uplink header fields (partial — no signal decode).
+func parseCANBus(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0705", "can_len": len(body)}
+	if len(body) >= 2 {
+		out["can_item_count"] = int(binary.BigEndian.Uint16(body[0:2]))
+	}
+	if len(body) >= 7 {
+		out["can_time_bcd"] = fmt.Sprintf("%x", body[2:7])
+	}
+	snip := body
+	if len(snip) > 48 {
+		snip = snip[:48]
+	}
+	out["can_head_hex"] = fmt.Sprintf("%x", snip)
 	return out
 }
 
