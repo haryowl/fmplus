@@ -641,6 +641,9 @@ func TestParseQuestionAnswer(t *testing.T) {
 	if m["reply_seq"] != 10 || m["answer_id"] != 1 || m["answer_text"] != "Yes" {
 		t.Fatalf("%v", m)
 	}
+	if m["answer_hex"] != "596573" {
+		t.Fatalf("hex=%v", m["answer_hex"])
+	}
 }
 
 func TestEncodeDownlink_RequiresPhone(t *testing.T) {

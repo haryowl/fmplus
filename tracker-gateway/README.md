@@ -175,6 +175,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   125_subiao_inherit_hoist_meta.sql
 #   126_subiao_inherit_tlv_media_alarms.sql
 #   127_jt808_meta_subiao_driver_upgrade.sql
+#   128_subiao_inherit_retransmit_register.sql
 npm run db:migrate
 
 cd tracker-gateway

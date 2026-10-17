@@ -135,12 +135,29 @@ func TestParseCANBus(t *testing.T) {
 	if m["can.first_data"] != "0102030405060708" {
 		t.Fatalf("first_data=%v", m["can.first_data"])
 	}
+	if m["can_time_bcd"] != "1230000000" {
+		t.Fatalf("bcd=%v", m["can_time_bcd"])
+	}
+}
+
+func TestParseSubpkgRetransmit(t *testing.T) {
+	body := []byte{0x00, 0x05, 0x02, 0x00, 0x06, 0x00, 0x07}
+	m := parseSubpkgRetransmit(body)
+	if m["first_packet_id"] != 5 || m["retransmit_count"] != 2 {
+		t.Fatalf("%v", m)
+	}
+	if m["retransmit_hex"] != "00050200060007" {
+		t.Fatalf("hex=%v", m["retransmit_hex"])
+	}
 }
 
 func TestParseDrivingRecord(t *testing.T) {
 	m := parseDrivingRecord([]byte{0x15, 0x01, 0x02})
 	if m["drv_cmd"] != 0x15 {
 		t.Fatalf("%v", m)
+	}
+	if m["drv_head_hex"] != "150102" {
+		t.Fatalf("hex=%v", m["drv_head_hex"])
 	}
 	m2 := parseDrivingRecord([]byte{0x03})
 	if m2["drv_cmd_name"] != "odometer" {
