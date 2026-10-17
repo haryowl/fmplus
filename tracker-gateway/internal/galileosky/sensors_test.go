@@ -55,3 +55,15 @@ func TestPromoteSensorTags_Temp(t *testing.T) {
 		t.Fatalf("%v", raw)
 	}
 }
+
+func TestPromoteSensorTags_CANAndSensor(t *testing.T) {
+	raw := map[string]any{}
+	can := make([]byte, 4)
+	binary.LittleEndian.PutUint32(can, 99)
+	s := make([]byte, 2)
+	binary.LittleEndian.PutUint16(s, 455) // 45.5
+	promoteSensorTags(raw, map[byte][]byte{0x64: can, 0x74: s})
+	if raw["can.1"] != float64(99) || raw["sensor.5"] != 45.5 {
+		t.Fatalf("%v", raw)
+	}
+}

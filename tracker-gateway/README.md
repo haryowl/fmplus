@@ -134,6 +134,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   085_jt808_phone_ruptela_io.sql
 #   086_jt808_0106_upgrade.sql
 #   087_teltonika_ruptela_jt809_depth.sql
+#   088_jt808_video_galileosky_can.sql
 npm run db:migrate
 
 cd tracker-gateway

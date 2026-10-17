@@ -77,8 +77,47 @@ func parseAdditionalInfo(body []byte) map[string]any {
 			if l >= 1 {
 				add["gnss_sats"] = int(val[0])
 			}
-		case 0x14, 0x15, 0x16, 0x17: // video / alarm related
-			add[key] = fmt.Sprintf("%x", val)
+		case 0x14: // video-related alarm dword (JT/T 808-2019 / 1078 path)
+			if l >= 4 {
+				w := binary.BigEndian.Uint32(val)
+				add[key] = w
+				decodeVideoAlarmWord(w, add)
+			} else {
+				add[key] = fmt.Sprintf("%x", val)
+			}
+		case 0x15: // video signal loss alarm status (channel bitmask)
+			if l >= 4 {
+				w := binary.BigEndian.Uint32(val)
+				add[key] = w
+				add["video.signal_loss"] = w
+				if w != 0 {
+					add["alarm.video_loss"] = true
+				}
+			} else {
+				add[key] = fmt.Sprintf("%x", val)
+			}
+		case 0x16: // video signal occlude / cover alarm
+			if l >= 4 {
+				w := binary.BigEndian.Uint32(val)
+				add[key] = w
+				add["video.signal_occlude"] = w
+				if w != 0 {
+					add["alarm.video_occlude"] = true
+				}
+			} else {
+				add[key] = fmt.Sprintf("%x", val)
+			}
+		case 0x17: // storage / memory fault alarm status
+			if l >= 4 {
+				w := binary.BigEndian.Uint32(val)
+				add[key] = w
+				add["video.storage_fault"] = w
+				if w != 0 {
+					add["alarm.video_storage"] = true
+				}
+			} else {
+				add[key] = fmt.Sprintf("%x", val)
+			}
 		case 0x64, 0x65, 0x66, 0x67: // Su Biao ADAS/DSM/TPMS/BSD (vendor length varies)
 			add[key] = fmt.Sprintf("%x", val)
 			add["subiao_type"] = key
@@ -238,7 +277,35 @@ func isRemappableSafetyKey(k string) bool {
 	}
 	return strings.HasPrefix(k, "adas.") ||
 		strings.HasPrefix(k, "dsm.") ||
-		strings.HasPrefix(k, "bsd.")
+		strings.HasPrefix(k, "bsd.") ||
+		strings.HasPrefix(k, "alarm.video") ||
+		strings.HasPrefix(k, "video.")
+}
+
+// decodeVideoAlarmWord maps 0x14 video-related alarm bits onto remappable keys (partial).
+func decodeVideoAlarmWord(w uint32, add map[string]any) {
+	if w == 0 || add == nil {
+		return
+	}
+	add["video.alarm_word"] = w
+	bits := []struct {
+		bit uint32
+		key string
+	}{
+		{1 << 0, "alarm.video_loss"},
+		{1 << 1, "alarm.video_occlude"},
+		{1 << 2, "alarm.video_storage"},
+		{1 << 3, "alarm.video_other_device"},
+		{1 << 4, "alarm.video_overload"},
+		{1 << 5, "alarm.video_encode"},
+		{1 << 6, "alarm.video_illegal_access"},
+		{1 << 7, "alarm.video_storage_fault"},
+	}
+	for _, b := range bits {
+		if w&b.bit != 0 {
+			add[b.key] = true
+		}
+	}
 }
 
 func adasEventKey(eventType int) (key, name string) {
@@ -300,35 +367,80 @@ func bsdEventKey(eventType int) (key, name string) {
 
 func safetyFromAdditional(add map[string]any, fix store.Fix, protocol string) *store.SafetyEvent {
 	subType, _ := add["subiao_type"].(string)
-	if subType == "" {
+	if subType != "" {
+		level, _ := add["subiao_level"].(int)
+		if level < 1 {
+			level = 1
+		}
+		alarmType := map[string]string{
+			"0x64": "adas",
+			"0x65": "dsm",
+			"0x66": "tpms",
+			"0x67": "bsd",
+		}[subType]
+		if alarmType == "" {
+			alarmType = "subiao_" + subType
+		}
+		if ev, _ := add["subiao_event"].(string); ev != "" && ev != alarmType {
+			alarmType = alarmType + "_" + ev
+		}
+		lat, lon := fix.Lat, fix.Lon
+		raw := map[string]any{}
+		for k, v := range add {
+			raw[k] = v
+		}
+		raw["alarm_level"] = level
+		return &store.SafetyEvent{
+			RecordedAt:     fix.RecordedAt,
+			AlarmType:      alarmType,
+			AlarmLevel:     level,
+			Lat:            &lat,
+			Lon:            &lon,
+			RawAttrs:       raw,
+			SourceProtocol: protocol,
+		}
+	}
+	return safetyFromVideoAdditional(add, fix, protocol)
+}
+
+func safetyFromVideoAdditional(add map[string]any, fix store.Fix, protocol string) *store.SafetyEvent {
+	if add == nil {
 		return nil
 	}
-	level, _ := add["subiao_level"].(int)
-	if level < 1 {
-		level = 1
+	pairs := []struct {
+		key  string
+		name string
+	}{
+		{"alarm.video_loss", "video_loss"},
+		{"alarm.video_occlude", "video_occlude"},
+		{"alarm.video_storage", "video_storage"},
+		{"alarm.video_storage_fault", "video_storage"},
+		{"alarm.video_illegal_access", "video_illegal_access"},
+		{"alarm.video_encode", "video_encode"},
+		{"alarm.video_overload", "video_overload"},
 	}
-	alarmType := map[string]string{
-		"0x64": "adas",
-		"0x65": "dsm",
-		"0x66": "tpms",
-		"0x67": "bsd",
-	}[subType]
+	alarmType := ""
+	for _, p := range pairs {
+		if add[p.key] == true {
+			alarmType = p.name
+			break
+		}
+	}
 	if alarmType == "" {
-		alarmType = "subiao_" + subType
-	}
-	if ev, _ := add["subiao_event"].(string); ev != "" && ev != alarmType {
-		alarmType = alarmType + "_" + ev
+		return nil
 	}
 	lat, lon := fix.Lat, fix.Lon
-	raw := map[string]any{}
+	raw := map[string]any{"alarm_level": 2}
 	for k, v := range add {
-		raw[k] = v
+		if strings.HasPrefix(k, "alarm.video") || strings.HasPrefix(k, "video.") ||
+			k == "0x14" || k == "0x15" || k == "0x16" || k == "0x17" {
+			raw[k] = v
+		}
 	}
-	raw["alarm_level"] = level
 	return &store.SafetyEvent{
 		RecordedAt:     fix.RecordedAt,
 		AlarmType:      alarmType,
-		AlarmLevel:     level,
+		AlarmLevel:     2,
 		Lat:            &lat,
 		Lon:            &lon,
 		RawAttrs:       raw,

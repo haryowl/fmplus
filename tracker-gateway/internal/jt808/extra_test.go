@@ -41,6 +41,28 @@ func TestParseAdditionalInfo_MileageFuel(t *testing.T) {
 	}
 }
 
+func TestParseAdditionalInfo_VideoLoss(t *testing.T) {
+	base := make([]byte, 28)
+	// 0x15 len=4 value=00000003 (ch0+ch1 loss)
+	tlv, _ := hex.DecodeString("150400000003")
+	add := parseAdditionalInfo(append(base, tlv...))
+	if add["alarm.video_loss"] != true || add["video.signal_loss"] != uint32(3) {
+		t.Fatalf("%v", add)
+	}
+	ev := safetyFromAdditional(add, store.Fix{Lat: 1, Lon: 2, RecordedAt: time.Now().UTC()}, "jt808")
+	if ev == nil || ev.AlarmType != "video_loss" {
+		t.Fatalf("%+v", ev)
+	}
+}
+
+func TestDecodeVideoAlarmWord(t *testing.T) {
+	add := map[string]any{}
+	decodeVideoAlarmWord(0x05, add) // loss + storage bits
+	if add["alarm.video_loss"] != true || add["alarm.video_storage"] != true {
+		t.Fatalf("%v", add)
+	}
+}
+
 func TestSafetyFromAdditional_SuBiao(t *testing.T) {
 	add := map[string]any{
 		"subiao_type":  "0x64",

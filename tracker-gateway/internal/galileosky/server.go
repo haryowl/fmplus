@@ -354,4 +354,24 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("temp.%d", i+1)] = float64(t10) / 10.0
 		raw[fmt.Sprintf("tag.0x%02x", id)] = int(t10)
 	}
+	// 0x74–0x77: additional 1-Wire / humidity-style payloads (model-dependent).
+	for i, id := range []byte{0x74, 0x75, 0x76, 0x77} {
+		v, ok := tags[id]
+		if !ok || len(v) < 2 {
+			continue
+		}
+		n := binary.LittleEndian.Uint16(v[0:2])
+		raw[fmt.Sprintf("sensor.%d", i+5)] = float64(n) / 10.0
+		raw[fmt.Sprintf("tag.0x%02x", id)] = int(n)
+	}
+	// 0x64–0x67: frequent CAN / RS485 numeric payloads.
+	for i, id := range []byte{0x64, 0x65, 0x66, 0x67} {
+		v, ok := tags[id]
+		if !ok || len(v) < 4 {
+			continue
+		}
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw[fmt.Sprintf("can.%d", i+1)] = float64(n)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+	}
 }
