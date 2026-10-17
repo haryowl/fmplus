@@ -49,6 +49,21 @@ func TestParseAdditionalInfo_MileageFuel(t *testing.T) {
 	}
 }
 
+func TestParseAdditionalInfo_ManualAlarmID(t *testing.T) {
+	base := make([]byte, 28)
+	// 0x04 len=2 id=1 (SOS)
+	tlv, _ := hex.DecodeString("04020001")
+	add := parseAdditionalInfo(append(base, tlv...))
+	if add["manual_alarm_id"] != 1 || add["alarm.sos"] != true {
+		t.Fatalf("%v", add)
+	}
+	dest := map[string]any{}
+	hoistLocationTLV(add, dest)
+	if dest["manual_alarm_id"] != 1 || dest["alarm.sos"] != true {
+		t.Fatalf("hoist=%v", dest)
+	}
+}
+
 func TestParseAdditionalInfo_RouteTimeAndIO(t *testing.T) {
 	base := make([]byte, 28)
 	// 0x13: loc=1, route_id=7, result=1 (too long), time=120
@@ -82,6 +97,12 @@ func TestDecodeVideoAlarmWord(t *testing.T) {
 	decodeVideoAlarmWord(0x05, add) // loss + storage bits
 	if add["alarm.video_loss"] != true || add["alarm.video_storage"] != true {
 		t.Fatalf("%v", add)
+	}
+	add2 := map[string]any{}
+	decodeVideoAlarmWord(0x78, add2) // overload|encode|illegal_access|other_device bits 3–6
+	if add2["alarm.video_other_device"] != true || add2["alarm.video_overload"] != true ||
+		add2["alarm.video_encode"] != true || add2["alarm.video_illegal_access"] != true {
+		t.Fatalf("%v", add2)
 	}
 }
 

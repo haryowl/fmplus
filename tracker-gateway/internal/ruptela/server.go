@@ -455,6 +455,18 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["29"]; ok {
 		raw["ble.humidity"] = asFloat64(v)
 	}
+	if v, ok := io["86"]; ok {
+		raw["ble.battery"] = asFloat64(v)
+	}
+	if v, ok := io["9"]; ok {
+		raw["voltage.ain1"] = asFloat64(v) / 1000.0
+	}
+	if v, ok := io["15"]; ok {
+		raw["eco.score"] = asFloat64(v)
+	}
+	if v, ok := io["200"]; ok {
+		raw["sleep.mode"] = asFloat64(v)
+	}
 	if v, ok := io["253"]; ok {
 		raw["green_driving.value"] = asFloat64(v)
 	}

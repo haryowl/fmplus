@@ -199,6 +199,27 @@ func parseVehicleUplink(msgID uint16, rest []byte) (store.Fix, string, bool) {
 	if off+2 <= len(gnss) {
 		hdg := float64(binary.BigEndian.Uint16(gnss[off : off+2]))
 		out.Heading = &hdg
+		off += 2
+	}
+	// Optional REAL_LOCATION tail: altitude(WORD) + vehicle_state(DWORD) + alarm(DWORD).
+	if off+2 <= len(gnss) {
+		alt := float64(int16(binary.BigEndian.Uint16(gnss[off : off+2])))
+		out.Altitude = &alt
+		out.RawAttrs["gnss_altitude"] = alt
+		off += 2
+	}
+	if off+4 <= len(gnss) {
+		st := binary.BigEndian.Uint32(gnss[off : off+4])
+		out.RawAttrs["vehicle_state"] = int(st)
+		out.RawAttrs["status.acc"] = st&0x01 != 0
+		off += 4
+	}
+	if off+4 <= len(gnss) {
+		al := binary.BigEndian.Uint32(gnss[off : off+4])
+		out.RawAttrs["gnss_alarm"] = int(al)
+		if al != 0 {
+			out.RawAttrs["alarm.gnss"] = true
+		}
 	}
 	return out, plate, true
 }

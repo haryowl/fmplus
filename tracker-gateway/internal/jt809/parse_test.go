@@ -35,6 +35,41 @@ func TestParseVehicleUplink_MinimalGNSS(t *testing.T) {
 	}
 }
 
+func TestParseVehicleUplink_AltitudeState(t *testing.T) {
+	rest := make([]byte, 24+1+6+8+2+2+2+4+4)
+	copy(rest[0:21], []byte("B5555ALT"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 0x0200)
+	off := 24
+	rest[off] = 0
+	off++
+	off += 6
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(106.8*1e6))))
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(-6.2*1e6))))
+	off += 4
+	binary.BigEndian.PutUint16(rest[off:], 100) // speed
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 45) // heading
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], uint16(int16(120))) // altitude
+	off += 2
+	binary.BigEndian.PutUint32(rest[off:], 0x01) // ACC
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], 0x02) // alarm nonzero
+
+	fix, _, ok := parseVehicleUplink(0x1202, rest)
+	if !ok || fix.Altitude == nil || *fix.Altitude != 120 {
+		t.Fatalf("alt=%v ok=%v", fix.Altitude, ok)
+	}
+	if fix.RawAttrs["vehicle_state"] != 1 || fix.RawAttrs["status.acc"] != true {
+		t.Fatalf("%v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["alarm.gnss"] != true {
+		t.Fatalf("alarm %v", fix.RawAttrs)
+	}
+}
+
 func TestParseVehicleUplink_Short(t *testing.T) {
 	_, _, ok := parseVehicleUplink(0x1202, []byte{1, 2, 3})
 	if ok {

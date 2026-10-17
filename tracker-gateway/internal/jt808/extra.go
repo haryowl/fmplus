@@ -44,6 +44,16 @@ func parseAdditionalInfo(body []byte) map[string]any {
 				add[key] = spd
 				add["speed.extra"] = spd
 			}
+		case 0x04: // manual confirm alarm event ID (WORD)
+			if l >= 2 {
+				id := int(binary.BigEndian.Uint16(val[0:2]))
+				add[key] = id
+				flattenManualAlarmID(id, add)
+			} else if l >= 1 {
+				id := int(val[0])
+				add[key] = id
+				flattenManualAlarmID(id, add)
+			}
 		case 0x11: // overspeed extra: loc type + optional region id
 			if l >= 1 {
 				add["overspeed_loc_type"] = int(val[0])
@@ -318,11 +328,31 @@ func decodeSubiaoBody(id byte, val []byte, add map[string]any) {
 	}
 }
 
+// flattenManualAlarmID maps TLV 0x04 event id onto remappable alarm.* (same table as 0x0301).
+func flattenManualAlarmID(id int, add map[string]any) {
+	if add == nil || id == 0 {
+		return
+	}
+	add["manual_alarm_id"] = id
+	ev := safetyFromEventID(id, "jt808")
+	if ev == nil {
+		return
+	}
+	for k, v := range ev.RawAttrs {
+		if strings.HasPrefix(k, "alarm.") {
+			add[k] = v
+		}
+	}
+	if ev.AlarmLevel > 0 {
+		add["alarm_level"] = ev.AlarmLevel
+	}
+}
+
 func isRemappableSafetyKey(k string) bool {
 	switch k {
 	case "alarm_level", "tpms.alarm", "gsm_signal", "gnss_sats",
 		"overspeed_loc_type", "overspeed_region_id", "area_loc_type", "area_id", "area_direction",
-		"mileage", "fuel.level", "speed.extra", "io.status",
+		"mileage", "fuel.level", "speed.extra", "io.status", "manual_alarm_id",
 		"route_id", "route_time_loc_type", "route_time_result", "route_drive_time":
 		return true
 	}

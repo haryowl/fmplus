@@ -113,3 +113,14 @@ func TestPromoteRuptelaScalars(t *testing.T) {
 		t.Fatalf("ble34 %v", raw)
 	}
 }
+
+func TestPromoteRuptelaScalars_EcoSleep(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{"15": 88, "200": 1, "86": 90, "9": 12000})
+	if raw["eco.score"] != 88.0 || raw["sleep.mode"] != 1.0 {
+		t.Fatalf("%v", raw)
+	}
+	if raw["ble.battery"] != 90.0 || raw["voltage.ain1"] != 12.0 {
+		t.Fatalf("ain/ble %v", raw)
+	}
+}
