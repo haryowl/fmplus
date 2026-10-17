@@ -53,6 +53,9 @@ func TestParseMultimediaAndTransparent(t *testing.T) {
 	if tr["transparent_type"] != 0xF0 || tr["transparent_hex"] != "6162" {
 		t.Fatalf("%v", tr)
 	}
+	if tr["transparent_kind"] != "vendor" || tr["transparent_text"] != "ab" {
+		t.Fatalf("kind/text=%v", tr)
+	}
 	wb := make([]byte, 4+5)
 	binary.BigEndian.PutUint32(wb[0:4], 5)
 	copy(wb[4:], "hello")
@@ -76,7 +79,12 @@ func TestHoistTerminalParam_APNAndReport(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x0010, "cmnet", []byte("cmnet"), out)
 	hoistTerminalParam(0x0020, 30, nil, out)
+	hoistTerminalParam(0x0083, nil, []byte("B12345"), out)
+	hoistTerminalParam(0x0055, 80, nil, out)
 	if out["apn.main"] != "cmnet" || out["report.interval"] != 30 {
 		t.Fatalf("%v", out)
+	}
+	if out["vehicle.plate"] != "B12345" || out["speed.max"] != 80 {
+		t.Fatalf("plate/speed=%v", out)
 	}
 }

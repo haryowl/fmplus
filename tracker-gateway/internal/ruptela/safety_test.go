@@ -143,8 +143,8 @@ func TestPromoteRuptelaScalars_DinDout(t *testing.T) {
 
 func TestPromoteRuptelaScalars_IButton(t *testing.T) {
 	raw := map[string]any{}
-	promoteRuptelaScalars(raw, map[string]any{"78": "deadbeef"})
-	if raw["ibutton.id"] != "deadbeef" {
+	promoteRuptelaScalars(raw, map[string]any{"78": "deadbeef", "250": 9.5})
+	if raw["ibutton.id"] != "deadbeef" || raw["trip.distance"] != 9.5 {
 		t.Fatalf("%v", raw)
 	}
 }

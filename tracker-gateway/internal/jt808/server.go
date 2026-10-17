@@ -1103,10 +1103,13 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 		if sess.device != nil && len(body) >= 1 {
 			evID := int(body[0])
 			patch := map[string]any{"event_id": evID, "proto_msg": "0x0301"}
-			_ = st.PatchLastStatus(ctx, sess.device, patch, nil)
 			if ev := safetyFromEventID(evID, protoHint); ev != nil {
+				for k, v := range ev.RawAttrs {
+					patch[k] = v
+				}
 				_ = st.InsertSafetyEvent(ctx, sess.device, *ev)
 			}
+			_ = st.PatchLastStatus(ctx, sess.device, patch, nil)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0302: // question answer
@@ -1314,10 +1317,34 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["report.interval_dormant"] = decoded
 	case 0x0029:
 		out["report.interval_default"] = decoded
+	case 0x0012:
+		out["apn.password"] = string(raw)
+	case 0x0014:
+		out["apn.backup"] = string(raw)
+	case 0x0040:
+		out["phone.monitor"] = string(raw)
+	case 0x0041:
+		out["phone.reset"] = string(raw)
+	case 0x0048:
+		out["phone.sms"] = string(raw)
+	case 0x0050:
+		out["alarm.mask"] = decoded
+	case 0x0051:
+		out["alarm.sms_switch"] = decoded
 	case 0x0055:
 		out["speed.max"] = decoded
 	case 0x0056:
 		out["speed.duration"] = decoded
+	case 0x0080:
+		out["mileage.factor"] = decoded
+	case 0x0081:
+		out["vehicle.province"] = decoded
+	case 0x0082:
+		out["vehicle.city"] = decoded
+	case 0x0083:
+		out["vehicle.plate"] = string(raw)
+	case 0x0084:
+		out["vehicle.plate_color"] = decoded
 	}
 }
 
@@ -2722,13 +2749,38 @@ func parseTransparent(body []byte) map[string]any {
 		out["transparent_hex"] = ""
 		return out
 	}
-	out["transparent_type"] = int(body[0])
+	typ := int(body[0])
+	out["transparent_type"] = typ
+	switch typ {
+	case 0x00:
+		out["transparent_kind"] = "gnss_detail"
+	case 0x0b:
+		out["transparent_kind"] = "road_transport"
+	case 0xf0:
+		out["transparent_kind"] = "vendor"
+	}
 	rest := body[1:]
 	if len(rest) > 64 {
 		rest = rest[:64]
 	}
 	out["transparent_hex"] = fmt.Sprintf("%x", rest)
+	if s := strings.TrimRight(string(rest), "\x00 "); s != "" && isPrintableASCII(s) {
+		out["transparent_text"] = s
+	}
 	return out
+}
+
+func isPrintableASCII(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < 32 || c > 126 {
+			return false
+		}
+	}
+	return true
 }
 
 // parseWaybill stores 0x0701 electronic waybill length + text snippet.
