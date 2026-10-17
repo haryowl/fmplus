@@ -49,3 +49,14 @@ func TestApplyStatusTags_OverspeedTowing(t *testing.T) {
 		t.Fatalf("types=%v", types)
 	}
 }
+
+func TestApplyStatusTags_BatteryJamming(t *testing.T) {
+	raw := map[string]any{}
+	evs := applyStatusTags(map[byte][]byte{0x44: {0x02}, 0x45: {0x01}}, raw)
+	if len(evs) != 2 {
+		t.Fatalf("evs=%+v", evs)
+	}
+	if raw["alarm.battery_low"] != true || raw["alarm.gsm_jamming"] != true {
+		t.Fatalf("%v", raw)
+	}
+}

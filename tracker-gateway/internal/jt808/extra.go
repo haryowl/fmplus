@@ -121,12 +121,20 @@ var jt808AlarmBits = []alarmBit{
 	{1 << 3, "fatigue_early", 1, "alarm.fatigue_early"},
 	{1 << 4, "gnss_antenna", 1, "alarm.gnss_antenna"},
 	{1 << 5, "gnss_antenna_cut", 2, "alarm.gnss_antenna_cut"},
+	{1 << 6, "gnss_short", 1, "alarm.gnss_short"},
 	{1 << 7, "low_power", 1, "alarm.low_power"},
 	{1 << 8, "power_cut", 2, "alarm.power_cut"},
+	{1 << 9, "lcd_fault", 1, "alarm.lcd_fault"},
+	{1 << 10, "tts_fault", 1, "alarm.tts_fault"},
+	{1 << 18, "timeout_parking", 1, "alarm.timeout_parking"},
+	{1 << 19, "area_in_out", 1, "alarm.area_in_out"},
 	{1 << 20, "collision", 2, "alarm.collision"},
 	{1 << 21, "rollover", 2, "alarm.rollover"},
+	{1 << 22, "door_abnormal", 1, "alarm.door_abnormal"},
+	{1 << 27, "illegal_open_door", 2, "alarm.illegal_open_door"},
 	{1 << 28, "illegal_ignition", 2, "alarm.illegal_ignition"},
 	{1 << 29, "illegal_move", 1, "alarm.illegal_move"},
+	{1 << 30, "collision_rollover", 2, "alarm.collision_rollover"},
 }
 
 // flattenAlarmBits writes remappable alarm.* bool keys into dest (fix raw_attrs / safety).

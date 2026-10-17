@@ -54,6 +54,22 @@ func applyStatusTags(tags map[byte][]byte, raw map[string]any) []*store.SafetyEv
 				raw["alarm.towing"] = true
 				add("towing", 2, map[string]any{"alarm.towing": true, key: val})
 			}
+		case 0x44:
+			// Firmware-variant status; expose bits without forcing safety unless SOS-like.
+			raw["status.ext44"] = val
+			if val&0x01 != 0 {
+				raw["alarm.power_ext"] = true
+			}
+			if val&0x02 != 0 {
+				raw["alarm.battery_low"] = true
+				add("battery_low", 1, map[string]any{"alarm.battery_low": true, key: val})
+			}
+		case 0x45:
+			raw["status.ext45"] = val
+			if val&0x01 != 0 {
+				raw["alarm.gsm_jamming"] = true
+				add("jamming", 2, map[string]any{"alarm.gsm_jamming": true, key: val})
+			}
 		}
 	}
 	return events

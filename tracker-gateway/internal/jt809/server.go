@@ -219,6 +219,25 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 		} else {
 			log.Printf("[jt809] alarm 0x%04x plate=%q type=%s (unregistered)", msgID, plate, ev.AlarmType)
 		}
+	case 0x1601: // vehicle photo / media upload notify (experimental — plate + size only)
+		plate := ""
+		if len(rest) >= 21 {
+			plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
+		}
+		device := find809Device(ctx, st, plate, *platformKey, conn.RemoteAddr().String())
+		patch := map[string]any{"proto_msg": "0x1601", "vehicle_plate": plate, "body_len": len(rest)}
+		if len(rest) >= 22 {
+			patch["media_type"] = int(rest[21])
+		}
+		if len(rest) >= 26 {
+			patch["media_size"] = int(binary.BigEndian.Uint32(rest[22:26]))
+		}
+		if device != nil {
+			_ = st.PatchLastStatus(ctx, device, patch, nil)
+			_ = st.TouchSeen(ctx, device)
+		} else {
+			log.Printf("[jt809] 0x1601 plate=%q (unregistered)", plate)
+		}
 	default:
 		log.Printf("[jt809] msg 0x%04x len=%d (experimental — not fully decoded)", msgID, length)
 	}

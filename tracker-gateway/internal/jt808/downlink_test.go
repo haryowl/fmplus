@@ -330,6 +330,26 @@ func TestParseAuth(t *testing.T) {
 	}
 }
 
+func TestWrap8203Body(t *testing.T) {
+	b := wrap8203Body("sos")
+	if binary.BigEndian.Uint32(b) != 1 {
+		t.Fatalf("%x", b)
+	}
+}
+
+func TestWrap8600Body(t *testing.T) {
+	b := wrap8600Body("id=7,lat=-6.2,lon=106.8,r=250")
+	if b[0] != 0 || b[1] != 1 {
+		t.Fatalf("hdr %x", b)
+	}
+	if binary.BigEndian.Uint32(b[2:6]) != 7 {
+		t.Fatalf("id %x", b)
+	}
+	if binary.BigEndian.Uint32(b[16:20]) != 250 {
+		t.Fatalf("r %x", b)
+	}
+}
+
 func TestEncodeDownlink_RequiresPhone(t *testing.T) {
 	ad := Adapter{}
 	_, err := ad.EncodeDownlink(store.Command{PayloadText: "x"}, "")

@@ -453,6 +453,26 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 		// 2019 link detection — empty body.
 		msgID = 0x8204
 		body = nil
+	case "jt808_8203", "alarm_confirm":
+		// Manual confirm alarm — DWORD alarm mask (aliases: sos, overspeed, …).
+		msgID = 0x8203
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8203Body(text)
+	case "jt808_8600", "geofence_set":
+		// Set circular area (minimal single circle) or raw hex body.
+		msgID = 0x8600
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8600Body(text)
 	case "jt808_8601", "geofence_del":
 		// Delete circular area(s): count=0 → all; else DWORD area ids (hex or csv).
 		msgID = 0x8601
@@ -1085,6 +1105,88 @@ func parseRegister(body []byte) map[string]any {
 		}
 	}
 	return out
+}
+
+// wrap8203Body builds 0x8203 manual alarm confirm (DWORD mask).
+func wrap8203Body(text string) []byte {
+	var mask uint32
+	t := strings.TrimSpace(strings.ToLower(text))
+	switch t {
+	case "", "sos":
+		mask = 1 << 0
+	case "overspeed", "speed":
+		mask = 1 << 1
+	case "fatigue":
+		mask = 1 << 2
+	case "power_cut", "power":
+		mask = 1 << 8
+	case "collision":
+		mask = 1 << 20
+	case "all":
+		mask = 0xffffffff
+	default:
+		t = strings.TrimPrefix(t, "0x")
+		n, err := strconv.ParseUint(t, 16, 32)
+		if err != nil {
+			n, err = strconv.ParseUint(t, 10, 32)
+		}
+		if err == nil {
+			mask = uint32(n)
+		} else {
+			mask = 1 // sos default
+		}
+	}
+	body := make([]byte, 4)
+	binary.BigEndian.PutUint32(body, mask)
+	return body
+}
+
+// wrap8600Body builds a minimal 0x8600 single circular area.
+// text: "id=1,lat=-6.2,lon=106.8,r=500" (degrees, radius meters).
+func wrap8600Body(text string) []byte {
+	var id uint32 = 1
+	var lat, lon float64
+	var radius uint32 = 100
+	for _, part := range strings.Split(strings.TrimSpace(text), ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		k, v := strings.ToLower(kv[0]), strings.TrimSpace(kv[1])
+		switch k {
+		case "id":
+			if n, err := strconv.ParseUint(v, 10, 32); err == nil {
+				id = uint32(n)
+			}
+		case "lat":
+			if n, err := strconv.ParseFloat(v, 64); err == nil {
+				lat = n
+			}
+		case "lon", "lng":
+			if n, err := strconv.ParseFloat(v, 64); err == nil {
+				lon = n
+			}
+		case "r", "radius":
+			if n, err := strconv.ParseUint(v, 10, 32); err == nil {
+				radius = uint32(n)
+			}
+		}
+	}
+	// property=0 (update), count=1, then area: id, attr=0, lat, lon, radius
+	body := make([]byte, 2+4+2+4+4+4)
+	body[0] = 0
+	body[1] = 1
+	off := 2
+	binary.BigEndian.PutUint32(body[off:], id)
+	off += 4
+	binary.BigEndian.PutUint16(body[off:], 0) // attribute
+	off += 2
+	binary.BigEndian.PutUint32(body[off:], uint32(int32(lat*1e6)))
+	off += 4
+	binary.BigEndian.PutUint32(body[off:], uint32(int32(lon*1e6)))
+	off += 4
+	binary.BigEndian.PutUint32(body[off:], radius)
+	return body
 }
 
 // wrap8601Body builds 0x8601 delete circular area: 0=all, else count + DWORD ids.

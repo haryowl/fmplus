@@ -125,7 +125,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				flushPending(ctx, conn, st, device.ID)
 			}
 			_ = writeRecordsAck(conn, true)
-		case 2, 105, 107: // config / command responses
+		case 2, 3, 105, 107: // config / ident / command responses
 			device := boundDevice(bound)
 			if device == nil && imei != "" {
 				device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "ruptela")
@@ -139,6 +139,12 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				corr := fmt.Sprintf("%d", cmd)
 				if matched, _ := st.AckSoftMatch(ctx, device.ID, ok, resp); !matched {
 					_ = st.AckCommand(ctx, device.ID, corr, ok, resp)
+				}
+				if cmd == 3 {
+					_ = st.PatchLastStatus(ctx, device, map[string]any{
+						"proto_msg": "ruptela_cmd_3",
+						"ident":     resp,
+					}, nil)
 				}
 				_ = st.TouchSeen(ctx, device)
 				flushPending(ctx, conn, st, device.ID)
@@ -159,7 +165,7 @@ func dissectPacket(data []byte) (cmd byte, imei string, rest []byte) {
 	if len(data) >= 9 {
 		maybe := data[8]
 		switch maybe {
-		case 1, 7, 2, 68, 105, 107:
+		case 1, 7, 2, 3, 68, 105, 107:
 			imeiNum := binary.BigEndian.Uint64(data[0:8])
 			return maybe, strconv.FormatUint(imeiNum, 10), data[9:]
 		}

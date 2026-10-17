@@ -26,9 +26,14 @@ var knownEventIO = map[int]knownEvent{
 	254: {"trip", 1, "alarm.trip"},
 	255: {"overspeed", 1, "alarm.overspeed"},
 	1:   {"sos", 2, "alarm.sos"},       // DIN1 / SOS on many configs
+	2:   {"door", 1, "alarm.door"},     // DIN2 / door on many configs
+	3:   {"door", 1, "alarm.door"},
 	9:   {"sos", 2, "alarm.sos"},       // alternate SOS event id
+	14:  {"door", 1, "alarm.door"},
+	15:  {"door", 1, "alarm.door"},
 	66:  {"ext_voltage", 1, "alarm.ext_voltage"},
 	239: {"ignition", 1, "alarm.ignition"}, // event-mode ignition change
+	243: {"green_driving", 1, "alarm.green_driving_duration"},
 }
 
 // flattenEventAlarm writes remappable alarm.* onto fix raw_attrs when event_io is known.

@@ -13,12 +13,24 @@ func TestEncodeDownlink_textFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// "GETVER\r\n" = 8 bytes payload
+	if len(out) != 3+8+2 {
+		t.Fatalf("len=%d (expected CRLF append) frame=%x", len(out), out)
+	}
+}
+
+func TestEncodeDownlink_textFrame_PreservesCRLF(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{PayloadText: "GETVER\r\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(out) < 5 || out[0] != 0x01 {
 		t.Fatalf("frame=%x", out)
 	}
 	plen := binary.LittleEndian.Uint16(out[1:3])
-	if int(plen) != len("GETVER") {
-		t.Fatalf("len=%d", plen)
+	if int(plen) != len("GETVER\r\n") {
+		t.Fatalf("len=%d (should not double-append CRLF)", plen)
 	}
 	wantCRC := crc16Modbus(out[:len(out)-2])
 	gotCRC := binary.LittleEndian.Uint16(out[len(out)-2:])

@@ -213,6 +213,16 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
   { value: "teltonika_codec12", label: "Teltonika Codec12", protocols: ["teltonika"] },
   { value: "teltonika_codec14", label: "Teltonika Codec14 (IMEI)", protocols: ["teltonika"] },
   {
+    value: "jt808_8203",
+    label: "JT808 alarm confirm (0x8203)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8600",
+    label: "JT808 set circle area (0x8600)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
     value: "jt808_8601",
     label: "JT808 delete circle area (0x8601)",
     protocols: ["jt808", "subiao"],
@@ -267,6 +277,10 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
     case "jt808_8702":
     case "jt808_8204":
       return { text: "(empty body)", hex: "" };
+    case "jt808_8203":
+      return { text: "sos / overspeed / all", hex: "DWORD alarm mask" };
+    case "jt808_8600":
+      return { text: "id=1,lat=-6.2,lon=106.8,r=500", hex: "full 0x8600 body" };
     case "jt808_8601":
       return { text: "all or 1,2,3", hex: "count + DWORD ids" };
     case "jt808_8608":

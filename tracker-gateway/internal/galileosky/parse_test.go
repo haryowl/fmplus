@@ -136,7 +136,7 @@ func TestEncodeDownlink_Frame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(frame) != 3+6+2 {
+	if len(frame) != 3+8+2 { // GETVER\r\n
 		t.Fatalf("len=%d frame=%x", len(frame), frame)
 	}
 }
