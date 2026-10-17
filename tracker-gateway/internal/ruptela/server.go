@@ -525,6 +525,9 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["9"]; ok {
 		raw["voltage.ain1"] = asFloat64(v) / 1000.0
 	}
+	if v, ok := io["10"]; ok {
+		raw["voltage.ain2"] = asFloat64(v) / 1000.0
+	}
 	if v, ok := io["15"]; ok {
 		raw["eco.score"] = asFloat64(v)
 	}

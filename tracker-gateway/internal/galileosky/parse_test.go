@@ -107,6 +107,9 @@ func TestAltitudeHDOPVoltage(t *testing.T) {
 	if fix.RawAttrs["hdop"] != 2.5 || fix.RawAttrs["gnss.hdop"] != 2.5 {
 		t.Fatalf("hdop=%v", fix.RawAttrs)
 	}
+	if fix.RawAttrs["gnss.sats"] != 7 || fix.RawAttrs["gnss.fix"] != true {
+		t.Fatalf("sats=%v", fix.RawAttrs)
+	}
 	if fix.RawAttrs["voltage.ext"] != 12.4 {
 		t.Fatalf("volt=%v", fix.RawAttrs["voltage.ext"])
 	}

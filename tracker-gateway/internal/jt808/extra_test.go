@@ -22,7 +22,7 @@ func TestParseAdditionalInfo_AreaAndSignal(t *testing.T) {
 	if add["status.acc"] != true {
 		t.Fatalf("acc: %v", add)
 	}
-	if add["gsm_signal"] != 20 || add["gnss_sats"] != 12 {
+	if add["gsm_signal"] != 20 || add["gnss_sats"] != 12 || add["gnss.sats"] != 12 {
 		t.Fatalf("signal/sats: %v", add)
 	}
 	dest := map[string]any{}

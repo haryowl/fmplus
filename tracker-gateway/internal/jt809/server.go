@@ -129,15 +129,25 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 	}
 	switch msgID {
 	case 0x1001: // login
-		if len(rest) >= 4 {
+		login := parsePlatformLogin1001(rest)
+		if k, ok := login["platform_key"].(string); ok && k != "" {
+			*platformKey = k
+		} else if len(rest) >= 4 {
 			*platformKey = fmt.Sprintf("809-%d", binary.BigEndian.Uint32(rest[0:4]))
+		}
+		meta := map[string]string{"role": "platform"}
+		if ip, ok := login["downlink_ip"].(string); ok {
+			meta["downlink_ip"] = ip
+		}
+		if p, ok := login["downlink_port"].(int); ok {
+			meta["downlink_port"] = fmt.Sprintf("%d", p)
 		}
 		sess := &protocol.ConnSession{
 			DeviceID: "",
 			IMEI:     *platformKey,
 			Protocol: "jt809",
 			Conn:     conn,
-			Meta:     map[string]string{"role": "platform"},
+			Meta:     meta,
 		}
 		if sessions != nil {
 			if *bound != nil {

@@ -246,7 +246,15 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		RecordedAt:     recorded,
 		Satellites:     &sats,
 		SourceProtocol: "galileosky",
-		RawAttrs:       map[string]any{},
+		RawAttrs: map[string]any{
+			"gnss.sats": sats,
+			"gnss_sats": sats,
+		},
+	}
+	if validNibble == 2 {
+		fix.RawAttrs["gnss.lbs"] = true
+	} else {
+		fix.RawAttrs["gnss.fix"] = true
 	}
 	if sc, ok := tags[0x33]; ok && len(sc) >= 4 {
 		spd := float64(binary.LittleEndian.Uint16(sc[0:2])) / 10.0

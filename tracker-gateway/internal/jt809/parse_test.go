@@ -212,6 +212,24 @@ func TestParseMediaAttach1210_File(t *testing.T) {
 	}
 }
 
+func TestParsePlatformLogin1001(t *testing.T) {
+	rest := make([]byte, 46)
+	binary.BigEndian.PutUint32(rest[0:4], 12345)
+	copy(rest[4:12], []byte("secret"))
+	copy(rest[12:44], []byte("10.0.0.5"))
+	binary.BigEndian.PutUint16(rest[44:46], 8900)
+	m := parsePlatformLogin1001(rest)
+	if m["platform_user_id"] != 12345 || m["platform_key"] != "809-12345" {
+		t.Fatalf("%v", m)
+	}
+	if m["downlink_ip"] != "10.0.0.5" || m["downlink_port"] != 8900 {
+		t.Fatalf("%v", m)
+	}
+	if m["platform_password_set"] != true {
+		t.Fatalf("pass=%v", m)
+	}
+}
+
 func TestParsePhotoNotify1209(t *testing.T) {
 	rest := make([]byte, 27+8)
 	copy(rest[0:21], []byte("B0001PIC"))

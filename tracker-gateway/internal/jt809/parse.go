@@ -186,6 +186,33 @@ func tryWarnGNSS(rest []byte, off int) (lat, lon float64, ok bool) {
 	return lat, lon, true
 }
 
+// parsePlatformLogin1001 extracts user id / password / downlink endpoint from 0x1001 (partial).
+func parsePlatformLogin1001(rest []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x1001", "body_len": len(rest), "platform_login": true}
+	if len(rest) >= 4 {
+		uid := binary.BigEndian.Uint32(rest[0:4])
+		out["platform_user_id"] = int(uid)
+		out["platform_key"] = fmt.Sprintf("809-%d", uid)
+	}
+	if len(rest) >= 12 {
+		pass := strings.TrimRight(string(rest[4:12]), "\x00 ")
+		if pass != "" {
+			out["platform_password_set"] = true
+			out["platform_password_len"] = len(pass)
+		}
+	}
+	if len(rest) >= 44 {
+		ip := strings.TrimRight(string(rest[12:44]), "\x00 ")
+		if ip != "" {
+			out["downlink_ip"] = ip
+		}
+	}
+	if len(rest) >= 46 {
+		out["downlink_port"] = int(binary.BigEndian.Uint16(rest[44:46]))
+	}
+	return out
+}
+
 // parsePhotoNotify1209 extracts plate/color/lens/size/file from 0x1209 photo notify.
 func parsePhotoNotify1209(rest []byte) (plate string, patch map[string]any, ok bool) {
 	patch = map[string]any{

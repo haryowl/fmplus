@@ -210,7 +210,9 @@ func parseAdditionalInfo(body []byte) map[string]any {
 			}
 		case 0x31: // GNSS satellite count
 			if l >= 1 {
-				add["gnss_sats"] = int(val[0])
+				n := int(val[0])
+				add["gnss_sats"] = n
+				add["gnss.sats"] = n
 			}
 		case 0x14: // video-related alarm dword (JT/T 808-2019 / 1078 path)
 			if l >= 4 {
@@ -488,7 +490,7 @@ func hoistLocationStatusBits(status uint32, raw map[string]any) {
 
 func isRemappableSafetyKey(k string) bool {
 	switch k {
-	case "alarm_level", "tpms.alarm", "gsm_signal", "gnss_sats",
+	case "alarm_level", "tpms.alarm", "gsm_signal", "gnss_sats", "gnss.sats",
 		"overspeed_loc_type", "overspeed_region_id", "area_loc_type", "area_id", "area_direction",
 		"mileage", "fuel.level", "speed.extra", "speed.pulse", "io.status", "io.status32", "manual_alarm_id",
 		"oil.quantity", "temp.cargo", "analog.ad", "analog.ad2",
@@ -502,7 +504,8 @@ func isRemappableSafetyKey(k string) bool {
 		strings.HasPrefix(k, "alarm.") ||
 		strings.HasPrefix(k, "status.") ||
 		strings.HasPrefix(k, "video.") ||
-		strings.HasPrefix(k, "driver.")
+		strings.HasPrefix(k, "driver.") ||
+		strings.HasPrefix(k, "gnss.")
 }
 
 // FlattenAlarmBits exports location/GNSS alarm dword remaps for other adapters (e.g. JT809).

@@ -155,10 +155,13 @@ func TestExtractIO8E_NXScalarAndASCII(t *testing.T) {
 
 func TestPromoteTeltonikaScalars(t *testing.T) {
 	raw := map[string]any{}
-	io := map[string]any{"66": 12000, "67": 3800, "21": 4}
+	io := map[string]any{"66": 12000, "67": 3800, "21": 4, "10": 2500}
 	promoteTeltonikaScalars(raw, io)
 	if raw["voltage.ext"] != 12.0 || raw["voltage.batt"] != 3.8 || raw["gsm.signal"] != 4.0 {
 		t.Fatalf("%v", raw)
+	}
+	if raw["voltage.ain2"] != 2.5 {
+		t.Fatalf("ain2=%v", raw)
 	}
 }
 
