@@ -101,6 +101,18 @@ func TestParseAdditionalInfo_ManualAlarmID(t *testing.T) {
 	if dest["manual_alarm_id"] != 1 || dest["alarm.sos"] != true {
 		t.Fatalf("hoist=%v", dest)
 	}
+	ev := safetyFromAdditional(add, store.Fix{Lat: 1, Lon: 2, RecordedAt: time.Now().UTC()}, "jt808")
+	if ev == nil || ev.AlarmType != "sos" {
+		t.Fatalf("safety=%+v", ev)
+	}
+}
+
+func TestSafetyFromLocationTLVAlarms_Fence(t *testing.T) {
+	add := map[string]any{"alarm.fence_in": true, "area_id": 9}
+	ev := safetyFromLocationTLVAlarms(add, store.Fix{Lat: -6, Lon: 106, RecordedAt: time.Now().UTC()}, "jt808")
+	if ev == nil || ev.AlarmType != "fence_in" || ev.RawAttrs["area_id"] != 9 {
+		t.Fatalf("%+v", ev)
+	}
 }
 
 func TestParseAdditionalInfo_RouteTimeAndIO(t *testing.T) {

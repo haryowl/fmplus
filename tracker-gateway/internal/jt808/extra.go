@@ -555,7 +555,54 @@ func safetyFromAdditional(add map[string]any, fix store.Fix, protocol string) *s
 			SourceProtocol: protocol,
 		}
 	}
-	return safetyFromVideoAdditional(add, fix, protocol)
+	if ev := safetyFromVideoAdditional(add, fix, protocol); ev != nil {
+		return ev
+	}
+	return safetyFromLocationTLVAlarms(add, fix, protocol)
+}
+
+func safetyFromLocationTLVAlarms(add map[string]any, fix store.Fix, protocol string) *store.SafetyEvent {
+	if add == nil {
+		return nil
+	}
+	pairs := []struct {
+		key   string
+		name  string
+		level int
+	}{
+		{"alarm.sos", "sos", 2},
+		{"alarm.overspeed", "overspeed", 1},
+		{"alarm.fence_in", "fence_in", 1},
+		{"alarm.fence_out", "fence_out", 1},
+		{"alarm.route_time_short", "route_time_short", 1},
+		{"alarm.route_time_long", "route_time_long", 1},
+	}
+	for _, p := range pairs {
+		if add[p.key] != true {
+			continue
+		}
+		lat, lon := fix.Lat, fix.Lon
+		raw := map[string]any{p.key: true, "alarm_level": p.level}
+		if id, ok := add["manual_alarm_id"]; ok {
+			raw["manual_alarm_id"] = id
+		}
+		if id, ok := add["area_id"]; ok {
+			raw["area_id"] = id
+		}
+		if id, ok := add["route_id"]; ok {
+			raw["route_id"] = id
+		}
+		return &store.SafetyEvent{
+			RecordedAt:     fix.RecordedAt,
+			AlarmType:      p.name,
+			AlarmLevel:     p.level,
+			Lat:            &lat,
+			Lon:            &lon,
+			RawAttrs:       raw,
+			SourceProtocol: protocol,
+		}
+	}
+	return nil
 }
 
 func safetyFromVideoAdditional(add map[string]any, fix store.Fix, protocol string) *store.SafetyEvent {
