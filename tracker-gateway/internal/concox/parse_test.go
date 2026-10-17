@@ -92,6 +92,21 @@ func TestParseGPS_TooShort(t *testing.T) {
 	}
 }
 
+func TestParseGPS_Alarm16WithPrefix(t *testing.T) {
+	// terminal-info prefix (4 bytes) then golden GPS body
+	prefixed := append([]byte{0x01, 0x02, 0x03, 0x04}, mustHex(t, goldenGPSInfoHex)...)
+	fix, ok := parseGPS(prefixed, 0x16)
+	if !ok {
+		t.Fatal("expected GPS from offset scan")
+	}
+	if math.Abs(fix.Lon-106.8) > 1e-4 {
+		t.Fatalf("lon=%v", fix.Lon)
+	}
+	if fix.RawAttrs["gps_offset"] != 4 {
+		t.Fatalf("offset=%v", fix.RawAttrs["gps_offset"])
+	}
+}
+
 func TestParseGPS_Proto22(t *testing.T) {
 	// Same GPS body layout as 0x12 for the fields we decode.
 	info := mustHex(t, goldenGPSInfoHex)

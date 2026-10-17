@@ -41,16 +41,27 @@ func (Adapter) EncodeDownlinkSeq(cmd store.Command, phone string, seq *uint16, v
 	return out, nil
 }
 
-// DownlinkCorrID extracts the message serial from an encoded JT808 frame.
+// DownlinkCorrID extracts the message serial from the first encoded JT808 frame
+// (important when outbound subpackages concatenate multiple 0x7e frames).
 func DownlinkCorrID(framed []byte) string {
-	raw := unescape(framed)
-	if len(raw) < 13 {
-		return ""
+	start := -1
+	for i, b := range framed {
+		if b != 0x7e {
+			continue
+		}
+		if start < 0 {
+			start = i
+			continue
+		}
+		raw := unescape(framed[start : i+1])
+		if len(raw) < 13 {
+			return ""
+		}
+		h, ok := parseMessageHeader(raw[:len(raw)-1])
+		if !ok {
+			return ""
+		}
+		return fmt.Sprintf("%d", h.Seq)
 	}
-	msg := raw[:len(raw)-1]
-	h, ok := parseMessageHeader(msg)
-	if !ok {
-		return ""
-	}
-	return fmt.Sprintf("%d", h.Seq)
+	return ""
 }

@@ -120,7 +120,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
 				_ = writeReply(conn, 0x18, serial, nil)
-			case 0x15: // string / command response from terminal
+			case 0x15, 0x21: // string / online command response from terminal
 				if device != nil {
 					resp := string(info)
 					if len(info) > 1 {
@@ -130,11 +130,12 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 							resp = string(info[1 : 1+n])
 						}
 					}
-					_ = st.AckLatestSent(ctx, device.ID, true, resp)
+					// Prefer corr by uplink serial when device echoes server serial; else latest.
+					_ = st.AckCommand(ctx, device.ID, fmt.Sprintf("%d", serial), true, resp)
 					_ = st.TouchSeen(ctx, device)
 					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
-				_ = writeReply(conn, 0x15, serial, nil)
+				_ = writeReply(conn, proto, serial, nil)
 			case 0x8a: // time calibration request (GT06 family)
 				if device != nil {
 					_ = st.TouchSeen(ctx, device)
@@ -333,16 +334,36 @@ func bcdIMEI(info []byte) string {
 }
 
 func parseGPS(info []byte, proto byte) (store.Fix, bool) {
-	// 0x12: datetime(6) + gpsLen(1) + qty(1) + lat(4) + lon(4) + speed(1) + course(2) + …
-	// 0x22 similar with slightly different MCC fields
-	off := 0
-	if proto == 0x16 && len(info) > 6 {
-		// alarm packets often prepend terminal info; try to find datetime-like GPS block
-		off = 0
+	// 0x12/0x22: datetime(6)+gpsLen+qty+lat+lon+speed+course…
+	// 0x16 alarm often prepends terminal-info/LBS — scan for a plausible GPS block.
+	if proto == 0x16 {
+		for off := 0; off+18 <= len(info); off++ {
+			if !looksLikeDateTime(info[off : off+6]) {
+				continue
+			}
+			if fix, ok := parseGPSAt(info, off, proto); ok {
+				return fix, true
+			}
+		}
+		return store.Fix{}, false
 	}
+	return parseGPSAt(info, 0, proto)
+}
+
+func looksLikeDateTime(b []byte) bool {
+	if len(b) < 6 {
+		return false
+	}
+	// GT06: year = year-2000 (0–99), month 1–12, day 1–31, h/m/s clock range
+	m, d, h, mi, s := int(b[1]), int(b[2]), int(b[3]), int(b[4]), int(b[5])
+	return m >= 1 && m <= 12 && d >= 1 && d <= 31 && h <= 23 && mi <= 59 && s <= 59
+}
+
+func parseGPSAt(info []byte, off int, proto byte) (store.Fix, bool) {
 	if len(info) < off+18 {
 		return store.Fix{}, false
 	}
+	start := off
 	ts := parseDateTime(info[off : off+6])
 	off += 6
 	if off >= len(info) {
@@ -366,18 +387,18 @@ func parseGPS(info []byte, proto byte) (store.Fix, bool) {
 	courseStatus := binary.BigEndian.Uint16(info[off : off+2])
 	lat := float64(latRaw) / 1800000.0
 	lon := float64(lonRaw) / 1800000.0
-	if courseStatus&0x0400 == 0 { // south bit clear means south in some docs — Concox: bit 2 of course byte
-		// Course/status: bit10 = lat hemisphere (1=north), bit11 = lon (1=west) — GT06 variant
-	}
-	// GT06: bit 2 of high course byte: 1 = north, 0 = south; bit 3: 1 = west, 0 = east
+	// GT06: bit10 = north, bit11 = west
 	if courseStatus&0x0400 == 0 {
 		lat = -math.Abs(lat)
 	}
 	if courseStatus&0x0800 != 0 {
 		lon = -math.Abs(lon)
 	}
+	// Reject clearly invalid coordinates (bad offset guess).
+	if math.Abs(lat) > 90 || math.Abs(lon) > 180 || (latRaw == 0 && lonRaw == 0) {
+		return store.Fix{}, false
+	}
 	hdg := float64(courseStatus & 0x03FF)
-	// Course/status high bits also carry ACC on many GT06 clones (bit 15 / 0x8000).
 	acc := courseStatus&0x8000 != 0
 	status := map[string]any{
 		"acc":   acc,
@@ -392,7 +413,10 @@ func parseGPS(info []byte, proto byte) (store.Fix, bool) {
 		"status.north":  status["north"],
 		"status.west":   status["west"],
 	}
-	// Remaining bytes often include MCC/MNC/LAC/Cell — stash hex for Device Manager.
+	if start > 0 {
+		raw["gps_offset"] = start
+		raw["prefix_hex"] = fmt.Sprintf("%x", info[:start])
+	}
 	if rem := off + 2; rem < len(info) {
 		raw["tail_hex"] = fmt.Sprintf("%x", info[rem:])
 		if rem+2 <= len(info) {

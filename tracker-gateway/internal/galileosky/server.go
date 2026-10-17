@@ -64,6 +64,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			continue
 		}
 		lenRaw := binary.LittleEndian.Uint16(hdr[1:3])
+		archive := lenRaw&0x8000 != 0
 		tagLen := int(lenRaw & 0x7fff)
 		if tagLen < 1 || tagLen > 1000 {
 			return
@@ -109,6 +110,9 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			}
 			tagRaw := tagsToRaw(tags)
 			fix.RawAttrs["tags"] = tagRaw
+			if archive {
+				fix.RawAttrs["archive"] = true
+			}
 			for k, v := range tagRaw {
 				fix.RawAttrs["tag."+k] = v
 			}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
@@ -225,7 +226,11 @@ func tryFlushCommands(ctx context.Context, conn net.Conn, st *store.Store, sessi
 		if _, err := conn.Write(payload); err != nil {
 			return
 		}
-		_ = st.MarkCommandSentCorr(ctx, cmd.ID, fmt.Sprintf("%d", sess.seq))
+		corr := DownlinkCorrID(payload)
+		if corr == "" {
+			corr = fmt.Sprintf("%d", sess.seq)
+		}
+		_ = st.MarkCommandSentCorr(ctx, cmd.ID, corr)
 		if sess.bound != nil && sess.bound.Meta != nil {
 			sess.bound.Meta["seq"] = fmt.Sprintf("%d", sess.seq)
 			if sess.version2019 {
@@ -309,16 +314,41 @@ func buildDownlinkFrame(phone string, seq *uint16, msgID uint16, body []byte) []
 	return buildDownlinkFrameVer(phone, seq, msgID, body, false)
 }
 
+const jt808MaxBody = 1023
+
 func buildDownlinkFrameVer(phone string, seq *uint16, msgID uint16, body []byte, v2019 bool) []byte {
-	var n uint16 = 1
-	if seq != nil {
-		*seq++
-		n = *seq
+	if len(body) <= jt808MaxBody {
+		var n uint16 = 1
+		if seq != nil {
+			*seq++
+			n = *seq
+		}
+		header := packJT808Header(msgID, body, phone, n, v2019)
+		msg := append(header, body...)
+		msg = append(msg, bcc(msg))
+		return escape(msg)
 	}
-	header := packJT808Header(msgID, body, phone, n, v2019)
-	msg := append(header, body...)
-	msg = append(msg, bcc(msg))
-	return escape(msg)
+	// Outbound subpackages: first fragment's seq is the command corr_id.
+	total := (len(body) + jt808MaxBody - 1) / jt808MaxBody
+	out := make([]byte, 0, len(body)+total*24)
+	for i := 0; i < total; i++ {
+		start := i * jt808MaxBody
+		end := start + jt808MaxBody
+		if end > len(body) {
+			end = len(body)
+		}
+		frag := body[start:end]
+		var n uint16 = 1
+		if seq != nil {
+			*seq++
+			n = *seq
+		}
+		header := packJT808HeaderSub(msgID, frag, phone, n, v2019, total, i+1)
+		msg := append(header, frag...)
+		msg = append(msg, bcc(msg))
+		out = append(out, escape(msg)...)
+	}
+	return out
 }
 
 func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry, sess *session, frame []byte) error {
@@ -394,6 +424,34 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			_ = st.TouchSeen(ctx, sess.device)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0107: // query terminal attributes response
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, parseTerminalAttrs(body), nil)
+			_ = st.AckLatestSent(ctx, sess.device.ID, true,
+				fmt.Sprintf("jt808_0107 len=%d", len(body)))
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0201: // location query response (same body as 0x0200 after optional reply-seq)
+		loc := body
+		if len(body) >= 30 {
+			// some firmwares prepend response seq (2)
+			loc = body[2:]
+		}
+		ingestLocation(ctx, conn, st, sessions, sess, loc, protoHint)
+		if sess.device != nil {
+			_ = st.AckLatestSent(ctx, sess.device.ID, true, "jt808_0201")
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0301: // event report
+		if sess.device != nil && len(body) >= 1 {
+			evID := int(body[0])
+			patch := map[string]any{"event_id": evID, "proto_msg": "0x0301"}
+			_ = st.PatchLastStatus(ctx, sess.device, patch, nil)
+			if ev := safetyFromEventID(evID, protoHint); ev != nil {
+				_ = st.InsertSafetyEvent(ctx, sess.device, *ev)
+			}
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0704: // batch location
 		if len(body) >= 3 {
 			count := int(binary.BigEndian.Uint16(body[0:2]))
@@ -414,6 +472,54 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	default:
 		return replyGeneral(conn, sess, msgID, seq, 0)
+	}
+}
+
+// parseTerminalAttrs extracts remappable keys from 0x0107 (best-effort layout).
+func parseTerminalAttrs(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0107", "attrs_hex": fmt.Sprintf("%x", body)}
+	if len(body) < 1 {
+		return out
+	}
+	out["terminal_type"] = int(body[0])
+	off := 1
+	if len(body) >= off+5 {
+		out["manufacturer"] = strings.TrimRight(string(body[off:off+5]), "\x00 ")
+		off += 5
+	}
+	if len(body) >= off+20 {
+		out["terminal_model"] = strings.TrimRight(string(body[off:off+20]), "\x00 ")
+		off += 20
+	}
+	if len(body) >= off+7 {
+		out["terminal_id"] = strings.TrimRight(string(body[off:off+7]), "\x00 ")
+		off += 7
+	}
+	if len(body) >= off+10 {
+		out["iccid"] = bcdPhone(body[off : off+10])
+	}
+	return out
+}
+
+// safetyFromEventID maps common JT808 0x0301 event ids to safety (partial set).
+func safetyFromEventID(evID int, protocol string) *store.SafetyEvent {
+	name := ""
+	level := 1
+	switch evID {
+	case 0: // reserved / custom
+		return nil
+	case 1:
+		name, level = "sos", 2
+	case 2:
+		name, level = "speeding", 1
+	case 3:
+		name, level = "fatigue", 2
+	default:
+		name = fmt.Sprintf("event_%d", evID)
+	}
+	raw := map[string]any{"event_id": evID, "alarm." + name: true}
+	return &store.SafetyEvent{
+		AlarmType: name, AlarmLevel: level, RawAttrs: raw, SourceProtocol: protocol,
 	}
 }
 
@@ -444,15 +550,25 @@ func reply(conn net.Conn, sess *session, msgID uint16, body []byte) error {
 	return err
 }
 
-// packJT808Header builds 2011 (12B) or 2019 (17B) header without subpackage.
+// packJT808Header builds 2011/2019 header; optional subpackage (total/index 1-based).
 func packJT808Header(msgID uint16, body []byte, phone string, seq uint16, v2019 bool) []byte {
+	return packJT808HeaderSub(msgID, body, phone, seq, v2019, 0, 0)
+}
+
+func packJT808HeaderSub(msgID uint16, body []byte, phone string, seq uint16, v2019 bool, total, index int) []byte {
 	props := uint16(len(body) & 0x3ff)
 	if v2019 {
 		props |= 0x4000
-		header := make([]byte, 17)
+	}
+	if total > 1 && index >= 1 {
+		props |= 0x2000
+	}
+	var header []byte
+	if v2019 {
+		header = make([]byte, 17)
 		binary.BigEndian.PutUint16(header[0:2], msgID)
 		binary.BigEndian.PutUint16(header[2:4], props)
-		header[4] = 1 // protocol version
+		header[4] = 1
 		digits := phone
 		for len(digits) < 20 {
 			digits = "0" + digits
@@ -466,24 +582,30 @@ func packJT808Header(msgID uint16, body []byte, phone string, seq uint16, v2019 
 			header[5+i] = (hi << 4) | lo
 		}
 		binary.BigEndian.PutUint16(header[15:17], seq)
-		return header
+	} else {
+		header = make([]byte, 12)
+		binary.BigEndian.PutUint16(header[0:2], msgID)
+		binary.BigEndian.PutUint16(header[2:4], props)
+		digits := phone
+		for len(digits) < 12 {
+			digits = "0" + digits
+		}
+		if len(digits) > 12 {
+			digits = digits[len(digits)-12:]
+		}
+		for i := 0; i < 6; i++ {
+			hi := digits[i*2] - '0'
+			lo := digits[i*2+1] - '0'
+			header[4+i] = (hi << 4) | lo
+		}
+		binary.BigEndian.PutUint16(header[10:12], seq)
 	}
-	header := make([]byte, 12)
-	binary.BigEndian.PutUint16(header[0:2], msgID)
-	binary.BigEndian.PutUint16(header[2:4], props)
-	digits := phone
-	for len(digits) < 12 {
-		digits = "0" + digits
+	if total > 1 && index >= 1 {
+		pkg := make([]byte, 4)
+		binary.BigEndian.PutUint16(pkg[0:2], uint16(total))
+		binary.BigEndian.PutUint16(pkg[2:4], uint16(index))
+		header = append(header, pkg...)
 	}
-	if len(digits) > 12 {
-		digits = digits[len(digits)-12:]
-	}
-	for i := 0; i < 6; i++ {
-		hi := digits[i*2] - '0'
-		lo := digits[i*2+1] - '0'
-		header[4+i] = (hi << 4) | lo
-	}
-	binary.BigEndian.PutUint16(header[10:12], seq)
 	return header
 }
 

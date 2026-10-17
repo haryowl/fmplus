@@ -8,11 +8,11 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 |---------|----------|---------|--------|--------|----------|-------|
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat + alarm safety | — | nested attrs flatten; `alarm.*` → safety |
 | Teltonika Codec 8/8E | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | event IO → safety for known alarms |
-| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/batch/subpkg/2019 | 0x8300/8103/8500 | bit13+2019 header; ack corr by seq; alarm/Su Biao → safety |
+| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/batch/subpkg/2019/0107/0301 | 0x8300/8103/8500 | outbound subpkg; ack corr; alarm/Su Biao → safety |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
 | JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/heartbeat | — | platform link only |
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling | — | A/V hooks only |
-| Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/0x8a/0x94 | 0x80 GPRS | heartbeat patches ACC; 0x8a UTC calibrate; 0x94 info patch |
+| Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/0x8a/0x94/0x21 | 0x80 GPRS | 0x16 GPS offset scan; 0x15/0x21 ack by serial |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records | cmd 108 SMS | CRC-CCITT Kermit; ACK cmd 100 (`64 01`) |
 | Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + CRC16 Modbus | 0x01 + CRC | ack `0x02`+CRC; ignition via tag `0x46` |
 
