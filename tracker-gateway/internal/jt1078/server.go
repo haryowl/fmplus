@@ -3,6 +3,7 @@ package jt1078
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"log"
 	"net"
 	"time"
@@ -35,19 +36,24 @@ func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol
 				continue
 			}
 		}
-		go handleConn(ctx, conn, st)
+		go handleConn(ctx, conn, st, sessions)
 	}
 }
 
-func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
+func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry) {
 	metrics.ConnOpen()
+	var bound *protocol.ConnSession
 	defer func() {
 		metrics.ConnClose()
+		if sessions != nil && bound != nil {
+			sessions.Unbind(bound)
+		}
 		_ = conn.Close()
 	}()
 	_ = st
 	buf := make([]byte, 0, 4096)
 	tmp := make([]byte, 2048)
+	channels := map[byte]int{}
 	for {
 		_ = conn.SetDeadline(time.Now().Add(5 * time.Minute))
 		n, err := conn.Read(tmp)
@@ -62,10 +68,30 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 				dataType := buf[4]
 				frameLen := int(binary.BigEndian.Uint16(buf[6:8]))
 				total := 16 + frameLen
+				if frameLen < 0 || total > 2*1024*1024 {
+					buf = buf[1:]
+					continue
+				}
 				if len(buf) < total {
 					break
 				}
-				log.Printf("[jt1078] channel=%d type=0x%02x len=%d (signaling hook)", channel, dataType, frameLen)
+				channels[channel]++
+				if sessions != nil && bound == nil {
+					bound = &protocol.ConnSession{
+						IMEI:     fmt.Sprintf("1078-ch%d", channel),
+						Protocol: "jt1078",
+						Conn:     conn,
+						Meta: map[string]string{
+							"channel": fmt.Sprintf("%d", channel),
+							"role":    "av-signaling",
+						},
+					}
+					sessions.Bind(bound)
+				}
+				if channels[channel] <= 3 || channels[channel]%50 == 0 {
+					log.Printf("[jt1078] channel=%d type=0x%02x len=%d frames=%d (signaling hook)",
+						channel, dataType, frameLen, channels[channel])
+				}
 				buf = buf[total:]
 				continue
 			}

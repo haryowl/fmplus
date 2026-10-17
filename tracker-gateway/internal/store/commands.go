@@ -187,6 +187,18 @@ func (s *Store) InsertSafetyEvent(ctx context.Context, device *Device, ev Safety
 	if ev.SourceProtocol == "" {
 		ev.SourceProtocol = device.Protocol
 	}
+	// Dedupe bursty uplinks: same device + alarm_type within 30s.
+	var recent int
+	_ = s.pool.QueryRow(ctx, `
+		SELECT 1 FROM tracker_safety_events
+		WHERE device_id = $1::uuid AND alarm_type = $2
+		  AND recorded_at > $3::timestamptz - interval '30 seconds'
+		LIMIT 1`,
+		device.ID, ev.AlarmType, ev.RecordedAt,
+	).Scan(&recent)
+	if recent == 1 {
+		return nil
+	}
 	raw, _ := json.Marshal(ev.RawAttrs)
 	mapped, _ := json.Marshal(ev.MappedAttrs)
 	_, err := s.pool.Exec(ctx, `

@@ -161,6 +161,14 @@ type TrackerParamDef = {
   valueType: string;
 };
 
+type TrackerProtocolParam = {
+  protocol: string;
+  vendorKey: string;
+  label: string;
+  valueType: string;
+  description?: string;
+};
+
 type TrackerMapRule = {
   id: string;
   vendorKey: string;
@@ -436,6 +444,7 @@ export default function AdminConsole() {
   const [dmProfileId, setDmProfileId] = useState("");
   const [dmVendorKey, setDmVendorKey] = useState("io.239");
   const [dmAppParam, setDmAppParam] = useState("ignition");
+  const [protocolParams, setProtocolParams] = useState<TrackerProtocolParam[]>([]);
   const [cmdDeviceId, setCmdDeviceId] = useState("");
   const [cmdText, setCmdText] = useState("");
   const [cmdType, setCmdType] = useState("text");
@@ -520,6 +529,28 @@ export default function AdminConsole() {
     setDmProfileId((cur) => cur || profiles.profiles[0]?.id || "");
   }, []);
 
+  const loadProtocolParamsForProfile = useCallback(async (profileId: string) => {
+    const profile = trackerProfiles.find((p) => p.id === profileId);
+    if (!profile?.protocol) {
+      setProtocolParams([]);
+      return;
+    }
+    try {
+      const data = await api<{ params: TrackerProtocolParam[] }>(
+        `/api/admin/tracker-protocol-params?protocol=${encodeURIComponent(profile.protocol)}`,
+      );
+      setProtocolParams(data.params || []);
+      if (data.params?.[0]?.vendorKey) {
+        setDmVendorKey((cur) => {
+          const stillValid = data.params.some((p) => p.vendorKey === cur);
+          return stillValid ? cur : data.params[0].vendorKey;
+        });
+      }
+    } catch {
+      setProtocolParams([]);
+    }
+  }, [trackerProfiles]);
+
   const loadMapRules = useCallback(async (tenantId: string, profileId: string) => {
     if (!profileId) {
       setMapRules([]);
@@ -574,7 +605,8 @@ export default function AdminConsole() {
   useEffect(() => {
     if (!selectedId || selectedId === "new" || !dmProfileId) return;
     void loadMapRules(selectedId, dmProfileId).catch((err: Error) => setError(err.message));
-  }, [selectedId, dmProfileId, loadMapRules]);
+    void loadProtocolParamsForProfile(dmProfileId);
+  }, [selectedId, dmProfileId, loadMapRules, loadProtocolParamsForProfile]);
 
   const filteredTenants = useMemo(() => {
     const q = tenantQuery.trim().toLowerCase();
@@ -1952,7 +1984,26 @@ export default function AdminConsole() {
                   <form className="admin-form-grid" onSubmit={(e) => void addMapRule(e)}>
                     <label>
                       Vendor key
-                      <input value={dmVendorKey} onChange={(e) => setDmVendorKey(e.target.value)} />
+                      {protocolParams.length > 0 ? (
+                        <select value={dmVendorKey} onChange={(e) => setDmVendorKey(e.target.value)}>
+                          {protocolParams.map((p) => (
+                            <option key={p.vendorKey} value={p.vendorKey}>
+                              {p.vendorKey} — {p.label}
+                            </option>
+                          ))}
+                          <option value={dmVendorKey}>custom: {dmVendorKey}</option>
+                        </select>
+                      ) : (
+                        <input value={dmVendorKey} onChange={(e) => setDmVendorKey(e.target.value)} />
+                      )}
+                    </label>
+                    <label>
+                      Or type vendor key
+                      <input
+                        value={dmVendorKey}
+                        onChange={(e) => setDmVendorKey(e.target.value)}
+                        placeholder="io.239 / alarm.sos / tag.0x01"
+                      />
                     </label>
                     <label>
                       App param
@@ -2033,19 +2084,27 @@ export default function AdminConsole() {
                   </form>
                   {cmdHistory.length > 0 ? (
                     <ul className="admin-field-list">
-                      {cmdHistory.slice(0, 12).map((c) => (
-                        <li key={c.id}>
-                          <span>
-                            <strong>{c.status}</strong> · {c.commandType}
-                            {c.payloadText ? ` · ${c.payloadText.slice(0, 48)}` : ""}
-                            {c.responseText ? ` → ${c.responseText.slice(0, 48)}` : ""}
-                            <span className="muted">
-                              {" "}
-                              · {c.createdAt ? new Date(c.createdAt).toLocaleString() : "—"}
+                      {cmdHistory.slice(0, 12).map((c) => {
+                        const pill =
+                          c.status === "acked"
+                            ? "is-on"
+                            : c.status === "failed" || c.status === "expired"
+                              ? "is-off"
+                              : "is-muted";
+                        return (
+                          <li key={c.id}>
+                            <span>
+                              <span className={`admin-pill ${pill}`}>{c.status}</span> · {c.commandType}
+                              {c.payloadText ? ` · ${c.payloadText.slice(0, 48)}` : ""}
+                              {c.responseText ? ` → ${c.responseText.slice(0, 48)}` : ""}
+                              <span className="muted">
+                                {" "}
+                                · {c.createdAt ? new Date(c.createdAt).toLocaleString() : "—"}
+                              </span>
                             </span>
-                          </span>
-                        </li>
-                      ))}
+                          </li>
+                        );
+                      })}
                     </ul>
                   ) : cmdDeviceId ? (
                     <p className="muted">No commands queued for this device yet.</p>

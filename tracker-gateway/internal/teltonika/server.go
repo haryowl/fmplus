@@ -131,6 +131,9 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 				log.Printf("[teltonika] ingest %s: %v", imei, err)
 			}
+			if ev := safetyFromEventIO(fix); ev != nil {
+				_ = st.InsertSafetyEvent(ctx, device, *ev)
+			}
 		}
 		ack := make([]byte, 4)
 		binary.BigEndian.PutUint32(ack, uint32(count))

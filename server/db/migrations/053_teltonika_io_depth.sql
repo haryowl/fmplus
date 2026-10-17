@@ -45,5 +45,9 @@ INSERT INTO tracker_protocol_params (protocol, vendor_key, label, value_type, de
   ('jt808', 'alarm.fatigue', 'Fatigue', 'bool', 'JT808 alarm bit2'),
   ('jt808', 'alarm.power_cut', 'Power cut', 'bool', 'JT808 alarm bit8'),
   ('jt808', 'alarm.collision', 'Collision', 'bool', 'JT808 alarm bit20'),
-  ('json', 'status.acc', 'ACC', 'bool', 'Nested status.acc from JSON ingest')
+  ('json', 'status.acc', 'ACC', 'bool', 'Nested status.acc from JSON ingest'),
+  ('teltonika', 'alarm.overspeed', 'Overspeed event', 'bool', 'Event IO 255'),
+  ('teltonika', 'alarm.crash', 'Crash event', 'bool', 'Event IO 247'),
+  ('teltonika', 'alarm.towing', 'Towing event', 'bool', 'Event IO 246'),
+  ('teltonika', 'alarm.jamming', 'Jamming event', 'bool', 'Event IO 249')
 ON CONFLICT (protocol, vendor_key) DO NOTHING;

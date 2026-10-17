@@ -13,7 +13,7 @@ type Adapter struct{}
 
 func (Adapter) Name() string        { return "concox" }
 func (Adapter) DisplayName() string { return "Concox / GT06 family" }
-func (Adapter) Status() string      { return protocol.StatusPartial }
+func (Adapter) Status() string      { return protocol.StatusPartial } // GPS + HB ACC patch + 0x80 downlink
 func (Adapter) DefaultAddr() string { return ":5023" }
 
 func (Adapter) Serve(ctx context.Context, addr string, deps protocol.Deps) error {

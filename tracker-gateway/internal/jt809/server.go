@@ -3,6 +3,7 @@ package jt809
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -13,7 +14,7 @@ import (
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
-// Serve a JT/T 809 platform-exchange listener (experimental framing + login ACK).
+// Serve a JT/T 809 platform-exchange listener (experimental framing + login/heartbeat).
 // Full MoT interconnect is checklist-driven; this establishes the adapter port.
 func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol.Registry) error {
 	ln, err := net.Listen("tcp", addr)
@@ -36,24 +37,27 @@ func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol
 				continue
 			}
 		}
-		go handleConn(ctx, conn, st)
+		go handleConn(ctx, conn, st, sessions)
 	}
 }
 
-func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
+func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry) {
 	metrics.ConnOpen()
+	var bound *protocol.ConnSession
 	defer func() {
 		metrics.ConnClose()
+		if sessions != nil && bound != nil {
+			sessions.Unbind(bound)
+		}
 		_ = conn.Close()
 	}()
-	_ = st // store reserved for platform vehicle list sync
+	platformKey := conn.RemoteAddr().String()
 	for {
 		_ = conn.SetDeadline(time.Now().Add(5 * time.Minute))
 		hdr := make([]byte, 22) // JT809 header length (typical)
 		if _, err := io.ReadFull(conn, hdr); err != nil {
 			return
 		}
-		// Header starts with length u32 BE in many 809 dialects
 		length := int(binary.BigEndian.Uint32(hdr[0:4]))
 		if length < 22 || length > 2*1024*1024 {
 			return
@@ -67,12 +71,33 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 		msgID := binary.BigEndian.Uint16(hdr[8:10])
 		switch msgID {
 		case 0x1001: // login
-			// minimal login response 0x1002
+			if len(rest) >= 4 {
+				platformKey = fmt.Sprintf("809-%d", binary.BigEndian.Uint32(rest[0:4]))
+			}
+			bound = &protocol.ConnSession{
+				DeviceID: "", // platform link — not a single vehicle
+				IMEI:     platformKey,
+				Protocol: "jt809",
+				Conn:     conn,
+				Meta:     map[string]string{"role": "platform"},
+			}
+			if sessions != nil {
+				sessions.Bind(bound)
+			}
 			resp := make([]byte, 26)
 			binary.BigEndian.PutUint32(resp[0:4], 26)
 			binary.BigEndian.PutUint16(resp[8:10], 0x1002)
 			resp[22] = 0 // result OK
 			_, _ = conn.Write(resp)
+			log.Printf("[jt809] platform login ok key=%s", platformKey)
+		case 0x1005: // heartbeat from subordinate platform
+			resp := make([]byte, 22)
+			binary.BigEndian.PutUint32(resp[0:4], 22)
+			binary.BigEndian.PutUint16(resp[8:10], 0x1006)
+			_, _ = conn.Write(resp)
+		case 0x1200, 0x1202: // vehicle dynamic / location uplink (experimental decode)
+			log.Printf("[jt809] vehicle uplink 0x%04x len=%d (experimental)", msgID, length)
+			_ = st
 		default:
 			log.Printf("[jt809] msg 0x%04x len=%d (experimental — not fully decoded)", msgID, length)
 		}
