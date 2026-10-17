@@ -115,7 +115,12 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 
 		if !verifyAVLCRC(payload, crcBuf) {
 			metrics.DecodeErr()
-			log.Printf("[teltonika] bad CRC for %s — dropping frame", imei)
+			log.Printf("[teltonika] bad CRC for %s — zero-ack and drop", imei)
+			// Official: always reply record count so device does not stall.
+			ack := make([]byte, 4)
+			if _, err := conn.Write(ack); err != nil {
+				return
+			}
 			continue
 		}
 		// Codec 12/13 GPRS command response (not AVL records).

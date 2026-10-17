@@ -72,7 +72,8 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		gotCRC := binary.BigEndian.Uint16(payload[length : length+2])
 		if calc := crc16Kermit(data); calc != gotCRC {
 			metrics.DecodeErr()
-			log.Printf("[ruptela] bad CRC got=%04x want=%04x — dropping frame", gotCRC, calc)
+			log.Printf("[ruptela] bad CRC got=%04x want=%04x — NACK cmd 100", gotCRC, calc)
+			_ = writeRecordsAck(conn, false)
 			continue
 		}
 
@@ -133,7 +134,8 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					resp = strings.TrimSpace(string(rest))
 				}
 				ok := !ruptelaCmdFailed(resp)
-				_ = st.AckLatestSent(ctx, device.ID, ok, resp)
+				corr := fmt.Sprintf("%d", cmd)
+				_ = st.AckCommand(ctx, device.ID, corr, ok, resp)
 				_ = st.TouchSeen(ctx, device)
 				flushPending(ctx, conn, st, device.ID)
 			}
@@ -187,7 +189,7 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 			_ = st.RequeueCommand(ctx, cmd.ID)
 			return
 		}
-		_ = st.MarkCommandSentCorr(ctx, cmd.ID, "108")
+		_ = st.MarkCommandSentCorr(ctx, cmd.ID, DownlinkCorrID(cmd.CommandType))
 	}
 }
 

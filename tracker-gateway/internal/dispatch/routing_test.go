@@ -63,7 +63,10 @@ func TestDownlinkCorr_protocols(t *testing.T) {
 		t.Fatal("galileosky corr must be empty")
 	}
 	if downlinkCorr("ruptela", "ruptela_sms", nil, nil) != "108" {
-		t.Fatal("ruptela")
+		t.Fatal("ruptela sms")
+	}
+	if downlinkCorr("ruptela", "ruptela_105", nil, nil) != "105" {
+		t.Fatal("ruptela 105")
 	}
 	sess := &protocol.ConnSession{Meta: map[string]string{"seq": "9"}}
 	if downlinkCorr("other", "raw", nil, sess) != "9" {

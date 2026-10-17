@@ -32,3 +32,16 @@ func TestFlattenEventAlarm(t *testing.T) {
 		t.Fatalf("raw=%v", raw)
 	}
 }
+
+func TestSafetyFromEventIO_Expanded(t *testing.T) {
+	cases := map[int]string{1: "sos", 240: "movement", 254: "trip"}
+	for id, want := range cases {
+		ev := safetyFromEventIO(store.Fix{
+			Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+			RawAttrs: map[string]any{"event_io": id},
+		})
+		if ev == nil || ev.AlarmType != want {
+			t.Fatalf("id=%d ev=%+v want %s", id, ev, want)
+		}
+	}
+}

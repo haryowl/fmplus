@@ -481,10 +481,6 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 	}
 	bodyWithBcc := raw
 	msg := bodyWithBcc[:len(bodyWithBcc)-1]
-	if bcc(msg) != bodyWithBcc[len(bodyWithBcc)-1] {
-		metrics.DecodeErr()
-		return nil
-	}
 	hdr, ok := parseMessageHeader(msg)
 	if !ok {
 		metrics.DecodeErr()
@@ -503,6 +499,11 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 	if protoHint == "" {
 		protoHint = "jt808"
 	}
+	if bcc(msg) != bodyWithBcc[len(bodyWithBcc)-1] {
+		metrics.DecodeErr()
+		// Result=1 (failure) so terminal does not hang waiting for platform ack.
+		return replyGeneral(conn, sess, msgID, seq, 1)
+	}
 
 	if hdr.Subpackaged {
 		if sess.subpkgs == nil {
@@ -517,14 +518,14 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 	}
 
 	switch msgID {
-	case 0x0100: // terminal register
+	case 0x0100: // terminal register — bind early so downlink can flush before 0x0102
+		remote := conn.RemoteAddr().String()
+		sess.device = deviceauth.FindByIMEI(ctx, st, phone, remote, protoHint)
+		bindSession(sessions, sess, conn)
 		return reply(conn, sess, 0x8100, buildRegisterAck(seq, 0, "FM1"))
 	case 0x0102: // auth
 		remote := conn.RemoteAddr().String()
 		sess.device = deviceauth.FindByIMEI(ctx, st, phone, remote, protoHint)
-		if sess.device == nil {
-			sess.device = deviceauth.FindByIMEI(ctx, st, phone, remote, protoHint)
-		}
 		bindSession(sessions, sess, conn)
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0001: // terminal general response (command ack)
@@ -552,27 +553,46 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			_ = st.TouchSeen(ctx, sess.device)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
-	case 0x0108: // terminal upgrade result (pairs with 0x8105 wireless upgrade)
+	case 0x0108: // terminal upgrade result (type + result; no reply-seq in body)
 		if sess.device != nil {
-			corr := ""
-			resultBody := body
-			if len(body) >= 3 {
-				corr = fmt.Sprintf("%d", binary.BigEndian.Uint16(body[0:2]))
-				resultBody = body[2:]
-			}
-			patch := parseUpgradeResult(resultBody)
+			patch := parseUpgradeResult(body)
 			_ = st.PatchLastStatus(ctx, sess.device, patch, nil)
 			ok := true
 			if r, has := patch["upgrade_result"].(int); has {
 				ok = r == 0
 			}
-			_ = st.AckCommand(ctx, sess.device.ID, corr, ok,
+			// Pair with latest 0x8105 / terminal_control — body has no reply-seq.
+			_ = st.AckLatestSent(ctx, sess.device.ID, ok,
 				fmt.Sprintf("jt808_0108 %v", patch["upgrade_result"]))
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0002: // heartbeat
 		if sess.device != nil {
 			_ = st.TouchSeen(ctx, sess.device)
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0003: // terminal logout — tear down session binding
+		if sess.device != nil {
+			_ = st.TouchSeen(ctx, sess.device)
+		}
+		if err := replyGeneral(conn, sess, msgID, seq, 0); err != nil {
+			return err
+		}
+		if sessions != nil && sess.bound != nil {
+			sessions.Unbind(sess.bound)
+			sess.bound = nil
+		}
+		return nil
+	case 0x0500: // vehicle control response (应答流水号 + location body)
+		loc := body
+		corr := ""
+		if len(body) >= 30 {
+			corr = fmt.Sprintf("%d", binary.BigEndian.Uint16(body[0:2]))
+			loc = body[2:]
+		}
+		ingestLocation(ctx, conn, st, sessions, sess, loc, protoHint)
+		if sess.device != nil {
+			_ = st.AckCommand(ctx, sess.device.ID, corr, true, "jt808_0500")
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0107: // query terminal attributes response
@@ -600,9 +620,30 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			_ = st.PatchLastStatus(ctx, sess.device, parseWaybill(body), nil)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0800: // multimedia data packet (metadata only — no media body storage)
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, parseMultimediaData(body), nil)
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0801: // multimedia event / metadata (no 1078 media stack)
 		if sess.device != nil {
 			_ = st.PatchLastStatus(ctx, sess.device, parseMultimediaMeta(body), nil)
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0805: // camera shoot response (应答流水号 + result + media ids)
+		if sess.device != nil {
+			patch := parseCameraShootResp(body)
+			_ = st.PatchLastStatus(ctx, sess.device, patch, nil)
+			corr := ""
+			if c, ok := patch["reply_seq"].(int); ok {
+				corr = fmt.Sprintf("%d", c)
+			}
+			ok := true
+			if r, has := patch["shoot_result"].(int); has {
+				ok = r == 0
+			}
+			_ = st.AckCommand(ctx, sess.device.ID, corr, ok,
+				fmt.Sprintf("jt808_0805 result=%v", patch["shoot_result"]))
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0900: // transparent data uplink
@@ -761,6 +802,59 @@ func parseMultimediaMeta(body []byte) map[string]any {
 	}
 	if len(body) >= 7 {
 		out["media_id"] = binary.BigEndian.Uint32(body[3:7])
+	}
+	return out
+}
+
+// parseCameraShootResp maps 0x0805 camera immediate-shoot response (no media body).
+func parseCameraShootResp(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0805", "shoot_hex": fmt.Sprintf("%x", body)}
+	if len(body) >= 2 {
+		out["reply_seq"] = int(binary.BigEndian.Uint16(body[0:2]))
+	}
+	if len(body) >= 3 {
+		out["shoot_result"] = int(body[2]) // 0=ok
+	}
+	if len(body) >= 4 {
+		n := int(body[3])
+		out["media_id_count"] = n
+		ids := make([]uint32, 0, n)
+		off := 4
+		for i := 0; i < n && off+4 <= len(body); i++ {
+			ids = append(ids, binary.BigEndian.Uint32(body[off:off+4]))
+			off += 4
+		}
+		if len(ids) > 0 {
+			out["media_ids"] = ids
+		}
+	}
+	return out
+}
+
+// parseMultimediaData stores 0x0800 multimedia data header (id/type/channel/event); body truncated.
+func parseMultimediaData(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0800", "media_data_len": len(body)}
+	if len(body) >= 4 {
+		out["media_id"] = binary.BigEndian.Uint32(body[0:4])
+	}
+	if len(body) >= 5 {
+		out["media_type"] = int(body[4])
+	}
+	if len(body) >= 6 {
+		out["media_code"] = int(body[5])
+	}
+	if len(body) >= 7 {
+		out["media_channel"] = int(body[6])
+	}
+	if len(body) >= 8 {
+		out["media_event"] = int(body[7])
+	}
+	if len(body) > 8 {
+		snip := body[8:]
+		if len(snip) > 32 {
+			snip = snip[:32]
+		}
+		out["media_head_hex"] = fmt.Sprintf("%x", snip)
 	}
 	return out
 }

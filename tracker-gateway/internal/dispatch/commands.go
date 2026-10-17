@@ -35,8 +35,9 @@ func downlinkCorr(protocol, commandType string, payload []byte, sess *protocol.C
 		return jt808.DownlinkCorrID(payload)
 	case protocol == "concox" || commandType == "concox_gprs":
 		return concox.DownlinkCorrID(payload)
-	case protocol == "ruptela" || commandType == "ruptela_sms":
-		return "108"
+	case protocol == "ruptela" || commandType == "ruptela_sms" ||
+		commandType == "ruptela_105" || commandType == "ruptela_107" || commandType == "config":
+		return ruptela.DownlinkCorrID(commandType)
 	case protocol == "galileosky" || commandType == "galileosky_text":
 		// Replies are text/tag based — no wire serial; ack uses latest-sent.
 		return ""
@@ -98,7 +99,9 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 				}
 			}
 			payload, encErr = cx.EncodeDownlinkSerial(cmd, ser)
-		case cmd.Protocol == "ruptela" || cmd.CommandType == "ruptela_sms":
+		case cmd.Protocol == "ruptela" || cmd.CommandType == "ruptela_sms" ||
+			cmd.CommandType == "ruptela_105" || cmd.CommandType == "ruptela_107" ||
+			cmd.CommandType == "config":
 			payload, encErr = rup.EncodeDownlink(cmd)
 		case isJT808Command(cmd.Protocol, cmd.CommandType):
 			phone := sess.Meta["phone"]

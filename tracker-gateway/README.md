@@ -7,14 +7,14 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | Adapter | Port env | Default | Status | Uplink | Downlink | Notes |
 |---------|----------|---------|--------|--------|----------|-------|
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat + alarm safety | — | nested attrs flatten; `alarm.*` → safety |
-| Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | Codec 16 AVL IDs; Codec12 ack = latest-sent; event IO → safety |
-| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/0702/0104/0107/0301/0801/0900 | 0x8300/8103–8107/8201/8500 | subpkg; corr by seq; query aliases |
+| Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | bad CRC → zero-ack+drop; Codec16 NX; expanded event IO → safety |
+| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/0702/0104–0108/0003/0500/0301/0800/0801/0805/0900 | 0x8300/8103–8107/8201/8500 | bind on register; logout unbind; bad BCC → fail ack |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
-| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/heartbeat | — | platform link only |
-| JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling | — | A/V hooks only |
-| Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS/0x23/0x26–0x28 | 0x80 GPRS | 0x7979; ack by serial; unknown proto → status patch |
-| Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records | cmd 108 SMS | Kermit CRC; ACK 100; cmd7 ack corr=`108` |
-| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | archive bit; E0–E6 reply → latest-sent ack |
+| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/HB + 0x1200 fix + 0x1400 alarm | — | plate+GNSS ingest; alarm → safety |
+| JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling + ACK + SIM bind | — | no RTP / no 808 media bridge |
+| Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS | 0x80 GPRS | paused for depth — GT06 deferred |
+| Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records | 108/105/107 | Kermit; bad CRC → NACK 100; corr by cmd |
+| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | status 0x40–0x43 safety; E0–E6 ack w/ coords |
 
 **Do not claim “full JT/T” or production 2-way until an adapter is marked `certified`.** Status lives in each `Adapter.Status()` and Admin protocol labels.
 
@@ -43,6 +43,8 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `teltonika_codec12` | teltonika | Codec 12 GPRS |
 | `concox_gprs` | concox | GT06 0x80 |
 | `ruptela_sms` | ruptela | command 108 |
+| `ruptela_105` / `config` | ruptela | command 105 |
+| `ruptela_107` | ruptela | command 107 |
 | `galileosky_text` | galileosky | 0x01 + CRC-16 Modbus text |
 | `raw` | any | hex payload as-is |
 
@@ -84,6 +86,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   068_uplink_remap_seeds.sql
 #   069_uplink_remap_seeds.sql
 #   070_uplink_remap_seeds.sql
+#   071_ruptela_cmd_types.sql
 npm run db:migrate
 
 cd tracker-gateway

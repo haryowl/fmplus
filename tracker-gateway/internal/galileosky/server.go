@@ -126,7 +126,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				for k, v := range tagRaw {
 					fix.RawAttrs["tag."+k] = v
 				}
-				if ev := applyStatusTags(tags, fix.RawAttrs); ev != nil {
+				for _, ev := range applyStatusTags(tags, fix.RawAttrs) {
 					ev.RecordedAt = fix.RecordedAt
 					lat, lon := fix.Lat, fix.Lon
 					ev.Lat, ev.Lon = &lat, &lon
@@ -138,10 +138,20 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				ingested = true
 			} else if device != nil && !hasFix && !ingested {
 				_ = st.TouchSeen(ctx, device)
-				if looksLikeCommandReply(tags) {
-					text, ok := formatCommandReply(tags)
-					_ = st.AckLatestSent(ctx, device.ID, ok, text)
+				raw := tagsToRaw(tags)
+				attrs := map[string]any{"tags": raw}
+				for k, v := range raw {
+					attrs["tag."+k] = v
 				}
+				for _, ev := range applyStatusTags(tags, attrs) {
+					_ = st.InsertSafetyEvent(ctx, device, *ev)
+				}
+				_ = st.PatchLastStatus(ctx, device, attrs, nil)
+			}
+			// Command replies often piggyback on a GPS record (tag 0x30 + E0–E6).
+			if device != nil && looksLikeCommandReply(tags) {
+				text, ok := formatCommandReply(tags)
+				_ = st.AckLatestSent(ctx, device.ID, ok, text)
 			}
 		}
 		if device != nil {
@@ -156,7 +166,8 @@ func looksLikeCommandReply(tags map[byte][]byte) bool {
 	if len(tags) == 0 {
 		return false
 	}
-	for _, t := range []byte{0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xff} {
+	// E0–E6 / 0xFF are command-reply tags even when piggybacked with coords.
+	for _, t := range []byte{0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xff} {
 		if _, ok := tags[t]; ok {
 			return true
 		}

@@ -22,6 +22,9 @@ const COMMAND_TYPE_PROTOCOLS = {
   teltonika_codec12: ["teltonika"],
   concox_gprs: ["concox"],
   ruptela_sms: ["ruptela"],
+  ruptela_105: ["ruptela"],
+  ruptela_107: ["ruptela"],
+  config: ["ruptela", "jt808", "subiao"],
   galileosky_text: ["galileosky"],
 };
 
@@ -291,6 +294,8 @@ export async function enqueueCommand(tenantId, deviceId, body) {
     "teltonika_codec12",
     "concox_gprs",
     "ruptela_sms",
+    "ruptela_105",
+    "ruptela_107",
     "galileosky_text",
     "param",
     "control",
@@ -298,6 +303,7 @@ export async function enqueueCommand(tenantId, deviceId, body) {
     "query_params",
     "query_attrs",
     "query_location",
+    "config",
   ].includes(body.commandType)
     ? body.commandType
     : "text";

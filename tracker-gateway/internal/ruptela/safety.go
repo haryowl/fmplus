@@ -14,7 +14,10 @@ type knownEvent struct {
 
 // Overlap with Teltonika AVL where Ruptela FM configs share IO numbering.
 var knownEventIO = map[int]knownEvent{
+	5:   {"ignition", 1, "alarm.ignition"},
+	175: {"geofence", 1, "alarm.geofence"},
 	236: {"alarm", 2, "alarm.generic"},
+	240: {"movement", 1, "alarm.movement"},
 	246: {"towing", 2, "alarm.towing"},
 	247: {"crash", 2, "alarm.crash"},
 	249: {"jamming", 2, "alarm.jamming"},
@@ -22,8 +25,6 @@ var knownEventIO = map[int]knownEvent{
 	252: {"unplug", 2, "alarm.unplug"},
 	253: {"green_driving", 1, "alarm.green_driving"},
 	255: {"overspeed", 1, "alarm.overspeed"},
-	175: {"geofence", 1, "alarm.geofence"},
-	5:   {"ignition", 1, "alarm.ignition"},
 }
 
 // flattenEventAlarm writes remappable alarm.* onto fix raw_attrs when event_io is known.

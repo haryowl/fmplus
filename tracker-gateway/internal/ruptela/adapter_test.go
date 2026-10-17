@@ -35,6 +35,20 @@ func TestEncodeDownlink_SMS108_Golden(t *testing.T) {
 	}
 }
 
+func TestEncodeDownlink_Cmd105(t *testing.T) {
+	a := Adapter{}
+	out, err := a.EncodeDownlink(store.Command{CommandType: "ruptela_105", PayloadText: "get"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out[2] != 105 {
+		t.Fatalf("cmd=%d want 105 frame=%x", out[2], out)
+	}
+	if DownlinkCorrID("ruptela_107") != "107" || DownlinkCorrID("ruptela_sms") != "108" {
+		t.Fatal("corr")
+	}
+}
+
 func TestWriteRecordsAck_Frame(t *testing.T) {
 	// Build expected bytes without socket.
 	body := []byte{0x64, 0x01}

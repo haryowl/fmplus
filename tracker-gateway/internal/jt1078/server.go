@@ -8,6 +8,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/protocol"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
@@ -20,7 +21,7 @@ func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol
 	if err != nil {
 		return err
 	}
-	log.Printf("[jt1078] listening on %s (status=experimental — signaling only)", addr)
+	log.Printf("[jt1078] listening on %s (status=experimental — signaling only, no RTP)", addr)
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
@@ -43,6 +44,7 @@ func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol
 func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry) {
 	metrics.ConnOpen()
 	var bound *protocol.ConnSession
+	var device *store.Device
 	defer func() {
 		metrics.ConnClose()
 		if sessions != nil && bound != nil {
@@ -50,7 +52,6 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		}
 		_ = conn.Close()
 	}()
-	_ = st
 	buf := make([]byte, 0, 4096)
 	tmp := make([]byte, 2048)
 	channels := map[byte]int{}
@@ -75,23 +76,63 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				if len(buf) < total {
 					break
 				}
+				frame := buf[:total]
 				channels[channel]++
-				if sessions != nil && bound == nil {
-					bound = &protocol.ConnSession{
-						IMEI:     fmt.Sprintf("1078-ch%d", channel),
-						Protocol: "jt1078",
-						Conn:     conn,
-						Meta: map[string]string{
-							"channel": fmt.Sprintf("%d", channel),
-							"role":    "av-signaling",
-						},
+				meta := map[string]string{
+					"channel": fmt.Sprintf("%d", channel),
+					"role":    "av-signaling",
+				}
+				// Best-effort SIM / terminal id in early payload bytes (ASCII digits).
+				if sim := extractSIMHint(frame[16:]); sim != "" {
+					meta["sim"] = sim
+					if device == nil && st != nil {
+						device = deviceauth.FindByIMEI(ctx, st, sim, conn.RemoteAddr().String(), "jt1078")
 					}
-					sessions.Bind(bound)
+				}
+				imei := fmt.Sprintf("1078-ch%d", channel)
+				deviceID := ""
+				if device != nil {
+					imei = device.IMEI
+					deviceID = device.ID
+					meta["device_id"] = device.ID
+				}
+				if sessions != nil {
+					if bound == nil {
+						bound = &protocol.ConnSession{
+							DeviceID: deviceID,
+							IMEI:     imei,
+							Protocol: "jt1078",
+							Conn:     conn,
+							Meta:     meta,
+						}
+						sessions.Bind(bound)
+					} else {
+						if device != nil && bound.DeviceID == "" {
+							bound.DeviceID = device.ID
+							bound.IMEI = device.IMEI
+						}
+						if bound.Meta != nil {
+							for k, v := range meta {
+								bound.Meta[k] = v
+							}
+						}
+					}
+				}
+				if device != nil && st != nil {
+					_ = st.PatchLastStatus(ctx, device, map[string]any{
+						"proto_msg":   "jt1078_signaling",
+						"av_channel":  int(channel),
+						"av_datatype": int(dataType),
+						"av_frames":   channels[channel],
+					}, nil)
+					_ = st.TouchSeen(ctx, device)
 				}
 				if channels[channel] <= 3 || channels[channel]%50 == 0 {
-					log.Printf("[jt1078] channel=%d type=0x%02x len=%d frames=%d (signaling hook)",
-						channel, dataType, frameLen, channels[channel])
+					log.Printf("[jt1078] channel=%d type=0x%02x len=%d frames=%d sim=%s device=%v (signaling hook)",
+						channel, dataType, frameLen, channels[channel], meta["sim"], device != nil)
 				}
+				// Experimental signaling ACK: echo magic + channel + zero payload len.
+				_ = writeSignalingAck(conn, channel, dataType)
 				buf = buf[total:]
 				continue
 			}
@@ -102,6 +143,38 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			return
 		}
 	}
+}
+
+func extractSIMHint(payload []byte) string {
+	digits := make([]byte, 0, 16)
+	for _, b := range payload {
+		if b >= '0' && b <= '9' {
+			digits = append(digits, b)
+			if len(digits) >= 15 {
+				break
+			}
+		} else if len(digits) > 0 {
+			break
+		}
+	}
+	if len(digits) >= 11 {
+		return string(digits)
+	}
+	return ""
+}
+
+// writeSignalingAck is a minimal experimental ACK so clients do not retry forever.
+// Not a full JT1078 RTP control response — honest partial/experimental only.
+func writeSignalingAck(conn net.Conn, channel, dataType byte) error {
+	ack := []byte{
+		0x30, 0x31, 0x63, 0x64,
+		dataType | 0x80, // mark as response-ish
+		channel,
+		0x00, 0x00, // payload len 0
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+	_, err := conn.Write(ack)
+	return err
 }
 
 type Adapter struct{}

@@ -1,6 +1,7 @@
 package jt808
 
 import (
+	"encoding/binary"
 	"testing"
 )
 
@@ -52,6 +53,33 @@ func TestParseUpgradeResult(t *testing.T) {
 	fail := parseUpgradeResult([]byte{0x00, 0x01})
 	if fail["upgrade_result"] != 1 {
 		t.Fatalf("%v", fail)
+	}
+}
+
+func TestParseMultimediaData(t *testing.T) {
+	body := make([]byte, 12)
+	binary.BigEndian.PutUint32(body[0:4], 99)
+	body[4], body[5], body[6], body[7] = 0, 1, 2, 3
+	m := parseMultimediaData(body)
+	if m["media_id"] != uint32(99) || m["media_channel"] != 2 {
+		t.Fatalf("%v", m)
+	}
+}
+
+func TestParseCameraShootResp(t *testing.T) {
+	body := make([]byte, 4+8)
+	binary.BigEndian.PutUint16(body[0:2], 42)
+	body[2] = 0
+	body[3] = 2
+	binary.BigEndian.PutUint32(body[4:8], 10)
+	binary.BigEndian.PutUint32(body[8:12], 11)
+	m := parseCameraShootResp(body)
+	if m["reply_seq"] != 42 || m["shoot_result"] != 0 || m["media_id_count"] != 2 {
+		t.Fatalf("%v", m)
+	}
+	ids, _ := m["media_ids"].([]uint32)
+	if len(ids) != 2 || ids[0] != 10 || ids[1] != 11 {
+		t.Fatalf("ids=%v", ids)
 	}
 }
 

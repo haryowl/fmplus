@@ -12,16 +12,23 @@ type knownEvent struct {
 	key   string
 }
 
+// knownEventIO maps common FMB / Codec AVL event IDs (partial — model configs vary).
 var knownEventIO = map[int]knownEvent{
+	175: {"geofence", 1, "alarm.geofence"},
 	236: {"alarm", 2, "alarm.generic"},
+	240: {"movement", 1, "alarm.movement"},
 	246: {"towing", 2, "alarm.towing"},
 	247: {"crash", 2, "alarm.crash"},
 	249: {"jamming", 2, "alarm.jamming"},
 	251: {"idling", 1, "alarm.idling"},
 	252: {"unplug", 2, "alarm.unplug"},
 	253: {"green_driving", 1, "alarm.green_driving"},
+	254: {"trip", 1, "alarm.trip"},
 	255: {"overspeed", 1, "alarm.overspeed"},
-	175: {"geofence", 1, "alarm.geofence"},
+	1:   {"sos", 2, "alarm.sos"},       // DIN1 / SOS on many configs
+	9:   {"sos", 2, "alarm.sos"},       // alternate SOS event id
+	66:  {"ext_voltage", 1, "alarm.ext_voltage"},
+	239: {"ignition", 1, "alarm.ignition"}, // event-mode ignition change
 }
 
 // flattenEventAlarm writes remappable alarm.* onto fix raw_attrs when event_io is known.

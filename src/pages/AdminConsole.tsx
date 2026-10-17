@@ -188,6 +188,8 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
   { value: "teltonika_codec12", label: "Teltonika Codec12", protocols: ["teltonika"] },
   { value: "concox_gprs", label: "Concox GPRS (0x80)", protocols: ["concox"] },
   { value: "ruptela_sms", label: "Ruptela SMS via GPRS (108)", protocols: ["ruptela"] },
+  { value: "ruptela_105", label: "Ruptela config (105)", protocols: ["ruptela"] },
+  { value: "ruptela_107", label: "Ruptela command (107)", protocols: ["ruptela"] },
   {
     value: "galileosky_text",
     label: "Galileosky text (GETVER / MainPack…)",
