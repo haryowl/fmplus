@@ -180,6 +180,11 @@ func TestPromoteRuptelaScalars_FuelAVL(t *testing.T) {
 	if raw3["engine.coolant_temp"] != 90.0 || raw3["engine.load"] != 55.0 {
 		t.Fatalf("coolant/load=%v", raw3)
 	}
+	raw4 := map[string]any{}
+	promoteRuptelaScalars(raw4, map[string]any{"75": 21.5, "41": 15, "42": 7200})
+	if raw4["temp.4"] != 21.5 || raw4["engine.throttle"] != 15.0 || raw4["engine.runtime"] != 7200.0 {
+		t.Fatalf("temp4/obd=%v", raw4)
+	}
 	raw2 := map[string]any{}
 	promoteRuptelaScalars(raw2, map[string]any{"48": 500})
 	if raw2["fuel.used"] != 500.0 || raw2["fuel.used_total"] != 500.0 {

@@ -1368,6 +1368,8 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["server.udp_port_backup"] = decoded
 	case 0x0020:
 		out["report.interval"] = decoded
+	case 0x0021:
+		out["report.strategy"] = decoded
 	case 0x0022:
 		out["report.interval_unlogin"] = decoded
 	case 0x0023:
@@ -2801,6 +2803,10 @@ func parseDrivingRecord(body []byte) map[string]any {
 		// GB/T 19056: cmd 0x03 odometer = DWORD BE after cmd, unit 0.1 km.
 		if cmd == 0x03 && len(body) >= 5 {
 			out["drv.odometer"] = float64(binary.BigEndian.Uint32(body[1:5])) / 10.0
+		}
+		// cmd 0x04 pulse factor = DWORD BE pulses/km.
+		if cmd == 0x04 && len(body) >= 5 {
+			out["drv.pulse_factor"] = int(binary.BigEndian.Uint32(body[1:5]))
 		}
 	}
 	snip := body

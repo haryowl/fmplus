@@ -184,6 +184,14 @@ func TestHoistTerminalParam_PhoneAlarmShoot(t *testing.T) {
 	}
 }
 
+func TestHoistTerminalParam_ReportStrategy(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0021, 1, nil, out)
+	if out["report.strategy"] != 1 {
+		t.Fatalf("%v", out)
+	}
+}
+
 func TestHoistTerminalParam_InflectionDistance(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x0023, 30, nil, out)
