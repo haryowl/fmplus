@@ -201,6 +201,16 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["15"]; ok {
 		raw["eco.score"] = asIOFloat(v)
 	}
+	// Axis acceleration (common FMB AVL 17/18/19 — milli-g or device units).
+	if v, ok := io["17"]; ok {
+		raw["accel.x"] = asIOFloat(v)
+	}
+	if v, ok := io["18"]; ok {
+		raw["accel.y"] = asIOFloat(v)
+	}
+	if v, ok := io["19"]; ok {
+		raw["accel.z"] = asIOFloat(v)
+	}
 }
 
 func extractIO8(b []byte, off int) (int, any, map[string]any) {

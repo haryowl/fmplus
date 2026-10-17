@@ -277,6 +277,46 @@ func wrap8105Flag(payloadHex, text string) byte {
 	}
 }
 
+// wrap8106Body builds 0x8106 designated-param query: N×DWORD ids (no leading count).
+func wrap8106Body(raw []byte, text string) []byte {
+	if len(raw) > 0 {
+		if len(raw)%4 == 0 {
+			return raw
+		}
+		// Strip leading count byte from 8104-style payload when present.
+		if len(raw) >= 1 && int(raw[0])*4+1 == len(raw) {
+			return raw[1:]
+		}
+		return raw
+	}
+	t := strings.TrimSpace(text)
+	if t == "" || t == "all" || t == "*" {
+		return nil
+	}
+	parts := strings.FieldsFunc(t, func(r rune) bool {
+		return r == ',' || r == ' ' || r == ';'
+	})
+	out := make([]byte, 0, 4*len(parts))
+	for _, p := range parts {
+		p = strings.TrimPrefix(strings.ToLower(p), "0x")
+		if p == "" {
+			continue
+		}
+		for len(p) < 8 {
+			p = "0" + p
+		}
+		if len(p) > 8 {
+			p = p[len(p)-8:]
+		}
+		b, err := hex.DecodeString(p)
+		if err != nil || len(b) != 4 {
+			continue
+		}
+		out = append(out, b...)
+	}
+	return out
+}
+
 // wrap8104Body builds 0x8104 query body: count + DWORD ids from hex, or all (0).
 func wrap8104Body(raw []byte, text string) []byte {
 	if len(raw) == 0 && (text == "" || text == "all" || text == "*") {
@@ -385,6 +425,16 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			raw = cmd.PayloadBytes()
 		}
 		body = wrap8104Body(raw, text)
+	case "jt808_8106", "query_param_ids":
+		// Query designated params — body is N×DWORD ids (no count byte).
+		msgID = 0x8106
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = wrap8106Body(raw, "")
+				break
+			}
+		}
+		body = wrap8106Body(nil, text)
 	case "jt808_8107", "query_attrs":
 		msgID = 0x8107
 		body = nil // empty body
@@ -455,6 +505,16 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			}
 		}
 		body = wrap8803Body(text)
+	case "jt808_8804", "record_audio":
+		// Recording start/stop (cmd + duration + save + sample rate).
+		msgID = 0x8804
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8804Body(text)
 	case "jt808_8900", "transparent":
 		// Downlink transparent transmission: type BYTE + content.
 		msgID = 0x8900
@@ -1960,6 +2020,58 @@ func wrap8801Body(text string) []byte {
 	body[0] = ch
 	body[1] = 1
 	body[5] = 5
+	return body
+}
+
+// wrap8804Body builds 0x8804 recording command: cmd + time + save + sample rate.
+// text: "stop" | "start" | "cmd=1,time=60,save=0,rate=0".
+func wrap8804Body(text string) []byte {
+	cmd, save, rate := byte(1), byte(0), byte(0)
+	timeSec := uint16(60)
+	t := strings.TrimSpace(strings.ToLower(text))
+	switch {
+	case t == "" || t == "start":
+		// defaults
+	case t == "stop" || t == "0":
+		cmd = 0
+		timeSec = 0
+	default:
+		for _, part := range strings.Split(t, ",") {
+			kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+			if len(kv) == 1 {
+				if n, err := strconv.Atoi(kv[0]); err == nil && n >= 0 {
+					timeSec = uint16(n)
+				}
+				continue
+			}
+			k, v := kv[0], kv[1]
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 {
+				continue
+			}
+			switch k {
+			case "cmd", "command":
+				if n <= 255 {
+					cmd = byte(n)
+				}
+			case "time", "sec", "duration":
+				timeSec = uint16(n)
+			case "save":
+				if n <= 255 {
+					save = byte(n)
+				}
+			case "rate", "sample":
+				if n <= 255 {
+					rate = byte(n)
+				}
+			}
+		}
+	}
+	body := make([]byte, 5)
+	body[0] = cmd
+	binary.BigEndian.PutUint16(body[1:3], timeSec)
+	body[3] = save
+	body[4] = rate
 	return body
 }
 

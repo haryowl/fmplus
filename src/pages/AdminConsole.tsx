@@ -166,6 +166,11 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
     protocols: ["jt808", "subiao"],
   },
   {
+    value: "jt808_8106",
+    label: "JT808 query param ids (0x8106)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
     value: "jt808_8107",
     label: "JT808 query attrs (0x8107)",
     protocols: ["jt808", "subiao"],
@@ -208,6 +213,11 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
   {
     value: "jt808_8803",
     label: "JT808 media control (0x8803)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8804",
+    label: "JT808 record audio (0x8804)",
     protocols: ["jt808", "subiao"],
   },
   {
@@ -334,6 +344,8 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
   switch (cmdType) {
     case "jt808_8104":
       return { text: "all or 0001,0002", hex: "optional id list as hex" };
+    case "jt808_8106":
+      return { text: "0001,0002", hex: "N×DWORD param ids" };
     case "jt808_8105":
       return { text: "reset / shutdown / factory", hex: "03 or multi-byte control" };
     case "jt808_8500":
@@ -344,6 +356,8 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "type=0,ch=1,event=0", hex: "15-byte 0x8802 body" };
     case "jt808_8803":
       return { text: "stop / start / type=0,ch=1,cmd=0", hex: "3-byte body" };
+    case "jt808_8804":
+      return { text: "start / stop / cmd=1,time=60,save=0,rate=0", hex: "5-byte body" };
     case "jt808_8805":
       return { text: "id=99", hex: "DWORD media id" };
     case "jt808_8900":

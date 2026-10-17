@@ -397,6 +397,26 @@ func TestWrap8803Body(t *testing.T) {
 	}
 }
 
+func TestWrap8106Body(t *testing.T) {
+	b := wrap8106Body(nil, "0001,0002")
+	if len(b) != 8 {
+		t.Fatalf("%x", b)
+	}
+	if binary.BigEndian.Uint32(b[0:4]) != 1 || binary.BigEndian.Uint32(b[4:8]) != 2 {
+		t.Fatalf("%x", b)
+	}
+}
+
+func TestWrap8804Body(t *testing.T) {
+	b := wrap8804Body("cmd=1,time=30,save=1,rate=2")
+	if b[0] != 1 || binary.BigEndian.Uint16(b[1:3]) != 30 || b[3] != 1 || b[4] != 2 {
+		t.Fatalf("%x", b)
+	}
+	if wrap8804Body("stop")[0] != 0 {
+		t.Fatal("stop")
+	}
+}
+
 func TestEncodeDownlink_RouteSet(t *testing.T) {
 	ad := Adapter{}
 	out, err := ad.EncodeDownlink(store.Command{

@@ -126,6 +126,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				meta["av_kind"] = kind
 				payload := frame[16:]
 				sig := parseSignalingPayload(dataType, payload)
+				hdr := parseSignalingHeader(frame[:16])
 				if device != nil && st != nil {
 					patch := map[string]any{
 						"proto_msg":   "jt1078_signaling",
@@ -133,6 +134,9 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 						"av_datatype": int(dataType),
 						"av_kind":     kind,
 						"av_frames":   channels[channel],
+					}
+					for k, v := range hdr {
+						patch[k] = v
 					}
 					for k, v := range sig {
 						patch[k] = v

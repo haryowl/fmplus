@@ -47,3 +47,13 @@ func TestParseSignalingPayload_VideoSSRC(t *testing.T) {
 		t.Fatalf("%v", m)
 	}
 }
+
+func TestParseSignalingHeader(t *testing.T) {
+	hdr := make([]byte, 16)
+	copy(hdr, []byte{0x30, 0x31, 0x63, 0x64, 0x00, 0x01, 0x00, 0x0a})
+	hdr[14], hdr[15] = 0x00, 0x07
+	m := parseSignalingHeader(hdr)
+	if m["av_payload_declared"] != 10 || m["av_seq"] != 7 {
+		t.Fatalf("%v", m)
+	}
+}

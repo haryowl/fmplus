@@ -203,6 +203,28 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 		} else {
 			log.Printf("[jt809] 0x1201 plate=%q (unregistered)", plate)
 		}
+	case 0x1205, 0x1206: // vehicle online (1205) / offline (1206) — experimental plate status
+		plate := ""
+		if len(rest) >= 21 {
+			plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
+		}
+		device := find809Device(ctx, st, plate, *platformKey, conn.RemoteAddr().String())
+		online := msgID == 0x1205
+		patch := map[string]any{
+			"proto_msg":      fmt.Sprintf("0x%04x", msgID),
+			"vehicle_plate":  plate,
+			"vehicle_online": online,
+			"body_len":       len(rest),
+		}
+		if len(rest) >= 22 {
+			patch["vehicle_color"] = int(rest[21])
+		}
+		if device != nil {
+			_ = st.PatchLastStatus(ctx, device, patch, nil)
+			_ = st.TouchSeen(ctx, device)
+		} else {
+			log.Printf("[jt809] 0x%04x plate=%q online=%v (unregistered)", msgID, plate, online)
+		}
 	case 0x1400, 0x1402:
 		plate, ev, ok := parseVehicleAlarm(msgID, rest)
 		if !ok || ev == nil {

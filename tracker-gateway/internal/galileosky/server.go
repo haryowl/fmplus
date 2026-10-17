@@ -297,6 +297,14 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 	if raw == nil || tags == nil {
 		return
 	}
+	if v, ok := tags[0x01]; ok && len(v) >= 1 {
+		raw["device.hw"] = int(v[0])
+		raw["tag.0x01"] = int(v[0])
+	}
+	if v, ok := tags[0x02]; ok && len(v) >= 1 {
+		raw["device.fw"] = int(v[0])
+		raw["tag.0x02"] = int(v[0])
+	}
 	// 0x52–0x57: additional analog channels (mV → V when plausible).
 	for i, id := range []byte{0x52, 0x53, 0x54, 0x55, 0x56, 0x57} {
 		v, ok := tags[id]

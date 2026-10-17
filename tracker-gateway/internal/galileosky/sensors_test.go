@@ -37,3 +37,11 @@ func TestPromoteSensorTags_Counters(t *testing.T) {
 		t.Fatalf("%v", raw)
 	}
 }
+
+func TestPromoteSensorTags_HWFW(t *testing.T) {
+	raw := map[string]any{}
+	promoteSensorTags(raw, map[byte][]byte{0x01: {0x0a}, 0x02: {0x1b}})
+	if raw["device.hw"] != 10 || raw["device.fw"] != 27 {
+		t.Fatalf("%v", raw)
+	}
+}

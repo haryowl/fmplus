@@ -178,6 +178,14 @@ func TestPromoteTeltonikaScalars_GreenDriving(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_Accel(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"17": 100, "18": -20, "19": 980})
+	if raw["accel.x"] != 100.0 || raw["accel.y"] != -20.0 || raw["accel.z"] != 980.0 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)

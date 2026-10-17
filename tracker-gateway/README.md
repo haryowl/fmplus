@@ -7,14 +7,14 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | Adapter | Port env | Default | Status | Uplink | Downlink | Notes |
 |---------|----------|---------|--------|--------|----------|-------|
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat + alarm safety | — | nested attrs flatten; `alarm.*` → safety |
-| Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12/14 | Codec13/14; IO/BLE/green-driving; soft corr |
-| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | register/auth/loc/TLV/alarms/0003–5/0500/0301–3/0608/0700–5/0800–5/0802 | 8300–4/8103–7/8201–4/8500/8600–7/8608/8700–2/8801–3/8805/8900/9101–2 | areas+routes; media ctrl; info |
+| Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12/14 | Codec13/14; BLE/accel/green-driving; soft corr |
+| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | register/auth/loc/TLV/alarms/0003–5/0500/0301–3/0608/0700–5/0800–5/0802 | 8300–4/8103–7/8201–4/8500/8600–7/8608/8700–2/8801–5/8900/9101–2 | areas+routes; media; record; info |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
-| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/logout/disconnect/HB + 0x1200–03 + 0x1400 + 0x1500 + 0x1601–2 | — | 0x5B CRC; skip encrypted bodies |
-| JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling + ACK + SIM + payload hints | — | no RTP / no 808 media bridge |
+| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/HB + 0x1200–06 + 0x1400 + 0x1500 + 0x1601–2 | — | 0x5B CRC; skip encrypted bodies |
+| JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling + ACK + SIM + header/payload hints | — | no RTP / no 808 media bridge |
 | Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS | 0x80 GPRS | paused for depth — GT06 deferred |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records + cmd3 ident | 108/105/107 | voltage/fuel/temp/GSM IO; SOS/door; soft corr |
-| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | fuel/user/analog/counters; CRLF cmds; soft corr |
+| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | hw/fw + fuel/user/analog; CRLF cmds; soft corr |
 
 **Do not claim “full JT/T” or production 2-way until an adapter is marked `certified`.** Status lives in each `Adapter.Status()` and Admin protocol labels.
 
@@ -40,6 +40,7 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `jt808_8304` / `info` | jt808/subiao | information service push |
 | `jt808_8103` / `param` | jt808/subiao | set terminal params |
 | `jt808_8104` / `query_params` | jt808/subiao | query params (`all` or id list) |
+| `jt808_8106` / `query_param_ids` | jt808/subiao | query designated param ids |
 | `jt808_8107` / `query_attrs` | jt808/subiao | query terminal attributes |
 | `jt808_8201` / `query_location` | jt808/subiao | query current location |
 | `jt808_8105` / `terminal_control` | jt808/subiao | reset/shutdown/factory/… |
@@ -47,6 +48,7 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `jt808_8801` / `camera` | jt808/subiao | camera shoot (pairs 0x0805) |
 | `jt808_8802` / `multimedia_retrieve` | jt808/subiao | stored media retrieve (→0x0802) |
 | `jt808_8803` / `multimedia_control` | jt808/subiao | media upload start/stop |
+| `jt808_8804` / `record_audio` | jt808/subiao | recording start/stop |
 | `jt808_8805` / `multimedia_upload` | jt808/subiao | single media by id |
 | `jt808_8900` / `transparent` | jt808/subiao | transparent downlink |
 | `jt808_8202` / `track` | jt808/subiao | temporary location track |
@@ -125,6 +127,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   081_jt808_geofence_del_media.sql
 #   082_jt808_info_menu.sql
 #   083_jt808_route_media_ctrl.sql
+#   084_jt808_param_ids_record.sql
 npm run db:migrate
 
 cd tracker-gateway

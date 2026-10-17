@@ -1,6 +1,22 @@
 package jt1078
 
-import "fmt"
+import (
+	"encoding/binary"
+	"fmt"
+)
+
+// parseSignalingHeader lifts common 16-byte JT1078-style header fields (experimental).
+// Layout after magic: datatype(1) channel(1) length(2) then often BCD SIM(6) + seq/ts variants.
+func parseSignalingHeader(hdr []byte) map[string]any {
+	out := map[string]any{}
+	if len(hdr) < 16 {
+		return out
+	}
+	out["av_payload_declared"] = int(binary.BigEndian.Uint16(hdr[6:8]))
+	// Bytes 14–15 frequently carry a packet/sequence counter on vendor stacks.
+	out["av_seq"] = int(binary.BigEndian.Uint16(hdr[14:16]))
+	return out
+}
 
 // parseSignalingPayload extracts experimental status hints from the post-header payload.
 // JT/T 1078 layouts vary by vendor; this is best-effort (no RTP decode).
