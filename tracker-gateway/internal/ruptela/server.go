@@ -445,6 +445,27 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["43"]; ok {
 		raw["obd.mil_distance"] = asFloat64(v)
 	}
+	if v, ok := io["44"]; ok {
+		raw["fuel.rail_relative"] = asFloat64(v) / 10.0 // kPa ×0.1
+	}
+	if v, ok := io["45"]; ok {
+		raw["fuel.rail_direct"] = asFloat64(v) * 10.0 // kPa ×10
+	}
+	if v, ok := io["46"]; ok {
+		raw["engine.egr_commanded"] = asFloat64(v)
+	}
+	if v, ok := io["47"]; ok {
+		raw["engine.egr_error"] = asFloat64(v)
+	}
+	if v, ok := io["54"]; ok {
+		raw["obd.mil_time"] = asFloat64(v) // minutes
+	}
+	if v, ok := io["55"]; ok {
+		raw["obd.codes_cleared_time"] = asFloat64(v) // minutes
+	}
+	if v, ok := io["56"]; ok {
+		raw["fuel.rail_absolute"] = asFloat64(v) * 10.0 // kPa ×10
+	}
 	if v, ok := io["34"]; ok {
 		raw["fuel.pressure"] = asFloat64(v)
 	}

@@ -278,6 +278,17 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 	if raw6["engine.short_fuel_trim"] != -5.0 || raw6["engine.timing_advance"] != 12.0 || raw6["obd.mil_distance"] != 150.0 {
 		t.Fatalf("trim/timing/mil=%v", raw6)
 	}
+	raw7 := map[string]any{}
+	promoteTeltonikaScalars(raw7, map[string]any{"44": 250, "45": 30, "56": 40, "46": 10, "47": -2, "54": 60, "55": 120})
+	if raw7["fuel.rail_relative"] != 25.0 || raw7["fuel.rail_direct"] != 300.0 || raw7["fuel.rail_absolute"] != 400.0 {
+		t.Fatalf("rail=%v", raw7)
+	}
+	if raw7["engine.egr_commanded"] != 10.0 || raw7["engine.egr_error"] != -2.0 {
+		t.Fatalf("egr=%v", raw7)
+	}
+	if raw7["obd.mil_time"] != 60.0 || raw7["obd.codes_cleared_time"] != 120.0 {
+		t.Fatalf("mil time=%v", raw7)
+	}
 }
 
 func TestPromoteTeltonikaScalars_SleepIdling(t *testing.T) {
