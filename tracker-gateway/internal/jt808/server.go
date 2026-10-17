@@ -729,6 +729,26 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			}
 		}
 		body = wrap8304Body(text)
+	case "jt808_8400", "phone_callback":
+		// Phone callback / listen-in.
+		msgID = 0x8400
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8400Body(text)
+	case "jt808_8401", "phonebook":
+		// Set phone book contacts (or clear).
+		msgID = 0x8401
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8401Body(text)
 	default:
 		// 0x8300: flag(1)+text. Prefixes tts:/urgent:/display: set flag bits.
 		if cmd.PayloadHex != "" {
@@ -1850,6 +1870,135 @@ func wrap8303Body(text string) []byte {
 		}
 		body = append(body, it.id, byte(len(name)))
 		body = append(body, name...)
+	}
+	return body
+}
+
+// wrap8400Body builds 0x8400 phone callback: flag BYTE + phone digits.
+// text: "13800138000" | "listen:138…" | "flag=1,phone=138…".
+func wrap8400Body(text string) []byte {
+	flag := byte(0)
+	phone := strings.TrimSpace(text)
+	lower := strings.ToLower(phone)
+	switch {
+	case strings.HasPrefix(lower, "listen:"):
+		flag = 1
+		phone = strings.TrimSpace(text[len("listen:"):])
+	case strings.HasPrefix(lower, "call:"):
+		phone = strings.TrimSpace(text[len("call:"):])
+	default:
+		for _, part := range strings.Split(phone, ",") {
+			kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			k, v := strings.ToLower(kv[0]), strings.TrimSpace(kv[1])
+			switch k {
+			case "flag":
+				if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
+					flag = byte(n)
+				}
+			case "phone", "tel", "number":
+				phone = v
+			}
+		}
+		if strings.Contains(lower, "flag=") || strings.Contains(lower, "phone=") {
+			// phone already set from kv
+		} else if !strings.Contains(phone, "=") {
+			phone = strings.TrimSpace(text)
+		}
+	}
+	phone = strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' || r == '+' {
+			return r
+		}
+		return -1
+	}, phone)
+	return append([]byte{flag}, []byte(phone)...)
+}
+
+// wrap8401Body builds 0x8401 phone book set.
+// text: "clear" | "type=1,items=1:13800138000:Home;2:139…:Work".
+func wrap8401Body(text string) []byte {
+	t := strings.TrimSpace(strings.ToLower(text))
+	if t == "" || t == "clear" || t == "delete" || t == "0" {
+		return []byte{0} // delete all
+	}
+	setType := byte(1)
+	src := text
+	for _, part := range strings.Split(text, ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		k, v := strings.ToLower(kv[0]), kv[1]
+		switch k {
+		case "type", "set":
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
+				setType = byte(n)
+			}
+		case "items", "contacts":
+			src = v
+		}
+	}
+	if i := strings.Index(strings.ToLower(text), "items="); i >= 0 {
+		src = text[i+6:]
+	} else if j := strings.Index(strings.ToLower(text), "contacts="); j >= 0 {
+		src = text[j+9:]
+	}
+	type contact struct {
+		flag byte
+		num  string
+		name string
+	}
+	var contacts []contact
+	for _, part := range strings.Split(src, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		fields := strings.SplitN(part, ":", 3)
+		if len(fields) < 2 {
+			continue
+		}
+		flag := byte(1)
+		num, name := fields[0], ""
+		if len(fields) == 3 {
+			if n, err := strconv.Atoi(strings.TrimSpace(fields[0])); err == nil && n >= 0 && n <= 255 {
+				flag = byte(n)
+			}
+			num, name = fields[1], fields[2]
+		} else {
+			num, name = fields[0], fields[1]
+		}
+		num = strings.Map(func(r rune) rune {
+			if r >= '0' && r <= '9' || r == '+' {
+				return r
+			}
+			return -1
+		}, strings.TrimSpace(num))
+		name = strings.TrimSpace(name)
+		if num == "" {
+			continue
+		}
+		contacts = append(contacts, contact{flag, num, name})
+	}
+	if len(contacts) > 255 {
+		contacts = contacts[:255]
+	}
+	body := []byte{setType, byte(len(contacts))}
+	for _, c := range contacts {
+		nb, nam := []byte(c.num), []byte(c.name)
+		if len(nb) > 255 {
+			nb = nb[:255]
+		}
+		if len(nam) > 255 {
+			nam = nam[:255]
+		}
+		body = append(body, c.flag, byte(len(nb)))
+		body = append(body, nb...)
+		body = append(body, byte(len(nam)))
+		body = append(body, nam...)
 	}
 	return body
 }

@@ -19,6 +19,9 @@ func TestIsJT808Command(t *testing.T) {
 	if !isJT808Command("subiao", "jt808_8105") {
 		t.Fatal("subiao 8105")
 	}
+	if !isJT808Command("", "phone_callback") || !isJT808Command("", "jt808_8401") {
+		t.Fatal("phone downlink aliases")
+	}
 	if isJT808Command("teltonika", "teltonika_codec12") {
 		t.Fatal("teltonika should not match")
 	}

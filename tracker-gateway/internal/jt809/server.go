@@ -225,7 +225,7 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 		} else {
 			log.Printf("[jt809] 0x%04x plate=%q online=%v (unregistered)", msgID, plate, online)
 		}
-	case 0x1400, 0x1402:
+	case 0x1400, 0x1401, 0x1402: // alarm / alarm attach / alarm confirm variants
 		plate, ev, ok := parseVehicleAlarm(msgID, rest)
 		if !ok || ev == nil {
 			log.Printf("[jt809] alarm 0x%04x len=%d (no parse)", msgID, length)

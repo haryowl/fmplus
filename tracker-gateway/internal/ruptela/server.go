@@ -100,6 +100,8 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				fix.SourceProtocol = "ruptela"
 				if ev := safetyFromEventIO(fix); ev != nil {
 					_ = st.InsertSafetyEvent(ctx, device, *ev)
+				} else if ev := safetyFromIO(fix); ev != nil {
+					_ = st.InsertSafetyEvent(ctx, device, *ev)
 				}
 				if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 					log.Printf("[ruptela] ingest %s: %v", imei, err)
@@ -322,6 +324,7 @@ func parseRecordPayload(data []byte, extended bool) []store.Fix {
 			raw["idling"] = asTruthy(v)
 		}
 		flattenEventAlarm(raw)
+		flattenIOAlarms(raw, ioMap)
 		fix := store.Fix{
 			Lat:            lat,
 			Lon:            lon,

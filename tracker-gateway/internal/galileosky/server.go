@@ -344,4 +344,14 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("counter.%d", i+1)] = float64(n)
 		raw[fmt.Sprintf("tag.0x%02x", id)] = n
 	}
+	// 0x70–0x73: frequent 1-Wire / temp sensor payloads (signed °C×10 on many firmwares).
+	for i, id := range []byte{0x70, 0x71, 0x72, 0x73} {
+		v, ok := tags[id]
+		if !ok || len(v) < 2 {
+			continue
+		}
+		t10 := int16(binary.LittleEndian.Uint16(v[0:2]))
+		raw[fmt.Sprintf("temp.%d", i+1)] = float64(t10) / 10.0
+		raw[fmt.Sprintf("tag.0x%02x", id)] = int(t10)
+	}
 }

@@ -530,6 +530,44 @@ func TestWrap8304Body(t *testing.T) {
 	}
 }
 
+func TestWrap8400Body(t *testing.T) {
+	b := wrap8400Body("13800138000")
+	if b[0] != 0 || string(b[1:]) != "13800138000" {
+		t.Fatalf("%x", b)
+	}
+	b2 := wrap8400Body("listen:13900139000")
+	if b2[0] != 1 || string(b2[1:]) != "13900139000" {
+		t.Fatalf("%x", b2)
+	}
+}
+
+func TestWrap8401Body(t *testing.T) {
+	if wrap8401Body("clear")[0] != 0 {
+		t.Fatal("clear")
+	}
+	b := wrap8401Body("type=1,items=1:13800138000:Home")
+	if b[0] != 1 || b[1] != 1 || b[2] != 1 {
+		t.Fatalf("%x", b)
+	}
+	if b[3] != 11 || string(b[4:15]) != "13800138000" {
+		t.Fatalf("num %x", b)
+	}
+}
+
+func TestEncodeDownlink_PhoneCallback(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{
+		CommandType: "phone_callback", PayloadText: "13800138000",
+	}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := unescape(out)
+	if binary.BigEndian.Uint16(raw[0:2]) != 0x8400 {
+		t.Fatalf("msgID=%04x", binary.BigEndian.Uint16(raw[0:2]))
+	}
+}
+
 func TestWrap8303Body(t *testing.T) {
 	if wrap8303Body("clear")[0] != 0 {
 		t.Fatal("clear")

@@ -34,6 +34,9 @@ var knownEventIO = map[int]knownEvent{
 	255: {"overspeed", 1, "alarm.overspeed"},
 }
 
+// highSignalIO raises safety from IO values when event_io is unset (periodic records).
+var highSignalIO = []int{247, 246, 249, 252, 1, 9} // crash, towing, jamming, unplug, sos
+
 // flattenEventAlarm writes remappable alarm.* onto fix raw_attrs when event_io is known.
 func flattenEventAlarm(raw map[string]any) {
 	if raw == nil {
@@ -49,6 +52,25 @@ func flattenEventAlarm(raw map[string]any) {
 	}
 	raw[k.key] = true
 	raw["alarm_level"] = k.level
+}
+
+// flattenIOAlarms promotes known high-signal IO element values onto alarm.* keys.
+func flattenIOAlarms(raw map[string]any, io map[string]any) {
+	if raw == nil || io == nil {
+		return
+	}
+	for id, k := range knownEventIO {
+		v, ok := io[fmt.Sprintf("%d", id)]
+		if !ok || !asIOTruth(v) {
+			continue
+		}
+		raw[k.key] = true
+		if cur, _ := raw["alarm_level"].(int); k.level > cur {
+			raw["alarm_level"] = k.level
+		} else if raw["alarm_level"] == nil {
+			raw["alarm_level"] = k.level
+		}
+	}
 }
 
 // safetyFromEventIO raises a safety event for known high-signal Ruptela event IDs.
@@ -80,6 +102,61 @@ func safetyFromEventIO(fix store.Fix) *store.SafetyEvent {
 		RawAttrs:       raw,
 		SourceProtocol: "ruptela",
 	}
+}
+
+// safetyFromIO raises a safety event from IO values when event_io is unset/zero.
+func safetyFromIO(fix store.Fix) *store.SafetyEvent {
+	if fix.RawAttrs == nil {
+		return nil
+	}
+	if eid, ok := asEventID(fix.RawAttrs["event_io"]); ok && eid != 0 {
+		return nil
+	}
+	io, _ := fix.RawAttrs["io"].(map[string]any)
+	if io == nil {
+		return nil
+	}
+	for _, id := range highSignalIO {
+		v, ok := io[fmt.Sprintf("%d", id)]
+		if !ok || !asIOTruth(v) {
+			continue
+		}
+		k, ok := knownEventIO[id]
+		if !ok {
+			continue
+		}
+		lat, lon := fix.Lat, fix.Lon
+		return &store.SafetyEvent{
+			RecordedAt: fix.RecordedAt,
+			AlarmType:  k.name,
+			AlarmLevel: k.level,
+			Lat:        &lat,
+			Lon:        &lon,
+			RawAttrs: map[string]any{
+				"io_id":       id,
+				"alarm_level": k.level,
+				k.key:         true,
+			},
+			SourceProtocol: "ruptela",
+		}
+	}
+	return nil
+}
+
+func asIOTruth(v any) bool {
+	switch t := v.(type) {
+	case bool:
+		return t
+	case int:
+		return t != 0
+	case int64:
+		return t != 0
+	case float64:
+		return t != 0
+	case string:
+		return t != "" && t != "0" && t != "false"
+	}
+	return false
 }
 
 func asEventID(v any) (int, bool) {

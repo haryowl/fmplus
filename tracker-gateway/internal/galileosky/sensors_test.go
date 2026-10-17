@@ -45,3 +45,13 @@ func TestPromoteSensorTags_HWFW(t *testing.T) {
 		t.Fatalf("%v", raw)
 	}
 }
+
+func TestPromoteSensorTags_Temp(t *testing.T) {
+	raw := map[string]any{}
+	t1 := make([]byte, 2)
+	binary.LittleEndian.PutUint16(t1, uint16(int16(253))) // 25.3 °C
+	promoteSensorTags(raw, map[byte][]byte{0x70: t1})
+	if raw["temp.1"] != 25.3 {
+		t.Fatalf("%v", raw)
+	}
+}

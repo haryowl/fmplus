@@ -49,3 +49,37 @@ func TestFlattenEventAlarm(t *testing.T) {
 		t.Fatalf("raw=%v", raw)
 	}
 }
+
+func TestFlattenIOAlarms(t *testing.T) {
+	raw := map[string]any{}
+	flattenIOAlarms(raw, map[string]any{"246": 1, "21": 5})
+	if raw["alarm.towing"] != true {
+		t.Fatalf("raw=%v", raw)
+	}
+}
+
+func TestSafetyFromIO_Crash(t *testing.T) {
+	fix := store.Fix{
+		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{
+			"event_io": 0,
+			"io":       map[string]any{"247": 1},
+		},
+	}
+	ev := safetyFromIO(fix)
+	if ev == nil || ev.AlarmType != "crash" {
+		t.Fatalf("%+v", ev)
+	}
+}
+
+func TestSafetyFromIO_SkipsWhenEventSet(t *testing.T) {
+	fix := store.Fix{
+		RawAttrs: map[string]any{
+			"event_io": 255,
+			"io":       map[string]any{"247": 1},
+		},
+	}
+	if safetyFromIO(fix) != nil {
+		t.Fatal("expected nil when event_io set")
+	}
+}

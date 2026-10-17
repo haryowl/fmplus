@@ -322,6 +322,16 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
     label: "JT808 info service (0x8304)",
     protocols: ["jt808", "subiao"],
   },
+  {
+    value: "jt808_8400",
+    label: "JT808 phone callback (0x8400)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8401",
+    label: "JT808 phone book (0x8401)",
+    protocols: ["jt808", "subiao"],
+  },
   { value: "concox_gprs", label: "Concox GPRS (0x80)", protocols: ["concox"] },
   { value: "ruptela_sms", label: "Ruptela SMS via GPRS (108)", protocols: ["ruptela"] },
   { value: "ruptela_105", label: "Ruptela config (105)", protocols: ["ruptela"] },
@@ -399,6 +409,10 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "clear or type=1,items=1:News;2:Weather", hex: "full 0x8303 body" };
     case "jt808_8304":
       return { text: "type=1,text=Service notice", hex: "full 0x8304 body" };
+    case "jt808_8400":
+      return { text: "13800138000 or listen:138…", hex: "flag + phone digits" };
+    case "jt808_8401":
+      return { text: "clear or type=1,items=1:13800138000:Home", hex: "full 0x8401 body" };
     case "teltonika_codec14":
       return { text: "getinfo (IMEI from session)", hex: "" };
     case "jt808_8103":

@@ -53,6 +53,20 @@ func TestParseVehicleAlarm_SOS(t *testing.T) {
 	}
 }
 
+func TestParseVehicleAlarm_1401Attach(t *testing.T) {
+	rest := make([]byte, 24)
+	copy(rest[0:21], []byte("B8888ATT"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 0x0002)
+	plate, ev, ok := parseVehicleAlarm(0x1401, rest)
+	if !ok || plate != "B8888ATT" || ev == nil || ev.AlarmType != "overspeed" {
+		t.Fatalf("plate=%q ev=%+v ok=%v", plate, ev, ok)
+	}
+	if ev.RawAttrs["proto_msg"] != "0x1401" {
+		t.Fatalf("%v", ev.RawAttrs)
+	}
+}
+
 func TestParseVehicleStatic_Register(t *testing.T) {
 	rest := make([]byte, 28+61)
 	copy(rest[0:21], []byte("B1234REG"))

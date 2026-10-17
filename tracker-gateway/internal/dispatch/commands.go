@@ -27,13 +27,14 @@ func isJT808Command(protocol, commandType string) bool {
 		"jt808_8606", "jt808_8607", "jt808_8608",
 		"jt808_8801", "jt808_8802", "jt808_8803", "jt808_8804", "jt808_8805", "jt808_8700", "jt808_8702",
 		"jt808_9101", "jt808_9102",
-		"jt808_8301", "jt808_8302", "jt808_8303", "jt808_8304", "jt808_8900", "terminal_control",
+		"jt808_8301", "jt808_8302", "jt808_8303", "jt808_8304", "jt808_8400", "jt808_8401",
+		"jt808_8900", "terminal_control",
 		"param", "control", "vehicle_control", "query_params", "query_param_ids", "query_attrs",
 		"query_location", "camera", "multimedia_retrieve", "multimedia_upload", "multimedia_control",
 		"record_audio", "track", "driver_query", "driving_record", "link_detect", "transparent",
 		"geofence_del", "geofence_set", "geofence_query", "route_set", "route_del",
 		"av_live", "av_control", "alarm_confirm",
-		"event_set", "question", "info", "info_menu":
+		"event_set", "question", "info", "info_menu", "phone_callback", "phonebook":
 		return true
 	}
 	return false
