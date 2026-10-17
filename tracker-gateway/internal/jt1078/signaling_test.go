@@ -47,6 +47,20 @@ func TestParseSignalingPayload_PTZ(t *testing.T) {
 	}
 }
 
+func TestParseSignalingPayload_Audio(t *testing.T) {
+	payload := make([]byte, 9)
+	payload[0] = 0x10 // audio type
+	// timestamp bytes 1–8 = 0x00000000000000ab
+	payload[8] = 0xab
+	m := parseSignalingPayload(0x03, payload)
+	if m["av_audio_type"] != 0x10 {
+		t.Fatalf("type=%v", m["av_audio_type"])
+	}
+	if m["av_timestamp"] != uint64(0xab) {
+		t.Fatalf("ts=%v", m["av_timestamp"])
+	}
+}
+
 func TestParseSignalingPayload_VideoSSRC(t *testing.T) {
 	m := parseSignalingPayload(0x00, []byte{0x12, 0x34, 0x56, 0x78})
 	if m["av_ssrc"] != uint32(0x12345678) {

@@ -225,6 +225,41 @@ func TestParseVehicleUplink_LoadAndGNSSConstellation(t *testing.T) {
 	}
 }
 
+func TestParseVehicleUplink_OutOfServiceLoadHalf(t *testing.T) {
+	rest := make([]byte, 24+1+6+8+2+2+2+4+4)
+	copy(rest[0:21], []byte("B1111OOS"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 0x0200)
+	off := 24
+	rest[off] = 0
+	off++
+	off += 6
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(106.8*1e6))))
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(-6.2*1e6))))
+	off += 4
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint32(rest[off:], 0x10|(1<<8)|0x100000|0x200000) // OOS + half + GLONASS + Galileo
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], 0)
+
+	fix, _, ok := parseVehicleUplink(0x1202, rest)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["status.out_of_service"] != true || fix.RawAttrs["status.load_half"] != true {
+		t.Fatalf("oos/half=%v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["status.gnss_glonass"] != true || fix.RawAttrs["status.gnss_galileo"] != true {
+		t.Fatalf("gnss=%v", fix.RawAttrs)
+	}
+}
+
 func TestParseVehicleUplink_IllegalIgnitionAlarm(t *testing.T) {
 	rest := make([]byte, 24+1+6+8+2+2+2+4+4)
 	copy(rest[0:21], []byte("B8888IGN"))

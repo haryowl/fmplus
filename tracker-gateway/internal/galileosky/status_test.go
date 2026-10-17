@@ -59,6 +59,9 @@ func TestApplyStatusTags_BatteryJamming(t *testing.T) {
 	if raw["alarm.battery_low"] != true || raw["alarm.gsm_jamming"] != true {
 		t.Fatalf("%v", raw)
 	}
+	if raw["status.ext44"] != 2 || raw["status.ext45"] != 1 {
+		t.Fatalf("ext=%v", raw)
+	}
 }
 
 func TestApplyStatusTags_PowerExt(t *testing.T) {
@@ -69,5 +72,8 @@ func TestApplyStatusTags_PowerExt(t *testing.T) {
 	}
 	if raw["alarm.power_ext"] != true {
 		t.Fatalf("%v", raw)
+	}
+	if raw["status.ext44"] != 1 {
+		t.Fatalf("ext44=%v", raw)
 	}
 }

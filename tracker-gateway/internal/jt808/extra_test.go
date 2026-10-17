@@ -293,3 +293,15 @@ func TestFlattenAlarmBits_Tier2(t *testing.T) {
 		t.Fatalf("%v", raw)
 	}
 }
+
+func TestHoistLocationStatusBits(t *testing.T) {
+	raw := map[string]any{}
+	HoistLocationStatusBits(0x10|0x100|0x100000|0x200000, raw)
+	if raw["status.out_of_service"] != true || raw["vehicle.load"] != "half" ||
+		raw["status.load_half"] != true {
+		t.Fatalf("load=%v", raw)
+	}
+	if raw["status.gnss_glonass"] != true || raw["status.gnss_galileo"] != true {
+		t.Fatalf("gnss=%v", raw)
+	}
+}

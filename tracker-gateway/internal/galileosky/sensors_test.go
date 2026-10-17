@@ -118,6 +118,23 @@ func TestPromoteSensorTags_Sensor78(t *testing.T) {
 	}
 }
 
+func TestPromoteSensorTags_Sensor76_7a(t *testing.T) {
+	raw := map[string]any{}
+	a := make([]byte, 2)
+	b := make([]byte, 2)
+	c := make([]byte, 2)
+	d := make([]byte, 2)
+	binary.LittleEndian.PutUint16(a, 110)
+	binary.LittleEndian.PutUint16(b, 120)
+	binary.LittleEndian.PutUint16(c, 130)
+	binary.LittleEndian.PutUint16(d, 140)
+	promoteSensorTags(raw, map[byte][]byte{0x76: a, 0x77: b, 0x7a: c, 0x7b: d})
+	if raw["sensor.7"] != 11.0 || raw["sensor.8"] != 12.0 ||
+		raw["sensor.11"] != 13.0 || raw["sensor.12"] != 14.0 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteSensorTags_User15(t *testing.T) {
 	raw := map[string]any{}
 	promoteSensorTags(raw, map[byte][]byte{0x15: {7}, 0x19: {9}})
