@@ -183,6 +183,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   133_gnss_upload_can_rpm_809_rollover.sql
 #   134_drv_odo_udp_sms_engine_obd.sql
 #   135_pulse_temp4_strategy_throttle.sql
+#   136_distance_parking_obd_speed.sql
 npm run db:migrate
 
 cd tracker-gateway

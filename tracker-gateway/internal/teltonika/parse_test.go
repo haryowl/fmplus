@@ -247,9 +247,12 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 		t.Fatalf("coolant/load=%v", raw2)
 	}
 	raw3 := map[string]any{}
-	promoteTeltonikaScalars(raw3, map[string]any{"41": 12, "42": 3600})
+	promoteTeltonikaScalars(raw3, map[string]any{"41": 12, "42": 3600, "37": 55, "39": 28})
 	if raw3["engine.throttle"] != 12.0 || raw3["engine.runtime"] != 3600.0 {
 		t.Fatalf("throttle/runtime=%v", raw3)
+	}
+	if raw3["speed.obd"] != 55.0 || raw3["engine.intake_temp"] != 28.0 {
+		t.Fatalf("obd speed/intake=%v", raw3)
 	}
 }
 

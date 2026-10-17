@@ -198,6 +198,12 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["36"]; ok {
 		raw["engine.rpm"] = asIOFloat(v)
 	}
+	if v, ok := io["37"]; ok {
+		raw["speed.obd"] = asIOFloat(v)
+	}
+	if v, ok := io["39"]; ok {
+		raw["engine.intake_temp"] = asIOFloat(v)
+	}
 	if v, ok := io["32"]; ok {
 		raw["engine.coolant_temp"] = asIOFloat(v)
 	}

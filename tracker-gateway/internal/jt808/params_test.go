@@ -184,6 +184,29 @@ func TestHoistTerminalParam_PhoneAlarmShoot(t *testing.T) {
 	}
 }
 
+func TestHoistTerminalParam_DistanceIntervalSiblings(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x002c, 100, nil, out)
+	hoistTerminalParam(0x002d, 200, nil, out)
+	hoistTerminalParam(0x002e, 300, nil, out)
+	hoistTerminalParam(0x002f, 50, nil, out)
+	if out["report.distance_interval_default"] != 100 || out["report.distance_interval_unlogin"] != 200 {
+		t.Fatalf("%v", out)
+	}
+	if out["report.distance_interval_dormant"] != 300 || out["report.distance_interval_urgent"] != 50 {
+		t.Fatalf("dormant/urgent=%v", out)
+	}
+}
+
+func TestHoistTerminalParam_ParkingFatigue(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x005a, 1800, nil, out)
+	hoistTerminalParam(0x005c, 300, nil, out)
+	if out["parking.max_sec"] != 1800 || out["fatigue.warn_delta"] != 300 {
+		t.Fatalf("%v", out)
+	}
+}
+
 func TestHoistTerminalParam_ReportStrategy(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x0021, 1, nil, out)
