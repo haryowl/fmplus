@@ -285,6 +285,10 @@ func parseRecordPayload(data []byte, extended bool) []store.Fix {
 		spd := float64(speed)
 		hdg := float64(angle) / 100.0
 		altF := float64(alt) / 10.0
+		protoMsg := "ruptela_cmd_1"
+		if extended {
+			protoMsg = "ruptela_cmd_68"
+		}
 		raw := map[string]any{
 			"io":            ioMap,
 			"event_io":      eventID,
@@ -292,6 +296,7 @@ func parseRecordPayload(data []byte, extended bool) []store.Fix {
 			"record_index":  i,
 			"records_left":  recordsLeft,
 			"extended":      extended,
+			"proto_msg":     protoMsg,
 		}
 		for k, v := range ioMap {
 			raw["io."+k] = v
@@ -498,6 +503,11 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	}
 	if v, ok := io["199"]; ok {
 		raw["trip.odometer"] = asFloat64(v)
+	}
+	if v, ok := io["65"]; ok {
+		raw["odometer"] = asFloat64(v)
+	} else if v, ok := io["199"]; ok {
+		raw["odometer"] = asFloat64(v) / 1000.0
 	}
 	if v, ok := io["25"]; ok {
 		raw["ble.temp1"] = asFloat64(v) / 10.0

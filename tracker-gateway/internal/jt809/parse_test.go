@@ -36,6 +36,9 @@ func TestParseVehicleUplink_MinimalGNSS(t *testing.T) {
 	if fix.RawAttrs["location_realtime"] != true {
 		t.Fatalf("realtime=%v", fix.RawAttrs)
 	}
+	if fix.RawAttrs["body_len"] != len(rest) {
+		t.Fatalf("body_len=%v want=%d", fix.RawAttrs["body_len"], len(rest))
+	}
 	fixH, _, okH := parseVehicleUplink(0x1203, rest)
 	if !okH || fixH.RawAttrs["location_history"] != true {
 		t.Fatalf("history=%v", fixH.RawAttrs)
@@ -124,6 +127,39 @@ func TestParseVehicleUplink_EncryptAndTimeBCD(t *testing.T) {
 	}
 	if fix.RawAttrs["gnss_time_bcd"] != "260317123045" {
 		t.Fatalf("bcd=%v", fix.RawAttrs["gnss_time_bcd"])
+	}
+}
+
+func TestParseVehicleUplink_Door345(t *testing.T) {
+	rest := make([]byte, 24+1+6+8+2+2+2+4+4)
+	copy(rest[0:21], []byte("B3333DR5"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 0x0200)
+	off := 24
+	rest[off] = 0
+	off++
+	off += 6
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(106.8*1e6))))
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(-6.2*1e6))))
+	off += 4
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint32(rest[off:], 0x8000|0x10000|0x20000)
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], 0)
+
+	fix, _, ok := parseVehicleUplink(0x1202, rest)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["status.door3"] != true || fix.RawAttrs["status.door4"] != true ||
+		fix.RawAttrs["status.door5"] != true || fix.RawAttrs["status.door"] != true {
+		t.Fatalf("door345=%v", fix.RawAttrs)
 	}
 }
 

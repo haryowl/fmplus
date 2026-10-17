@@ -201,6 +201,18 @@ func TestPromoteTeltonikaScalars_SpeedTripOdo(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_Odometer389(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"389": 12345000})
+	if raw["odometer"] != 12345.0 {
+		t.Fatalf("389=%v", raw)
+	}
+	promoteTeltonikaScalars(raw, map[string]any{"16": 99, "389": 12345000})
+	if raw["odometer"] != 99.0 {
+		t.Fatalf("16 wins=%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_GreenDriving(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{"253": 3, "243": 12, "15": 85})

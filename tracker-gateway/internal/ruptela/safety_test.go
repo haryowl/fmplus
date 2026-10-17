@@ -188,6 +188,13 @@ func TestPromoteRuptelaScalars_SpeedTripHumidity(t *testing.T) {
 	if raw["speed.io"] != 62.0 || raw["trip.odometer"] != 5000.0 || raw["ble.humidity"] != 55.0 {
 		t.Fatalf("%v", raw)
 	}
+	if raw["odometer"] != 5.0 { // 199÷1000 when 65 absent
+		t.Fatalf("odo199=%v", raw["odometer"])
+	}
+	promoteRuptelaScalars(raw, map[string]any{"65": 42000, "199": 5000})
+	if raw["odometer"] != 42000.0 {
+		t.Fatalf("odo65=%v", raw["odometer"])
+	}
 }
 
 func TestFlattenEventAlarm_GenericExtVoltage(t *testing.T) {
