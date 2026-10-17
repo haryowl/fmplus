@@ -2662,6 +2662,7 @@ func parseWaybill(body []byte) map[string]any {
 			text = text[:120]
 		}
 		out["waybill_text"] = text
+		out["waybill.text"] = text
 	}
 	return out
 }

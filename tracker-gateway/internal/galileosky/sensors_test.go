@@ -46,6 +46,19 @@ func TestPromoteSensorTags_HWFW(t *testing.T) {
 	}
 }
 
+func TestPromoteSensorTags_IMEIAndID(t *testing.T) {
+	raw := map[string]any{}
+	id := make([]byte, 2)
+	binary.LittleEndian.PutUint16(id, 99)
+	promoteSensorTags(raw, map[byte][]byte{
+		0x03: []byte("861234567890123"),
+		0x04: id,
+	})
+	if raw["device.imei"] != "861234567890123" || raw["device.id"] != 99 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteSensorTags_Temp(t *testing.T) {
 	raw := map[string]any{}
 	t1 := make([]byte, 2)

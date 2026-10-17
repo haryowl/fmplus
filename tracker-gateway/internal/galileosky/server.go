@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
@@ -304,6 +305,18 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 	if v, ok := tags[0x02]; ok && len(v) >= 1 {
 		raw["device.fw"] = int(v[0])
 		raw["tag.0x02"] = int(v[0])
+	}
+	if v, ok := tags[0x03]; ok && len(v) >= 1 {
+		imei := strings.TrimRight(string(v), "\x00 ")
+		if imei != "" {
+			raw["device.imei"] = imei
+			raw["tag.0x03"] = imei
+		}
+	}
+	if v, ok := tags[0x04]; ok && len(v) >= 2 {
+		id := int(binary.LittleEndian.Uint16(v[0:2]))
+		raw["device.id"] = id
+		raw["tag.0x04"] = id
 	}
 	// 0x52–0x57: additional analog channels (mV → V when plausible).
 	for i, id := range []byte{0x52, 0x53, 0x54, 0x55, 0x56, 0x57} {
