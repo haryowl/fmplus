@@ -171,6 +171,18 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
 				_ = writeReply(conn, 0x16, serial, nil)
+			case 0x23: // Wi‑Fi / LBS variant — patch cell attrs when present
+				if device != nil {
+					patch := parseLBS(info)
+					if len(patch) == 0 {
+						patch = map[string]any{"proto_msg": "0x23", "wifi_hex": fmt.Sprintf("%x", info)}
+					} else {
+						patch["proto_msg"] = "0x23"
+					}
+					_ = st.PatchLastStatus(ctx, device, patch, nil)
+					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
+				}
+				_ = writeReply(conn, 0x23, serial, nil)
 			default:
 				_ = writeReply(conn, proto, serial, nil)
 			}
@@ -254,9 +266,11 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 		}
 		payload, err := enc.EncodeDownlinkSerial(*cmd, ser)
 		if err != nil || len(payload) == 0 {
-			return
+			_ = st.MarkCommandFailed(ctx, cmd.ID, "concox encode failed")
+			continue
 		}
 		if _, err := conn.Write(payload); err != nil {
+			_ = st.MarkCommandFailed(ctx, cmd.ID, "write failed: "+err.Error())
 			return
 		}
 		_ = st.MarkCommandSentCorr(ctx, cmd.ID, fmt.Sprintf("%d", ser))

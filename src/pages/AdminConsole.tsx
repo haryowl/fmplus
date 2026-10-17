@@ -143,11 +143,11 @@ const TRACKER_PROTOCOL_OPTIONS = [
   { value: "json", label: "JSON / HTTP (:5080) · partial" },
   { value: "teltonika", label: "Teltonika (:5027) · partial" },
   { value: "jt808", label: "JT/T 808 (:7611) · partial" },
-  { value: "subiao", label: "Su Biao (:7612) · mvp" },
+  { value: "subiao", label: "Su Biao (:7612) · partial" },
   { value: "jt809", label: "JT/T 809 (:8090) · experimental" },
   { value: "jt1078", label: "JT/T 1078 (:1078) · experimental" },
-  { value: "concox", label: "Concox / GT06 (:5023) · mvp" },
-  { value: "ruptela", label: "Ruptela (:3047) · mvp" },
+  { value: "concox", label: "Concox / GT06 (:5023) · partial" },
+  { value: "ruptela", label: "Ruptela (:3047) · partial" },
   { value: "galileosky", label: "Galileosky (:30175) · partial" },
   { value: "video", label: "Video (meta)" },
   { value: "other", label: "Other" },
@@ -460,6 +460,7 @@ export default function AdminConsole() {
   const [protocolParams, setProtocolParams] = useState<TrackerProtocolParam[]>([]);
   const [cmdDeviceId, setCmdDeviceId] = useState("");
   const [cmdText, setCmdText] = useState("");
+  const [cmdHex, setCmdHex] = useState("");
   const [cmdType, setCmdType] = useState("text");
   const [cmdHistory, setCmdHistory] = useState<
     Array<{
@@ -467,6 +468,7 @@ export default function AdminConsole() {
       status: string;
       commandType: string;
       payloadText?: string;
+      payloadHex?: string;
       responseText?: string;
       corrId?: string;
       createdAt: string;
@@ -475,6 +477,7 @@ export default function AdminConsole() {
     }>
   >([]);
   const [gatewayStatus, setGatewayStatus] = useState<string>("");
+  const [gatewayDetail, setGatewayDetail] = useState<string>("");
   const [onlineImeis, setOnlineImeis] = useState<Set<string>>(() => new Set());
   const [previewDeviceId, setPreviewDeviceId] = useState("");
   const [remapPreview, setRemapPreview] = useState<string>("");
@@ -1163,16 +1166,33 @@ export default function AdminConsole() {
         ok: boolean;
         base?: string;
         error?: string;
-        health?: { onlineCount?: number; connectionsOpen?: number; fixesIngested?: number };
+        health?: {
+          onlineCount?: number;
+          connectionsOpen?: number;
+          fixesIngested?: number;
+          decodeErrors?: number;
+          ingestErrors?: number;
+          commandsSent?: number;
+          commandsAcked?: number;
+          commandsFailed?: number;
+          uptimeSec?: number;
+          commandsByStatus?: Record<string, number>;
+        };
         adapters?: {
           onlineCount?: number;
           onlineByProto?: Record<string, number>;
           onlineSessions?: Array<{ imei?: string; deviceId?: string; protocol?: string }>;
-          adapters?: Array<{ name: string; status: string; displayName?: string }>;
+          adapters?: Array<{
+            name: string;
+            status: string;
+            displayName?: string;
+            defaultAddr?: string;
+          }>;
         };
       }>("/api/admin/tracker-gateway/status");
       if (!data.ok) {
         setOnlineImeis(new Set());
+        setGatewayDetail("");
         setGatewayStatus(`Gateway offline (${data.base || "?"}): ${data.error || "unreachable"}`);
         return;
       }
@@ -1183,18 +1203,33 @@ export default function AdminConsole() {
             .join(" ")
         : "";
       const catalog = (data.adapters?.adapters || [])
-        .map((a) => `${a.name}=${a.status}`)
+        .map((a) => `${a.name}=${a.status}${a.defaultAddr ? `@${a.defaultAddr}` : ""}`)
         .join(", ");
       const imeis = new Set<string>();
       for (const s of data.adapters?.onlineSessions || []) {
         if (s.imei) imeis.add(String(s.imei));
       }
       setOnlineImeis(imeis);
+      const cmds = data.health?.commandsByStatus || {};
+      const cmdLine = ["pending", "sent", "acked", "failed", "expired"]
+        .filter((k) => cmds[k] != null)
+        .map((k) => `${k}=${cmds[k]}`)
+        .join(" ");
       setGatewayStatus(
-        `Online sessions: ${online}${byProto ? ` (${byProto})` : ""} · fixes=${data.health?.fixesIngested ?? "—"} · ${catalog || "no adapters"}`,
+        `Online sessions: ${online}${byProto ? ` (${byProto})` : ""} · fixes=${data.health?.fixesIngested ?? "—"} · decode_err=${data.health?.decodeErrors ?? 0} · ${catalog || "no adapters"}`,
+      );
+      setGatewayDetail(
+        [
+          cmdLine ? `Commands (7d): ${cmdLine}` : "",
+          `lifetime sent/ack/fail=${data.health?.commandsSent ?? 0}/${data.health?.commandsAcked ?? 0}/${data.health?.commandsFailed ?? 0}`,
+          data.health?.uptimeSec != null ? `uptime ${Math.floor(data.health.uptimeSec / 60)}m` : "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
       );
     } catch (err) {
       setOnlineImeis(new Set());
+      setGatewayDetail("");
       setGatewayStatus(err instanceof Error ? err.message : "Gateway status failed");
     }
   }
@@ -1211,6 +1246,7 @@ export default function AdminConsole() {
           status: string;
           commandType: string;
           payloadText?: string;
+          payloadHex?: string;
           responseText?: string;
           corrId?: string;
           createdAt: string;
@@ -1230,12 +1266,18 @@ export default function AdminConsole() {
     setBusy(true);
     setError("");
     try {
+      const hex = cmdHex.replace(/[^0-9a-fA-F]/g, "");
       await api(`/api/admin/tenants/${selectedId}/tracker-devices/${cmdDeviceId}/commands`, {
         method: "POST",
-        body: JSON.stringify({ commandType: cmdType, payloadText: cmdText.trim() }),
+        body: JSON.stringify({
+          commandType: cmdType,
+          payloadText: cmdText.trim(),
+          payloadHex: hex,
+        }),
       });
       setNotice("Command queued — device receives it on next online session");
       setCmdText("");
+      setCmdHex("");
       await loadCommandHistory(cmdDeviceId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Command failed");
@@ -2067,6 +2109,7 @@ export default function AdminConsole() {
                     </button>
                   </div>
                   {gatewayStatus ? <p className="admin-notice">{gatewayStatus}</p> : null}
+                  {gatewayDetail ? <p className="muted">{gatewayDetail}</p> : null}
                   <label>
                     Profile
                     <select
@@ -2232,15 +2275,28 @@ export default function AdminConsole() {
                       </select>
                     </label>
                     <label>
-                      Payload
+                      Payload text
                       <input
                         value={cmdText}
                         onChange={(e) => setCmdText(e.target.value)}
-                        placeholder="getinfo / cut / hex…"
+                        placeholder="getinfo / cut / reset / all…"
+                      />
+                    </label>
+                    <label>
+                      Payload hex (optional)
+                      <input
+                        value={cmdHex}
+                        onChange={(e) => setCmdHex(e.target.value)}
+                        placeholder="8103 TLV / 8500 flag / raw bytes…"
+                        spellCheck={false}
                       />
                     </label>
                     <div className="span-2 admin-actions">
-                      <button type="submit" className="btn btn-secondary" disabled={busy || !cmdDeviceId}>
+                      <button
+                        type="submit"
+                        className="btn btn-secondary"
+                        disabled={busy || !cmdDeviceId || (!cmdText.trim() && !cmdHex.trim())}
+                      >
                         Queue downlink
                       </button>
                       <button
@@ -2268,6 +2324,7 @@ export default function AdminConsole() {
                               <span className={`admin-pill ${pill}`}>{c.status}</span> · {c.commandType}
                               {c.corrId ? ` · corr ${c.corrId}` : ""}
                               {c.payloadText ? ` · ${c.payloadText.slice(0, 48)}` : ""}
+                              {c.payloadHex ? ` · hex ${c.payloadHex.slice(0, 24)}` : ""}
                               {c.responseText ? ` → ${c.responseText.slice(0, 48)}` : ""}
                               <span className="muted">
                                 {" "}

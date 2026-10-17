@@ -7,14 +7,14 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | Adapter | Port env | Default | Status | Uplink | Downlink | Notes |
 |---------|----------|---------|--------|--------|----------|-------|
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat + alarm safety | — | nested attrs flatten; `alarm.*` → safety |
-| Teltonika Codec 8/8E | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | event IO → safety for known alarms |
-| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/0702/0107/0301 | 0x8300/8103/8104/8500 | driver ID; outbound subpkg; ack corr |
+| Teltonika Codec 8/8E | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | Codec12 ack = latest-sent (no echo id); event IO → safety |
+| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/0702/0104/0107/0301/0801/0900 | 0x8300/8103–8107/8201/8500 | subpkg; corr by seq; query aliases |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
 | JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/heartbeat | — | platform link only |
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling | — | A/V hooks only |
-| Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/0x8a/0x94/0x21 | 0x80 GPRS | 0x7979 long frames; 0x16 offset scan; ack by serial |
+| Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS/0x8a/0x94/0x23 | 0x80 GPRS | 0x7979; ack by serial; alarm/LBS remap seeds |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records | cmd 108 SMS | Kermit CRC; ACK 100; cmd7 ack corr=`108` |
-| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | archive bit; split on 0x30; ignition `0x46` |
+| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | archive bit; E0–E6 reply → latest-sent ack |
 
 **Do not claim “full JT/T” or production 2-way until an adapter is marked `certified`.** Status lives in each `Adapter.Status()` and Admin protocol labels.
 
@@ -46,7 +46,7 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `galileosky_text` | galileosky | 0x01 + CRC-16 Modbus text |
 | `raw` | any | hex payload as-is |
 
-Stale commands: **pending** > 24h or **sent** > 30m → `expired`. Encode/write errors → `failed`. Admin can **cancel** pending commands (not already sent). Sent commands store `corr_id` (JT808 seq / Concox serial); terminal `0x0001` acks match by corr before falling back to latest-sent. Remap rules support transforms: `identity`, `scale`, `offset`, `bit_mask`, `invert_bool`, `enum_map`.
+Stale commands: **pending** > 24h or **sent** > 30m → `expired`. Encode/write errors → `failed`. Admin can **cancel** pending commands (not already sent). Pending rows are **atomically claimed** (`FOR UPDATE SKIP LOCKED`) so dispatch and session flush cannot double-send. Sent commands store `corr_id` (JT808 seq / Concox serial / Ruptela `108`); terminal acks match by corr before falling back to latest-sent. Teltonika Codec12 and Galileosky text replies use latest-sent only (no stable echo id). Remap rules support transforms: `identity`, `scale`, `offset`, `bit_mask`, `invert_bool`, `enum_map`.
 
 JT808 location fixes flatten `alarm.*` bits and `status.acc` onto `raw_attrs` for Device Manager remap (same keys as safety events).
 
@@ -79,6 +79,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   063_jt808_driver_params.sql
 #   064_jt808_8201_ruptela_alarms.sql
 #   065_jt808_8105_terminal_control.sql
+#   066_concox_alarm_lbs_maps.sql
 npm run db:migrate
 
 cd tracker-gateway
@@ -111,7 +112,8 @@ Admin → tenant → **Device Manager**:
 - Map vendor keys (`io.239`, `add.0x01`, `tag.0x33`, `alarm.sos`, `adas.fcw`, …) → app params (profile or per-device override)
 - Transforms: `identity` / `scale` / `bit_mask` / …
 - Queue **downlink** commands (flushed when device is online); cancel pending from Admin
-- **Refresh gateway status** for online sessions / adapter catalog
+- **Refresh gateway status** for online sessions, command queue breakdown, decode errors, adapter ports
+- Queue commands with **payload text** and optional **payload hex** (8103 TLV / raw)
 
 ## Extending protocols
 

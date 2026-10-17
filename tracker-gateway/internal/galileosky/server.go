@@ -185,7 +185,8 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 			_ = st.MarkCommandFailed(ctx, cmd.ID, "write failed: "+err.Error())
 			return
 		}
-		_ = st.MarkCommandSent(ctx, cmd.ID)
+		// E0–E6 replies have no wire serial — empty corr_id, AckLatestSent on reply tags.
+		_ = st.MarkCommandSentCorr(ctx, cmd.ID, "")
 	}
 }
 

@@ -265,11 +265,14 @@ export async function enqueueCommand(tenantId, deviceId, body) {
         "param",
         "control",
         "vehicle_control",
+        "query_params",
+        "query_attrs",
+        "query_location",
       ].includes(body.commandType)
         ? body.commandType
         : "text",
       String(body.payloadText || body.text || "").slice(0, 4000),
-      String(body.payloadHex || "").replace(/[^0-9a-fA-F]/g, "").slice(0, 8000),
+      String(body.payloadHex || body.hex || "").replace(/[^0-9a-fA-F]/g, "").slice(0, 8000),
     ],
   );
   const row = inserted.rows[0];
@@ -294,6 +297,7 @@ export async function listCommands(tenantId, deviceId, limit = 50) {
     status: r.status,
     commandType: r.command_type,
     payloadText: r.payload_text,
+    payloadHex: r.payload_hex || "",
     responseText: r.response_text,
     corrId: r.corr_id || "",
     createdAt: r.created_at,

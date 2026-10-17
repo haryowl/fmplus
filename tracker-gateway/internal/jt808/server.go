@@ -221,11 +221,17 @@ func tryFlushCommands(ctx context.Context, conn net.Conn, st *store.Store, sessi
 		if err != nil || cmd == nil {
 			return
 		}
-		payload := encodeJT808DownlinkVer(sess.phone, &sess.seq, cmd, sess.version2019)
-		if len(payload) == 0 {
+		if sess.phone == "" {
+			_ = st.RequeueCommand(ctx, cmd.ID)
 			return
 		}
+		payload := encodeJT808DownlinkVer(sess.phone, &sess.seq, cmd, sess.version2019)
+		if len(payload) == 0 {
+			_ = st.MarkCommandFailed(ctx, cmd.ID, "jt808 empty downlink")
+			continue
+		}
 		if _, err := conn.Write(payload); err != nil {
+			_ = st.MarkCommandFailed(ctx, cmd.ID, "write failed: "+err.Error())
 			return
 		}
 		corr := DownlinkCorrID(payload)
@@ -513,10 +519,17 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 				fmt.Sprintf("jt808_0001 msg=0x%04x result=%d", respMsg, result))
 		}
 		return nil // no reply to a reply
-	case 0x0104: // query terminal params response
+	case 0x0104: // query terminal params response (应答流水号 + count + TLVs)
 		if sess.device != nil {
-			_ = st.AckLatestSent(ctx, sess.device.ID, true,
-				fmt.Sprintf("jt808_0104 len=%d hex=%x", len(body), body))
+			corr := ""
+			paramsBody := body
+			if len(body) >= 3 {
+				corr = fmt.Sprintf("%d", binary.BigEndian.Uint16(body[0:2]))
+				paramsBody = body[2:]
+			}
+			_ = st.PatchLastStatus(ctx, sess.device, parseTerminalParams(paramsBody), nil)
+			_ = st.AckCommand(ctx, sess.device.ID, corr, true,
+				fmt.Sprintf("jt808_0104 len=%d", len(body)))
 			_ = st.TouchSeen(ctx, sess.device)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
@@ -528,19 +541,36 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 	case 0x0107: // query terminal attributes response
 		if sess.device != nil {
 			_ = st.PatchLastStatus(ctx, sess.device, parseTerminalAttrs(body), nil)
+			// 0x0107 has no reply-seq in body — match latest query_attrs / 8107.
 			_ = st.AckLatestSent(ctx, sess.device.ID, true,
 				fmt.Sprintf("jt808_0107 len=%d", len(body)))
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
-	case 0x0201: // location query response (same body as 0x0200 after optional reply-seq)
+	case 0x0201: // location query response (应答流水号 + 0x0200 body)
 		loc := body
+		corr := ""
 		if len(body) >= 30 {
-			// some firmwares prepend response seq (2)
+			corr = fmt.Sprintf("%d", binary.BigEndian.Uint16(body[0:2]))
 			loc = body[2:]
 		}
 		ingestLocation(ctx, conn, st, sessions, sess, loc, protoHint)
 		if sess.device != nil {
-			_ = st.AckLatestSent(ctx, sess.device.ID, true, "jt808_0201")
+			_ = st.AckCommand(ctx, sess.device.ID, corr, true, "jt808_0201")
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0701: // electronic waybill
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, parseWaybill(body), nil)
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0801: // multimedia event / metadata (no 1078 media stack)
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, parseMultimediaMeta(body), nil)
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0900: // transparent data uplink
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, parseTransparent(body), nil)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0301: // event report
@@ -613,6 +643,92 @@ func parseDriverIdentity(body []byte) map[string]any {
 		if rest != "" {
 			out["driver_cert"] = rest
 		}
+	}
+	return out
+}
+
+// parseTerminalParams extracts remappable keys from 0x0104 param list
+// (count BYTE + N×{id DWORD, len BYTE, value}).
+func parseTerminalParams(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0104", "params_hex": fmt.Sprintf("%x", body)}
+	if len(body) < 1 {
+		return out
+	}
+	count := int(body[0])
+	out["param_count"] = count
+	off := 1
+	for i := 0; i < count && off+5 <= len(body); i++ {
+		id := binary.BigEndian.Uint32(body[off : off+4])
+		n := int(body[off+4])
+		off += 5
+		if n < 0 || off+n > len(body) {
+			break
+		}
+		val := body[off : off+n]
+		off += n
+		key := fmt.Sprintf("param.0x%04x", id)
+		switch n {
+		case 1:
+			out[key] = int(val[0])
+		case 2:
+			out[key] = int(binary.BigEndian.Uint16(val))
+		case 4:
+			out[key] = int(binary.BigEndian.Uint32(val))
+		default:
+			out[key] = fmt.Sprintf("%x", val)
+		}
+	}
+	return out
+}
+
+// parseMultimediaMeta stores 0x0801 multimedia event fields (partial; no media body).
+func parseMultimediaMeta(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0801", "media_hex": fmt.Sprintf("%x", body)}
+	if len(body) >= 1 {
+		out["media_type"] = int(body[0])
+	}
+	if len(body) >= 2 {
+		out["media_channel"] = int(body[1])
+	}
+	if len(body) >= 3 {
+		out["media_event"] = int(body[2])
+	}
+	if len(body) >= 7 {
+		out["media_id"] = binary.BigEndian.Uint32(body[3:7])
+	}
+	return out
+}
+
+// parseTransparent stores 0x0900 transparent uplink (type + payload snippet).
+func parseTransparent(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0900"}
+	if len(body) < 1 {
+		out["transparent_hex"] = ""
+		return out
+	}
+	out["transparent_type"] = int(body[0])
+	rest := body[1:]
+	if len(rest) > 64 {
+		rest = rest[:64]
+	}
+	out["transparent_hex"] = fmt.Sprintf("%x", rest)
+	return out
+}
+
+// parseWaybill stores 0x0701 electronic waybill length + text snippet.
+func parseWaybill(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0701", "waybill_hex": fmt.Sprintf("%x", body)}
+	if len(body) < 4 {
+		return out
+	}
+	n := int(binary.BigEndian.Uint32(body[0:4]))
+	out["waybill_len"] = n
+	if n > 0 && 4+n <= len(body) {
+		text := strings.TrimRight(string(body[4:4+n]), "\x00 ")
+		if len(text) > 120 {
+			text = text[:120]
+		}
+		out["waybill_text"] = text
 	}
 	return out
 }

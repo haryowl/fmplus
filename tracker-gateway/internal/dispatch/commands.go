@@ -15,18 +15,34 @@ import (
 	"github.com/haryowl/fmplus/tracker-gateway/internal/teltonika"
 )
 
+func isJT808Command(protocol, commandType string) bool {
+	switch protocol {
+	case "jt808", "subiao":
+		return true
+	}
+	switch commandType {
+	case "jt808", "jt808_8103", "jt808_8104", "jt808_8105", "jt808_8107",
+		"jt808_8201", "jt808_8500", "terminal_control", "param", "control",
+		"vehicle_control", "query_params", "query_attrs", "query_location":
+		return true
+	}
+	return false
+}
+
 func downlinkCorr(protocol, commandType string, payload []byte, sess *protocol.ConnSession) string {
 	switch {
-	case protocol == "jt808" || protocol == "subiao" ||
-		commandType == "jt808" || commandType == "jt808_8103" ||
-		commandType == "jt808_8104" || commandType == "jt808_8105" ||
-		commandType == "jt808_8107" || commandType == "jt808_8201" ||
-		commandType == "jt808_8500" || commandType == "terminal_control":
+	case isJT808Command(protocol, commandType):
 		return jt808.DownlinkCorrID(payload)
 	case protocol == "concox" || commandType == "concox_gprs":
 		return concox.DownlinkCorrID(payload)
 	case protocol == "ruptela" || commandType == "ruptela_sms":
 		return "108"
+	case protocol == "galileosky" || commandType == "galileosky_text":
+		// Replies are text/tag based — no wire serial; ack uses latest-sent.
+		return ""
+	case protocol == "teltonika" || commandType == "teltonika_codec12":
+		// Codec12 responses do not echo a stable command id — latest-sent only.
+		return ""
 	default:
 		if sess != nil && sess.Meta != nil && sess.Meta["seq"] != "" {
 			return sess.Meta["seq"]
@@ -35,21 +51,24 @@ func downlinkCorr(protocol, commandType string, payload []byte, sess *protocol.C
 	}
 }
 
-// FlushPending sends queued tracker_commands to online sessions.
+// FlushPending claims and sends queued tracker_commands to online sessions.
 func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Registry) {
-	cmds, err := st.ListPendingCommands(ctx, 50)
-	if err != nil || len(cmds) == 0 {
-		return
-	}
 	tel := teltonika.Adapter{}
 	cx := concox.Adapter{}
 	rup := ruptela.Adapter{}
 	jt := jt808.Adapter{}
 	gs := galileosky.Adapter{}
-	for _, cmd := range cmds {
+	for i := 0; i < 50; i++ {
+		cmdPtr, err := st.ClaimNextPendingCommand(ctx)
+		if err != nil || cmdPtr == nil {
+			return
+		}
+		cmd := *cmdPtr
 		sess, ok := sessions.SessionByDevice(cmd.DeviceID)
 		if !ok || sess.Conn == nil {
-			continue
+			// Not online — put back so session flush can take it on connect.
+			_ = st.RequeueCommand(ctx, cmd.ID)
+			return
 		}
 		var payload []byte
 		encErr := error(nil)
@@ -66,11 +85,7 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 			payload, encErr = cx.EncodeDownlinkSerial(cmd, ser)
 		case cmd.Protocol == "ruptela" || cmd.CommandType == "ruptela_sms":
 			payload, encErr = rup.EncodeDownlink(cmd)
-		case cmd.Protocol == "jt808" || cmd.Protocol == "subiao" ||
-			cmd.CommandType == "jt808" || cmd.CommandType == "jt808_8103" ||
-			cmd.CommandType == "jt808_8104" || cmd.CommandType == "jt808_8105" ||
-			cmd.CommandType == "jt808_8107" || cmd.CommandType == "jt808_8201" ||
-			cmd.CommandType == "jt808_8500" || cmd.CommandType == "terminal_control":
+		case isJT808Command(cmd.Protocol, cmd.CommandType):
 			phone := ""
 			var seq uint16
 			v2019 := false
@@ -82,7 +97,8 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 				v2019 = sess.Meta["jt808_ver"] == "2019"
 			}
 			if phone == "" {
-				continue // wait for uplink flush with known phone
+				_ = st.RequeueCommand(ctx, cmd.ID)
+				return // wait for uplink flush with known phone
 			}
 			payload, encErr = jt.EncodeDownlinkSeq(cmd, phone, &seq, v2019)
 		case cmd.Protocol == "galileosky" || cmd.CommandType == "galileosky_text":

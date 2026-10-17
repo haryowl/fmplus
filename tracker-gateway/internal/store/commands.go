@@ -42,14 +42,7 @@ func (c Command) PayloadBytes() []byte {
 	return []byte(c.PayloadText)
 }
 
-func (s *Store) NextPendingCommand(ctx context.Context, deviceID string) (*Command, error) {
-	row := s.pool.QueryRow(ctx, `
-		SELECT id::text, device_id::text, tenant_id::text, protocol, command_type,
-		       payload_text, payload_hex, created_at
-		FROM tracker_commands
-		WHERE device_id = $1::uuid AND status = 'pending'
-		ORDER BY created_at ASC
-		LIMIT 1`, deviceID)
+func scanCommand(row interface{ Scan(dest ...any) error }) (*Command, error) {
 	var c Command
 	if err := row.Scan(&c.ID, &c.DeviceID, &c.TenantID, &c.Protocol, &c.CommandType,
 		&c.PayloadText, &c.PayloadHex, &c.CreatedAt); err != nil {
@@ -58,6 +51,52 @@ func (s *Store) NextPendingCommand(ctx context.Context, deviceID string) (*Comma
 	return &c, nil
 }
 
+// NextPendingCommand atomically claims the oldest pending command for a device
+// (pending→sent) so dispatch and session flush cannot double-send.
+func (s *Store) NextPendingCommand(ctx context.Context, deviceID string) (*Command, error) {
+	row := s.pool.QueryRow(ctx, `
+		UPDATE tracker_commands c
+		SET status = 'sent', sent_at = now()
+		WHERE c.id = (
+			SELECT id FROM tracker_commands
+			WHERE device_id = $1::uuid AND status = 'pending'
+			ORDER BY created_at ASC
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		)
+		RETURNING c.id::text, c.device_id::text, c.tenant_id::text, c.protocol, c.command_type,
+		          c.payload_text, c.payload_hex, c.created_at`, deviceID)
+	c, err := scanCommand(row)
+	if err != nil {
+		return nil, err
+	}
+	metrics.CommandSent()
+	return c, nil
+}
+
+// ClaimNextPendingCommand claims the globally oldest pending command (dispatch loop).
+func (s *Store) ClaimNextPendingCommand(ctx context.Context) (*Command, error) {
+	row := s.pool.QueryRow(ctx, `
+		UPDATE tracker_commands c
+		SET status = 'sent', sent_at = now()
+		WHERE c.id = (
+			SELECT id FROM tracker_commands
+			WHERE status = 'pending'
+			ORDER BY created_at ASC
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		)
+		RETURNING c.id::text, c.device_id::text, c.tenant_id::text, c.protocol, c.command_type,
+		          c.payload_text, c.payload_hex, c.created_at`)
+	c, err := scanCommand(row)
+	if err != nil {
+		return nil, err
+	}
+	metrics.CommandSent()
+	return c, nil
+}
+
+// ListPendingCommands returns up to limit pending rows without claiming (Admin / metrics).
 func (s *Store) ListPendingCommands(ctx context.Context, limit int) ([]Command, error) {
 	if limit < 1 {
 		limit = 50
@@ -75,12 +114,11 @@ func (s *Store) ListPendingCommands(ctx context.Context, limit int) ([]Command, 
 	defer rows.Close()
 	var out []Command
 	for rows.Next() {
-		var c Command
-		if err := rows.Scan(&c.ID, &c.DeviceID, &c.TenantID, &c.Protocol, &c.CommandType,
-			&c.PayloadText, &c.PayloadHex, &c.CreatedAt); err != nil {
+		c, err := scanCommand(rows)
+		if err != nil {
 			continue
 		}
-		out = append(out, c)
+		out = append(out, *c)
 	}
 	return out, rows.Err()
 }
@@ -89,17 +127,37 @@ func (s *Store) MarkCommandSent(ctx context.Context, commandID string) error {
 	return s.MarkCommandSentCorr(ctx, commandID, "")
 }
 
-// MarkCommandSentCorr marks pending→sent and optionally stores a protocol correlation id
-// (e.g. JT808 downlink sequence) for precise terminal acks.
+// MarkCommandSentCorr sets corr_id on an already-claimed (sent) command after wire write.
+// Also accepts pending→sent for legacy callers that have not claimed yet.
+// Metrics are counted only on pending→sent (claim paths already call CommandSent).
 func (s *Store) MarkCommandSentCorr(ctx context.Context, commandID, corrID string) error {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE tracker_commands
-		SET status = 'sent', sent_at = now(),
+		SET status = 'sent',
+		    sent_at = COALESCE(sent_at, now()),
 		    corr_id = CASE WHEN $2 <> '' THEN $2 ELSE corr_id END
 		WHERE id = $1::uuid AND status = 'pending'`, commandID, corrID)
-	if err == nil && tag.RowsAffected() > 0 {
-		metrics.CommandSent()
+	if err != nil {
+		return err
 	}
+	if tag.RowsAffected() > 0 {
+		metrics.CommandSent()
+		return nil
+	}
+	// Already claimed: only attach corr_id.
+	_, err = s.pool.Exec(ctx, `
+		UPDATE tracker_commands
+		SET corr_id = CASE WHEN $2 <> '' THEN $2 ELSE corr_id END
+		WHERE id = $1::uuid AND status = 'sent'`, commandID, corrID)
+	return err
+}
+
+// RequeueCommand returns a claimed (sent, no terminal ack) command to pending.
+func (s *Store) RequeueCommand(ctx context.Context, commandID string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE tracker_commands
+		SET status = 'pending', sent_at = NULL, corr_id = ''
+		WHERE id = $1::uuid AND status = 'sent' AND completed_at IS NULL`, commandID)
 	return err
 }
 

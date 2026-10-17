@@ -155,12 +155,15 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 		}
 		payload, err := enc.EncodeDownlink(*cmd)
 		if err != nil || len(payload) == 0 {
-			return
+			_ = st.MarkCommandFailed(ctx, cmd.ID, "teltonika encode failed")
+			continue
 		}
 		if _, err := conn.Write(payload); err != nil {
+			_ = st.MarkCommandFailed(ctx, cmd.ID, "write failed: "+err.Error())
 			return
 		}
-		_ = st.MarkCommandSentCorr(ctx, cmd.ID, fmt.Sprintf("%d", i+1))
+		// Codec12 responses do not echo a stable corr — empty corr_id, AckLatestSent.
+		_ = st.MarkCommandSentCorr(ctx, cmd.ID, "")
 	}
 }
 
