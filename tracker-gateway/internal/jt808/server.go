@@ -10,16 +10,25 @@ import (
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/protocol"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
-// Serve a minimal JT/T 808 listener (register / auth / location report).
-func Serve(ctx context.Context, addr string, st *store.Store) error {
+// Serve JT/T 808 (partial: register/auth/heartbeat/location+TLV/batch). protocolLabel e.g. jt808|subiao.
+func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol.Registry) error {
+	return serveLabeled(ctx, addr, st, sessions, "jt808")
+}
+
+func ServeSuBiao(ctx context.Context, addr string, st *store.Store, sessions *protocol.Registry) error {
+	return serveLabeled(ctx, addr, st, sessions, "subiao")
+}
+
+func serveLabeled(ctx context.Context, addr string, st *store.Store, sessions *protocol.Registry, label string) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
-	log.Printf("[jt808] listening on %s", addr)
+	log.Printf("[%s] listening on %s (status=partial)", label, addr)
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
@@ -31,11 +40,11 @@ func Serve(ctx context.Context, addr string, st *store.Store) error {
 			case <-ctx.Done():
 				return nil
 			default:
-				log.Printf("[jt808] accept: %v", err)
+				log.Printf("[%s] accept: %v", label, err)
 				continue
 			}
 		}
-		go handleConn(ctx, conn, st)
+		go handleConn(ctx, conn, st, sessions, label)
 	}
 }
 
@@ -43,15 +52,20 @@ type session struct {
 	phone  string
 	device *store.Device
 	seq    uint16
+	label  string
+	bound  *protocol.ConnSession
 }
 
-func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
+func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry, label string) {
 	metrics.ConnOpen()
+	sess := &session{label: label}
 	defer func() {
 		metrics.ConnClose()
+		if sessions != nil && sess.bound != nil {
+			sessions.Unbind(sess.bound)
+		}
 		_ = conn.Close()
 	}()
-	sess := &session{}
 	buf := make([]byte, 0, 4096)
 	tmp := make([]byte, 2048)
 	for {
@@ -59,7 +73,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 		n, err := conn.Read(tmp)
 		if err != nil {
 			if err != io.EOF {
-				log.Printf("[jt808] read: %v", err)
+				log.Printf("[%s] read: %v", label, err)
 			}
 			return
 		}
@@ -70,9 +84,10 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 			if !ok {
 				break
 			}
-			if err := handleFrame(ctx, conn, st, sess, frame); err != nil {
-				log.Printf("[jt808] frame: %v", err)
+			if err := handleFrame(ctx, conn, st, sessions, sess, frame); err != nil {
+				log.Printf("[%s] frame: %v", label, err)
 			}
+			tryFlushCommands(ctx, conn, st, sessions, sess)
 		}
 		if len(buf) > 64*1024 {
 			return
@@ -169,7 +184,74 @@ func bcdPhone(b []byte) string {
 	return s
 }
 
-func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sess *session, frame []byte) error {
+func bindSession(sessions *protocol.Registry, sess *session, conn net.Conn) {
+	if sessions == nil || sess.device == nil {
+		return
+	}
+	bound := &protocol.ConnSession{
+		DeviceID: sess.device.ID,
+		IMEI:     sess.device.IMEI,
+		Protocol: sess.label,
+		Conn:     conn,
+		Meta:     map[string]string{"phone": sess.phone},
+	}
+	if sess.bound != nil {
+		sessions.Unbind(sess.bound)
+	}
+	sess.bound = bound
+	sessions.Bind(bound)
+}
+
+func tryFlushCommands(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry, sess *session) {
+	if sess.device == nil {
+		return
+	}
+	cmd, err := st.NextPendingCommand(ctx, sess.device.ID)
+	if err != nil || cmd == nil {
+		return
+	}
+	payload := encodeJT808Downlink(sess, cmd)
+	if len(payload) == 0 {
+		return
+	}
+	if _, err := conn.Write(payload); err == nil {
+		_ = st.MarkCommandSent(ctx, cmd.ID)
+	}
+}
+
+func encodeJT808Downlink(sess *session, cmd *store.Command) []byte {
+	if cmd == nil {
+		return nil
+	}
+	text := cmd.PayloadText
+	if text == "" {
+		text = string(cmd.PayloadBytes())
+	}
+	// 0x8300 text message: flag(1) + text
+	body := append([]byte{0x01}, []byte(text)...)
+	header := make([]byte, 12)
+	binary.BigEndian.PutUint16(header[0:2], 0x8300)
+	binary.BigEndian.PutUint16(header[2:4], uint16(len(body)&0x3ff))
+	phoneDigits := sess.phone
+	for len(phoneDigits) < 12 {
+		phoneDigits = "0" + phoneDigits
+	}
+	if len(phoneDigits) > 12 {
+		phoneDigits = phoneDigits[len(phoneDigits)-12:]
+	}
+	for i := 0; i < 6; i++ {
+		hi := phoneDigits[i*2] - '0'
+		lo := phoneDigits[i*2+1] - '0'
+		header[4+i] = (hi << 4) | lo
+	}
+	sess.seq++
+	binary.BigEndian.PutUint16(header[10:12], sess.seq)
+	msg := append(header, body...)
+	msg = append(msg, bcc(msg))
+	return escape(msg)
+}
+
+func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry, sess *session, frame []byte) error {
 	raw := unescape(frame)
 	if len(raw) < 13 {
 		return nil
@@ -191,32 +273,41 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sess *sess
 	body = body[:bodyLen]
 	sess.phone = phone
 	sess.seq = seq
+	protoHint := sess.label
+	if protoHint == "" {
+		protoHint = "jt808"
+	}
 
 	switch msgID {
 	case 0x0100: // terminal register
 		return reply(conn, sess, 0x8100, buildRegisterAck(seq, 0, "FM1"))
 	case 0x0102: // auth
 		remote := conn.RemoteAddr().String()
-		sess.device = deviceauth.FindByIMEI(ctx, st, phone, remote, "jt808")
+		sess.device = deviceauth.FindByIMEI(ctx, st, phone, remote, protoHint)
 		if sess.device == nil {
-			sess.device = deviceauth.FindByIMEI(ctx, st, bcdPhone(msg[4:10]), remote, "jt808")
+			sess.device = deviceauth.FindByIMEI(ctx, st, bcdPhone(msg[4:10]), remote, protoHint)
 		}
+		bindSession(sessions, sess, conn)
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0002: // heartbeat
 		return replyGeneral(conn, sess, msgID, seq, 0)
-	case 0x0200: // location
-		fix, ok := parseLocation(body)
-		if ok {
-			if sess.device == nil {
-				sess.device = deviceauth.FindByIMEI(ctx, st, phone, conn.RemoteAddr().String(), "jt808")
-			}
-			if sess.device != nil {
-				fix.SourceProtocol = "jt808"
-				if err := deviceauth.Ingest(ctx, st, sess.device, fix); err != nil {
-					log.Printf("[jt808] ingest %s: %v", phone, err)
+	case 0x0704: // batch location
+		if len(body) >= 3 {
+			count := int(binary.BigEndian.Uint16(body[0:2]))
+			off := 3
+			for i := 0; i < count && off+2 <= len(body); i++ {
+				itemLen := int(binary.BigEndian.Uint16(body[off : off+2]))
+				off += 2
+				if off+itemLen > len(body) {
+					break
 				}
+				ingestLocation(ctx, conn, st, sessions, sess, body[off:off+itemLen], protoHint)
+				off += itemLen
 			}
 		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0200: // location
+		ingestLocation(ctx, conn, st, sessions, sess, body, protoHint)
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	default:
 		return replyGeneral(conn, sess, msgID, seq, 0)
@@ -266,11 +357,40 @@ func reply(conn net.Conn, sess *session, msgID uint16, body []byte) error {
 	return err
 }
 
+func ingestLocation(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry, sess *session, body []byte, protoHint string) {
+	fix, ok := parseLocation(body)
+	if !ok {
+		return
+	}
+	if sess.device == nil {
+		sess.device = deviceauth.FindByIMEI(ctx, st, sess.phone, conn.RemoteAddr().String(), protoHint)
+		bindSession(sessions, sess, conn)
+	}
+	if sess.device == nil {
+		return
+	}
+	fix.SourceProtocol = protoHint
+	add := parseAdditionalInfo(body)
+	if fix.RawAttrs == nil {
+		fix.RawAttrs = map[string]any{}
+	}
+	if len(add) > 0 {
+		fix.RawAttrs["add"] = add
+		if ev := safetyFromAdditional(add, fix, protoHint); ev != nil {
+			_ = st.InsertSafetyEvent(ctx, sess.device, *ev)
+		}
+	}
+	if err := deviceauth.Ingest(ctx, st, sess.device, fix); err != nil {
+		log.Printf("[%s] ingest %s: %v", protoHint, sess.phone, err)
+	}
+}
+
 func parseLocation(body []byte) (store.Fix, bool) {
 	if len(body) < 28 {
 		return store.Fix{}, false
 	}
 	// alarm 4, status 4, lat 4, lon 4, alt 2, speed 2, direction 2, time 6 BCD
+	alarm := binary.BigEndian.Uint32(body[0:4])
 	latRaw := binary.BigEndian.Uint32(body[8:12])
 	lonRaw := binary.BigEndian.Uint32(body[12:16])
 	alt := int(binary.BigEndian.Uint16(body[16:18]))
@@ -296,7 +416,7 @@ func parseLocation(body []byte) (store.Fix, bool) {
 		Heading:    &dir,
 		Altitude:   &altF,
 		Ignition:   &ign,
-		RawAttrs:   map[string]any{"status": status},
+		RawAttrs:   map[string]any{"status": status, "alarm": alarm},
 	}, true
 }
 

@@ -187,7 +187,9 @@ func parseRecords(data []byte) ([]store.Fix, string) {
 			Altitude:       &altF,
 			Satellites:     &sats,
 			SourceProtocol: "ruptela",
-			RawAttrs:       map[string]any{},
+			RawAttrs: map[string]any{
+				"io": map[string]any{"record_index": i, "event": "parsed"},
+			},
 		})
 	}
 	return fixes, imei

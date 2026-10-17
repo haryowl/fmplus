@@ -36,6 +36,20 @@ import {
   normalizeTelematicsSource,
   updateTrackerDevice,
 } from "./tracker-devices.mjs";
+import {
+  createProfile,
+  deleteMapRule,
+  enqueueCommand,
+  lastFixPreview,
+  listCommands,
+  listMapRules,
+  listParamDefs,
+  listProfiles,
+  listProtocolParams,
+  listSafetyEvents,
+  previewRemap,
+  upsertMapRule,
+} from "./device-manager.mjs";
 
 function send(res, status, headers, body) {
   res.writeHead(status, securityHeaders(headers));
@@ -309,6 +323,145 @@ export async function handleAdminRequest(req, res) {
       await writeAudit(admin.id, "tenant.create", { key, appId });
       await initTenantVault();
       json(res, 201, { tenant: publicTenantRow(inserted.rows[0]) });
+      return true;
+    }
+
+    if (path === "/api/admin/tracker-param-defs" && req.method === "GET") {
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      json(res, 200, { params: await listParamDefs() });
+      return true;
+    }
+
+    if (path === "/api/admin/tracker-protocol-params" && req.method === "GET") {
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      const protocol = url.searchParams.get("protocol") || "";
+      json(res, 200, { params: await listProtocolParams(protocol || undefined) });
+      return true;
+    }
+
+    const profilesMatch = /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-profiles$/i.exec(path);
+    if (profilesMatch) {
+      const tenantId = profilesMatch[1];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "GET") {
+        json(res, 200, { profiles: await listProfiles(tenantId) });
+        return true;
+      }
+      if (req.method === "POST") {
+        const body = await readJson(req);
+        const profile = await createProfile(tenantId, body);
+        await writeAudit(admin.id, "tracker_profile.create", { tenantId, profileId: profile.id });
+        json(res, 201, { profile });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const mapsMatch = /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-param-maps$/i.exec(path);
+    if (mapsMatch) {
+      const tenantId = mapsMatch[1];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "GET") {
+        json(res, 200, {
+          rules: await listMapRules({
+            profileId: url.searchParams.get("profileId") || undefined,
+            deviceId: url.searchParams.get("deviceId") || undefined,
+          }),
+        });
+        return true;
+      }
+      if (req.method === "POST") {
+        const body = await readJson(req);
+        const rule = await upsertMapRule(body);
+        await writeAudit(admin.id, "tracker_param_map.upsert", { tenantId, ruleId: rule.id });
+        json(res, 201, { rule });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const mapOneMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-param-maps\/([0-9a-f-]{36})$/i.exec(path);
+    if (mapOneMatch) {
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "DELETE") {
+        await deleteMapRule(mapOneMatch[2]);
+        json(res, 200, { ok: true });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const previewMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-devices\/([0-9a-f-]{36})\/remap-preview$/i.exec(
+        path,
+      );
+    if (previewMatch) {
+      const tenantId = previewMatch[1];
+      const deviceId = previewMatch[2];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "GET") {
+        const last = await lastFixPreview(tenantId, deviceId);
+        if (!last) {
+          json(res, 200, { last: null, preview: { mapped: {}, rulesApplied: 0 } });
+          return true;
+        }
+        const preview = await previewRemap(last.rawAttrs, { deviceId });
+        json(res, 200, { last, preview });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const commandsMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-devices\/([0-9a-f-]{36})\/commands$/i.exec(
+        path,
+      );
+    if (commandsMatch) {
+      const tenantId = commandsMatch[1];
+      const deviceId = commandsMatch[2];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "GET") {
+        json(res, 200, { commands: await listCommands(tenantId, deviceId) });
+        return true;
+      }
+      if (req.method === "POST") {
+        const body = await readJson(req);
+        const command = await enqueueCommand(tenantId, deviceId, body);
+        await writeAudit(admin.id, "tracker_command.enqueue", { tenantId, deviceId, commandId: command.id });
+        json(res, 201, { command });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const safetyMatch = /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-safety-events$/i.exec(path);
+    if (safetyMatch) {
+      const tenantId = safetyMatch[1];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "GET") {
+        json(res, 200, {
+          events: await listSafetyEvents(tenantId, {
+            deviceId: url.searchParams.get("deviceId") || undefined,
+            limit: Number(url.searchParams.get("limit") || 50),
+          }),
+        });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
       return true;
     }
 

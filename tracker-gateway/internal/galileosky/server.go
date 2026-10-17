@@ -3,6 +3,7 @@ package galileosky
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -70,6 +71,19 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 			continue
 		}
 		payload := body[:length-1]
+		payload, compressed := maybeDecompress(hdr[0], payload)
+		if compressed {
+			log.Printf("[galileosky] compressed packet from %s (experimental — raw only)", conn.RemoteAddr())
+			if device != nil {
+				_ = deviceauth.Ingest(ctx, st, device, store.Fix{
+					Lat: 0, Lon: 0, RecordedAt: time.Now().UTC(),
+					SourceProtocol: "galileosky",
+					RawAttrs:       map[string]any{"compressed": true, "blob": fmt.Sprintf("%x", payload)},
+				})
+			}
+			_ = writeAck(conn)
+			continue
+		}
 		tags := parseTags(payload)
 		if v, ok := tags[0x03]; ok && len(v) >= 15 {
 			imei = string(v[:15])
@@ -81,6 +95,10 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 		}
 		if hasFix && device != nil {
 			fix.SourceProtocol = "galileosky"
+			if fix.RawAttrs == nil {
+				fix.RawAttrs = map[string]any{}
+			}
+			fix.RawAttrs["tags"] = tagsToRaw(tags)
 			if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 				log.Printf("[galileosky] ingest %s: %v", imei, err)
 			}
@@ -93,26 +111,6 @@ func writeAck(conn net.Conn) error {
 	// Empty confirm: 0x02 | len=0
 	_, err := conn.Write([]byte{0x02, 0x00, 0x00})
 	return err
-}
-
-func parseTags(payload []byte) map[byte][]byte {
-	out := make(map[byte][]byte)
-	off := 0
-	for off < len(payload) {
-		tag := payload[off]
-		off++
-		size := tagSize(tag)
-		if size < 0 {
-			// variable / unknown — stop
-			break
-		}
-		if off+size > len(payload) {
-			break
-		}
-		out[tag] = append([]byte(nil), payload[off:off+size]...)
-		off += size
-	}
-	return out
 }
 
 func tagSize(tag byte) int {

@@ -10,16 +10,17 @@ import (
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/protocol"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
 // Serve Teltonika Codec 8 / 8 Extended AVL over TCP.
-func Serve(ctx context.Context, addr string, st *store.Store) error {
+func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol.Registry) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
-	log.Printf("[teltonika] listening on %s", addr)
+	log.Printf("[teltonika] listening on %s (status=partial)", addr)
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
@@ -35,14 +36,18 @@ func Serve(ctx context.Context, addr string, st *store.Store) error {
 				continue
 			}
 		}
-		go handleConn(ctx, conn, st)
+		go handleConn(ctx, conn, st, sessions)
 	}
 }
 
-func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
+func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry) {
 	metrics.ConnOpen()
+	var bound *protocol.ConnSession
 	defer func() {
 		metrics.ConnClose()
+		if sessions != nil && bound != nil {
+			sessions.Unbind(bound)
+		}
 		_ = conn.Close()
 	}()
 	_ = conn.SetDeadline(time.Now().Add(2 * time.Minute))
@@ -69,6 +74,15 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 	}
 	if _, err := conn.Write([]byte{0x01}); err != nil {
 		return
+	}
+	bound = &protocol.ConnSession{
+		DeviceID: device.ID,
+		IMEI:     device.IMEI,
+		Protocol: "teltonika",
+		Conn:     conn,
+	}
+	if sessions != nil {
+		sessions.Bind(bound)
 	}
 
 	for {
@@ -97,6 +111,9 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 			return
 		}
 
+		if !verifyAVLCRC(payload, crcBuf) {
+			log.Printf("[teltonika] bad CRC for %s — still attempting parse", imei)
+		}
 		count, fixes := parseAVL(payload)
 		for _, fix := range fixes {
 			fix.SourceProtocol = "teltonika"
@@ -110,127 +127,4 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 			return
 		}
 	}
-}
-
-func parseAVL(payload []byte) (int, []store.Fix) {
-	if len(payload) < 2 {
-		return 0, nil
-	}
-	codec := payload[0]
-	n := int(payload[1])
-	if n == 0 {
-		return 0, nil
-	}
-	off := 2
-	var fixes []store.Fix
-	for i := 0; i < n && off+24 <= len(payload); i++ {
-		tsMs := int64(binary.BigEndian.Uint64(payload[off : off+8]))
-		off += 8
-		off++ // priority
-		if off+15 > len(payload) {
-			break
-		}
-		lonRaw := int32(binary.BigEndian.Uint32(payload[off : off+4]))
-		off += 4
-		latRaw := int32(binary.BigEndian.Uint32(payload[off : off+4]))
-		off += 4
-		alt := int16(binary.BigEndian.Uint16(payload[off : off+2]))
-		off += 2
-		angle := int(binary.BigEndian.Uint16(payload[off : off+2]))
-		off += 2
-		sats := int(payload[off])
-		off++
-		speed := int(binary.BigEndian.Uint16(payload[off : off+2]))
-		off += 2
-
-		lon := float64(lonRaw) / 1e7
-		lat := float64(latRaw) / 1e7
-		spd := float64(speed)
-		hdg := float64(angle)
-		altF := float64(alt)
-		fix := store.Fix{
-			Lat:        lat,
-			Lon:        lon,
-			RecordedAt: time.UnixMilli(tsMs).UTC(),
-			Speed:      &spd,
-			Heading:    &hdg,
-			Altitude:   &altF,
-			Satellites: &sats,
-			RawAttrs:   map[string]any{"codec": codec},
-		}
-
-		// IO elements — skip by codec layout so we can continue the record loop.
-		if codec == 0x08 {
-			off = skipIO8(payload, off)
-		} else if codec == 0x8e {
-			off = skipIO8E(payload, off)
-		} else {
-			// Unknown codec: accept first record coords and stop.
-			fixes = append(fixes, fix)
-			break
-		}
-		fixes = append(fixes, fix)
-	}
-	return n, fixes
-}
-
-func skipIO8(b []byte, off int) int {
-	if off >= len(b) {
-		return off
-	}
-	off++ // event IO id
-	off++ // total IO
-	off = skipSized(b, off, 1)
-	off = skipSized(b, off, 2)
-	off = skipSized(b, off, 4)
-	off = skipSized(b, off, 8)
-	return off
-}
-
-func skipIO8E(b []byte, off int) int {
-	if off+2 > len(b) {
-		return off
-	}
-	off += 2 // event IO id u16
-	if off+2 > len(b) {
-		return off
-	}
-	off += 2 // total IO u16
-	off = skipSizedU16(b, off, 1)
-	off = skipSizedU16(b, off, 2)
-	off = skipSizedU16(b, off, 4)
-	off = skipSizedU16(b, off, 8)
-	// NX variable length
-	if off+2 > len(b) {
-		return off
-	}
-	n := int(binary.BigEndian.Uint16(b[off : off+2]))
-	off += 2
-	for i := 0; i < n && off+4 <= len(b); i++ {
-		off += 2 // id
-		l := int(binary.BigEndian.Uint16(b[off : off+2]))
-		off += 2
-		off += l
-	}
-	return off
-}
-
-func skipSized(b []byte, off, size int) int {
-	if off >= len(b) {
-		return off
-	}
-	n := int(b[off])
-	off++
-	off += n * (1 + size)
-	return off
-}
-
-func skipSizedU16(b []byte, off, size int) int {
-	if off+2 > len(b) {
-		return off
-	}
-	n := int(binary.BigEndian.Uint16(b[off : off+2]))
-	off += 2
-	off += n * (2 + size)
-	return off
 }

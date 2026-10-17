@@ -131,15 +131,41 @@ type Draft = {
 };
 
 const TRACKER_PROTOCOL_OPTIONS = [
-  { value: "json", label: "JSON / HTTP (:5080)" },
-  { value: "teltonika", label: "Teltonika (:5027)" },
-  { value: "jt808", label: "JT/T 808 (:7611)" },
-  { value: "concox", label: "Concox / GT06 (:5023)" },
-  { value: "ruptela", label: "Ruptela (:3047)" },
-  { value: "galileosky", label: "Galileosky (:30175)" },
+  { value: "json", label: "JSON / HTTP (:5080) · partial" },
+  { value: "teltonika", label: "Teltonika (:5027) · partial" },
+  { value: "jt808", label: "JT/T 808 (:7611) · partial" },
+  { value: "subiao", label: "Su Biao (:7612) · mvp" },
+  { value: "jt809", label: "JT/T 809 (:8090) · experimental" },
+  { value: "jt1078", label: "JT/T 1078 (:1078) · experimental" },
+  { value: "concox", label: "Concox / GT06 (:5023) · mvp" },
+  { value: "ruptela", label: "Ruptela (:3047) · mvp" },
+  { value: "galileosky", label: "Galileosky (:30175) · partial" },
   { value: "video", label: "Video (meta)" },
   { value: "other", label: "Other" },
 ];
+
+type TrackerProfileRow = {
+  id: string;
+  name: string;
+  protocol: string;
+  model: string;
+  completeness: string;
+  notes: string;
+};
+
+type TrackerParamDef = {
+  id: string;
+  category: string;
+  label: string;
+  valueType: string;
+};
+
+type TrackerMapRule = {
+  id: string;
+  vendorKey: string;
+  appParamId: string;
+  transform: string;
+};
 
 const FIELD_ROLE_OPTIONS = [
   { value: "operator", label: "Operator" },
@@ -403,6 +429,19 @@ export default function AdminConsole() {
   const [fuEditingId, setFuEditingId] = useState<string | null>(null);
   const [trackerDevices, setTrackerDevices] = useState<TrackerDeviceRow[]>([]);
   const [unassignedTrackers, setUnassignedTrackers] = useState<UnassignedTrackerRow[]>([]);
+  const [trackerProfiles, setTrackerProfiles] = useState<TrackerProfileRow[]>([]);
+  const [paramDefs, setParamDefs] = useState<TrackerParamDef[]>([]);
+  const [mapRules, setMapRules] = useState<TrackerMapRule[]>([]);
+  const [dmProfileId, setDmProfileId] = useState("");
+  const [dmVendorKey, setDmVendorKey] = useState("io.239");
+  const [dmAppParam, setDmAppParam] = useState("ignition");
+  const [cmdDeviceId, setCmdDeviceId] = useState("");
+  const [cmdText, setCmdText] = useState("");
+  const [previewDeviceId, setPreviewDeviceId] = useState("");
+  const [remapPreview, setRemapPreview] = useState<string>("");
+  const [safetyEvents, setSafetyEvents] = useState<
+    Array<{ id: string; alarmType: string; alarmLevel: number; recordedAt: string; deviceId: string }>
+  >([]);
   const [tdImei, setTdImei] = useState("");
   const [tdLabel, setTdLabel] = useState("");
   const [tdProtocol, setTdProtocol] = useState("teltonika");
@@ -447,6 +486,27 @@ export default function AdminConsole() {
     setUnassignedTrackers(data.unassigned);
   }, []);
 
+  const loadDeviceManager = useCallback(async (tenantId: string) => {
+    const [profiles, params] = await Promise.all([
+      api<{ profiles: TrackerProfileRow[] }>(`/api/admin/tenants/${tenantId}/tracker-profiles`),
+      api<{ params: TrackerParamDef[] }>("/api/admin/tracker-param-defs"),
+    ]);
+    setTrackerProfiles(profiles.profiles);
+    setParamDefs(params.params);
+    setDmProfileId((cur) => cur || profiles.profiles[0]?.id || "");
+  }, []);
+
+  const loadMapRules = useCallback(async (tenantId: string, profileId: string) => {
+    if (!profileId) {
+      setMapRules([]);
+      return;
+    }
+    const data = await api<{ rules: TrackerMapRule[] }>(
+      `/api/admin/tenants/${tenantId}/tracker-param-maps?profileId=${encodeURIComponent(profileId)}`,
+    );
+    setMapRules(data.rules);
+  }, []);
+
   useEffect(() => {
     document.title = "Admin · ARMADA M.1";
     void refreshMe().then((ok) => {
@@ -466,7 +526,29 @@ export default function AdminConsole() {
     void loadFieldUsers(selectedId).catch((err: Error) => setError(err.message));
     void loadTrackerDevices(selectedId).catch((err: Error) => setError(err.message));
     void loadUnassignedTrackers().catch((err: Error) => setError(err.message));
-  }, [selectedId, loadFieldUsers, loadTrackerDevices, loadUnassignedTrackers]);
+    void loadDeviceManager(selectedId).catch((err: Error) => setError(err.message));
+    void (async () => {
+      try {
+        const data = await api<{
+          events: Array<{
+            id: string;
+            alarmType: string;
+            alarmLevel: number;
+            recordedAt: string;
+            deviceId: string;
+          }>;
+        }>(`/api/admin/tenants/${selectedId}/tracker-safety-events?limit=30`);
+        setSafetyEvents(data.events);
+      } catch {
+        setSafetyEvents([]);
+      }
+    })();
+  }, [selectedId, loadFieldUsers, loadTrackerDevices, loadUnassignedTrackers, loadDeviceManager]);
+
+  useEffect(() => {
+    if (!selectedId || selectedId === "new" || !dmProfileId) return;
+    void loadMapRules(selectedId, dmProfileId).catch((err: Error) => setError(err.message));
+  }, [selectedId, dmProfileId, loadMapRules]);
 
   const filteredTenants = useMemo(() => {
     const q = tenantQuery.trim().toLowerCase();
@@ -812,6 +894,95 @@ export default function AdminConsole() {
       await Promise.all([loadTrackerDevices(selectedId), loadUnassignedTrackers()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Claim failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addMapRule(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedId || selectedId === "new" || !dmProfileId) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/admin/tenants/${selectedId}/tracker-param-maps`, {
+        method: "POST",
+        body: JSON.stringify({
+          profileId: dmProfileId,
+          vendorKey: dmVendorKey.trim(),
+          appParamId: dmAppParam,
+          transform: "identity",
+        }),
+      });
+      setNotice(`Mapped ${dmVendorKey} → ${dmAppParam}`);
+      await loadMapRules(selectedId, dmProfileId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Map rule failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadRemapPreview() {
+    if (!selectedId || selectedId === "new" || !previewDeviceId) return;
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api<{
+        last: { rawAttrs: Record<string, unknown>; mappedAttrs: Record<string, unknown> } | null;
+        preview: { mapped: Record<string, unknown>; rulesApplied: number };
+      }>(`/api/admin/tenants/${selectedId}/tracker-devices/${previewDeviceId}/remap-preview`);
+      setRemapPreview(
+        JSON.stringify(
+          {
+            storedMapped: data.last?.mappedAttrs || {},
+            previewMapped: data.preview.mapped,
+            rulesApplied: data.preview.rulesApplied,
+            rawSample: data.last?.rawAttrs || null,
+          },
+          null,
+          2,
+        ),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Preview failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadSafetyEventsForTenant() {
+    if (!selectedId || selectedId === "new") return;
+    try {
+      const data = await api<{
+        events: Array<{
+          id: string;
+          alarmType: string;
+          alarmLevel: number;
+          recordedAt: string;
+          deviceId: string;
+        }>;
+      }>(`/api/admin/tenants/${selectedId}/tracker-safety-events?limit=30`);
+      setSafetyEvents(data.events);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Safety events failed");
+    }
+  }
+
+  async function sendDeviceCommand(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedId || selectedId === "new" || !cmdDeviceId) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/admin/tenants/${selectedId}/tracker-devices/${cmdDeviceId}/commands`, {
+        method: "POST",
+        body: JSON.stringify({ commandType: "text", payloadText: cmdText.trim() }),
+      });
+      setNotice("Command queued — device receives it on next online session");
+      setCmdText("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Command failed");
     } finally {
       setBusy(false);
     }
@@ -1623,6 +1794,143 @@ export default function AdminConsole() {
               {selectedId !== "new" && (
                 <section className="admin-panel admin-field-users">
                   <header className="admin-panel-head">
+                    <h3>Device Manager</h3>
+                    <p className="muted">
+                      Remap vendor IO/tags/alarms → app params. Adapters are{" "}
+                      <strong>MVP/partial</strong> until certified — not full 2-way production yet.
+                    </p>
+                  </header>
+                  <label>
+                    Profile
+                    <select
+                      value={dmProfileId}
+                      onChange={(e) => setDmProfileId(e.target.value)}
+                    >
+                      {trackerProfiles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.protocol}/{p.completeness})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <ul className="admin-field-list">
+                    {mapRules.map((r) => (
+                      <li key={r.id}>
+                        <span>
+                          <code>{r.vendorKey}</code> → <strong>{r.appParamId}</strong> ({r.transform})
+                        </span>
+                      </li>
+                    ))}
+                    {mapRules.length === 0 ? (
+                      <li className="muted admin-empty">No remap rules on this profile yet.</li>
+                    ) : null}
+                  </ul>
+                  <form className="admin-form-grid" onSubmit={(e) => void addMapRule(e)}>
+                    <label>
+                      Vendor key
+                      <input value={dmVendorKey} onChange={(e) => setDmVendorKey(e.target.value)} />
+                    </label>
+                    <label>
+                      App param
+                      <select value={dmAppParam} onChange={(e) => setDmAppParam(e.target.value)}>
+                        {paramDefs.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.label} ({p.id})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="span-2 admin-actions">
+                      <button type="submit" className="btn btn-secondary" disabled={busy || !dmProfileId}>
+                        Add remap rule
+                      </button>
+                    </div>
+                  </form>
+                  <form className="admin-form-grid" onSubmit={(e) => void sendDeviceCommand(e)}>
+                    <label>
+                      Send command to device
+                      <select value={cmdDeviceId} onChange={(e) => setCmdDeviceId(e.target.value)}>
+                        <option value="">Select device…</option>
+                        {trackerDevices.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.label || d.imei}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Text / GPRS payload
+                      <input
+                        value={cmdText}
+                        onChange={(e) => setCmdText(e.target.value)}
+                        placeholder="getinfo"
+                      />
+                    </label>
+                    <div className="span-2 admin-actions">
+                      <button type="submit" className="btn btn-secondary" disabled={busy || !cmdDeviceId}>
+                        Queue downlink
+                      </button>
+                    </div>
+                  </form>
+                  <div className="admin-form-grid">
+                    <label>
+                      Remap preview device
+                      <select
+                        value={previewDeviceId}
+                        onChange={(e) => setPreviewDeviceId(e.target.value)}
+                      >
+                        <option value="">Select device…</option>
+                        {trackerDevices.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.label || d.imei}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="span-2 admin-actions">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={busy || !previewDeviceId}
+                        onClick={() => void loadRemapPreview()}
+                      >
+                        Preview raw → mapped
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={busy}
+                        onClick={() => void loadSafetyEventsForTenant()}
+                      >
+                        Refresh safety events
+                      </button>
+                    </div>
+                  </div>
+                  {remapPreview ? (
+                    <pre className="admin-notice" style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>
+                      {remapPreview}
+                    </pre>
+                  ) : null}
+                  {safetyEvents.length > 0 ? (
+                    <ul className="admin-field-list">
+                      {safetyEvents.map((ev) => (
+                        <li key={ev.id}>
+                          <span>
+                            <strong>{ev.alarmType}</strong> L{ev.alarmLevel} ·{" "}
+                            {ev.recordedAt ? new Date(ev.recordedAt).toLocaleString() : "—"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">No Su Biao / active-safety events yet.</p>
+                  )}
+                </section>
+              )}
+
+              {selectedId !== "new" && (
+                <section className="admin-panel admin-field-users">
+                  <header className="admin-panel-head">
                     <h3>
                       Tracker devices{" "}
                       <span className="admin-count-badge">{trackerDevices.length}</span>
@@ -1630,6 +1938,7 @@ export default function AdminConsole() {
                     <p className="muted">
                       Direct GPS ingest ·{" "}
                       <code>{selected?.trackerIngestUrl || "/api/tracker/ingest/v1/fix"}</code>
+                      {" · "}protocols marked MVP/partial until certified
                     </p>
                   </header>
                   {lastDeviceToken ? (

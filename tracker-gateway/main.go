@@ -10,11 +10,16 @@ import (
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/config"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/concox"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/dispatch"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/galileosky"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/httpingest"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/jt1078"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/jt808"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/jt809"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/protocol"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/ruptela"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/subiao"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/teltonika"
 )
 
@@ -29,12 +34,46 @@ func main() {
 	}
 	defer st.Close()
 
-	go serve("teltonika", cfg.TeltonikaAddr, cancel, func() error { return teltonika.Serve(ctx, cfg.TeltonikaAddr, st) })
-	go serve("jt808", cfg.JT808Addr, cancel, func() error { return jt808.Serve(ctx, cfg.JT808Addr, st) })
-	go serve("concox", cfg.ConcoxAddr, cancel, func() error { return concox.Serve(ctx, cfg.ConcoxAddr, st) })
-	go serve("ruptela", cfg.RuptelaAddr, cancel, func() error { return ruptela.Serve(ctx, cfg.RuptelaAddr, st) })
-	go serve("galileosky", cfg.GalileoskyAddr, cancel, func() error { return galileosky.Serve(ctx, cfg.GalileoskyAddr, st) })
-	go serve("http", cfg.HTTPAddr, cancel, func() error { return httpingest.Serve(cfg.HTTPAddr, st) })
+	reg := protocol.NewRegistry()
+	adapters := []protocol.Adapter{
+		teltonika.Adapter{},
+		jt808.Adapter{},
+		subiao.Adapter{},
+		jt809.Adapter{},
+		jt1078.Adapter{},
+		concox.Adapter{},
+		ruptela.Adapter{},
+		galileosky.Adapter{},
+		httpingest.Adapter{},
+	}
+	addrs := map[string]string{
+		"teltonika":  cfg.TeltonikaAddr,
+		"jt808":      cfg.JT808Addr,
+		"subiao":     cfg.SuBiaoAddr,
+		"jt809":      cfg.JT809Addr,
+		"jt1078":     cfg.JT1078Addr,
+		"concox":     cfg.ConcoxAddr,
+		"ruptela":    cfg.RuptelaAddr,
+		"galileosky": cfg.GalileoskyAddr,
+		"json":       cfg.HTTPAddr,
+	}
+	deps := protocol.Deps{Store: st, Sessions: reg}
+	for _, a := range adapters {
+		reg.Register(a)
+		name := a.Name()
+		addr := addrs[name]
+		if addr == "" {
+			addr = a.DefaultAddr()
+		}
+		ad := a
+		adAddr := addr
+		go serve(ad.Name(), adAddr, cancel, func() error {
+			return ad.Serve(ctx, adAddr, deps)
+		})
+		log.Printf("[adapter] %s (%s) status=%s addr=%s", ad.DisplayName(), ad.Name(), ad.Status(), adAddr)
+	}
+
+	go dispatch.Loop(ctx, st, reg, 2*time.Second)
 
 	go func() {
 		t := time.NewTicker(6 * time.Hour)
@@ -54,10 +93,7 @@ func main() {
 		}
 	}()
 
-	log.Printf(
-		"[tracker-gateway] ready http=%s teltonika=%s jt808=%s concox=%s ruptela=%s galileosky=%s",
-		cfg.HTTPAddr, cfg.TeltonikaAddr, cfg.JT808Addr, cfg.ConcoxAddr, cfg.RuptelaAddr, cfg.GalileoskyAddr,
-	)
+	log.Printf("[tracker-gateway] ready — adapters are MVP/partial until certified (see README)")
 	<-ctx.Done()
 	log.Printf("[tracker-gateway] shutting down")
 }

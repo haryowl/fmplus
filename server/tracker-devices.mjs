@@ -4,11 +4,15 @@
  */
 import crypto from "node:crypto";
 import { dbQuery } from "./db.mjs";
+import { applyDeviceRemap } from "./device-manager.mjs";
 
 export const TRACKER_PROTOCOLS = [
   "json",
   "teltonika",
   "jt808",
+  "jt809",
+  "jt1078",
+  "subiao",
   "concox",
   "ruptela",
   "galileosky",
@@ -86,6 +90,7 @@ export function publicTrackerDevice(row, { includeTokenHint = false } = {}) {
     videoChannelId: row.video_channel_id || "",
     videoRtspUrl: row.video_rtsp_url || "",
     videoNotes: row.video_notes || "",
+    profileId: row.profile_id || null,
     lastSeenAt: row.last_seen_at || null,
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null,
@@ -157,11 +162,15 @@ export async function createTrackerDevice(tenantId, body) {
   const videoChannelId = cleanVideoField(body.videoChannelId ?? body.video_channel_id, 64);
   const videoRtspUrl = cleanVideoField(body.videoRtspUrl ?? body.video_rtsp_url, 500);
   const videoNotes = cleanVideoField(body.videoNotes ?? body.video_notes, 500);
+  const profileId =
+    body.profileId || body.profile_id
+      ? String(body.profileId || body.profile_id).trim() || null
+      : null;
   const inserted = await dbQuery(
     `INSERT INTO tracker_devices (
        tenant_id, imei, unique_id, protocol, label, armada_user_id, auth_token_hash, enabled,
-       video_channel_id, video_rtsp_url, video_notes
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       video_channel_id, video_rtsp_url, video_notes, profile_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
      RETURNING *`,
     [
       tenantId,
@@ -175,6 +184,7 @@ export async function createTrackerDevice(tenantId, body) {
       videoChannelId,
       videoRtspUrl,
       videoNotes,
+      profileId,
     ],
   );
   const row = inserted.rows[0];
@@ -241,12 +251,16 @@ export async function updateTrackerDevice(tenantId, deviceId, body) {
     body.videoNotes !== undefined || body.video_notes !== undefined
       ? cleanVideoField(body.videoNotes ?? body.video_notes, 500)
       : current.video_notes;
+  const profileId =
+    body.profileId !== undefined || body.profile_id !== undefined
+      ? String(body.profileId || body.profile_id || "").trim() || null
+      : current.profile_id;
   const updated = await dbQuery(
     `UPDATE tracker_devices SET
        imei = $3, unique_id = $4, protocol = $5, label = $6,
        armada_user_id = $7, auth_token_hash = $8, enabled = $9,
        video_channel_id = $10, video_rtsp_url = $11, video_notes = $12,
-       updated_at = now()
+       profile_id = $13, updated_at = now()
      WHERE tenant_id = $1 AND id = $2
      RETURNING *`,
     [
@@ -262,6 +276,7 @@ export async function updateTrackerDevice(tenantId, deviceId, body) {
       videoChannelId,
       videoRtspUrl,
       videoNotes,
+      profileId,
     ],
   );
   const row = updated.rows[0];
@@ -443,24 +458,51 @@ export async function ingestVehicleFix(deviceRow, fix) {
       ? fix.rawAttrs
       : {};
 
+  let mappedAttrs = {};
+  let speedOut = Number.isFinite(speed) ? speed : null;
+  let headingOut = Number.isFinite(heading) ? heading : null;
+  let odometerOut = Number.isFinite(odometer) ? odometer : null;
+  let satellitesOut = Number.isFinite(satellites) ? satellites : null;
+  let ignitionOut = ignition;
+  try {
+    const remapped = await applyDeviceRemap(deviceRow.id, deviceRow.profile_id, rawAttrs);
+    mappedAttrs = remapped.mapped || {};
+    if (remapped.typed?.ignition !== undefined) ignitionOut = remapped.typed.ignition;
+    if (remapped.typed?.odometer != null && Number.isFinite(remapped.typed.odometer)) {
+      odometerOut = remapped.typed.odometer;
+    }
+    if (remapped.typed?.speed != null && Number.isFinite(remapped.typed.speed)) {
+      speedOut = remapped.typed.speed;
+    }
+    if (remapped.typed?.heading != null && Number.isFinite(remapped.typed.heading)) {
+      headingOut = remapped.typed.heading;
+    }
+    if (remapped.typed?.satellites != null && Number.isFinite(remapped.typed.satellites)) {
+      satellitesOut = remapped.typed.satellites;
+    }
+  } catch {
+    /* tables may not exist mid-migrate */
+  }
+
   await dbQuery(
     `INSERT INTO vehicle_fixes (
        tenant_id, device_id, recorded_at, lat, lon, speed, heading, ignition,
-       odometer, altitude, satellites, raw_attrs, source_protocol
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13)`,
+       odometer, altitude, satellites, raw_attrs, mapped_attrs, source_protocol
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14)`,
     [
       deviceRow.tenant_id,
       deviceRow.id,
       recordedAt.toISOString(),
       coords.lat,
       coords.lon,
-      Number.isFinite(speed) ? speed : null,
-      Number.isFinite(heading) ? heading : null,
-      ignition,
-      Number.isFinite(odometer) ? odometer : null,
+      speedOut,
+      headingOut,
+      ignitionOut,
+      odometerOut,
       Number.isFinite(altitude) ? altitude : null,
-      Number.isFinite(satellites) ? satellites : null,
+      satellitesOut,
       JSON.stringify(rawAttrs),
+      JSON.stringify(mappedAttrs),
       protocol,
     ],
   );
@@ -468,8 +510,8 @@ export async function ingestVehicleFix(deviceRow, fix) {
   await dbQuery(
     `INSERT INTO vehicle_last_fix (
        device_id, tenant_id, recorded_at, lat, lon, speed, heading, ignition,
-       odometer, altitude, satellites, raw_attrs, source_protocol, updated_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13, now())
+       odometer, altitude, satellites, raw_attrs, mapped_attrs, source_protocol, updated_at
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14, now())
      ON CONFLICT (device_id) DO UPDATE SET
        recorded_at = EXCLUDED.recorded_at,
        lat = EXCLUDED.lat,
@@ -481,6 +523,7 @@ export async function ingestVehicleFix(deviceRow, fix) {
        altitude = EXCLUDED.altitude,
        satellites = EXCLUDED.satellites,
        raw_attrs = EXCLUDED.raw_attrs,
+       mapped_attrs = EXCLUDED.mapped_attrs,
        source_protocol = EXCLUDED.source_protocol,
        updated_at = now()
      WHERE vehicle_last_fix.recorded_at <= EXCLUDED.recorded_at`,
@@ -490,13 +533,14 @@ export async function ingestVehicleFix(deviceRow, fix) {
       recordedAt.toISOString(),
       coords.lat,
       coords.lon,
-      Number.isFinite(speed) ? speed : null,
-      Number.isFinite(heading) ? heading : null,
-      ignition,
-      Number.isFinite(odometer) ? odometer : null,
+      speedOut,
+      headingOut,
+      ignitionOut,
+      odometerOut,
       Number.isFinite(altitude) ? altitude : null,
-      Number.isFinite(satellites) ? satellites : null,
+      satellitesOut,
       JSON.stringify(rawAttrs),
+      JSON.stringify(mappedAttrs),
       protocol,
     ],
   );

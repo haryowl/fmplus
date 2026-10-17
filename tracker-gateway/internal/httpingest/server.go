@@ -1,6 +1,7 @@
 package httpingest
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,12 +17,19 @@ import (
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
-func Serve(addr string, st *store.Store) error {
+func Serve(ctx context.Context, addr string, st *store.Store, sessions interface{}) error {
+	_ = sessions
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, metrics.Snapshot())
 	})
 	mux.HandleFunc("/metrics", metrics.Handler)
+	mux.HandleFunc("/adapters", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{
+			"note": "Protocol adapters are MVP/partial until certified — see README",
+			"http": map[string]any{"status": "partial", "path": "/ingest/v1/fix"},
+		})
+	})
 	mux.HandleFunc("/ingest/v1/fix", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, map[string]any{"error": "Method not allowed"})
@@ -58,6 +66,18 @@ func Serve(addr string, st *store.Store) error {
 			writeJSON(w, 400, map[string]any{"error": "Invalid lat/lon"})
 			return
 		}
+		rawAttrs := map[string]any{}
+		for k, v := range payload {
+			if k == "lat" || k == "lon" || k == "latitude" || k == "longitude" || k == "lng" {
+				continue
+			}
+			rawAttrs[k] = v
+		}
+		if attrs, ok := payload["attrs"].(map[string]any); ok {
+			for k, v := range attrs {
+				rawAttrs[k] = v
+			}
+		}
 		fix := store.Fix{
 			Lat:            *lat,
 			Lon:            *lon,
@@ -67,13 +87,10 @@ func Serve(addr string, st *store.Store) error {
 			Odometer:       asFloat(payload["odometer"], payload["odometerKm"]),
 			Altitude:       asFloat(payload["altitude"], payload["alt"]),
 			SourceProtocol: "json",
-			RawAttrs:       map[string]any{},
+			RawAttrs:       rawAttrs,
 		}
 		if v, ok := payload["ignition"].(bool); ok {
 			fix.Ignition = &v
-		}
-		if attrs, ok := payload["attrs"].(map[string]any); ok {
-			fix.RawAttrs = attrs
 		}
 		if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 			writeJSON(w, 403, map[string]any{"error": err.Error()})
@@ -81,8 +98,17 @@ func Serve(addr string, st *store.Store) error {
 		}
 		writeJSON(w, 200, map[string]any{"ok": true, "imei": device.IMEI})
 	})
-	log.Printf("[http] listening on %s", addr)
-	return http.ListenAndServe(addr, mux)
+	srv := &http.Server{Addr: addr, Handler: mux}
+	go func() {
+		<-ctx.Done()
+		_ = srv.Close()
+	}()
+	log.Printf("[http] listening on %s (status=partial)", addr)
+	err := srv.ListenAndServe()
+	if err == http.ErrServerClosed {
+		return nil
+	}
+	return err
 }
 
 func bearer(r *http.Request) string {
