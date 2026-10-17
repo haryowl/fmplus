@@ -452,10 +452,18 @@ export default function AdminConsole() {
     }>
   >([]);
   const [gatewayStatus, setGatewayStatus] = useState<string>("");
+  const [onlineImeis, setOnlineImeis] = useState<Set<string>>(() => new Set());
   const [previewDeviceId, setPreviewDeviceId] = useState("");
   const [remapPreview, setRemapPreview] = useState<string>("");
   const [safetyEvents, setSafetyEvents] = useState<
-    Array<{ id: string; alarmType: string; alarmLevel: number; recordedAt: string; deviceId: string }>
+    Array<{
+      id: string;
+      alarmType: string;
+      alarmLevel: number;
+      recordedAt: string;
+      deviceId: string;
+      sourceProtocol?: string;
+    }>
   >([]);
   const [tdImei, setTdImei] = useState("");
   const [tdLabel, setTdLabel] = useState("");
@@ -543,6 +551,7 @@ export default function AdminConsole() {
     void loadTrackerDevices(selectedId).catch((err: Error) => setError(err.message));
     void loadUnassignedTrackers().catch((err: Error) => setError(err.message));
     void loadDeviceManager(selectedId).catch((err: Error) => setError(err.message));
+    void loadGatewayStatus();
     void (async () => {
       try {
         const data = await api<{
@@ -552,6 +561,7 @@ export default function AdminConsole() {
             alarmLevel: number;
             recordedAt: string;
             deviceId: string;
+            sourceProtocol?: string;
           }>;
         }>(`/api/admin/tenants/${selectedId}/tracker-safety-events?limit=30`);
         setSafetyEvents(data.events);
@@ -996,6 +1006,7 @@ export default function AdminConsole() {
           alarmLevel: number;
           recordedAt: string;
           deviceId: string;
+          sourceProtocol?: string;
         }>;
       }>(`/api/admin/tenants/${selectedId}/tracker-safety-events?limit=30`);
       setSafetyEvents(data.events);
@@ -1014,10 +1025,12 @@ export default function AdminConsole() {
         adapters?: {
           onlineCount?: number;
           onlineByProto?: Record<string, number>;
+          onlineSessions?: Array<{ imei?: string; deviceId?: string; protocol?: string }>;
           adapters?: Array<{ name: string; status: string; displayName?: string }>;
         };
       }>("/api/admin/tracker-gateway/status");
       if (!data.ok) {
+        setOnlineImeis(new Set());
         setGatewayStatus(`Gateway offline (${data.base || "?"}): ${data.error || "unreachable"}`);
         return;
       }
@@ -1030,10 +1043,16 @@ export default function AdminConsole() {
       const catalog = (data.adapters?.adapters || [])
         .map((a) => `${a.name}=${a.status}`)
         .join(", ");
+      const imeis = new Set<string>();
+      for (const s of data.adapters?.onlineSessions || []) {
+        if (s.imei) imeis.add(String(s.imei));
+      }
+      setOnlineImeis(imeis);
       setGatewayStatus(
         `Online sessions: ${online}${byProto ? ` (${byProto})` : ""} · fixes=${data.health?.fixesIngested ?? "—"} · ${catalog || "no adapters"}`,
       );
     } catch (err) {
+      setOnlineImeis(new Set());
       setGatewayStatus(err instanceof Error ? err.message : "Gateway status failed");
     }
   }
@@ -1959,6 +1978,13 @@ export default function AdminConsole() {
                         onChange={(e) => {
                           const id = e.target.value;
                           setCmdDeviceId(id);
+                          const d = trackerDevices.find((x) => x.id === id);
+                          if (d?.protocol === "teltonika") setCmdType("teltonika_codec12");
+                          else if (d?.protocol === "concox") setCmdType("concox_gprs");
+                          else if (d?.protocol === "ruptela") setCmdType("ruptela_sms");
+                          else if (d?.protocol === "jt808" || d?.protocol === "subiao")
+                            setCmdType("text");
+                          else setCmdType("text");
                           void loadCommandHistory(id);
                         }}
                       >
@@ -1966,6 +1992,7 @@ export default function AdminConsole() {
                         {trackerDevices.map((d) => (
                           <option key={d.id} value={d.id}>
                             {d.label || d.imei}
+                            {onlineImeis.has(d.imei) ? " · online" : ""}
                           </option>
                         ))}
                       </select>
@@ -2064,17 +2091,25 @@ export default function AdminConsole() {
                   ) : null}
                   {safetyEvents.length > 0 ? (
                     <ul className="admin-field-list">
-                      {safetyEvents.map((ev) => (
-                        <li key={ev.id}>
-                          <span>
-                            <strong>{ev.alarmType}</strong> L{ev.alarmLevel} ·{" "}
-                            {ev.recordedAt ? new Date(ev.recordedAt).toLocaleString() : "—"}
-                          </span>
-                        </li>
-                      ))}
+                      {safetyEvents.map((ev) => {
+                        const dev = trackerDevices.find((d) => d.id === ev.deviceId);
+                        return (
+                          <li key={ev.id}>
+                            <span>
+                              <strong>{ev.alarmType}</strong> L{ev.alarmLevel}
+                              {ev.sourceProtocol ? (
+                                <span className="admin-pill is-muted"> {ev.sourceProtocol}</span>
+                              ) : null}
+                              {dev ? ` · ${dev.label || dev.imei}` : ""}
+                              {" · "}
+                              {ev.recordedAt ? new Date(ev.recordedAt).toLocaleString() : "—"}
+                            </span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   ) : (
-                    <p className="muted">No Su Biao / active-safety events yet.</p>
+                    <p className="muted">No safety / alarm events yet (Su Biao, Concox, JT808, …).</p>
                   )}
                 </section>
               )}
@@ -2166,6 +2201,12 @@ export default function AdminConsole() {
                               <strong>{d.label || d.imei}</strong>
                               <div className="admin-field-tags">
                                 <span className="admin-pill is-muted">{d.protocol}</span>
+                                {onlineImeis.has(d.imei) ? (
+                                  <span className="admin-pill is-on">online</span>
+                                ) : d.lastSeenAt &&
+                                  Date.now() - new Date(d.lastSeenAt).getTime() < 5 * 60 * 1000 ? (
+                                  <span className="admin-pill is-muted">seen</span>
+                                ) : null}
                                 {d.armadaUserId != null ? (
                                   <span className="admin-pill is-muted">Armada #{d.armadaUserId}</span>
                                 ) : null}

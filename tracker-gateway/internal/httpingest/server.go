@@ -95,11 +95,19 @@ func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol
 				rawAttrs[k] = v
 			}
 		}
-		// Flatten nested io for Device Manager vendor keys (io.239).
+		// Flatten nested io / status for Device Manager vendor keys.
 		if ioMap, ok := rawAttrs["io"].(map[string]any); ok {
 			for k, v := range ioMap {
 				rawAttrs["io."+k] = v
 			}
+		}
+		if stMap, ok := rawAttrs["status"].(map[string]any); ok {
+			for k, v := range stMap {
+				rawAttrs["status."+k] = v
+			}
+		}
+		if acc := asBoolPtr(rawAttrs["status.acc"], rawAttrs["acc"]); acc != nil {
+			rawAttrs["status.acc"] = *acc
 		}
 
 		fix := store.Fix{
@@ -113,7 +121,7 @@ func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol
 			SourceProtocol: "json",
 			RawAttrs:       rawAttrs,
 		}
-		if v := asBoolPtr(payload["ignition"]); v != nil {
+		if v := asBoolPtr(payload["ignition"], rawAttrs["status.acc"], rawAttrs["acc"]); v != nil {
 			fix.Ignition = v
 		}
 		if sats := asInt(payload["satellites"], payload["sats"]); sats != nil {

@@ -112,10 +112,33 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 				log.Printf("[galileosky] ingest %s: %v", imei, err)
 			}
+			flushPending(ctx, conn, st, device.ID)
 		} else if device != nil && !hasFix {
 			_ = st.TouchSeen(ctx, device)
+			flushPending(ctx, conn, st, device.ID)
 		}
 		_ = writeAck(conn)
+	}
+}
+
+func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID string) {
+	// Galileosky has no certified binary downlink yet — send raw/text payloads as-is (MVP).
+	for i := 0; i < 4; i++ {
+		cmd, err := st.NextPendingCommand(ctx, deviceID)
+		if err != nil || cmd == nil {
+			return
+		}
+		payload := cmd.PayloadBytes()
+		if len(payload) == 0 && cmd.PayloadText != "" {
+			payload = []byte(cmd.PayloadText)
+		}
+		if len(payload) == 0 {
+			return
+		}
+		if _, err := conn.Write(payload); err != nil {
+			return
+		}
+		_ = st.MarkCommandSent(ctx, cmd.ID)
 	}
 }
 

@@ -69,6 +69,56 @@ func readBE(val []byte) any {
 	}
 }
 
+// safetyFromAlarmWord maps JT/T 808 location alarm dword bits to a safety event.
+func safetyFromAlarmWord(alarm uint32, fix store.Fix, protocol string) *store.SafetyEvent {
+	if alarm == 0 {
+		return nil
+	}
+	type bitAlarm struct {
+		bit   uint32
+		name  string
+		level int
+		key   string
+	}
+	bits := []bitAlarm{
+		{1 << 0, "sos", 2, "alarm.sos"},
+		{1 << 1, "overspeed", 1, "alarm.overspeed"},
+		{1 << 2, "fatigue", 2, "alarm.fatigue"},
+		{1 << 3, "fatigue_early", 1, "alarm.fatigue_early"},
+		{1 << 4, "gnss_antenna", 1, "alarm.gnss_antenna"},
+		{1 << 5, "gnss_antenna_cut", 2, "alarm.gnss_antenna_cut"},
+		{1 << 7, "low_power", 1, "alarm.low_power"},
+		{1 << 8, "power_cut", 2, "alarm.power_cut"},
+		{1 << 20, "collision", 2, "alarm.collision"},
+		{1 << 21, "rollover", 2, "alarm.rollover"},
+		{1 << 28, "illegal_ignition", 2, "alarm.illegal_ignition"},
+		{1 << 29, "illegal_move", 1, "alarm.illegal_move"},
+	}
+	raw := map[string]any{"alarm_word": alarm}
+	alarmType := "jt808_alarm"
+	level := 1
+	for _, b := range bits {
+		if alarm&b.bit != 0 {
+			raw[b.key] = true
+			if alarmType == "jt808_alarm" {
+				alarmType = b.name
+				level = b.level
+			}
+		}
+	}
+	raw["alarm_level"] = level
+	lat, lon := fix.Lat, fix.Lon
+	return &store.SafetyEvent{
+		RecordedAt:     fix.RecordedAt,
+		AlarmType:      alarmType,
+		AlarmLevel:     level,
+		Lat:            &lat,
+		Lon:            &lon,
+		RawAttrs:       raw,
+		SourceProtocol: protocol,
+	}
+}
+
 func safetyFromAdditional(add map[string]any, fix store.Fix, protocol string) *store.SafetyEvent {
 	subType, _ := add["subiao_type"].(string)
 	if subType == "" {

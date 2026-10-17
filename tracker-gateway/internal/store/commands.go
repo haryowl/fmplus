@@ -90,6 +90,14 @@ func (s *Store) MarkCommandSent(ctx context.Context, commandID string) error {
 	return err
 }
 
+func (s *Store) MarkCommandFailed(ctx context.Context, commandID string, reason string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE tracker_commands
+		SET status = 'failed', response_text = $2, completed_at = now()
+		WHERE id = $1::uuid AND status IN ('pending', 'sent')`, commandID, reason)
+	return err
+}
+
 func (s *Store) EnqueueCommandResult(ctx context.Context, commandID string, ok bool, response string) error {
 	status := "acked"
 	if !ok {
@@ -100,6 +108,34 @@ func (s *Store) EnqueueCommandResult(ctx context.Context, commandID string, ok b
 		SET status = $2, response_text = $3, completed_at = now()
 		WHERE id = $1::uuid`, commandID, status, response)
 	return err
+}
+
+// ExpireStaleCommands marks old pending/sent commands as expired.
+// pendingMaxAge: never sent; sentMaxAge: sent but no ack.
+func (s *Store) ExpireStaleCommands(ctx context.Context, pendingMaxAge, sentMaxAge time.Duration) (int64, error) {
+	if pendingMaxAge < time.Minute {
+		pendingMaxAge = 24 * time.Hour
+	}
+	if sentMaxAge < time.Minute {
+		sentMaxAge = 30 * time.Minute
+	}
+	pendingSec := int64(pendingMaxAge.Seconds())
+	sentSec := int64(sentMaxAge.Seconds())
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE tracker_commands
+		SET status = 'expired',
+		    response_text = CASE
+		      WHEN response_text = '' THEN 'expired: no ack in time'
+		      ELSE response_text
+		    END,
+		    completed_at = now()
+		WHERE (status = 'pending' AND created_at < now() - make_interval(secs => $1::int))
+		   OR (status = 'sent' AND COALESCE(sent_at, created_at) < now() - make_interval(secs => $2::int))`,
+		pendingSec, sentSec)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // AckLatestSent marks the most recent sent (or pending) command for a device as acked/failed.

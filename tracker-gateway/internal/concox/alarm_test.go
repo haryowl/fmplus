@@ -7,6 +7,17 @@ import (
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
+func TestParseHeartbeat(t *testing.T) {
+	info := []byte{0x12, 0x04, 0x03} // ACC bit + voltage + gsm
+	patch, ign := parseHeartbeat(info)
+	if ign == nil || !*ign {
+		t.Fatalf("expected ACC true, patch=%v", patch)
+	}
+	if patch["voltage_level"] != 4 || patch["gsm_signal"] != 3 {
+		t.Fatalf("patch=%v", patch)
+	}
+}
+
 func TestExtractAlarmCode(t *testing.T) {
 	info := []byte{0x00, 0x00, 0x01, 0x00, 0x01} // SOS near end before language
 	code, ok := extractAlarmCode(info)

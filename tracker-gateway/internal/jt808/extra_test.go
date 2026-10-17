@@ -34,3 +34,17 @@ func TestSafetyFromAdditional_SuBiao(t *testing.T) {
 		t.Fatalf("ev=%+v", ev)
 	}
 }
+
+func TestSafetyFromAlarmWord_SOS(t *testing.T) {
+	fix := store.Fix{Lat: -6.2, Lon: 106.8, RecordedAt: time.Now().UTC()}
+	ev := safetyFromAlarmWord(1, fix, "jt808") // bit0 SOS
+	if ev == nil || ev.AlarmType != "sos" || ev.AlarmLevel != 2 {
+		t.Fatalf("ev=%+v", ev)
+	}
+	if ev.RawAttrs["alarm.sos"] != true {
+		t.Fatalf("raw=%v", ev.RawAttrs)
+	}
+	if safetyFromAlarmWord(0, fix, "jt808") != nil {
+		t.Fatal("expected nil for zero alarm")
+	}
+}

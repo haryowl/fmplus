@@ -29,13 +29,14 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 			continue
 		}
 		var payload []byte
+		encErr := error(nil)
 		switch {
 		case cmd.Protocol == "teltonika" || cmd.CommandType == "teltonika_codec12":
-			payload, err = tel.EncodeDownlink(cmd)
+			payload, encErr = tel.EncodeDownlink(cmd)
 		case cmd.Protocol == "concox" || cmd.CommandType == "concox_gprs":
-			payload, err = cx.EncodeDownlink(cmd)
+			payload, encErr = cx.EncodeDownlink(cmd)
 		case cmd.Protocol == "ruptela" || cmd.CommandType == "ruptela_sms":
-			payload, err = rup.EncodeDownlink(cmd)
+			payload, encErr = rup.EncodeDownlink(cmd)
 		case cmd.Protocol == "jt808" || cmd.Protocol == "subiao" ||
 			cmd.CommandType == "jt808" || cmd.CommandType == "jt808_8103" || cmd.CommandType == "jt808_8500":
 			phone := ""
@@ -45,14 +46,26 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 			if phone == "" {
 				continue // wait for uplink flush with known phone
 			}
-			payload, err = jt.EncodeDownlink(cmd, phone)
+			payload, encErr = jt.EncodeDownlink(cmd, phone)
+		case cmd.Protocol == "galileosky":
+			// MVP: raw/text only until a certified Galileosky downlink frame exists.
+			payload = cmd.PayloadBytes()
+			if len(payload) == 0 && cmd.PayloadText != "" {
+				payload = []byte(cmd.PayloadText)
+			}
 		default:
 			payload = cmd.PayloadBytes()
 			if len(payload) == 0 && cmd.PayloadText != "" {
 				payload = []byte(cmd.PayloadText)
 			}
 		}
-		if err != nil || len(payload) == 0 {
+		if encErr != nil {
+			log.Printf("[dispatch] encode %s: %v", cmd.ID, encErr)
+			_ = st.MarkCommandFailed(ctx, cmd.ID, encErr.Error())
+			continue
+		}
+		if len(payload) == 0 {
+			_ = st.MarkCommandFailed(ctx, cmd.ID, "empty payload")
 			continue
 		}
 		if _, werr := sess.Conn.Write(payload); werr != nil {
@@ -71,12 +84,22 @@ func Loop(ctx context.Context, st *store.Store, sessions *protocol.Registry, eve
 	}
 	t := time.NewTicker(every)
 	defer t.Stop()
+	expireEvery := 0
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
 			FlushPending(ctx, st, sessions)
+			expireEvery++
+			if expireEvery >= 30 { // ~60s at 2s tick
+				expireEvery = 0
+				if n, err := st.ExpireStaleCommands(ctx, 24*time.Hour, 30*time.Minute); err != nil {
+					log.Printf("[dispatch] expire: %v", err)
+				} else if n > 0 {
+					log.Printf("[dispatch] expired %d stale commands", n)
+				}
+			}
 		}
 	}
 }

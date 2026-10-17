@@ -109,10 +109,21 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 		if v, ok := io["239"]; ok {
 			b := asIOBool(v)
 			fix.Ignition = &b
+		} else if v, ok := io["1"]; ok {
+			// Some configs use DIN1 as ignition
+			b := asIOBool(v)
+			fix.Ignition = &b
 		}
 		if v, ok := io["16"]; ok {
 			f := asIOFloat(v)
 			fix.Odometer = &f
+		} else if v, ok := io["389"]; ok {
+			f := asIOFloat(v) / 1000.0
+			fix.Odometer = &f
+		}
+		// Flatten io.* for Device Manager remap vendor keys.
+		for k, v := range io {
+			raw["io."+k] = v
 		}
 		fixes = append(fixes, fix)
 	}

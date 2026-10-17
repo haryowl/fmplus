@@ -234,6 +234,55 @@ func (s *Store) TouchSeen(ctx context.Context, device *Device) error {
 	return err
 }
 
+// PatchLastStatus merges heartbeat attrs into vehicle_last_fix without moving the pin.
+func (s *Store) PatchLastStatus(ctx context.Context, device *Device, rawPatch map[string]any, ignition *bool) error {
+	if device == nil {
+		return nil
+	}
+	if err := s.TouchSeen(ctx, device); err != nil {
+		return err
+	}
+	if rawPatch == nil {
+		rawPatch = map[string]any{}
+	}
+	mapped := map[string]any{}
+	if rules, err := s.LoadRemapRules(ctx, device.ID, device.ProfileID); err == nil && len(rules) > 0 {
+		mapped = ApplyRemap(rawPatch, rules)
+		if ignition == nil {
+			if v, ok := mapped["ignition"]; ok {
+				b := asBoolAny(v)
+				ignition = &b
+			}
+		}
+	}
+	rawJSON, _ := json.Marshal(rawPatch)
+	mappedJSON, _ := json.Marshal(mapped)
+	_, err := s.pool.Exec(ctx, `
+		UPDATE vehicle_last_fix
+		SET raw_attrs = COALESCE(raw_attrs, '{}'::jsonb) || $2::jsonb,
+		    mapped_attrs = COALESCE(mapped_attrs, '{}'::jsonb) || $3::jsonb,
+		    ignition = COALESCE($4, ignition),
+		    updated_at = now()
+		WHERE device_id = $1::uuid`,
+		device.ID, string(rawJSON), string(mappedJSON), ignition)
+	return err
+}
+
+func asBoolAny(v any) bool {
+	switch t := v.(type) {
+	case bool:
+		return t
+	case float64:
+		return t != 0
+	case int:
+		return t != 0
+	case int64:
+		return t != 0
+	default:
+		return false
+	}
+}
+
 func (s *Store) PruneFixes(ctx context.Context, days int) (int64, error) {
 	if days < 1 {
 		days = 14

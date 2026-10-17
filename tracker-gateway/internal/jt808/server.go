@@ -331,6 +331,13 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 				fmt.Sprintf("jt808_0001 msg=0x%04x result=%d", respMsg, result))
 		}
 		return nil // no reply to a reply
+	case 0x0104: // query terminal params response
+		if sess.device != nil {
+			_ = st.AckLatestSent(ctx, sess.device.ID, true,
+				fmt.Sprintf("jt808_0104 len=%d hex=%x", len(body), body))
+			_ = st.TouchSeen(ctx, sess.device)
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0002: // heartbeat
 		if sess.device != nil {
 			_ = st.TouchSeen(ctx, sess.device)
@@ -422,6 +429,11 @@ func ingestLocation(ctx context.Context, conn net.Conn, st *store.Store, session
 	if len(add) > 0 {
 		fix.RawAttrs["add"] = add
 		if ev := safetyFromAdditional(add, fix, protoHint); ev != nil {
+			_ = st.InsertSafetyEvent(ctx, sess.device, *ev)
+		}
+	}
+	if alarm, _ := fix.RawAttrs["alarm"].(uint32); alarm != 0 {
+		if ev := safetyFromAlarmWord(alarm, fix, protoHint); ev != nil {
 			_ = st.InsertSafetyEvent(ctx, sess.device, *ev)
 		}
 	}

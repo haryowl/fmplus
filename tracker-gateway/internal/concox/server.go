@@ -92,10 +92,9 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				_ = writeReply(conn, 0x01, serial, nil)
 			case 0x13: // heartbeat / status
 				if device != nil {
-					_ = st.TouchSeen(ctx, device)
-					if len(info) > 0 {
-						log.Printf("[concox] heartbeat %s status=%x", imei, info)
-					}
+					patch, ign := parseHeartbeat(info)
+					_ = st.PatchLastStatus(ctx, device, patch, ign)
+					flushPending(ctx, conn, st, device.ID)
 				}
 				_ = writeReply(conn, 0x13, serial, nil)
 			case 0x12, 0x22: // GPS location
@@ -363,6 +362,32 @@ func parseGPS(info []byte, proto byte) (store.Fix, bool) {
 		SourceProtocol: "concox",
 	}
 	return fix, true
+}
+
+// parseHeartbeat decodes GT06 0x13 terminal info / voltage / GSM.
+func parseHeartbeat(info []byte) (map[string]any, *bool) {
+	patch := map[string]any{"proto": 0x13, "heartbeat": true}
+	if len(info) < 1 {
+		return patch, nil
+	}
+	term := info[0]
+	acc := term&0x02 != 0 // bit1 ACC on common GT06
+	if term&0x10 != 0 {   // bit4 ACC on some clones
+		acc = true
+	}
+	patch["status.acc"] = acc
+	patch["terminal_info"] = int(term)
+	patch["gps_tracking"] = term&0x40 != 0 || term&0x04 != 0
+	if len(info) >= 2 {
+		patch["voltage_level"] = int(info[1])
+	}
+	if len(info) >= 3 {
+		patch["gsm_signal"] = int(info[2])
+	}
+	if len(info) >= 4 {
+		patch["alarm_lang"] = int(info[3])
+	}
+	return patch, &acc
 }
 
 func safetyFromAlarm(info []byte, fix store.Fix) *store.SafetyEvent {
