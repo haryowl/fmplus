@@ -208,6 +208,22 @@ func TestParseMediaAttach1210_File(t *testing.T) {
 	}
 }
 
+func TestParsePhotoNotify1209(t *testing.T) {
+	rest := make([]byte, 27+8)
+	copy(rest[0:21], []byte("B0001PIC"))
+	rest[21] = 1
+	rest[22] = 2
+	binary.BigEndian.PutUint32(rest[23:27], 2048)
+	copy(rest[27:], []byte("snap.jpg"))
+	plate, patch, ok := parsePhotoNotify1209(rest)
+	if !ok || plate != "B0001PIC" || patch["photo_lens"] != 2 || patch["photo_size"] != 2048 {
+		t.Fatalf("%v", patch)
+	}
+	if patch["photo_file"] != "snap.jpg" {
+		t.Fatalf("file=%v", patch["photo_file"])
+	}
+}
+
 func TestParseVehicleOnline(t *testing.T) {
 	rest := make([]byte, 28)
 	copy(rest[0:21], []byte("B1111ON"))

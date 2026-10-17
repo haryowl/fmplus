@@ -186,6 +186,39 @@ func tryWarnGNSS(rest []byte, off int) (lat, lon float64, ok bool) {
 	return lat, lon, true
 }
 
+// parsePhotoNotify1209 extracts plate/color/lens/size/file from 0x1209 photo notify.
+func parsePhotoNotify1209(rest []byte) (plate string, patch map[string]any, ok bool) {
+	patch = map[string]any{
+		"proto_msg":    "0x1209",
+		"body_len":     len(rest),
+		"photo_notify": true,
+	}
+	if len(rest) < 21 {
+		return "", patch, false
+	}
+	plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
+	patch["vehicle_plate"] = plate
+	if len(rest) >= 22 {
+		patch["vehicle_color"] = int(rest[21])
+	}
+	if len(rest) >= 23 {
+		patch["photo_lens"] = int(rest[22])
+	}
+	if len(rest) >= 27 {
+		patch["photo_size"] = int(binary.BigEndian.Uint32(rest[23:27]))
+	}
+	if len(rest) > 27 {
+		name := strings.TrimRight(string(rest[27:]), "\x00 ")
+		if len(name) > 128 {
+			name = name[:128]
+		}
+		if name != "" && isMostlyPrintable(name) {
+			patch["photo_file"] = name
+		}
+	}
+	return plate, patch, plate != ""
+}
+
 // parseVehicleOnline extracts plate/color/online flag from 0x1205/0x1206.
 func parseVehicleOnline(msgID uint16, rest []byte) (plate string, patch map[string]any, ok bool) {
 	online := msgID == 0x1205

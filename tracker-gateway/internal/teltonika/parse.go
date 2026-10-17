@@ -210,6 +210,15 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 		raw["idling"] = asIOBool(v)
 	}
 	// Common FMB BLE/temp sensors (wiki AVL IDs — model configs vary).
+	if v, ok := io["72"]; ok {
+		raw["temp.1"] = asIOFloat(v)
+	}
+	if v, ok := io["73"]; ok {
+		raw["temp.2"] = asIOFloat(v)
+	}
+	if v, ok := io["74"]; ok {
+		raw["temp.3"] = asIOFloat(v)
+	}
 	if v, ok := io["25"]; ok {
 		raw["ble.temp1"] = asIOFloat(v) / 10.0 // °C ×10
 	}

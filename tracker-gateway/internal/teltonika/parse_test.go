@@ -170,6 +170,14 @@ func TestPromoteTeltonikaScalars_BLE(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_DallasTemp(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"72": 25.5, "73": 26.0, "74": 24.0})
+	if raw["temp.1"] != 25.5 || raw["temp.2"] != 26.0 || raw["temp.3"] != 24.0 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_Battery(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{"113": 87, "114": 3900})

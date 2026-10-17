@@ -2839,19 +2839,46 @@ func parseTerminalAttrs(body []byte) map[string]any {
 	out["terminal_type"] = int(body[0])
 	off := 1
 	if len(body) >= off+5 {
-		out["manufacturer"] = strings.TrimRight(string(body[off:off+5]), "\x00 ")
+		mfr := strings.TrimRight(string(body[off:off+5]), "\x00 ")
+		out["manufacturer"] = mfr
+		out["device.manufacturer"] = mfr
 		off += 5
 	}
 	if len(body) >= off+20 {
-		out["terminal_model"] = strings.TrimRight(string(body[off:off+20]), "\x00 ")
+		model := strings.TrimRight(string(body[off:off+20]), "\x00 ")
+		out["terminal_model"] = model
+		out["device.model"] = model
 		off += 20
 	}
 	if len(body) >= off+7 {
-		out["terminal_id"] = strings.TrimRight(string(body[off:off+7]), "\x00 ")
+		tid := strings.TrimRight(string(body[off:off+7]), "\x00 ")
+		out["terminal_id"] = tid
+		out["device.terminal_id"] = tid
 		off += 7
 	}
 	if len(body) >= off+10 {
-		out["iccid"] = bcdPhone(body[off : off+10])
+		icc := bcdPhone(body[off : off+10])
+		out["iccid"] = icc
+		out["device.iccid"] = icc
+		off += 10
+	}
+	// Optional HW/FW ASCII lengths (common 2013 extensions after ICCID).
+	if off < len(body) {
+		n := int(body[off])
+		off++
+		if n > 0 && off+n <= len(body) {
+			hw := strings.TrimRight(string(body[off:off+n]), "\x00 ")
+			out["device.hw_ver"] = hw
+			off += n
+		}
+	}
+	if off < len(body) {
+		n := int(body[off])
+		off++
+		if n > 0 && off+n <= len(body) {
+			fw := strings.TrimRight(string(body[off:off+n]), "\x00 ")
+			out["device.fw_ver"] = fw
+		}
 	}
 	return out
 }

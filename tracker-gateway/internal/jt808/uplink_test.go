@@ -27,15 +27,24 @@ func TestParseDriverIdentity(t *testing.T) {
 }
 
 func TestParseTerminalAttrs_Minimal(t *testing.T) {
-	body := make([]byte, 1+5+20+7+10)
+	body := make([]byte, 1+5+20+7+10+1+3+1+3)
 	body[0] = 0x01
 	copy(body[1:6], []byte("MFR01"))
 	copy(body[6:26], []byte("MODEL-ABC"))
 	copy(body[26:33], []byte("TID1234"))
 	// ICCID BCD zeros ok
+	off := 43
+	body[off] = 3
+	copy(body[off+1:], []byte("1.0"))
+	off += 4
+	body[off] = 3
+	copy(body[off+1:], []byte("2.1"))
 	m := parseTerminalAttrs(body)
 	if m["manufacturer"] != "MFR01" {
 		t.Fatalf("%v", m["manufacturer"])
+	}
+	if m["device.manufacturer"] != "MFR01" || m["device.hw_ver"] != "1.0" || m["device.fw_ver"] != "2.1" {
+		t.Fatalf("aliases=%v", m)
 	}
 	if m["terminal_model"] != "MODEL-ABC" {
 		t.Fatalf("%v", m["terminal_model"])
