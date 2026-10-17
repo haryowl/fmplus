@@ -50,6 +50,12 @@ func parseSignalingPayload(dataType byte, payload []byte) map[string]any {
 		if len(payload) >= 2 {
 			out["av_stream"] = int(payload[1])
 		}
+		if len(payload) >= 3 {
+			out["av_ptz_speed"] = int(payload[2])
+		}
+		if len(payload) >= 4 {
+			out["av_ptz_param"] = int(payload[3])
+		}
 	case 0x00, 0x01, 0x02: // video frames — SSRC sometimes first 4 bytes
 		if len(payload) >= 4 {
 			ssrc := uint32(payload[0])<<24 | uint32(payload[1])<<16 | uint32(payload[2])<<8 | uint32(payload[3])

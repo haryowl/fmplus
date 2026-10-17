@@ -213,6 +213,14 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_SleepIdling(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"200": 1, "251": 1})
+	if raw["status.sleeping"] != true || raw["status.idling"] != true {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_DinDout(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{"1": 1, "2": 0, "179": 1, "180": 0})

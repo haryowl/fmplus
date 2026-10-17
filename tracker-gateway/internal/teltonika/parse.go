@@ -208,9 +208,11 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	}
 	if v, ok := io["200"]; ok {
 		raw["sleep.mode"] = asIOFloat(v)
+		raw["status.sleeping"] = asIOFloat(v) != 0
 	}
 	if v, ok := io["251"]; ok {
 		raw["idling"] = asIOBool(v)
+		raw["status.idling"] = asIOBool(v)
 	}
 	// Common FMB BLE/temp sensors (wiki AVL IDs — model configs vary).
 	if v, ok := io["72"]; ok {

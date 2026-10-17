@@ -66,8 +66,11 @@ func TestParseUpgradeResult(t *testing.T) {
 	if m["upgrade_type"] != 0 || m["upgrade_result"] != 0 {
 		t.Fatalf("%v", m)
 	}
+	if m["upgrade_ok"] != true || m["upgrade_kind"] != "terminal" {
+		t.Fatalf("ok/kind=%v", m)
+	}
 	fail := parseUpgradeResult([]byte{0x00, 0x01})
-	if fail["upgrade_result"] != 1 {
+	if fail["upgrade_result"] != 1 || fail["upgrade_ok"] != false {
 		t.Fatalf("%v", fail)
 	}
 }

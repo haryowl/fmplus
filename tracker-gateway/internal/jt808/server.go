@@ -1358,10 +1358,23 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 func parseUpgradeResult(body []byte) map[string]any {
 	out := map[string]any{"proto_msg": "0x0108", "upgrade_hex": fmt.Sprintf("%x", body)}
 	if len(body) >= 1 {
-		out["upgrade_type"] = int(body[0])
+		typ := int(body[0])
+		out["upgrade_type"] = typ
+		switch typ {
+		case 0:
+			out["upgrade_kind"] = "terminal"
+		case 12:
+			out["upgrade_kind"] = "ic_reader"
+		case 52:
+			out["upgrade_kind"] = "beidou"
+		default:
+			out["upgrade_kind"] = fmt.Sprintf("type_%d", typ)
+		}
 	}
 	if len(body) >= 2 {
-		out["upgrade_result"] = int(body[1]) // 0=ok
+		r := int(body[1]) // 0=ok
+		out["upgrade_result"] = r
+		out["upgrade_ok"] = r == 0
 	}
 	return out
 }

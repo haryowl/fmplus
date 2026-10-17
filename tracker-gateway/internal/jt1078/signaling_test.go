@@ -32,11 +32,14 @@ func TestBcdSIM(t *testing.T) {
 }
 
 func TestParseSignalingPayload_PTZ(t *testing.T) {
-	m := parseSignalingPayload(0x04, []byte{0x01, 0x02, 0xaa})
+	m := parseSignalingPayload(0x04, []byte{0x01, 0x02, 0xaa, 0x05})
 	if m["av_ptz_cmd"] != 1 || m["av_stream"] != 2 {
 		t.Fatalf("%v", m)
 	}
-	if m["av_payload_len"] != 3 {
+	if m["av_ptz_speed"] != 0xaa || m["av_ptz_param"] != 5 {
+		t.Fatalf("speed/param=%v", m)
+	}
+	if m["av_payload_len"] != 4 {
 		t.Fatalf("%v", m)
 	}
 }

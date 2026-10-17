@@ -494,6 +494,7 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	}
 	if v, ok := io["251"]; ok {
 		raw["idling"] = asTruthy(v)
+		raw["status.idling"] = asTruthy(v)
 	}
 	if v, ok := io["199"]; ok {
 		raw["trip.odometer"] = asFloat64(v)
@@ -533,6 +534,7 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	}
 	if v, ok := io["200"]; ok {
 		raw["sleep.mode"] = asFloat64(v)
+		raw["status.sleeping"] = asFloat64(v) != 0
 	}
 	if v, ok := io["253"]; ok {
 		raw["green_driving.value"] = asFloat64(v)

@@ -271,6 +271,14 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		fix.RawAttrs["hdop"] = h
 		fix.RawAttrs["gnss.hdop"] = h
 	}
+	if pd, ok := tags[0x36]; ok && len(pd) >= 1 {
+		p := float64(pd[0]) / 10.0
+		if len(pd) >= 2 {
+			p = float64(binary.LittleEndian.Uint16(pd[0:2])) / 10.0
+		}
+		fix.RawAttrs["pdop"] = p
+		fix.RawAttrs["gnss.pdop"] = p
+	}
 	// Input status bit0 = input 0 (common ignition wiring); not tag 0x01 (hw version).
 	if st, ok := tags[0x46]; ok && len(st) >= 1 {
 		b := st[0]&0x01 != 0
