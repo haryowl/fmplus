@@ -365,8 +365,50 @@ func TestGeofenceDelMsgID(t *testing.T) {
 	if geofenceDelMsgID("type=poly,all") != 0x8605 {
 		t.Fatal("poly")
 	}
+	if geofenceDelMsgID("type=route,1") != 0x8607 {
+		t.Fatal("route")
+	}
 	if geofenceDelMsgID("1,2,3") != 0x8601 {
 		t.Fatal("circle default")
+	}
+}
+
+func TestWrap8606Body(t *testing.T) {
+	b := wrap8606Body("id=9,w=40,pts=-6.1,106.7;-6.2,106.8")
+	if binary.BigEndian.Uint32(b[0:4]) != 9 {
+		t.Fatalf("id %x", b)
+	}
+	if binary.BigEndian.Uint16(b[6:8]) != 2 {
+		t.Fatalf("count %x", b)
+	}
+	// first point: off 8 → ptid(4)+road(4)+lat(4)+lon(4)=16 → width at 8+16=24
+	if b[24] != 40 {
+		t.Fatalf("width byte=%d body=%x", b[24], b)
+	}
+}
+
+func TestWrap8803Body(t *testing.T) {
+	if string(wrap8803Body("stop")) != string([]byte{0, 1, 0}) {
+		t.Fatalf("%x", wrap8803Body("stop"))
+	}
+	b := wrap8803Body("type=1,ch=2,cmd=1")
+	if b[0] != 1 || b[1] != 2 || b[2] != 1 {
+		t.Fatalf("%x", b)
+	}
+}
+
+func TestEncodeDownlink_RouteSet(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{
+		CommandType: "geofence_set",
+		PayloadText: "type=route,id=1,pts=0,0;0.001,0.001",
+	}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := unescape(out)
+	if !bytes.Contains(raw, []byte{0x86, 0x06}) {
+		t.Fatalf("expected 0x8606: %x", raw)
 	}
 }
 

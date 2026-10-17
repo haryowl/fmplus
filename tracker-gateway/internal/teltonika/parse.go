@@ -191,6 +191,16 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["86"]; ok {
 		raw["ble.battery"] = asIOFloat(v)
 	}
+	// Green driving / eco metrics (AVL IDs — config dependent).
+	if v, ok := io["253"]; ok {
+		raw["green_driving.value"] = asIOFloat(v)
+	}
+	if v, ok := io["243"]; ok {
+		raw["green_driving.duration"] = asIOFloat(v)
+	}
+	if v, ok := io["15"]; ok {
+		raw["eco.score"] = asIOFloat(v)
+	}
 }
 
 func extractIO8(b []byte, off int) (int, any, map[string]any) {

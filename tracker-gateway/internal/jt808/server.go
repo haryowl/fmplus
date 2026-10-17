@@ -445,6 +445,16 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			}
 		}
 		body = wrap8805Body(text)
+	case "jt808_8803", "multimedia_control":
+		// Multimedia upload control: type + channel + cmd (0=stop, 1=start).
+		msgID = 0x8803
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8803Body(text)
 	case "jt808_8900", "transparent":
 		// Downlink transparent transmission: type BYTE + content.
 		msgID = 0x8900
@@ -494,10 +504,12 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 		}
 		body = wrap8203Body(text)
 	case "jt808_8600", "geofence_set":
-		// Set circular (0x8600), rectangular (0x8602), or polygon (0x8604).
+		// Set circular (0x8600), rectangular (0x8602), polygon (0x8604), or route (0x8606).
 		if cmd.PayloadHex != "" {
 			if raw := cmd.PayloadBytes(); len(raw) > 0 {
 				switch {
+				case strings.Contains(strings.ToLower(text), "type=route"):
+					msgID = 0x8606
 				case strings.Contains(strings.ToLower(text), "type=poly"):
 					msgID = 0x8604
 				case strings.Contains(strings.ToLower(text), "type=rect"):
@@ -510,6 +522,9 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			}
 		}
 		switch {
+		case looksLikeRouteGeofence(text):
+			msgID = 0x8606
+			body = wrap8606Body(text)
 		case looksLikePolyGeofence(text):
 			msgID = 0x8604
 			body = wrap8604Body(text)
@@ -559,6 +574,24 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 		body = wrap8601Body(text)
 	case "jt808_8605":
 		msgID = 0x8605
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8601Body(text)
+	case "jt808_8606", "route_set":
+		msgID = 0x8606
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8606Body(text)
+	case "jt808_8607", "route_del":
+		msgID = 0x8607
 		if cmd.PayloadHex != "" {
 			if raw := cmd.PayloadBytes(); len(raw) > 0 {
 				body = raw
@@ -1434,7 +1467,7 @@ func looksLikePolyGeofence(text string) bool {
 	return strings.Contains(t, "type=poly") || strings.Contains(t, "pts=")
 }
 
-// geofenceDelMsgID picks 0x8601/8603/8605 from type=circle|rect|poly (default circle).
+// geofenceDelMsgID picks 0x8601/8603/8605/8607 from type=circle|rect|poly|route (default circle).
 func geofenceDelMsgID(text string) uint16 {
 	t := strings.ToLower(text)
 	switch {
@@ -1442,9 +1475,16 @@ func geofenceDelMsgID(text string) uint16 {
 		return 0x8603
 	case strings.Contains(t, "type=poly"):
 		return 0x8605
+	case strings.Contains(t, "type=route"):
+		return 0x8607
 	default:
 		return 0x8601
 	}
+}
+
+// looksLikeRouteGeofence detects type=route DSL.
+func looksLikeRouteGeofence(text string) bool {
+	return strings.Contains(strings.ToLower(text), "type=route")
 }
 
 // wrap8600Body builds a minimal 0x8600 single circular area.
@@ -1607,6 +1647,84 @@ func wrap8604Body(text string) []byte {
 		off += 4
 		binary.BigEndian.PutUint32(body[off:], uint32(int32(p[1]*1e6)))
 		off += 4
+	}
+	return body
+}
+
+// wrap8606Body builds a minimal 0x8606 route (inflection points, no time window).
+// text: "id=1,w=50,pts=-6.1,106.7;-6.2,106.8" (width meters; ≥2 points).
+func wrap8606Body(text string) []byte {
+	var id uint32 = 1
+	width := byte(50)
+	var pts [][2]float64
+	t := strings.TrimSpace(text)
+	lower := strings.ToLower(t)
+	if i := strings.Index(lower, "id="); i >= 0 {
+		rest := t[i+3:]
+		end := strings.IndexAny(rest, ",;")
+		token := rest
+		if end >= 0 {
+			token = rest[:end]
+		}
+		if n, err := strconv.ParseUint(strings.TrimSpace(token), 10, 32); err == nil {
+			id = uint32(n)
+		}
+	}
+	if i := strings.Index(lower, "w="); i >= 0 {
+		rest := t[i+2:]
+		end := strings.IndexAny(rest, ",;")
+		token := rest
+		if end >= 0 {
+			token = rest[:end]
+		}
+		if n, err := strconv.Atoi(strings.TrimSpace(token)); err == nil && n >= 0 && n <= 255 {
+			width = byte(n)
+		}
+	}
+	ptsStart := -1
+	ptsKeyLen := 0
+	for _, key := range []string{"pts=", "points="} {
+		if i := strings.Index(lower, key); i >= 0 {
+			ptsStart, ptsKeyLen = i, len(key)
+			break
+		}
+	}
+	if ptsStart >= 0 {
+		for _, pair := range strings.Split(t[ptsStart+ptsKeyLen:], ";") {
+			coords := strings.Split(strings.TrimSpace(pair), ",")
+			if len(coords) < 2 {
+				continue
+			}
+			lat, err1 := strconv.ParseFloat(strings.TrimSpace(coords[0]), 64)
+			lon, err2 := strconv.ParseFloat(strings.TrimSpace(coords[1]), 64)
+			if err1 == nil && err2 == nil {
+				pts = append(pts, [2]float64{lat, lon})
+			}
+		}
+	}
+	if len(pts) < 2 {
+		pts = [][2]float64{{0, 0}, {0.001, 0.001}}
+	}
+	if len(pts) > 255 {
+		pts = pts[:255]
+	}
+	body := make([]byte, 0, 8+18*len(pts))
+	var hdr [8]byte
+	binary.BigEndian.PutUint32(hdr[0:4], id)
+	binary.BigEndian.PutUint16(hdr[4:6], 0) // attribute — no time window
+	binary.BigEndian.PutUint16(hdr[6:8], uint16(len(pts)))
+	body = append(body, hdr[:]...)
+	for i, p := range pts {
+		var pt [18]byte
+		binary.BigEndian.PutUint32(pt[0:4], uint32(i+1))
+		binary.BigEndian.PutUint32(pt[4:8], 0) // road id
+		lat := int32(p[0] * 1e6)
+		lon := int32(p[1] * 1e6)
+		binary.BigEndian.PutUint32(pt[8:12], uint32(lat))
+		binary.BigEndian.PutUint32(pt[12:16], uint32(lon))
+		pt[16] = width
+		pt[17] = 0
+		body = append(body, pt[:]...)
 	}
 	return body
 }
@@ -1843,6 +1961,40 @@ func wrap8801Body(text string) []byte {
 	body[1] = 1
 	body[5] = 5
 	return body
+}
+
+// wrap8803Body builds 0x8803 multimedia upload control: type + channel + cmd.
+// text: "stop" / "start" / "type=0,ch=1,cmd=0".
+func wrap8803Body(text string) []byte {
+	mediaType, ch, cmd := byte(0), byte(1), byte(0)
+	t := strings.TrimSpace(strings.ToLower(text))
+	switch t {
+	case "stop", "0":
+		cmd = 0
+	case "start", "1":
+		cmd = 1
+	default:
+		for _, part := range strings.Split(t, ",") {
+			kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			k, v := kv[0], kv[1]
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 || n > 255 {
+				continue
+			}
+			switch k {
+			case "type", "media_type":
+				mediaType = byte(n)
+			case "ch", "channel":
+				ch = byte(n)
+			case "cmd", "command":
+				cmd = byte(n)
+			}
+		}
+	}
+	return []byte{mediaType, ch, cmd}
 }
 
 // wrap8805Body builds 0x8805 single multimedia upload/retrieve by id.

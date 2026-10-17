@@ -7,10 +7,10 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | Adapter | Port env | Default | Status | Uplink | Downlink | Notes |
 |---------|----------|---------|--------|--------|----------|-------|
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat + alarm safety | — | nested attrs flatten; `alarm.*` → safety |
-| Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12/14 | Codec13/14; IO/BLE safety; soft corr |
-| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | register/auth/loc/TLV/alarms/0003–5/0500/0301–3/0608/0700–5/0800–5/0802 | 8300–4/8103–7/8201–4/8500/8600–5/8608/8700–2/8801–2/8805/8900/9101–2 | geofence; media; info menu |
+| Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12/14 | Codec13/14; IO/BLE/green-driving; soft corr |
+| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | register/auth/loc/TLV/alarms/0003–5/0500/0301–3/0608/0700–5/0800–5/0802 | 8300–4/8103–7/8201–4/8500/8600–7/8608/8700–2/8801–3/8805/8900/9101–2 | areas+routes; media ctrl; info |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
-| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/logout/disconnect/HB + 0x1200–03 + 0x1400 + 0x1601 | — | 0x5B CRC; skip encrypted bodies |
+| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/logout/disconnect/HB + 0x1200–03 + 0x1400 + 0x1500 + 0x1601–2 | — | 0x5B CRC; skip encrypted bodies |
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling + ACK + SIM + payload hints | — | no RTP / no 808 media bridge |
 | Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS | 0x80 GPRS | paused for depth — GT06 deferred |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records + cmd3 ident | 108/105/107 | voltage/fuel/temp/GSM IO; SOS/door; soft corr |
@@ -46,6 +46,7 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `jt808_8500` / `control` | jt808/subiao | vehicle control |
 | `jt808_8801` / `camera` | jt808/subiao | camera shoot (pairs 0x0805) |
 | `jt808_8802` / `multimedia_retrieve` | jt808/subiao | stored media retrieve (→0x0802) |
+| `jt808_8803` / `multimedia_control` | jt808/subiao | media upload start/stop |
 | `jt808_8805` / `multimedia_upload` | jt808/subiao | single media by id |
 | `jt808_8900` / `transparent` | jt808/subiao | transparent downlink |
 | `jt808_8202` / `track` | jt808/subiao | temporary location track |
@@ -55,12 +56,14 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `teltonika_codec12` | teltonika | Codec 12 GPRS |
 | `teltonika_codec14` | teltonika | Codec 14 GPRS (IMEI gated) |
 | `jt808_8203` / `alarm_confirm` | jt808/subiao | manual confirm alarm |
-| `jt808_8600` / `geofence_set` | jt808/subiao | set circle/rect/poly (`type=rect|poly`) |
+| `jt808_8600` / `geofence_set` | jt808/subiao | set circle/rect/poly/route (`type=…`) |
 | `jt808_8602` | jt808/subiao | set rectangular area (minimal) |
 | `jt808_8604` | jt808/subiao | set polygon area (minimal) |
-| `jt808_8601` / `geofence_del` | jt808/subiao | delete areas (`type=rect|poly` → 8603/8605) |
+| `jt808_8606` / `route_set` | jt808/subiao | set route (minimal inflection pts) |
+| `jt808_8601` / `geofence_del` | jt808/subiao | delete areas (`type=rect|poly|route`) |
 | `jt808_8603` | jt808/subiao | delete rectangular area(s) |
 | `jt808_8605` | jt808/subiao | delete polygon area(s) |
+| `jt808_8607` / `route_del` | jt808/subiao | delete route(s) |
 | `jt808_8608` / `geofence_query` | jt808/subiao | query areas/routes (→0x0608) |
 | `jt808_9101` / `av_live` | jt808/subiao | realtime AV request (1078 path) |
 | `jt808_9102` / `av_control` | jt808/subiao | AV realtime control |
@@ -121,6 +124,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   080_jt808_poly_info.sql
 #   081_jt808_geofence_del_media.sql
 #   082_jt808_info_menu.sql
+#   083_jt808_route_media_ctrl.sql
 npm run db:migrate
 
 cd tracker-gateway

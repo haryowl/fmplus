@@ -206,6 +206,11 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
     protocols: ["jt808", "subiao"],
   },
   {
+    value: "jt808_8803",
+    label: "JT808 media control (0x8803)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
     value: "jt808_8805",
     label: "JT808 media by id (0x8805)",
     protocols: ["jt808", "subiao"],
@@ -260,6 +265,16 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
   {
     value: "jt808_8605",
     label: "JT808 delete poly area (0x8605)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8606",
+    label: "JT808 set route (0x8606)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8607",
+    label: "JT808 delete route (0x8607)",
     protocols: ["jt808", "subiao"],
   },
   {
@@ -327,6 +342,8 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "1 or ch=1", hex: "12-byte 0x8801 body" };
     case "jt808_8802":
       return { text: "type=0,ch=1,event=0", hex: "15-byte 0x8802 body" };
+    case "jt808_8803":
+      return { text: "stop / start / type=0,ch=1,cmd=0", hex: "3-byte body" };
     case "jt808_8805":
       return { text: "id=99", hex: "DWORD media id" };
     case "jt808_8900":
@@ -350,7 +367,10 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "all or 1,2,3 (or type=rect|poly,…)", hex: "count + DWORD ids" };
     case "jt808_8603":
     case "jt808_8605":
+    case "jt808_8607":
       return { text: "all or 1,2,3", hex: "count + DWORD ids" };
+    case "jt808_8606":
+      return { text: "id=1,w=50,pts=-6.1,106.7;-6.2,106.8", hex: "full 0x8606 body" };
     case "jt808_8608":
       return { text: "1 / circle / rect / poly / route", hex: "type byte" };
     case "jt808_9101":
