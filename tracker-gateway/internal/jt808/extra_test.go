@@ -44,6 +44,23 @@ func TestParseAdditionalInfo_MileageFuel(t *testing.T) {
 	if add["0x02"] != 10.0 {
 		t.Fatalf("fuel=%v", add["0x02"])
 	}
+	if add["mileage"] != 100.0 || add["fuel.level"] != 10.0 {
+		t.Fatalf("named=%v", add)
+	}
+}
+
+func TestParseAdditionalInfo_RouteTimeAndIO(t *testing.T) {
+	base := make([]byte, 28)
+	// 0x13: loc=1, route_id=7, result=1 (too long), time=120
+	// 0x18: IO status 0x0005 (din1+din3)
+	tlv, _ := hex.DecodeString("1308010000000701007818020005")
+	add := parseAdditionalInfo(append(base, tlv...))
+	if add["alarm.route_time_long"] != true || add["route_id"] != 7 || add["route_drive_time"] != 120 {
+		t.Fatalf("route=%v", add)
+	}
+	if add["status.din1"] != true || add["status.din3"] != true || add["status.din2"] != false {
+		t.Fatalf("io=%v", add)
+	}
 }
 
 func TestParseAdditionalInfo_VideoLoss(t *testing.T) {

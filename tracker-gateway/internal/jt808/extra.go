@@ -28,15 +28,21 @@ func parseAdditionalInfo(body []byte) map[string]any {
 		switch id {
 		case 0x01: // mileage 1/10 km
 			if l >= 4 {
-				add[key] = float64(binary.BigEndian.Uint32(val)) / 10.0
+				km := float64(binary.BigEndian.Uint32(val)) / 10.0
+				add[key] = km
+				add["mileage"] = km
 			}
 		case 0x02: // fuel 1/10 L
 			if l >= 2 {
-				add[key] = float64(binary.BigEndian.Uint16(val)) / 10.0
+				fuel := float64(binary.BigEndian.Uint16(val)) / 10.0
+				add[key] = fuel
+				add["fuel.level"] = fuel
 			}
 		case 0x03: // speed 1/10 km/h
 			if l >= 2 {
-				add[key] = float64(binary.BigEndian.Uint16(val)) / 10.0
+				spd := float64(binary.BigEndian.Uint16(val)) / 10.0
+				add[key] = spd
+				add["speed.extra"] = spd
 			}
 		case 0x11: // overspeed extra: loc type + optional region id
 			if l >= 1 {
@@ -59,6 +65,36 @@ func parseAdditionalInfo(body []byte) map[string]any {
 				} else {
 					add["alarm.fence_out"] = true
 				}
+			}
+		case 0x13: // route driving time insufficient / too long
+			if l >= 1 {
+				add["route_time_loc_type"] = int(val[0])
+			}
+			if l >= 6 {
+				add["route_id"] = int(binary.BigEndian.Uint32(val[1:5]))
+				result := int(val[5])
+				add["route_time_result"] = result
+				if result == 0 {
+					add["alarm.route_time_short"] = true
+				} else {
+					add["alarm.route_time_long"] = true
+				}
+			}
+			if l >= 8 {
+				add["route_drive_time"] = int(binary.BigEndian.Uint16(val[6:8]))
+			}
+		case 0x18: // IO status bits (digital inputs / outs — layout vendor-dependent)
+			if l >= 2 {
+				io := binary.BigEndian.Uint16(val[0:2])
+				add[key] = int(io)
+				add["io.status"] = int(io)
+				add["status.din1"] = io&0x01 != 0
+				add["status.din2"] = io&0x02 != 0
+				add["status.din3"] = io&0x04 != 0
+				add["status.din4"] = io&0x08 != 0
+			} else if l >= 1 {
+				add[key] = int(val[0])
+				add["io.status"] = int(val[0])
 			}
 		case 0x25: // extended vehicle signal status bits
 			if l >= 4 {
@@ -285,7 +321,9 @@ func decodeSubiaoBody(id byte, val []byte, add map[string]any) {
 func isRemappableSafetyKey(k string) bool {
 	switch k {
 	case "alarm_level", "tpms.alarm", "gsm_signal", "gnss_sats",
-		"overspeed_loc_type", "overspeed_region_id", "area_loc_type", "area_id", "area_direction":
+		"overspeed_loc_type", "overspeed_region_id", "area_loc_type", "area_id", "area_direction",
+		"mileage", "fuel.level", "speed.extra", "io.status",
+		"route_id", "route_time_loc_type", "route_time_result", "route_drive_time":
 		return true
 	}
 	return strings.HasPrefix(k, "adas.") ||

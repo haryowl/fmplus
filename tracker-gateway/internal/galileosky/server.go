@@ -374,4 +374,17 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("can.%d", i+1)] = float64(n)
 		raw[fmt.Sprintf("tag.0x%02x", id)] = n
 	}
+	// 0x80–0x83: 8-byte Modbus / RS485 registers (low 4 bytes as uint32 when plausible).
+	for i, id := range []byte{0x80, 0x81, 0x82, 0x83} {
+		v, ok := tags[id]
+		if !ok || len(v) < 4 {
+			continue
+		}
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw[fmt.Sprintf("modbus.%d", i+1)] = float64(n)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+		if len(v) >= 8 {
+			raw[fmt.Sprintf("modbus.%d_hi", i+1)] = float64(binary.LittleEndian.Uint32(v[4:8]))
+		}
+	}
 }

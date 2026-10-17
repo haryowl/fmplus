@@ -67,3 +67,14 @@ func TestPromoteSensorTags_CANAndSensor(t *testing.T) {
 		t.Fatalf("%v", raw)
 	}
 }
+
+func TestPromoteSensorTags_Modbus(t *testing.T) {
+	raw := map[string]any{}
+	reg := make([]byte, 8)
+	binary.LittleEndian.PutUint32(reg[0:4], 42)
+	binary.LittleEndian.PutUint32(reg[4:8], 7)
+	promoteSensorTags(raw, map[byte][]byte{0x80: reg})
+	if raw["modbus.1"] != float64(42) || raw["modbus.1_hi"] != float64(7) {
+		t.Fatalf("%v", raw)
+	}
+}
