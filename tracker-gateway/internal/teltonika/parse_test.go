@@ -452,6 +452,14 @@ func TestPromoteTeltonikaScalars_RS232LLSGroundBeacon(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_ISO6709(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"387": "+061212.0000+1064800.0000+000.030/"})
+	if raw["gnss.iso6709"] != "+061212.0000+1064800.0000+000.030/" {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_BLELuminosityCustom(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{

@@ -235,6 +235,9 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["385"]; ok {
 		raw["beacon.ids"] = fmt.Sprintf("%v", v)
 	}
+	if v, ok := io["387"]; ok {
+		raw["gnss.iso6709"] = fmt.Sprintf("%v", v)
+	}
 	if v, ok := io["250"]; ok {
 		raw["trip.distance"] = asIOFloat(v)
 	}

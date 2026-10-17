@@ -353,6 +353,14 @@ func TestPromoteRuptelaScalars_RS232LLSGroundBeacon(t *testing.T) {
 	}
 }
 
+func TestPromoteRuptelaScalars_ISO6709(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{"387": "+061212.0000+1064800.0000+000.030/"})
+	if raw["gnss.iso6709"] != "+061212.0000+1064800.0000+000.030/" {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteRuptelaScalars_BLELuminosityCustom(t *testing.T) {
 	raw := map[string]any{}
 	promoteRuptelaScalars(raw, map[string]any{

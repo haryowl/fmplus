@@ -2944,8 +2944,9 @@ func parseCANBus(body []byte) map[string]any {
 		data := body[off+4 : off+12]
 		out[fmt.Sprintf("can.%d.id", i)] = int(id)
 		out[fmt.Sprintf("can.%d.data", i)] = fmt.Sprintf("%x", data)
-		out[fmt.Sprintf("can.%d.data0", i)] = int(data[0])
-		out[fmt.Sprintf("can.%d.data1", i)] = int(data[1])
+		for bi := 0; bi < len(data); bi++ {
+			out[fmt.Sprintf("can.%d.data%d", i, bi)] = int(data[bi])
+		}
 		if i == 0 {
 			out["can.first_id"] = int(id)
 			out["can.first_data"] = fmt.Sprintf("%x", data)
