@@ -162,6 +162,14 @@ func TestPromoteTeltonikaScalars(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_BLE(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"25": 215, "29": 55, "86": 90})
+	if raw["ble.temp1"] != 21.5 || raw["ble.humidity"] != 55.0 || raw["ble.battery"] != 90.0 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)

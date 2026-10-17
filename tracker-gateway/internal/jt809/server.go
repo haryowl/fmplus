@@ -176,7 +176,7 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 		binary.BigEndian.PutUint16(respBody[8:10], 0x1008) // disconnect ack
 		_, _ = conn.Write(wrapFrame809(respBody))
 		log.Printf("[jt809] platform disconnect key=%s", *platformKey)
-	case 0x1200, 0x1202:
+	case 0x1200, 0x1202, 0x1203: // realtime / history location (0x1203 experimental same parse)
 		fix, plate, ok := parseVehicleUplink(msgID, rest)
 		if !ok {
 			log.Printf("[jt809] vehicle uplink 0x%04x len=%d (no fix)", msgID, length)

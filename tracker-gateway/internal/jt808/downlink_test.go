@@ -344,6 +344,47 @@ func TestWrap8802Body(t *testing.T) {
 	}
 }
 
+func TestWrap8805Body(t *testing.T) {
+	b := wrap8805Body("id=99")
+	if binary.BigEndian.Uint32(b) != 99 {
+		t.Fatalf("%x", b)
+	}
+}
+
+func TestWrap8900Body(t *testing.T) {
+	b := wrap8900Body("type=1,text=ab")
+	if b[0] != 1 || string(b[1:]) != "ab" {
+		t.Fatalf("%x", b)
+	}
+}
+
+func TestGeofenceDelMsgID(t *testing.T) {
+	if geofenceDelMsgID("type=rect,1,2") != 0x8603 {
+		t.Fatal("rect")
+	}
+	if geofenceDelMsgID("type=poly,all") != 0x8605 {
+		t.Fatal("poly")
+	}
+	if geofenceDelMsgID("1,2,3") != 0x8601 {
+		t.Fatal("circle default")
+	}
+}
+
+func TestEncodeDownlink_GeofenceDelRect(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{
+		CommandType: "geofence_del",
+		PayloadText: "type=rect,1,2",
+	}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := unescape(out)
+	if !bytes.Contains(raw, []byte{0x86, 0x03}) {
+		t.Fatalf("expected 0x8603: %x", raw)
+	}
+}
+
 func TestEncodeDownlink_MultimediaRetrieve8802(t *testing.T) {
 	ad := Adapter{}
 	out, err := ad.EncodeDownlink(store.Command{CommandType: "jt808_8802", PayloadText: "ch=3"}, "13800138000")

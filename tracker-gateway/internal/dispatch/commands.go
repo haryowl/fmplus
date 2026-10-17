@@ -23,11 +23,12 @@ func isJT808Command(protocol, commandType string) bool {
 	switch commandType {
 	case "jt808", "jt808_8103", "jt808_8104", "jt808_8105", "jt808_8107",
 		"jt808_8201", "jt808_8202", "jt808_8203", "jt808_8204", "jt808_8500",
-		"jt808_8600", "jt808_8601", "jt808_8602", "jt808_8604", "jt808_8608",
-		"jt808_8801", "jt808_8802", "jt808_8700", "jt808_8702", "jt808_9101", "jt808_9102",
-		"jt808_8301", "jt808_8302", "jt808_8304", "terminal_control",
+		"jt808_8600", "jt808_8601", "jt808_8602", "jt808_8603", "jt808_8604", "jt808_8605", "jt808_8608",
+		"jt808_8801", "jt808_8802", "jt808_8805", "jt808_8700", "jt808_8702", "jt808_9101", "jt808_9102",
+		"jt808_8301", "jt808_8302", "jt808_8304", "jt808_8900", "terminal_control",
 		"param", "control", "vehicle_control", "query_params", "query_attrs",
-		"query_location", "camera", "multimedia_retrieve", "track", "driver_query", "driving_record", "link_detect",
+		"query_location", "camera", "multimedia_retrieve", "multimedia_upload", "track", "driver_query",
+		"driving_record", "link_detect", "transparent",
 		"geofence_del", "geofence_set", "geofence_query", "av_live", "av_control", "alarm_confirm",
 		"event_set", "question", "info":
 		return true

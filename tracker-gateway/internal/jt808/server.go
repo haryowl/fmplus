@@ -435,6 +435,26 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			}
 		}
 		body = wrap8802Body(text)
+	case "jt808_8805", "multimedia_upload":
+		// Single stored multimedia upload/retrieve by media id (DWORD).
+		msgID = 0x8805
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8805Body(text)
+	case "jt808_8900", "transparent":
+		// Downlink transparent transmission: type BYTE + content.
+		msgID = 0x8900
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8900Body(text)
 	case "jt808_8202", "track":
 		// Temporary location tracking: interval(WORD sec) + validity(DWORD sec).
 		msgID = 0x8202
@@ -519,8 +539,26 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 		}
 		body = wrap8604Body(text)
 	case "jt808_8601", "geofence_del":
-		// Delete circular area(s): count=0 → all; else DWORD area ids (hex or csv).
-		msgID = 0x8601
+		// Delete areas: 8601 circle (default), 8603 rect, 8605 poly — same id-list body.
+		msgID = geofenceDelMsgID(text)
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8601Body(text)
+	case "jt808_8603":
+		msgID = 0x8603
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8601Body(text)
+	case "jt808_8605":
+		msgID = 0x8605
 		if cmd.PayloadHex != "" {
 			if raw := cmd.PayloadBytes(); len(raw) > 0 {
 				body = raw
@@ -1376,6 +1414,19 @@ func looksLikePolyGeofence(text string) bool {
 	return strings.Contains(t, "type=poly") || strings.Contains(t, "pts=")
 }
 
+// geofenceDelMsgID picks 0x8601/8603/8605 from type=circle|rect|poly (default circle).
+func geofenceDelMsgID(text string) uint16 {
+	t := strings.ToLower(text)
+	switch {
+	case strings.Contains(t, "type=rect"):
+		return 0x8603
+	case strings.Contains(t, "type=poly"):
+		return 0x8605
+	default:
+		return 0x8601
+	}
+}
+
 // wrap8600Body builds a minimal 0x8600 single circular area.
 // text: "id=1,lat=-6.2,lon=106.8,r=500" (degrees, radius meters).
 func wrap8600Body(text string) []byte {
@@ -1707,6 +1758,57 @@ func wrap8801Body(text string) []byte {
 	body[1] = 1
 	body[5] = 5
 	return body
+}
+
+// wrap8805Body builds 0x8805 single multimedia upload/retrieve by id.
+// text: "99" / "id=99" / "media_id=99".
+func wrap8805Body(text string) []byte {
+	var id uint32
+	t := strings.TrimSpace(text)
+	for _, part := range strings.Split(t, ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) == 2 {
+			k := strings.ToLower(kv[0])
+			if k == "id" || k == "media_id" || k == "media" {
+				if n, err := strconv.ParseUint(strings.TrimSpace(kv[1]), 10, 32); err == nil {
+					id = uint32(n)
+				}
+			}
+			continue
+		}
+		if n, err := strconv.ParseUint(strings.TrimSpace(part), 10, 32); err == nil {
+			id = uint32(n)
+		}
+	}
+	body := make([]byte, 4)
+	binary.BigEndian.PutUint32(body, id)
+	return body
+}
+
+// wrap8900Body builds 0x8900 downlink transparent: type BYTE + content.
+// text: "type=0,text=ping" or plain content (type=0).
+func wrap8900Body(text string) []byte {
+	typ := byte(0)
+	msg := strings.TrimSpace(text)
+	for _, part := range strings.Split(msg, ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		k, v := strings.ToLower(kv[0]), kv[1]
+		switch k {
+		case "type":
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
+				typ = byte(n)
+			}
+		case "text", "msg", "data":
+			msg = v
+		}
+	}
+	if !strings.Contains(strings.ToLower(text), "text=") && !strings.Contains(strings.ToLower(text), "type=") {
+		msg = strings.TrimSpace(text)
+	}
+	return append([]byte{typ}, []byte(msg)...)
 }
 
 // wrap8802Body builds 0x8802 stored multimedia retrieval (type+ch+event+start/end BCD).

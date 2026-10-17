@@ -206,6 +206,16 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
     protocols: ["jt808", "subiao"],
   },
   {
+    value: "jt808_8805",
+    label: "JT808 media by id (0x8805)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8900",
+    label: "JT808 transparent DL (0x8900)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
     value: "jt808_8702",
     label: "JT808 query driver (0x8702)",
     protocols: ["jt808", "subiao"],
@@ -240,6 +250,16 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
   {
     value: "jt808_8601",
     label: "JT808 delete circle area (0x8601)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8603",
+    label: "JT808 delete rect area (0x8603)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8605",
+    label: "JT808 delete poly area (0x8605)",
     protocols: ["jt808", "subiao"],
   },
   {
@@ -302,6 +322,10 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "1 or ch=1", hex: "12-byte 0x8801 body" };
     case "jt808_8802":
       return { text: "type=0,ch=1,event=0", hex: "15-byte 0x8802 body" };
+    case "jt808_8805":
+      return { text: "id=99", hex: "DWORD media id" };
+    case "jt808_8900":
+      return { text: "type=0,text=ping", hex: "type + content" };
     case "jt808_8202":
       return { text: "10,60 (interval,validity sec)", hex: "6-byte body" };
     case "jt808_8700":
@@ -318,6 +342,9 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
     case "jt808_8604":
       return { text: "id=1,pts=-6.1,106.7;-6.2,106.8;-6.1,106.9", hex: "full 0x8604 body" };
     case "jt808_8601":
+      return { text: "all or 1,2,3 (or type=rect|poly,…)", hex: "count + DWORD ids" };
+    case "jt808_8603":
+    case "jt808_8605":
       return { text: "all or 1,2,3", hex: "count + DWORD ids" };
     case "jt808_8608":
       return { text: "1 / circle / rect / poly / route", hex: "type byte" };
