@@ -337,6 +337,28 @@ func TestWrap8203Body(t *testing.T) {
 	}
 }
 
+func TestWrap8802Body(t *testing.T) {
+	b := wrap8802Body("type=1,ch=2,event=3")
+	if len(b) != 15 || b[0] != 1 || b[1] != 2 || b[2] != 3 {
+		t.Fatalf("%x", b)
+	}
+}
+
+func TestEncodeDownlink_MultimediaRetrieve8802(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{CommandType: "jt808_8802", PayloadText: "ch=3"}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := unescape(out)
+	if !bytes.Contains(raw, []byte{0x88, 0x02}) {
+		t.Fatalf("msg id missing: %x", raw)
+	}
+	if !bytes.Contains(raw, []byte{0x00, 0x03, 0x00}) {
+		t.Fatalf("type=0 ch=3 event=0 missing: %x", raw)
+	}
+}
+
 func TestWrap8600Body(t *testing.T) {
 	b := wrap8600Body("id=7,lat=-6.2,lon=106.8,r=250")
 	if b[0] != 0 || b[1] != 1 {

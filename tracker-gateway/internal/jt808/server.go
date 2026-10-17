@@ -425,6 +425,16 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			}
 		}
 		body = wrap8801Body(text)
+	case "jt808_8802", "multimedia_retrieve":
+		// Stored multimedia retrieval (pairs with 0x0802 response).
+		msgID = 0x8802
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8802Body(text)
 	case "jt808_8202", "track":
 		// Temporary location tracking: interval(WORD sec) + validity(DWORD sec).
 		msgID = 0x8202
@@ -743,6 +753,18 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 	case 0x0801: // multimedia event / metadata (no 1078 media stack)
 		if sess.device != nil {
 			_ = st.PatchLastStatus(ctx, sess.device, parseMultimediaMeta(body), nil)
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0802: // stored multimedia retrieval response (应答流水号 + count + items)
+		if sess.device != nil {
+			patch := parseMultimediaRetrieveResp(body)
+			_ = st.PatchLastStatus(ctx, sess.device, patch, nil)
+			corr := ""
+			if c, ok := patch["reply_seq"].(int); ok {
+				corr = fmt.Sprintf("%d", c)
+			}
+			_ = st.AckCommand(ctx, sess.device.ID, corr, true,
+				fmt.Sprintf("jt808_0802 count=%v", patch["media_count"]))
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0805: // camera shoot response (应答流水号 + result + media ids)
@@ -1289,6 +1311,67 @@ func wrap8801Body(text string) []byte {
 	body[1] = 1
 	body[5] = 5
 	return body
+}
+
+// wrap8802Body builds 0x8802 stored multimedia retrieval (type+ch+event+start/end BCD).
+// text: "type=0,ch=1,event=0" — zero BCD times = unrestricted range (partial).
+func wrap8802Body(text string) []byte {
+	mediaType, ch, event := byte(0), byte(1), byte(0)
+	for _, part := range strings.Split(strings.TrimSpace(text), ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		k, v := strings.ToLower(kv[0]), strings.TrimSpace(kv[1])
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || n > 255 {
+			continue
+		}
+		switch k {
+		case "type", "media_type":
+			mediaType = byte(n)
+		case "ch", "channel":
+			ch = byte(n)
+		case "event", "event_code":
+			event = byte(n)
+		}
+	}
+	body := make([]byte, 15)
+	body[0] = mediaType
+	body[1] = ch
+	body[2] = event
+	// body[3:15] start/end BCD stay zero → all stored items in range
+	return body
+}
+
+// parseMultimediaRetrieveResp maps 0x0802 retrieval response (seq + count + first item).
+func parseMultimediaRetrieveResp(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0802", "media_retrieve_len": len(body)}
+	if len(body) >= 2 {
+		out["reply_seq"] = int(binary.BigEndian.Uint16(body[0:2]))
+	}
+	if len(body) >= 6 {
+		out["media_count"] = int(binary.BigEndian.Uint32(body[2:6]))
+	}
+	// First item: media_id(4) + type(1) + channel(1) + event(1) …
+	if len(body) >= 10 {
+		out["media_id"] = binary.BigEndian.Uint32(body[6:10])
+	}
+	if len(body) >= 11 {
+		out["media_type"] = int(body[10])
+	}
+	if len(body) >= 12 {
+		out["media_channel"] = int(body[11])
+	}
+	if len(body) >= 13 {
+		out["media_event"] = int(body[12])
+	}
+	snip := body
+	if len(snip) > 48 {
+		snip = snip[:48]
+	}
+	out["media_retrieve_hex"] = fmt.Sprintf("%x", snip)
+	return out
 }
 
 // wrap8202Body: "interval[,validity]" seconds — defaults 10s interval, 60s validity.

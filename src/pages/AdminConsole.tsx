@@ -201,6 +201,11 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
     protocols: ["jt808", "subiao"],
   },
   {
+    value: "jt808_8802",
+    label: "JT808 media retrieve (0x8802)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
     value: "jt808_8702",
     label: "JT808 query driver (0x8702)",
     protocols: ["jt808", "subiao"],
@@ -270,6 +275,8 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "cut / oil_cut", hex: "01 or multi-byte body" };
     case "jt808_8801":
       return { text: "1 or ch=1", hex: "12-byte 0x8801 body" };
+    case "jt808_8802":
+      return { text: "type=0,ch=1,event=0", hex: "15-byte 0x8802 body" };
     case "jt808_8202":
       return { text: "10,60 (interval,validity sec)", hex: "6-byte body" };
     case "jt808_8700":

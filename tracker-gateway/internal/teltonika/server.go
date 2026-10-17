@@ -142,6 +142,8 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			}
 			if ev := safetyFromEventIO(fix); ev != nil {
 				_ = st.InsertSafetyEvent(ctx, device, *ev)
+			} else if ev := safetyFromIO(fix); ev != nil {
+				_ = st.InsertSafetyEvent(ctx, device, *ev)
 			}
 		}
 		ack := make([]byte, 4)

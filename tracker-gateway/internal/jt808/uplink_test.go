@@ -131,6 +131,23 @@ func TestParseCameraShootResp(t *testing.T) {
 	}
 }
 
+func TestParseMultimediaRetrieveResp(t *testing.T) {
+	body := make([]byte, 13)
+	binary.BigEndian.PutUint16(body[0:2], 7)
+	binary.BigEndian.PutUint32(body[2:6], 1)
+	binary.BigEndian.PutUint32(body[6:10], 99)
+	body[10] = 0
+	body[11] = 1
+	body[12] = 2
+	m := parseMultimediaRetrieveResp(body)
+	if m["reply_seq"] != 7 || m["media_count"] != 1 || m["media_id"] != uint32(99) {
+		t.Fatalf("%v", m)
+	}
+	if m["media_channel"] != 1 || m["media_event"] != 2 {
+		t.Fatalf("%v", m)
+	}
+}
+
 func TestSafetyFromEventID_Expanded(t *testing.T) {
 	cases := map[int]string{
 		5: "enter_area", 6: "leave_area", 12: "collision", 14: "driver_change",

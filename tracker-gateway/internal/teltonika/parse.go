@@ -137,6 +137,7 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 		}
 		promoteTeltonikaScalars(raw, io)
 		flattenEventAlarm(raw)
+		flattenIOAlarms(raw, io)
 		fixes = append(fixes, fix)
 	}
 	return n, fixes

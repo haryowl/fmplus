@@ -7,10 +7,10 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | Adapter | Port env | Default | Status | Uplink | Downlink | Notes |
 |---------|----------|---------|--------|--------|----------|-------|
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat + alarm safety | — | nested attrs flatten; `alarm.*` → safety |
-| Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12/14 | Codec13/14 parse; Codec14 encode; soft corr |
-| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | register/auth/loc/TLV/alarms/0003–5/0500/0301/0608/0700–5/0800–5 | 8300/8103–7/8201–4/8500/8600–1/8608/8700–2/8801/9101–2 | geofence set + alarm confirm |
+| Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12/14 | Codec13/14; IO safety on periodic; soft corr |
+| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | register/auth/loc/TLV/alarms/0003–5/0500/0301/0608/0700–5/0800–5/0802 | 8300/8103–7/8201–4/8500/8600–1/8608/8700–2/8801–2/9101–2 | media retrieve + geofence/alarm |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
-| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/logout/disconnect/HB + 0x1200/01 + 0x1400 + 0x1601 | — | 0x5B CRC; skip encrypted bodies |
+| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/logout/disconnect/HB + 0x1200/01 static + 0x1400 + 0x1601 | — | 0x5B CRC; skip encrypted bodies |
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling + ACK + SIM + av_kind | — | no RTP / no 808 media bridge |
 | Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS | 0x80 GPRS | paused for depth — GT06 deferred |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records | 108/105/107 | voltage/fuel/temp IO; records_left; soft corr |
@@ -41,6 +41,7 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `jt808_8105` / `terminal_control` | jt808/subiao | reset/shutdown/factory/… |
 | `jt808_8500` / `control` | jt808/subiao | vehicle control |
 | `jt808_8801` / `camera` | jt808/subiao | camera shoot (pairs 0x0805) |
+| `jt808_8802` / `multimedia_retrieve` | jt808/subiao | stored media retrieve (→0x0802) |
 | `jt808_8202` / `track` | jt808/subiao | temporary location track |
 | `jt808_8702` / `driver_query` | jt808/subiao | request driver identity (→0x0702) |
 | `jt808_8700` / `driving_record` | jt808/subiao | driving record collect (→0x0700) |
@@ -104,6 +105,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   074_codec14_geofence.sql
 #   075_jt808_av_geofence_query.sql
 #   076_jt808_geofence_set_alarm.sql
+#   077_jt808_media_retrieve.sql
 npm run db:migrate
 
 cd tracker-gateway

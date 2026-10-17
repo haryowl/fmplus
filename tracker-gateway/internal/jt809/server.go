@@ -190,18 +190,15 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 		} else {
 			log.Printf("[jt809] vehicle uplink 0x%04x plate=%q (unregistered)", msgID, plate)
 		}
-	case 0x1201: // vehicle static / registration notify (experimental — plate status only)
-		plate := ""
-		if len(rest) >= 21 {
-			plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
+	case 0x1201: // vehicle static / registration notify (experimental)
+		plate, patch, ok := parseVehicleStatic(rest)
+		if !ok {
+			log.Printf("[jt809] 0x1201 len=%d (no parse)", length)
+			break
 		}
 		device := find809Device(ctx, st, plate, *platformKey, conn.RemoteAddr().String())
 		if device != nil {
-			_ = st.PatchLastStatus(ctx, device, map[string]any{
-				"proto_msg":     "0x1201",
-				"vehicle_plate": plate,
-				"body_len":      len(rest),
-			}, nil)
+			_ = st.PatchLastStatus(ctx, device, patch, nil)
 			_ = st.TouchSeen(ctx, device)
 		} else {
 			log.Printf("[jt809] 0x1201 plate=%q (unregistered)", plate)

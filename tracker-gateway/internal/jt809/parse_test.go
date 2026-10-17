@@ -52,3 +52,26 @@ func TestParseVehicleAlarm_SOS(t *testing.T) {
 		t.Fatalf("plate=%q ev=%+v ok=%v", plate, ev, ok)
 	}
 }
+
+func TestParseVehicleStatic_Register(t *testing.T) {
+	rest := make([]byte, 28+61)
+	copy(rest[0:21], []byte("B1234REG"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 0x1201)
+	binary.BigEndian.PutUint32(rest[24:28], 61)
+	copy(rest[28:39], []byte("PLAT001"))
+	copy(rest[39:50], []byte("PROD99"))
+	copy(rest[50:70], []byte("MODEL-X"))
+	copy(rest[70:77], []byte("TID1234"))
+	copy(rest[77:89], []byte("13800138000"))
+	plate, patch, ok := parseVehicleStatic(rest)
+	if !ok || plate != "B1234REG" {
+		t.Fatalf("ok=%v plate=%q", ok, plate)
+	}
+	if patch["platform_id"] != "PLAT001" || patch["producer_id"] != "PROD99" {
+		t.Fatalf("%v", patch)
+	}
+	if patch["terminal_model"] != "MODEL-X" || patch["terminal_sim"] != "13800138000" {
+		t.Fatalf("%v", patch)
+	}
+}

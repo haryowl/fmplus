@@ -51,6 +51,59 @@ func parseVehicleAlarm(msgID uint16, rest []byte) (plate string, ev *store.Safet
 	return plate, ev, plate != "" || infoType != 0
 }
 
+// parseVehicleStatic extracts plate + registration fields from 0x1201 bodies (experimental).
+// Common prefix: plate(21)+color(1)+data_type(2)+data_len(4)+platform/producer/model/id/sim.
+func parseVehicleStatic(rest []byte) (plate string, patch map[string]any, ok bool) {
+	patch = map[string]any{"proto_msg": "0x1201", "body_len": len(rest)}
+	if len(rest) < 21 {
+		return "", patch, false
+	}
+	plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
+	patch["vehicle_plate"] = plate
+	if len(rest) >= 22 {
+		patch["vehicle_color"] = int(rest[21])
+	}
+	if len(rest) >= 24 {
+		patch["data_type"] = int(binary.BigEndian.Uint16(rest[22:24]))
+	}
+	if len(rest) >= 28 {
+		patch["data_len"] = int(binary.BigEndian.Uint32(rest[24:28]))
+	}
+	data := []byte(nil)
+	if len(rest) > 28 {
+		data = rest[28:]
+	}
+	trimZ := func(b []byte) string {
+		return strings.TrimRight(string(b), "\x00 ")
+	}
+	if len(data) >= 11 {
+		if s := trimZ(data[0:11]); s != "" {
+			patch["platform_id"] = s
+		}
+	}
+	if len(data) >= 22 {
+		if s := trimZ(data[11:22]); s != "" {
+			patch["producer_id"] = s
+		}
+	}
+	if len(data) >= 42 {
+		if s := trimZ(data[22:42]); s != "" {
+			patch["terminal_model"] = s
+		}
+	}
+	if len(data) >= 49 {
+		if s := trimZ(data[42:49]); s != "" {
+			patch["terminal_id"] = s
+		}
+	}
+	if len(data) >= 61 {
+		if s := trimZ(data[49:61]); s != "" {
+			patch["terminal_sim"] = s
+		}
+	}
+	return plate, patch, plate != "" || len(data) > 0
+}
+
 // parseVehicleUplink extracts an experimental Fix from JT809 0x1200 / 0x1202 bodies.
 // Layouts vary by interconnect; this covers the common plate(21)+color(1)+data_type(2)+GNSS form.
 func parseVehicleUplink(msgID uint16, rest []byte) (store.Fix, string, bool) {
