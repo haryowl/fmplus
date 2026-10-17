@@ -447,21 +447,25 @@ func parseDriverReport(rest []byte) (plate string, patch map[string]any, ok bool
 	if len(rest) >= 39 {
 		if s := trimZ(rest[23:39]); s != "" {
 			patch["driver_name"] = s
+			patch["driver.ic_name"] = s
 		}
 	}
 	if len(rest) >= 59 {
 		if s := trimZ(rest[39:59]); s != "" {
 			patch["driver_id"] = s
+			patch["driver.ic_card"] = s
 		}
 	}
 	if len(rest) >= 99 {
 		if s := trimZ(rest[59:99]); s != "" {
 			patch["driver_licence"] = s
+			patch["driver.ic_licence"] = s
 		}
 	}
 	if len(rest) > 99 {
 		if s := trimZ(rest[99:]); s != "" {
 			patch["driver_org"] = s
+			patch["driver.ic_org"] = s
 		}
 	}
 	return plate, patch, plate != "" || len(rest) >= 23

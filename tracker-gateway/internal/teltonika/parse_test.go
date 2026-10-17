@@ -471,6 +471,17 @@ func TestPromoteTeltonikaScalars_GeofenceZone10(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_GeofenceZones1to9(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{
+		"155": 1, "156": 0, "157": 3, "158": 2, "159": 1,
+		"61": 1, "62": 0, "63": 1, "64": 2,
+	})
+	if raw["geofence.zone1"] != 1.0 || raw["geofence.zone5"] != 1.0 || raw["geofence.zone9"] != 2.0 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_BLELuminosityCustom(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{

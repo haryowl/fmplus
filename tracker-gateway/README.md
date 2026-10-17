@@ -203,6 +203,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   153_can_bytes_status_alarm_meta.sql
 #   154_can_bytes_iso6709_tlv_tags.sql
 #   155_tlv_raw_geofence_zone10.sql
+#   156_geofence_zones_drv_driver_ic.sql
 npm run db:migrate
 
 cd tracker-gateway

@@ -229,6 +229,33 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["215"]; ok {
 		raw["fuel.lls_temp5"] = float64(int8(uint8(asIOFloat(v))))
 	}
+	if v, ok := io["155"]; ok {
+		raw["geofence.zone1"] = asIOFloat(v)
+	}
+	if v, ok := io["156"]; ok {
+		raw["geofence.zone2"] = asIOFloat(v)
+	}
+	if v, ok := io["157"]; ok {
+		raw["geofence.zone3"] = asIOFloat(v)
+	}
+	if v, ok := io["158"]; ok {
+		raw["geofence.zone4"] = asIOFloat(v)
+	}
+	if v, ok := io["159"]; ok {
+		raw["geofence.zone5"] = asIOFloat(v)
+	}
+	if v, ok := io["61"]; ok {
+		raw["geofence.zone6"] = asIOFloat(v)
+	}
+	if v, ok := io["62"]; ok {
+		raw["geofence.zone7"] = asIOFloat(v)
+	}
+	if v, ok := io["63"]; ok {
+		raw["geofence.zone8"] = asIOFloat(v)
+	}
+	if v, ok := io["64"]; ok {
+		raw["geofence.zone9"] = asIOFloat(v)
+	}
 	if v, ok := io["65"]; ok {
 		raw["geofence.zone10"] = asIOFloat(v) // FMB geofence zone 10 event (not odometer)
 	}

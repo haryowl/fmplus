@@ -652,4 +652,10 @@ func TestParseDriverReport_Identity(t *testing.T) {
 	if patch["driver_org"] != "Org Fleet" {
 		t.Fatalf("%v", patch)
 	}
+	if patch["driver.ic_name"] != "Driver One" || patch["driver.ic_card"] != "ID1234567890" {
+		t.Fatalf("ic aliases=%v", patch)
+	}
+	if patch["driver.ic_licence"] != "LIC-998877" || patch["driver.ic_org"] != "Org Fleet" {
+		t.Fatalf("ic licence/org=%v", patch)
+	}
 }

@@ -210,6 +210,14 @@ func TestParseDrivingRecord(t *testing.T) {
 	if m5["drv.clock"] != "2024-06-01T10:30:00Z" {
 		t.Fatalf("clock=%v", m5["drv.clock"])
 	}
+	m6 := parseDrivingRecord(append([]byte{0x01}, []byte("A12345678901234567")...))
+	if m6["drv.driver_licence"] != "A12345678901234567" || m6["driver.ic_card"] != "A12345678901234567" {
+		t.Fatalf("driver=%v", m6)
+	}
+	m7 := parseDrivingRecord(append([]byte{0x11}, []byte("IDCARD999")...))
+	if m7["drv.driver_id"] != "IDCARD999" || m7["drv.identity_hex"] == nil {
+		t.Fatalf("identity=%v", m7)
+	}
 }
 
 func TestParseRegister(t *testing.T) {

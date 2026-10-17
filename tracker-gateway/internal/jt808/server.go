@@ -2877,6 +2877,26 @@ func parseDrivingRecord(body []byte) map[string]any {
 		if cmd == 0x02 && len(body) >= 7 {
 			out["drv.clock"] = parseBcdTime(body[1:7]).UTC().Format(time.RFC3339)
 		}
+		// cmd 0x01 current driver — often licence ASCII after cmd (partial).
+		if cmd == 0x01 && len(body) >= 2 {
+			lic := strings.TrimRight(string(body[1:]), "\x00 ")
+			if isPrintableASCII(lic) {
+				out["drv.driver_licence"] = lic
+				out["driver.ic_card"] = lic
+			}
+		}
+		// cmd 0x11 driver identity — keep hex snip; hoist printable ASCII if present.
+		if cmd == 0x11 && len(body) >= 2 {
+			tail := body[1:]
+			if len(tail) > 48 {
+				tail = tail[:48]
+			}
+			out["drv.identity_hex"] = fmt.Sprintf("%x", tail)
+			if s := strings.TrimRight(string(tail), "\x00 "); isPrintableASCII(s) {
+				out["drv.driver_id"] = s
+				out["driver.ic_card"] = s
+			}
+		}
 	}
 	snip := body
 	if len(snip) > 48 {
