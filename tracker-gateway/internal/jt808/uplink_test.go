@@ -146,6 +146,9 @@ func TestParseRegister(t *testing.T) {
 	if m["province_id"] != 11 || m["manufacturer"] != "MFR01" || m["vehicle_plate"] != "B12345" {
 		t.Fatalf("%v", m)
 	}
+	if m["vehicle.province"] != 11 || m["vehicle.plate"] != "B12345" || m["device.model"] != "MODEL-X" {
+		t.Fatalf("aliases=%v", m)
+	}
 }
 
 func TestWrap8601Body(t *testing.T) {
@@ -211,6 +214,9 @@ func TestParseAreaQueryResp_Circle(t *testing.T) {
 	m := parseAreaQueryResp(body)
 	if m["geofence.id"] != uint32(42) || m["geofence.radius"] != uint32(500) {
 		t.Fatalf("%v", m)
+	}
+	if m["area_query_kind"] != "circle" {
+		t.Fatalf("kind=%v", m["area_query_kind"])
 	}
 	if m["geofence.lat"].(float64) > -6.19 || m["geofence.lat"].(float64) < -6.21 {
 		t.Fatalf("lat=%v", m["geofence.lat"])

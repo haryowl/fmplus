@@ -1666,32 +1666,45 @@ func parseAuth(body []byte) map[string]any {
 func parseRegister(body []byte) map[string]any {
 	out := map[string]any{"proto_msg": "0x0100", "reg_len": len(body)}
 	if len(body) >= 2 {
-		out["province_id"] = int(binary.BigEndian.Uint16(body[0:2]))
+		prov := int(binary.BigEndian.Uint16(body[0:2]))
+		out["province_id"] = prov
+		out["vehicle.province"] = prov
 	}
 	if len(body) >= 4 {
-		out["city_id"] = int(binary.BigEndian.Uint16(body[2:4]))
+		city := int(binary.BigEndian.Uint16(body[2:4]))
+		out["city_id"] = city
+		out["vehicle.city"] = city
 	}
 	off := 4
 	if len(body) >= off+5 {
-		out["manufacturer"] = strings.TrimRight(string(body[off:off+5]), "\x00 ")
+		mfr := strings.TrimRight(string(body[off:off+5]), "\x00 ")
+		out["manufacturer"] = mfr
+		out["device.manufacturer"] = mfr
 		off += 5
 	}
 	if len(body) >= off+20 {
-		out["terminal_model"] = strings.TrimRight(string(body[off:off+20]), "\x00 ")
+		model := strings.TrimRight(string(body[off:off+20]), "\x00 ")
+		out["terminal_model"] = model
+		out["device.model"] = model
 		off += 20
 	}
 	if len(body) >= off+7 {
-		out["terminal_id"] = strings.TrimRight(string(body[off:off+7]), "\x00 ")
+		tid := strings.TrimRight(string(body[off:off+7]), "\x00 ")
+		out["terminal_id"] = tid
+		out["device.terminal_id"] = tid
 		off += 7
 	}
 	if len(body) > off {
-		out["plate_color"] = int(body[off])
+		pc := int(body[off])
+		out["plate_color"] = pc
+		out["vehicle.plate_color"] = pc
 		off++
 	}
 	if off < len(body) {
 		plate := strings.TrimRight(string(body[off:]), "\x00 ")
 		if plate != "" {
 			out["vehicle_plate"] = plate
+			out["vehicle.plate"] = plate
 		}
 	}
 	return out
@@ -2272,6 +2285,16 @@ func parseAreaQueryResp(body []byte) map[string]any {
 	if len(body) >= 1 {
 		qType = int(body[0])
 		out["area_query_type"] = qType
+		switch qType {
+		case 1:
+			out["area_query_kind"] = "circle"
+		case 2:
+			out["area_query_kind"] = "rectangle"
+		case 3:
+			out["area_query_kind"] = "polygon"
+		case 4:
+			out["area_query_kind"] = "route"
+		}
 	}
 	if len(body) >= 5 {
 		out["area_count"] = int(binary.BigEndian.Uint32(body[1:5]))

@@ -421,6 +421,16 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("can.%d", i+5)] = float64(n)
 		raw[fmt.Sprintf("tag.0x%02x", id)] = n
 	}
+	// 0xA0–0xA3: extended analog / sensor payloads (4-byte LE, units model-dependent).
+	for i, id := range []byte{0xa0, 0xa1, 0xa2, 0xa3} {
+		v, ok := tags[id]
+		if !ok || len(v) < 4 {
+			continue
+		}
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw[fmt.Sprintf("analog.%d", i+10)] = float64(n)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+	}
 	// 0xE0–0xE6: command / text replies (length-prefixed ASCII).
 	for _, id := range []byte{0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6} {
 		v, ok := tags[id]

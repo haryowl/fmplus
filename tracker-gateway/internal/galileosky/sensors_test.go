@@ -136,6 +136,16 @@ func TestPromoteSensorTags_CanC0(t *testing.T) {
 	}
 }
 
+func TestPromoteSensorTags_AnalogA0(t *testing.T) {
+	raw := map[string]any{}
+	reg := make([]byte, 4)
+	binary.LittleEndian.PutUint32(reg, 1500)
+	promoteSensorTags(raw, map[byte][]byte{0xa0: reg})
+	if raw["analog.10"] != float64(1500) {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteSensorTags_CmdReply(t *testing.T) {
 	raw := map[string]any{}
 	promoteSensorTags(raw, map[byte][]byte{0xe1: []byte("OK SET")})

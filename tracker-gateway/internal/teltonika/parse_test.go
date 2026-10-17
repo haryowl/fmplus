@@ -242,11 +242,11 @@ func TestPromoteTeltonikaScalars_GNSSQuality(t *testing.T) {
 
 func TestPromoteTeltonikaScalars_SafetyStatus(t *testing.T) {
 	raw := map[string]any{}
-	promoteTeltonikaScalars(raw, map[string]any{"246": 1, "247": 1, "249": 1, "252": 1})
+	promoteTeltonikaScalars(raw, map[string]any{"246": 1, "247": 1, "249": 1, "252": 1, "240": 1})
 	if raw["status.towing"] != true || raw["status.crash"] != true {
 		t.Fatalf("%v", raw)
 	}
-	if raw["status.jamming"] != true || raw["status.unplug"] != true {
+	if raw["status.jamming"] != true || raw["status.unplug"] != true || raw["status.movement"] != true {
 		t.Fatalf("%v", raw)
 	}
 }

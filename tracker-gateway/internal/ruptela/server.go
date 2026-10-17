@@ -480,6 +480,9 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["252"]; ok {
 		raw["status.unplug"] = asTruthy(v)
 	}
+	if v, ok := io["240"]; ok {
+		raw["status.movement"] = asTruthy(v)
+	}
 	if v, ok := io["24"]; ok {
 		raw["speed.io"] = asFloat64(v)
 	}

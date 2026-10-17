@@ -278,6 +278,9 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["252"]; ok {
 		raw["status.unplug"] = asIOBool(v)
 	}
+	if v, ok := io["240"]; ok {
+		raw["status.movement"] = asIOBool(v)
+	}
 }
 
 func extractIO8(b []byte, off int) (int, any, map[string]any) {
