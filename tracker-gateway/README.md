@@ -185,6 +185,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   135_pulse_temp4_strategy_throttle.sql
 #   136_distance_parking_obd_speed.sql
 #   137_obd_map_pressure_oil_warn.sql
+#   138_maf_backup_clock_illegal.sql
 npm run db:migrate
 
 cd tracker-gateway

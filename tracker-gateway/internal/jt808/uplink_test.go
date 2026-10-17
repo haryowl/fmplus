@@ -187,6 +187,11 @@ func TestParseDrivingRecord(t *testing.T) {
 	if m4["drv.pulse_factor"] != 3600 || m4["drv_cmd_name"] != "pulse_factor" {
 		t.Fatalf("pulse=%v", m4)
 	}
+	clk := []byte{0x02, 0x24, 0x06, 0x01, 0x10, 0x30, 0x00}
+	m5 := parseDrivingRecord(clk)
+	if m5["drv.clock"] != "2024-06-01T10:30:00Z" {
+		t.Fatalf("clock=%v", m5["drv.clock"])
+	}
 }
 
 func TestParseRegister(t *testing.T) {

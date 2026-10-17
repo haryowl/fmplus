@@ -184,6 +184,26 @@ func TestHoistTerminalParam_PhoneAlarmShoot(t *testing.T) {
 	}
 }
 
+func TestHoistTerminalParam_BackupDialAddr(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0025, nil, []byte("13800138000"), out)
+	hoistTerminalParam(0x0026, nil, []byte("backup.example"), out)
+	if out["server.backup_dial"] != "13800138000" || out["server.backup_addr"] != "backup.example" {
+		t.Fatalf("%v", out)
+	}
+}
+
+func TestHoistTerminalParam_IllegalDriveWindow(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0032, nil, []byte{22, 0, 6, 30}, out)
+	if out["illegal.drive_start"] != "22:00" || out["illegal.drive_end"] != "06:30" {
+		t.Fatalf("%v", out)
+	}
+	if out["illegal.drive_window"] != "22:00-06:30" {
+		t.Fatalf("window=%v", out["illegal.drive_window"])
+	}
+}
+
 func TestHoistTerminalParam_DistanceIntervalSiblings(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x002c, 100, nil, out)

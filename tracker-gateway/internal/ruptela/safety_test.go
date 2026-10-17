@@ -189,9 +189,12 @@ func TestPromoteRuptelaScalars_FuelAVL(t *testing.T) {
 		t.Fatalf("speed/intake=%v", raw4)
 	}
 	raw5 := map[string]any{}
-	promoteRuptelaScalars(raw5, map[string]any{"34": 280, "35": 110, "58": 100})
+	promoteRuptelaScalars(raw5, map[string]any{"34": 280, "35": 110, "58": 100, "40": 2000})
 	if raw5["fuel.pressure"] != 280.0 || raw5["engine.map"] != 110.0 || raw5["engine.oil_temp"] != 100.0 {
 		t.Fatalf("map/pressure/oil=%v", raw5)
+	}
+	if raw5["engine.maf"] != 20.0 {
+		t.Fatalf("maf=%v", raw5["engine.maf"])
 	}
 	raw2 := map[string]any{}
 	promoteRuptelaScalars(raw2, map[string]any{"48": 500})

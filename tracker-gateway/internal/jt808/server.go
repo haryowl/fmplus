@@ -1376,6 +1376,10 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["report.inflection_angle"] = decoded
 	case 0x0024:
 		out["report.inflection_distance"] = decoded
+	case 0x0025:
+		out["server.backup_dial"] = string(raw)
+	case 0x0026:
+		out["server.backup_addr"] = string(raw)
 	case 0x0027:
 		out["report.interval_dormant"] = decoded
 	case 0x0028:
@@ -1394,6 +1398,12 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["report.distance_interval"] = decoded
 	case 0x0031:
 		out["report.distance_interval_night"] = decoded
+	case 0x0032:
+		if len(raw) >= 4 {
+			out["illegal.drive_start"] = fmt.Sprintf("%02d:%02d", raw[0], raw[1])
+			out["illegal.drive_end"] = fmt.Sprintf("%02d:%02d", raw[2], raw[3])
+			out["illegal.drive_window"] = out["illegal.drive_start"].(string) + "-" + out["illegal.drive_end"].(string)
+		}
 	case 0x0012:
 		out["apn.password"] = string(raw)
 	case 0x0014:
@@ -2821,6 +2831,10 @@ func parseDrivingRecord(body []byte) map[string]any {
 		// cmd 0x04 pulse factor = DWORD BE pulses/km.
 		if cmd == 0x04 && len(body) >= 5 {
 			out["drv.pulse_factor"] = int(binary.BigEndian.Uint32(body[1:5]))
+		}
+		// cmd 0x02 real-time clock = 6-byte BCD after cmd.
+		if cmd == 0x02 && len(body) >= 7 {
+			out["drv.clock"] = parseBcdTime(body[1:7]).UTC().Format(time.RFC3339)
 		}
 	}
 	snip := body
