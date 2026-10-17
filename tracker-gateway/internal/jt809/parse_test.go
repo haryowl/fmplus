@@ -84,6 +84,38 @@ func TestParseVehicleUplink_AltitudeState(t *testing.T) {
 	}
 }
 
+func TestParseVehicleUplink_Door2AndLock(t *testing.T) {
+	rest := make([]byte, 24+1+6+8+2+2+2+4+4)
+	copy(rest[0:21], []byte("B6666DR2"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 0x0200)
+	off := 24
+	rest[off] = 0
+	off++
+	off += 6
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(106.8*1e6))))
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(-6.2*1e6))))
+	off += 4
+	binary.BigEndian.PutUint16(rest[off:], 100)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 45)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], uint16(int16(50)))
+	off += 2
+	binary.BigEndian.PutUint32(rest[off:], 0x4000|0x1000) // door2 + door_lock
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], 0)
+
+	fix, _, ok := parseVehicleUplink(0x1202, rest)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["status.door2"] != true || fix.RawAttrs["status.door_lock"] != true {
+		t.Fatalf("door2/lock: %v", fix.RawAttrs)
+	}
+}
+
 func TestParseVehicleUplink_GNSSAlarmBits(t *testing.T) {
 	rest := make([]byte, 24+1+6+8+2+2+2+4+4)
 	copy(rest[0:21], []byte("B4444SOS"))

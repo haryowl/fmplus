@@ -83,6 +83,14 @@ func TestFlattenIOAlarms(t *testing.T) {
 	}
 }
 
+func TestFlattenIOAlarms_Idling(t *testing.T) {
+	raw := map[string]any{}
+	flattenIOAlarms(raw, map[string]any{"251": 1})
+	if raw["alarm.idling"] != true {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestSafetyFromIO_Overspeed(t *testing.T) {
 	fix := store.Fix{
 		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),

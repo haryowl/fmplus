@@ -99,6 +99,19 @@ func TestParseLocation_StatusBitsOilDoor(t *testing.T) {
 	}
 }
 
+func TestParseLocation_StatusBitsDoor345(t *testing.T) {
+	body := mustHex(t, goldenLocationHex)
+	binary.BigEndian.PutUint32(body[4:8], 0x8000|0x10000|0x20000)
+	fix, ok := parseLocation(body)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["status.door3"] != true || fix.RawAttrs["status.door4"] != true ||
+		fix.RawAttrs["status.door5"] != true || fix.RawAttrs["status.door"] != true {
+		t.Fatalf("door345: %v", fix.RawAttrs)
+	}
+}
+
 func TestParseLocation_StatusBitsGNSSConstellation(t *testing.T) {
 	body := mustHex(t, goldenLocationHex)
 	// bit18 GPS + bit19 Beidou

@@ -183,3 +183,24 @@ func TestIgnitionFromInputStatus(t *testing.T) {
 		t.Fatalf("dout=%v", fix.RawAttrs)
 	}
 }
+
+func TestDigitalIO_Din8AndInputs(t *testing.T) {
+	tags := map[byte][]byte{
+		0x30: append([]byte{0x07}, append(make([]byte, 4), make([]byte, 4)...)...),
+		0x46: {0x02, 0x01}, // din1 + din8
+		0x47: {0x02},       // dout1
+	}
+	fix, ok := fixFromTags(tags)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["status.din1"] != true || fix.RawAttrs["status.din8"] != true {
+		t.Fatalf("din1/8=%v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["status.inputs"] != 2 || fix.RawAttrs["status.inputs_hi"] != 1 {
+		t.Fatalf("inputs=%v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["status.dout1"] != true || fix.RawAttrs["status.outputs"] != 2 {
+		t.Fatalf("dout=%v", fix.RawAttrs)
+	}
+}

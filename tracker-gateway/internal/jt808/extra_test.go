@@ -185,6 +185,11 @@ func TestDecodeVideoAlarmWord(t *testing.T) {
 		add2["alarm.video_encode"] != true || add2["alarm.video_illegal_access"] != true {
 		t.Fatalf("%v", add2)
 	}
+	add3 := map[string]any{}
+	decodeVideoAlarmWord(0x80, add3) // bit7 storage fault
+	if add3["alarm.video_storage_fault"] != true {
+		t.Fatalf("fault=%v", add3)
+	}
 }
 
 func TestSafetyFromAdditional_SuBiao(t *testing.T) {

@@ -162,6 +162,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   112_gnss_sats_ain2_809_login.sql
 #   113_upgrade_sleep_ptz_pdop.sql
 #   114_idling_safety_809_load_galileo_alt.sql
+#   115_doors_dio_idling_video_fault.sql
 npm run db:migrate
 
 cd tracker-gateway
