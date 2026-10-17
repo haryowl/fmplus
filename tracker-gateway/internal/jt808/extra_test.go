@@ -13,7 +13,8 @@ func TestParseAdditionalInfo_AreaAndSignal(t *testing.T) {
 	// 0x12 in/out area: type, id u32, direction=0 (in)
 	// 0x25 signal dword with ACC bit0
 	// 0x30 gsm=20, 0x31 sats=12
-	tlv, _ := hex.DecodeString("1206000000010025040000000130011431010c")
+	// 0x12: type 00, area_id 00000001, dir 00 (in) — then 0x25/0x30/0x31
+	tlv, _ := hex.DecodeString("120600000001000025040000000130011431010c")
 	add := parseAdditionalInfo(append(base, tlv...))
 	if add["alarm.fence_in"] != true {
 		t.Fatalf("fence_in missing: %v", add)

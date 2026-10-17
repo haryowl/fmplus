@@ -7,8 +7,33 @@ import (
 
 // parseTags walks Galileosky Easy/Main tags per official tag length table.
 // Unknown tags keep an opaque remainder under 0xff so Device Manager can still see bytes.
+// Duplicate tags keep the last value (single-record view).
 func parseTags(payload []byte) map[byte][]byte {
-	out := make(map[byte][]byte)
+	recs := parseTagRecords(payload)
+	if len(recs) == 0 {
+		return map[byte][]byte{}
+	}
+	if len(recs) == 1 {
+		return recs[0]
+	}
+	// Merge: last record wins per tag; keep IMEI from any record.
+	out := map[byte][]byte{}
+	for _, r := range recs {
+		for k, v := range r {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// parseTagRecords splits a packet into logical records on each 0x30 coordinate tag.
+// Shared tags (e.g. 0x03 IMEI) from earlier in the stream are copied forward.
+func parseTagRecords(payload []byte) []map[byte][]byte {
+	type tv struct {
+		id  byte
+		val []byte
+	}
+	var flat []tv
 	off := 0
 	for off < len(payload) {
 		tag := payload[off]
@@ -18,16 +43,54 @@ func parseTags(payload []byte) map[byte][]byte {
 			if off >= len(payload) {
 				break
 			}
-			out[0xff] = append([]byte(nil), payload[off-1:]...)
+			flat = append(flat, tv{0xff, append([]byte(nil), payload[off-1:]...)})
 			break
 		}
 		if off+size > len(payload) {
 			break
 		}
-		out[tag] = append([]byte(nil), payload[off:off+size]...)
+		flat = append(flat, tv{tag, append([]byte(nil), payload[off:off+size]...)})
 		off += size
 	}
-	return out
+	if len(flat) == 0 {
+		return nil
+	}
+	var records []map[byte][]byte
+	cur := map[byte][]byte{}
+	hasCoord := false
+	var sharedIMEI []byte
+	emit := func() {
+		if !hasCoord && len(cur) == 0 {
+			return
+		}
+		rec := map[byte][]byte{}
+		for k, v := range cur {
+			rec[k] = v
+		}
+		if _, ok := rec[0x03]; !ok && len(sharedIMEI) > 0 {
+			rec[0x03] = append([]byte(nil), sharedIMEI...)
+		}
+		records = append(records, rec)
+		cur = map[byte][]byte{}
+		hasCoord = false
+	}
+	for _, t := range flat {
+		if t.id == 0x03 {
+			sharedIMEI = t.val
+		}
+		if t.id == 0x30 && hasCoord {
+			emit()
+		}
+		cur[t.id] = t.val
+		if t.id == 0x30 {
+			hasCoord = true
+		}
+	}
+	emit()
+	if len(records) == 0 {
+		return []map[byte][]byte{cur}
+	}
+	return records
 }
 
 func tagsToRaw(tags map[byte][]byte) map[string]any {

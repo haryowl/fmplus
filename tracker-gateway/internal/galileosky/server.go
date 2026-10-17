@@ -82,55 +82,66 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			log.Printf("[galileosky] bad CRC from %s got=%04x want=%04x — still parsing", conn.RemoteAddr(), gotCRC, calc)
 		}
 
-		tags := parseTags(tagsBytes)
-		if v, ok := tags[0x03]; ok && len(v) >= 15 {
-			imei = string(v[:15])
-			device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "galileosky")
-			if device != nil && sessions != nil && bound == nil {
-				bound = &protocol.ConnSession{
-					DeviceID: device.ID, IMEI: device.IMEI, Protocol: "galileosky", Conn: conn,
+		records := parseTagRecords(tagsBytes)
+		if len(records) == 0 {
+			records = []map[byte][]byte{parseTags(tagsBytes)}
+		}
+		ingested := false
+		for _, tags := range records {
+			if v, ok := tags[0x03]; ok && len(v) >= 15 {
+				imei = string(v[:15])
+				device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "galileosky")
+				if device != nil && sessions != nil && bound == nil {
+					bound = &protocol.ConnSession{
+						DeviceID: device.ID, IMEI: device.IMEI, Protocol: "galileosky", Conn: conn,
+					}
+					sessions.Bind(bound)
 				}
-				sessions.Bind(bound)
+			}
+			fix, hasFix := fixFromTags(tags)
+			if hasFix && device == nil && imei != "" {
+				device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "galileosky")
+				if device != nil && sessions != nil && bound == nil {
+					bound = &protocol.ConnSession{
+						DeviceID: device.ID, IMEI: device.IMEI, Protocol: "galileosky", Conn: conn,
+					}
+					sessions.Bind(bound)
+				}
+			}
+			if hasFix && device != nil {
+				fix.SourceProtocol = "galileosky"
+				if fix.RawAttrs == nil {
+					fix.RawAttrs = map[string]any{}
+				}
+				tagRaw := tagsToRaw(tags)
+				fix.RawAttrs["tags"] = tagRaw
+				if archive {
+					fix.RawAttrs["archive"] = true
+				}
+				if len(records) > 1 {
+					fix.RawAttrs["record_count"] = len(records)
+				}
+				for k, v := range tagRaw {
+					fix.RawAttrs["tag."+k] = v
+				}
+				if ev := applyStatusTags(tags, fix.RawAttrs); ev != nil {
+					ev.RecordedAt = fix.RecordedAt
+					lat, lon := fix.Lat, fix.Lon
+					ev.Lat, ev.Lon = &lat, &lon
+					_ = st.InsertSafetyEvent(ctx, device, *ev)
+				}
+				if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
+					log.Printf("[galileosky] ingest %s: %v", imei, err)
+				}
+				ingested = true
+			} else if device != nil && !hasFix && !ingested {
+				_ = st.TouchSeen(ctx, device)
+				if looksLikeCommandReply(tags) {
+					_ = st.AckLatestSent(ctx, device.ID, true, fmt.Sprintf("galileosky tags %v", tagsToRaw(tags)))
+				}
 			}
 		}
-		fix, hasFix := fixFromTags(tags)
-		if hasFix && device == nil && imei != "" {
-			device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "galileosky")
-			if device != nil && sessions != nil && bound == nil {
-				bound = &protocol.ConnSession{
-					DeviceID: device.ID, IMEI: device.IMEI, Protocol: "galileosky", Conn: conn,
-				}
-				sessions.Bind(bound)
-			}
-		}
-		if hasFix && device != nil {
-			fix.SourceProtocol = "galileosky"
-			if fix.RawAttrs == nil {
-				fix.RawAttrs = map[string]any{}
-			}
-			tagRaw := tagsToRaw(tags)
-			fix.RawAttrs["tags"] = tagRaw
-			if archive {
-				fix.RawAttrs["archive"] = true
-			}
-			for k, v := range tagRaw {
-				fix.RawAttrs["tag."+k] = v
-			}
-			if ev := applyStatusTags(tags, fix.RawAttrs); ev != nil {
-				ev.RecordedAt = fix.RecordedAt
-				lat, lon := fix.Lat, fix.Lon
-				ev.Lat, ev.Lon = &lat, &lon
-				_ = st.InsertSafetyEvent(ctx, device, *ev)
-			}
-			if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
-				log.Printf("[galileosky] ingest %s: %v", imei, err)
-			}
-			flushPending(ctx, conn, st, device.ID)
-		} else if device != nil && !hasFix {
-			_ = st.TouchSeen(ctx, device)
-			if looksLikeCommandReply(tags) {
-				_ = st.AckLatestSent(ctx, device.ID, true, fmt.Sprintf("galileosky tags %v", tagsToRaw(tags)))
-			}
+		if device != nil {
 			flushPending(ctx, conn, st, device.ID)
 		}
 		// Official confirm: header 0x02 + CRC of received packet.

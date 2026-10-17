@@ -42,6 +42,27 @@ func TestParseTags_IMEIAndCoords(t *testing.T) {
 	}
 }
 
+func TestParseTagRecords_MultiCoords(t *testing.T) {
+	imei := "352094081234567"
+	coords, _ := hex.DecodeString("07c00e3203b8d72d05")
+	payload := []byte{0x03}
+	payload = append(payload, []byte(imei)...)
+	payload = append(payload, 0x30)
+	payload = append(payload, coords...)
+	payload = append(payload, 0x30)
+	payload = append(payload, coords...)
+	recs := parseTagRecords(payload)
+	if len(recs) != 2 {
+		t.Fatalf("recs=%d", len(recs))
+	}
+	if string(recs[0][0x03]) != imei || string(recs[1][0x03]) != imei {
+		t.Fatalf("imei not shared: %q / %q", recs[0][0x03], recs[1][0x03])
+	}
+	if len(recs[0][0x30]) != 9 || len(recs[1][0x30]) != 9 {
+		t.Fatal("coords")
+	}
+}
+
 func TestTagSize_Official(t *testing.T) {
 	if tagSize(0x01) != 1 || tagSize(0x04) != 2 || tagSize(0x33) != 4 || tagSize(0x46) != 2 {
 		t.Fatalf("sizes hw=%d id=%d spd=%d in=%d", tagSize(0x01), tagSize(0x04), tagSize(0x33), tagSize(0x46))
