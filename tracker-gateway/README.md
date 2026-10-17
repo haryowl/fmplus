@@ -8,13 +8,13 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 |---------|----------|---------|--------|--------|----------|-------|
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat + alarm safety | — | nested attrs flatten; `alarm.*` → safety |
 | Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12/14 | Codec13/14; IO safety on periodic; soft corr |
-| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | register/auth/loc/TLV/alarms/0003–5/0500/0301/0608/0700–5/0800–5/0802 | 8300/8103–7/8201–4/8500/8600–2/8608/8700–2/8801–2/9101–2 | circle+rect geofence; media retrieve |
+| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | register/auth/loc/TLV/alarms/0003–5/0500/0301–2/0608/0700–5/0800–5/0802 | 8300–2/8103–7/8201–4/8500/8600–2/8608/8700–2/8801–2/9101–2 | events/Q&A; geofence; media |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
 | JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/logout/disconnect/HB + 0x1200/01 static + 0x1400 + 0x1601 | — | 0x5B CRC; skip encrypted bodies |
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling + ACK + SIM + payload hints | — | no RTP / no 808 media bridge |
 | Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS | 0x80 GPRS | paused for depth — GT06 deferred |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records + cmd3 ident | 108/105/107 | voltage/fuel/temp IO; SOS/door events; soft corr |
-| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | CRLF text cmds; battery/jamming safety; soft corr |
+| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | fuel/user/analog promote; CRLF cmds; soft corr |
 
 **Do not claim “full JT/T” or production 2-way until an adapter is marked `certified`.** Status lives in each `Adapter.Status()` and Admin protocol labels.
 
@@ -34,6 +34,8 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `command_type` | Protocols | Encode path |
 |----------------|-----------|--------------|
 | `text` | jt808/subiao (0x8300), generic | JT808 text or raw bytes |
+| `jt808_8301` / `event_set` | jt808/subiao | set event menu items |
+| `jt808_8302` / `question` | jt808/subiao | question prompt (→0x0302) |
 | `jt808_8103` / `param` | jt808/subiao | set terminal params |
 | `jt808_8104` / `query_params` | jt808/subiao | query params (`all` or id list) |
 | `jt808_8107` / `query_attrs` | jt808/subiao | query terminal attributes |
@@ -108,6 +110,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   076_jt808_geofence_set_alarm.sql
 #   077_jt808_media_retrieve.sql
 #   078_jt808_rect_geofence.sql
+#   079_jt808_event_question.sql
 npm run db:migrate
 
 cd tracker-gateway

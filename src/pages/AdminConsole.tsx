@@ -252,6 +252,16 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
     label: "JT808 AV control (0x9102)",
     protocols: ["jt808", "subiao"],
   },
+  {
+    value: "jt808_8301",
+    label: "JT808 event set (0x8301)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8302",
+    label: "JT808 question (0x8302)",
+    protocols: ["jt808", "subiao"],
+  },
   { value: "concox_gprs", label: "Concox GPRS (0x80)", protocols: ["concox"] },
   { value: "ruptela_sms", label: "Ruptela SMS via GPRS (108)", protocols: ["ruptela"] },
   { value: "ruptela_105", label: "Ruptela config (105)", protocols: ["ruptela"] },
@@ -303,6 +313,10 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "ch=1,ip=host,tcp=1078", hex: "full 0x9101 body" };
     case "jt808_9102":
       return { text: "ch=1,cmd=0", hex: "channel+cmd" };
+    case "jt808_8301":
+      return { text: "id=1,text=SOS or 1:SOS;2:Call", hex: "full 0x8301 body" };
+    case "jt808_8302":
+      return { text: "id=1,q=Over speed?", hex: "full 0x8302 body" };
     case "teltonika_codec14":
       return { text: "getinfo (IMEI from session)", hex: "" };
     case "jt808_8103":

@@ -542,6 +542,26 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			}
 		}
 		body = wrap9102Body(text)
+	case "jt808_8301", "event_set":
+		// Set event items (terminal can later report via 0x0301).
+		msgID = 0x8301
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8301Body(text)
+	case "jt808_8302", "question":
+		// Question / prompt downlink (terminal answers via 0x0302).
+		msgID = 0x8302
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8302Body(text)
 	default:
 		// 0x8300: flag(1)+text. Prefixes tts:/urgent:/display: set flag bits.
 		if cmd.PayloadHex != "" {
@@ -817,6 +837,18 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			}
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0302: // question answer
+		if sess.device != nil {
+			patch := parseQuestionAnswer(body)
+			_ = st.PatchLastStatus(ctx, sess.device, patch, nil)
+			corr := ""
+			if c, ok := patch["reply_seq"].(int); ok {
+				corr = fmt.Sprintf("%d", c)
+			}
+			_ = st.AckCommand(ctx, sess.device.ID, corr, true,
+				fmt.Sprintf("jt808_0302 id=%v", patch["answer_id"]))
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0702: // driver identity information report
 		if sess.device != nil {
 			_ = st.PatchLastStatus(ctx, sess.device, parseDriverIdentity(body), nil)
@@ -974,6 +1006,129 @@ func parseMultimediaMeta(body []byte) map[string]any {
 	}
 	if len(body) >= 7 {
 		out["media_id"] = binary.BigEndian.Uint32(body[3:7])
+	}
+	return out
+}
+
+// wrap8301Body builds minimal 0x8301 event setting: count + (id,len,text) items.
+// text: "id=1,text=SOS" or "1:SOS;2:Call" (GBK/UTF-8 passthrough as bytes).
+func wrap8301Body(text string) []byte {
+	type item struct {
+		id  byte
+		msg string
+	}
+	var items []item
+	t := strings.TrimSpace(text)
+	if strings.Contains(t, "=") {
+		var id byte = 1
+		msg := t
+		for _, part := range strings.Split(t, ",") {
+			kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			k, v := strings.ToLower(kv[0]), kv[1]
+			switch k {
+			case "id":
+				if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
+					id = byte(n)
+				}
+			case "text", "msg", "event":
+				msg = v
+			}
+		}
+		items = append(items, item{id, msg})
+	} else {
+		for _, part := range strings.Split(t, ";") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			kv := strings.SplitN(part, ":", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			n, err := strconv.Atoi(strings.TrimSpace(kv[0]))
+			if err != nil || n < 0 || n > 255 {
+				continue
+			}
+			items = append(items, item{byte(n), strings.TrimSpace(kv[1])})
+		}
+	}
+	if len(items) == 0 {
+		items = append(items, item{1, strings.TrimSpace(text)})
+	}
+	if len(items) > 255 {
+		items = items[:255]
+	}
+	body := []byte{byte(len(items))}
+	for _, it := range items {
+		msg := []byte(it.msg)
+		if len(msg) > 255 {
+			msg = msg[:255]
+		}
+		body = append(body, it.id, byte(len(msg)))
+		body = append(body, msg...)
+	}
+	return body
+}
+
+// wrap8302Body builds 0x8302 question: flag + id + len + content.
+// text: "id=1,q=Over speed?" or plain question string (id=1).
+func wrap8302Body(text string) []byte {
+	id := byte(1)
+	flag := byte(0)
+	q := strings.TrimSpace(text)
+	for _, part := range strings.Split(q, ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		k, v := strings.ToLower(kv[0]), kv[1]
+		switch k {
+		case "id":
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
+				id = byte(n)
+			}
+		case "flag":
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
+				flag = byte(n)
+			}
+		case "q", "text", "question":
+			q = v
+		}
+	}
+	if strings.Contains(strings.ToLower(text), "id=") || strings.Contains(strings.ToLower(text), "q=") {
+		// q already set from kv
+	} else {
+		q = strings.TrimSpace(text)
+	}
+	msg := []byte(q)
+	if len(msg) > 255 {
+		msg = msg[:255]
+	}
+	body := make([]byte, 0, 3+len(msg))
+	body = append(body, flag, id, byte(len(msg)))
+	body = append(body, msg...)
+	return body
+}
+
+// parseQuestionAnswer maps 0x0302 answer: reply_seq + answer id (+ optional content).
+func parseQuestionAnswer(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0302", "answer_len": len(body)}
+	if len(body) >= 2 {
+		out["reply_seq"] = int(binary.BigEndian.Uint16(body[0:2]))
+	}
+	if len(body) >= 3 {
+		out["answer_id"] = int(body[2])
+	}
+	if len(body) > 3 {
+		snip := body[3:]
+		if len(snip) > 64 {
+			snip = snip[:64]
+		}
+		out["answer_text"] = strings.TrimRight(string(snip), "\x00")
+		out["answer_hex"] = fmt.Sprintf("%x", snip)
 	}
 	return out
 }

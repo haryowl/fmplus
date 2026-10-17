@@ -407,6 +407,32 @@ func TestEncodeDownlink_GeofenceSetRect(t *testing.T) {
 	}
 }
 
+func TestWrap8301Body(t *testing.T) {
+	b := wrap8301Body("id=2,text=SOS")
+	if b[0] != 1 || b[1] != 2 || b[2] != 3 || string(b[3:]) != "SOS" {
+		t.Fatalf("%x", b)
+	}
+	b2 := wrap8301Body("1:A;2:B")
+	if b2[0] != 2 {
+		t.Fatalf("%x", b2)
+	}
+}
+
+func TestWrap8302Body(t *testing.T) {
+	b := wrap8302Body("id=3,q=OK?")
+	if b[0] != 0 || b[1] != 3 || b[2] != 3 || string(b[3:]) != "OK?" {
+		t.Fatalf("%x", b)
+	}
+}
+
+func TestParseQuestionAnswer(t *testing.T) {
+	body := []byte{0x00, 0x0a, 0x01, 'Y', 'e', 's'}
+	m := parseQuestionAnswer(body)
+	if m["reply_seq"] != 10 || m["answer_id"] != 1 || m["answer_text"] != "Yes" {
+		t.Fatalf("%v", m)
+	}
+}
+
 func TestEncodeDownlink_RequiresPhone(t *testing.T) {
 	ad := Adapter{}
 	_, err := ad.EncodeDownlink(store.Command{PayloadText: "x"}, "")

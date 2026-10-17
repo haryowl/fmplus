@@ -3,6 +3,7 @@ package galileosky
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -287,5 +288,42 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		fix.RawAttrs["voltage.batt"] = mv / 1000.0
 		fix.RawAttrs["tag.0x51"] = mv
 	}
+	promoteSensorTags(fix.RawAttrs, tags)
 	return fix, true
+}
+
+// promoteSensorTags lifts common fuel/user/analog tags onto remappable keys (partial).
+func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
+	if raw == nil || tags == nil {
+		return
+	}
+	// 0x52–0x57: additional analog channels (mV → V when plausible).
+	for i, id := range []byte{0x52, 0x53, 0x54, 0x55, 0x56, 0x57} {
+		v, ok := tags[id]
+		if !ok || len(v) < 2 {
+			continue
+		}
+		mv := float64(binary.LittleEndian.Uint16(v[0:2]))
+		raw[fmt.Sprintf("analog.%d", i+2)] = mv / 1000.0
+		raw[fmt.Sprintf("tag.0x%02x", id)] = mv
+	}
+	// 0x60–0x63: frequent LLS / fuel sensor payloads (uint32, units model-dependent).
+	fuelKeys := []string{"fuel.level", "fuel.level2", "fuel.temp", "fuel.freq"}
+	for i, id := range []byte{0x60, 0x61, 0x62, 0x63} {
+		v, ok := tags[id]
+		if !ok || len(v) < 4 {
+			continue
+		}
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw[fuelKeys[i]] = float64(n)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+	}
+	// 0x11–0x14: 1-byte user/CAN status nibbles.
+	for i, id := range []byte{0x11, 0x12, 0x13, 0x14} {
+		v, ok := tags[id]
+		if !ok || len(v) < 1 {
+			continue
+		}
+		raw[fmt.Sprintf("user.%d", i)] = int(v[0])
+	}
 }
