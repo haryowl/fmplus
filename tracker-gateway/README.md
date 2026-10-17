@@ -195,6 +195,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   145_video_other_hybrid_data_mode.sql
 #   146_card_reader_network_gsm_fuel_type.sql
 #   147_vin_rfid_user_fault_codes.sql
+#   148_barcode_bt_ble_fuel_oem.sql
 npm run db:migrate
 
 cd tracker-gateway

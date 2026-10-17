@@ -193,11 +193,23 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["281"]; ok {
 		raw["obd.fault_codes"] = fmt.Sprintf("%v", v)
 	}
+	if v, ok := io["263"]; ok {
+		raw["bt.status"] = asIOFloat(v)
+	}
+	if v, ok := io["264"]; ok {
+		raw["barcode.id"] = fmt.Sprintf("%v", v)
+	}
 	if v, ok := io["250"]; ok {
 		raw["trip.distance"] = asIOFloat(v)
 	}
 	if v, ok := io["255"]; ok {
 		raw["overspeed.threshold"] = asIOFloat(v)
+	}
+	if v, ok := io["270"]; ok {
+		raw["ble.fuel1"] = asIOFloat(v)
+	}
+	if v, ok := io["390"]; ok {
+		raw["fuel.oem_level"] = asIOFloat(v) / 10.0 // L ×0.1
 	}
 	if v, ok := io["24"]; ok {
 		raw["speed.io"] = asIOFloat(v)

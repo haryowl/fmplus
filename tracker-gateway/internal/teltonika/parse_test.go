@@ -378,6 +378,17 @@ func TestPromoteTeltonikaScalars_VINRFIDUserFault(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_BarcodeBTFuelOEM(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"264": "BC123", "263": 2, "270": 55, "390": 450})
+	if raw["barcode.id"] != "BC123" || raw["bt.status"] != 2.0 {
+		t.Fatalf("barcode/bt=%v", raw)
+	}
+	if raw["ble.fuel1"] != 55.0 || raw["fuel.oem_level"] != 45.0 {
+		t.Fatalf("ble/oem fuel=%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_GNSSQuality(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{"181": 15, "182": 12, "69": 1})
