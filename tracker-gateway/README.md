@@ -7,12 +7,12 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | Adapter | Port env | Default | Status | Uplink | Downlink | Notes |
 |---------|----------|---------|--------|--------|----------|-------|
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat + alarm safety | — | nested attrs flatten; `alarm.*` → safety |
-| Teltonika Codec 8/8E | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | Codec12 ack = latest-sent (no echo id); event IO → safety |
+| Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | Codec 16 AVL IDs; Codec12 ack = latest-sent; event IO → safety |
 | JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/0702/0104/0107/0301/0801/0900 | 0x8300/8103–8107/8201/8500 | subpkg; corr by seq; query aliases |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
 | JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/heartbeat | — | platform link only |
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling | — | A/V hooks only |
-| Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS/0x8a/0x94/0x23 | 0x80 GPRS | 0x7979; ack by serial; alarm/LBS remap seeds |
+| Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS/0x23/0x26–0x28 | 0x80 GPRS | 0x7979; ack by serial; unknown proto → status patch |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records | cmd 108 SMS | Kermit CRC; ACK 100; cmd7 ack corr=`108` |
 | Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | archive bit; E0–E6 reply → latest-sent ack |
 
@@ -81,6 +81,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   065_jt808_8105_terminal_control.sql
 #   066_concox_alarm_lbs_maps.sql
 #   067_uplink_remap_seeds.sql
+#   068_uplink_remap_seeds.sql
 npm run db:migrate
 
 cd tracker-gateway

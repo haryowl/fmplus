@@ -3,6 +3,36 @@
  */
 import { dbQuery } from "./db.mjs";
 
+/** Protocol-scoped command types (mirrors Admin COMMAND_TYPE_OPTIONS). */
+const COMMAND_TYPE_PROTOCOLS = {
+  jt808_8103: ["jt808", "subiao"],
+  jt808_8104: ["jt808", "subiao"],
+  jt808_8105: ["jt808", "subiao"],
+  jt808_8107: ["jt808", "subiao"],
+  jt808_8201: ["jt808", "subiao"],
+  jt808_8500: ["jt808", "subiao"],
+  jt808: ["jt808", "subiao"],
+  terminal_control: ["jt808", "subiao"],
+  param: ["jt808", "subiao"],
+  control: ["jt808", "subiao"],
+  vehicle_control: ["jt808", "subiao"],
+  query_params: ["jt808", "subiao"],
+  query_attrs: ["jt808", "subiao"],
+  query_location: ["jt808", "subiao"],
+  teltonika_codec12: ["teltonika"],
+  concox_gprs: ["concox"],
+  ruptela_sms: ["ruptela"],
+  galileosky_text: ["galileosky"],
+};
+
+function commandTypeProtocolMismatch(protocol, commandType) {
+  if (!commandType || commandType === "text" || commandType === "raw") return "";
+  const allowed = COMMAND_TYPE_PROTOCOLS[commandType];
+  if (!allowed) return "";
+  if (allowed.includes(protocol)) return "";
+  return `commandType ${commandType} is not valid for protocol ${protocol}`;
+}
+
 export function publicParamDef(row) {
   if (!row) return null;
   return {
@@ -245,6 +275,37 @@ export async function enqueueCommand(tenantId, deviceId, body) {
     err.status = 400;
     throw err;
   }
+  const protocol = device.rows[0].protocol;
+  let commandType = [
+    "raw",
+    "text",
+    "jt808",
+    "jt808_8103",
+    "jt808_8104",
+    "jt808_8105",
+    "jt808_8107",
+    "jt808_8201",
+    "jt808_8500",
+    "terminal_control",
+    "teltonika_codec12",
+    "concox_gprs",
+    "ruptela_sms",
+    "galileosky_text",
+    "param",
+    "control",
+    "vehicle_control",
+    "query_params",
+    "query_attrs",
+    "query_location",
+  ].includes(body.commandType)
+    ? body.commandType
+    : "text";
+  const mismatch = commandTypeProtocolMismatch(protocol, commandType);
+  if (mismatch) {
+    const err = new Error(mismatch);
+    err.status = 400;
+    throw err;
+  }
   const inserted = await dbQuery(
     `INSERT INTO tracker_commands (
        tenant_id, device_id, protocol, command_type, payload_text, payload_hex, status
@@ -252,31 +313,8 @@ export async function enqueueCommand(tenantId, deviceId, body) {
     [
       tenantId,
       deviceId,
-      device.rows[0].protocol,
-      [
-        "raw",
-        "text",
-        "jt808",
-        "jt808_8103",
-        "jt808_8104",
-        "jt808_8105",
-        "jt808_8107",
-        "jt808_8201",
-        "jt808_8500",
-        "terminal_control",
-        "teltonika_codec12",
-        "concox_gprs",
-        "ruptela_sms",
-        "galileosky_text",
-        "param",
-        "control",
-        "vehicle_control",
-        "query_params",
-        "query_attrs",
-        "query_location",
-      ].includes(body.commandType)
-        ? body.commandType
-        : "text",
+      protocol,
+      commandType,
       String(body.payloadText || body.text || "").slice(0, 4000),
       hexRaw.slice(0, 8000),
     ],

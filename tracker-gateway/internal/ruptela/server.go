@@ -71,6 +71,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		data := payload[:length]
 		gotCRC := binary.BigEndian.Uint16(payload[length : length+2])
 		if calc := crc16Kermit(data); calc != gotCRC {
+			metrics.DecodeErr()
 			log.Printf("[ruptela] bad CRC got=%04x want=%04x — still parsing", gotCRC, calc)
 		}
 

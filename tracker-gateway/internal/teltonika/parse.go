@@ -82,11 +82,20 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 		io := map[string]any{}
 		var eventID any
 
-		if codec == 0x08 {
+		var ioOK bool
+		switch codec {
+		case 0x08:
 			off, eventID, io = extractIO8(payload, off)
-		} else if codec == 0x8e {
+			ioOK = true
+		case 0x8e:
 			off, eventID, io = extractIO8E(payload, off)
-		} else {
+			ioOK = true
+		case 0x10:
+			// Codec 16: 1-byte record count (like 8) + 2-byte AVL IDs.
+			off, eventID, io = extractIO16(payload, off)
+			ioOK = true
+		}
+		if !ioOK {
 			// Unknown AVL codec: keep GPS fix, stop record loop (IO length unknown).
 			fixes = append(fixes, store.Fix{
 				Lat: lat, Lon: lon, RecordedAt: time.UnixMilli(tsMs).UTC(),
@@ -160,6 +169,42 @@ func readSizedIO8(b []byte, off, size int, io map[string]any) int {
 	for i := 0; i < n && off+1+size <= len(b); i++ {
 		id := int(b[off])
 		off++
+		io[fmt.Sprintf("%d", id)] = readIntBE(b[off:off+size], size)
+		off += size
+	}
+	return off
+}
+
+// extractIO16: Event IO ID u16, N total u8, then sized groups with AVL ID u16 + value.
+// Per Teltonika Codec wiki (Codec 16).
+func extractIO16(b []byte, off int) (int, any, map[string]any) {
+	io := map[string]any{}
+	var event any
+	if off+2 > len(b) {
+		return off, event, io
+	}
+	event = int(binary.BigEndian.Uint16(b[off : off+2]))
+	off += 2
+	if off >= len(b) {
+		return off, event, io
+	}
+	off++ // total IO count (1 byte)
+	off = readSizedIO16(b, off, 1, io)
+	off = readSizedIO16(b, off, 2, io)
+	off = readSizedIO16(b, off, 4, io)
+	off = readSizedIO16(b, off, 8, io)
+	return off, event, io
+}
+
+func readSizedIO16(b []byte, off, size int, io map[string]any) int {
+	if off >= len(b) {
+		return off
+	}
+	n := int(b[off])
+	off++
+	for i := 0; i < n && off+2+size <= len(b); i++ {
+		id := int(binary.BigEndian.Uint16(b[off : off+2]))
+		off += 2
 		io[fmt.Sprintf("%d", id)] = readIntBE(b[off:off+size], size)
 		off += size
 	}

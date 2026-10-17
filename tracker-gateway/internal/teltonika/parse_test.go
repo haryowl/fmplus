@@ -97,6 +97,34 @@ func TestExtractIO8E_EventIDTwoBytes(t *testing.T) {
 	}
 }
 
+func TestParseAVL_Codec16IO(t *testing.T) {
+	// Codec 16: 1 record, GPS same as Codec8 golden, IO: event=239, N1=1 id=239 val=1
+	payload := mustHex(t, ""+
+		"10"+"01"+
+		"0000000000000000"+"00"+
+		"3fa86300"+"fc4df480"+"001e"+"005a"+"0c"+"0028"+
+		"00ef"+ // event IO 239
+		"01"+ // total IO
+		"01"+"00ef"+"01"+ // N1: AVL 239 = 1
+		"00"+"00"+"00") // N2 N4 N8 empty
+	ts := time.Date(2024, 6, 1, 10, 30, 0, 0, time.UTC)
+	binary.BigEndian.PutUint64(payload[2:10], uint64(ts.UnixMilli()))
+	n, fixes := parseAVL(payload)
+	if n != 1 || len(fixes) != 1 {
+		t.Fatalf("n=%d fixes=%d", n, len(fixes))
+	}
+	if fixes[0].RawAttrs["codec"] != byte(0x10) && fixes[0].RawAttrs["codec"] != 0x10 {
+		t.Fatalf("codec=%v", fixes[0].RawAttrs["codec"])
+	}
+	io, _ := fixes[0].RawAttrs["io"].(map[string]any)
+	if io["239"] != int64(1) && io["239"] != 1 {
+		t.Fatalf("io=%v", io)
+	}
+	if fixes[0].Ignition == nil || !*fixes[0].Ignition {
+		t.Fatal("expected ignition from io.239")
+	}
+}
+
 func TestExtractIO8E_NXScalarAndASCII(t *testing.T) {
 	// event 0, total 0, empty N1..N8, NX count=2:
 	// id 1000 len4 = 0x0000002a (42), id 1001 len3 = "ABC"

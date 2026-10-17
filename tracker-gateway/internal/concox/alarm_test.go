@@ -44,3 +44,17 @@ func TestApplyAlarmAttrs_OnFix(t *testing.T) {
 		t.Fatalf("raw=%v", raw)
 	}
 }
+
+func TestExtractAlarmCode_WearNotAtLenMinus3(t *testing.T) {
+	// Prefer path sees 0 at len-3; fallback must still find wear 0x14 (was missing from old switch).
+	info := []byte{0x11, 0x22, 0x33, 0x14, 0x00, 0xfe, 0x00}
+	code, ok := extractAlarmCode(info)
+	if !ok || code != 0x14 {
+		t.Fatalf("code=%x ok=%v want wear 0x14", code, ok)
+	}
+	raw := map[string]any{}
+	applyAlarmAttrs(info, raw)
+	if raw["alarm.wear"] != true {
+		t.Fatalf("raw=%v", raw)
+	}
+}

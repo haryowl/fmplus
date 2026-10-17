@@ -44,6 +44,17 @@ func TestSafetyFromEventID_SOS(t *testing.T) {
 	}
 }
 
+func TestParseUpgradeResult(t *testing.T) {
+	m := parseUpgradeResult([]byte{0x00, 0x00})
+	if m["upgrade_type"] != 0 || m["upgrade_result"] != 0 {
+		t.Fatalf("%v", m)
+	}
+	fail := parseUpgradeResult([]byte{0x00, 0x01})
+	if fail["upgrade_result"] != 1 {
+		t.Fatalf("%v", fail)
+	}
+}
+
 func TestBuildDownlink_OutboundSubpkg(t *testing.T) {
 	body := make([]byte, jt808MaxBody+10)
 	for i := range body {

@@ -73,6 +73,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			}
 			proto, info, serial, err := decodeFrame(frame)
 			if err != nil {
+				metrics.DecodeErr()
 				continue
 			}
 			switch proto {
@@ -100,7 +101,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
 				_ = writeReply(conn, 0x13, serial, nil)
-			case 0x12, 0x22, 0x17, 0x26, 0x28, 0x1a: // GPS / offline / common GT06 variants
+			case 0x12, 0x22, 0x17, 0x26, 0x27, 0x28, 0x1a: // GPS / offline / common GT06 variants
 				if device == nil && imei != "" {
 					device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "concox")
 				}
@@ -183,6 +184,12 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				}
 				_ = writeReply(conn, 0x23, serial, nil)
 			default:
+				if device != nil {
+					_ = st.PatchLastStatus(ctx, device, map[string]any{
+						"proto_msg": fmt.Sprintf("0x%02x", proto),
+						"info_hex":  fmt.Sprintf("%x", info),
+					}, nil)
+				}
 				_ = writeReply(conn, proto, serial, nil)
 			}
 		}
@@ -634,15 +641,17 @@ func extractAlarmCode(info []byte) (byte, bool) {
 	// Prefer dedicated alarm byte near the end (before language uint16).
 	if len(info) >= 3 {
 		code := info[len(info)-3]
+		if _, known := concoxAlarmNames[code]; known {
+			return code, true
+		}
 		if code != 0 {
 			return code, true
 		}
 	}
-	// Fallback: scan for known alarm codes in the tail half.
+	// Fallback: scan for known alarm codes in the tail half (full map).
 	start := len(info) / 2
 	for i := start; i < len(info); i++ {
-		switch info[i] {
-		case 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x09, 0x0c, 0x0e, 0x13, 0x19, 0x23, 0x29:
+		if _, known := concoxAlarmNames[info[i]]; known {
 			return info[i], true
 		}
 	}

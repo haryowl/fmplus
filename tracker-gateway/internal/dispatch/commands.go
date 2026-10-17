@@ -58,17 +58,24 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 	rup := ruptela.Adapter{}
 	jt := jt808.Adapter{}
 	gs := galileosky.Adapter{}
+	seen := map[string]struct{}{}
 	for i := 0; i < 50; i++ {
 		cmdPtr, err := st.ClaimNextPendingCommand(ctx)
 		if err != nil || cmdPtr == nil {
 			return
 		}
 		cmd := *cmdPtr
+		if _, again := seen[cmd.ID]; again {
+			// Only offline/not-ready rows left — stop this tick.
+			_ = st.RequeueCommandRotate(ctx, cmd.ID)
+			return
+		}
+		seen[cmd.ID] = struct{}{}
 		sess, ok := sessions.SessionByDevice(cmd.DeviceID)
 		if !ok || sess.Conn == nil {
-			// Not online — put back so session flush can take it on connect.
-			_ = st.RequeueCommand(ctx, cmd.ID)
-			return
+			// Not online — rotate to back so other devices are not starved.
+			_ = st.RequeueCommandRotate(ctx, cmd.ID)
+			continue
 		}
 		var payload []byte
 		encErr := error(nil)
@@ -97,8 +104,8 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 				v2019 = sess.Meta["jt808_ver"] == "2019"
 			}
 			if phone == "" {
-				_ = st.RequeueCommand(ctx, cmd.ID)
-				return // wait for uplink flush with known phone
+				_ = st.RequeueCommandRotate(ctx, cmd.ID)
+				continue // wait for uplink flush with known phone
 			}
 			payload, encErr = jt.EncodeDownlinkSeq(cmd, phone, &seq, v2019)
 		case cmd.Protocol == "galileosky" || cmd.CommandType == "galileosky_text":

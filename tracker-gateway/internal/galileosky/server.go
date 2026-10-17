@@ -78,6 +78,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		packetForCRC := append(append([]byte{}, hdr...), tagsBytes...)
 		calc := crc16Modbus(packetForCRC)
 		if calc != gotCRC {
+			metrics.DecodeErr()
 			log.Printf("[galileosky] bad CRC from %s got=%04x want=%04x — still parsing", conn.RemoteAddr(), gotCRC, calc)
 		}
 

@@ -154,10 +154,27 @@ func (s *Store) MarkCommandSentCorr(ctx context.Context, commandID, corrID strin
 
 // RequeueCommand returns a claimed (sent, no terminal ack) command to pending.
 func (s *Store) RequeueCommand(ctx context.Context, commandID string) error {
-	_, err := s.pool.Exec(ctx, `
+	return s.requeueCommand(ctx, commandID, false)
+}
+
+// RequeueCommandRotate requeues and bumps created_at so other pending commands
+// are not starved behind an offline / not-ready device.
+func (s *Store) RequeueCommandRotate(ctx context.Context, commandID string) error {
+	return s.requeueCommand(ctx, commandID, true)
+}
+
+func (s *Store) requeueCommand(ctx context.Context, commandID string, rotate bool) error {
+	q := `
 		UPDATE tracker_commands
 		SET status = 'pending', sent_at = NULL, corr_id = ''
-		WHERE id = $1::uuid AND status = 'sent' AND completed_at IS NULL`, commandID)
+		WHERE id = $1::uuid AND status = 'sent' AND completed_at IS NULL`
+	if rotate {
+		q = `
+		UPDATE tracker_commands
+		SET status = 'pending', sent_at = NULL, corr_id = '', created_at = now()
+		WHERE id = $1::uuid AND status = 'sent' AND completed_at IS NULL`
+	}
+	_, err := s.pool.Exec(ctx, q, commandID)
 	return err
 }
 

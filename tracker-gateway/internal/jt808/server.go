@@ -486,10 +486,12 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 	bodyWithBcc := raw
 	msg := bodyWithBcc[:len(bodyWithBcc)-1]
 	if bcc(msg) != bodyWithBcc[len(bodyWithBcc)-1] {
+		metrics.DecodeErr()
 		return nil
 	}
 	hdr, ok := parseMessageHeader(msg)
 	if !ok {
+		metrics.DecodeErr()
 		return nil
 	}
 	msgID := hdr.MsgID
