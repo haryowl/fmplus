@@ -141,6 +141,10 @@ func TestPromoteSensorTags_User15(t *testing.T) {
 	if raw["user.4"] != 7 || raw["user.8"] != 9 {
 		t.Fatalf("%v", raw)
 	}
+	promoteSensorTags(raw, map[byte][]byte{0x12: {1}, 0x13: {2}, 0x14: {3}})
+	if raw["user.1"] != 1 || raw["user.2"] != 2 || raw["user.3"] != 3 {
+		t.Fatalf("user123=%v", raw)
+	}
 }
 
 func TestPromoteSensorTags_CanC0(t *testing.T) {
@@ -159,6 +163,18 @@ func TestPromoteSensorTags_AnalogA0(t *testing.T) {
 	binary.LittleEndian.PutUint32(reg, 1500)
 	promoteSensorTags(raw, map[byte][]byte{0xa0: reg})
 	if raw["analog.10"] != float64(1500) {
+		t.Fatalf("%v", raw)
+	}
+}
+
+func TestPromoteSensorTags_AnalogA2A3(t *testing.T) {
+	raw := map[string]any{}
+	a := make([]byte, 4)
+	b := make([]byte, 4)
+	binary.LittleEndian.PutUint32(a, 1200)
+	binary.LittleEndian.PutUint32(b, 1300)
+	promoteSensorTags(raw, map[byte][]byte{0xa2: a, 0xa3: b})
+	if raw["analog.12"] != float64(1200) || raw["analog.13"] != float64(1300) {
 		t.Fatalf("%v", raw)
 	}
 }

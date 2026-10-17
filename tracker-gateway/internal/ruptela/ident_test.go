@@ -12,6 +12,16 @@ func TestParseIdentResponse_Labeled(t *testing.T) {
 	}
 }
 
+func TestParseIdentResponse_IMEIModel(t *testing.T) {
+	m := parseIdentResponse("IMEI:861234567890123;MODEL:FM-Eco4")
+	if m["ident.imei"] != "861234567890123" || m["ident.model"] != "FM-Eco4" {
+		t.Fatalf("%v", m)
+	}
+	if m["proto_msg"] != "ruptela_cmd_3" {
+		t.Fatalf("proto=%v", m["proto_msg"])
+	}
+}
+
 func TestParseIdentResponse_WhitespaceFallback(t *testing.T) {
 	m := parseIdentResponse("v9.1 boardA cfgX")
 	if m["ident.fw"] != "v9.1" || m["ident.hw"] != "boardA" || m["ident.cfg"] != "cfgX" {

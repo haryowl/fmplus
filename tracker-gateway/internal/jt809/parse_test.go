@@ -410,8 +410,11 @@ func TestParsePlatformLogin1001(t *testing.T) {
 	if m["downlink_ip"] != "10.0.0.5" || m["downlink_port"] != 8900 {
 		t.Fatalf("%v", m)
 	}
-	if m["platform_password_set"] != true {
+	if m["platform_password_set"] != true || m["platform_password_len"] != 6 {
 		t.Fatalf("pass=%v", m)
+	}
+	if m["body_len"] != 46 {
+		t.Fatalf("body_len=%v", m["body_len"])
 	}
 }
 
@@ -508,6 +511,12 @@ func TestParseVehicleStatic_Register(t *testing.T) {
 	}
 	if patch["terminal_model"] != "MODEL-X" || patch["terminal_sim"] != "13800138000" {
 		t.Fatalf("%v", patch)
+	}
+	// 0x1207 overlays ewaybill_notify on the same static parse.
+	patch["proto_msg"] = "0x1207"
+	patch["ewaybill_notify"] = true
+	if patch["ewaybill_notify"] != true || patch["proto_msg"] != "0x1207" {
+		t.Fatalf("ewaybill=%v", patch)
 	}
 }
 

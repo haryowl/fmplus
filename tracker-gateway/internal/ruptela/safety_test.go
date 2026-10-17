@@ -48,6 +48,9 @@ func TestFlattenEventAlarm(t *testing.T) {
 	if raw["alarm.towing"] != true {
 		t.Fatalf("raw=%v", raw)
 	}
+	if raw["alarm_level"] != 2 {
+		t.Fatalf("level=%v", raw["alarm_level"])
+	}
 }
 
 func TestFlattenIOAlarms(t *testing.T) {

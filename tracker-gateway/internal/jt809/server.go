@@ -239,6 +239,7 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 			break
 		}
 		patch["proto_msg"] = "0x1207"
+		patch["ewaybill_notify"] = true
 		device := find809Device(ctx, st, plate, *platformKey, conn.RemoteAddr().String())
 		if device != nil {
 			_ = st.PatchLastStatus(ctx, device, patch, nil)

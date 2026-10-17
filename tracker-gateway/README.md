@@ -167,6 +167,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   117_galileo_dout_hi_speed_1078_ruptela.sql
 #   118_subiao_galileo_ext_telt_alarms.sql
 #   119_809_lat_din58_telt_catalog.sql
+#   120_galileo_modbus_809_ruptela_ident.sql
 npm run db:migrate
 
 cd tracker-gateway
