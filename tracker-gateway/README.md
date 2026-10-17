@@ -154,6 +154,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   104_gnss_bits_cmd_reply_809_media.sql
 #   105_media0800_trip_ibutton_online.sql
 #   106_terminal_params_transparent_trip.sql
+#   107_gnss_quality_user_info_flags.sql
 npm run db:migrate
 
 cd tracker-gateway

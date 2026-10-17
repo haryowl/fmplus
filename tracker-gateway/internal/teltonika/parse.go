@@ -254,6 +254,15 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["19"]; ok {
 		raw["accel.z"] = asIOFloat(v)
 	}
+	if v, ok := io["181"]; ok {
+		raw["gnss.pdop"] = asIOFloat(v) / 10.0
+	}
+	if v, ok := io["182"]; ok {
+		raw["gnss.hdop"] = asIOFloat(v) / 10.0
+	}
+	if v, ok := io["69"]; ok {
+		raw["gnss.status"] = asIOFloat(v)
+	}
 }
 
 func extractIO8(b []byte, off int) (int, any, map[string]any) {

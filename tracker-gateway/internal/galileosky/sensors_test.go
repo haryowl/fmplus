@@ -118,6 +118,14 @@ func TestPromoteSensorTags_Sensor78(t *testing.T) {
 	}
 }
 
+func TestPromoteSensorTags_User15(t *testing.T) {
+	raw := map[string]any{}
+	promoteSensorTags(raw, map[byte][]byte{0x15: {7}, 0x19: {9}})
+	if raw["user.4"] != 7 || raw["user.8"] != 9 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteSensorTags_CmdReply(t *testing.T) {
 	raw := map[string]any{}
 	promoteSensorTags(raw, map[byte][]byte{0xe1: []byte("OK SET")})

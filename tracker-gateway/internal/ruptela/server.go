@@ -456,6 +456,15 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["250"]; ok {
 		raw["trip.distance"] = asFloat64(v)
 	}
+	if v, ok := io["181"]; ok {
+		raw["gnss.pdop"] = asFloat64(v) / 10.0
+	}
+	if v, ok := io["182"]; ok {
+		raw["gnss.hdop"] = asFloat64(v) / 10.0
+	}
+	if v, ok := io["69"]; ok {
+		raw["gnss.status"] = asFloat64(v)
+	}
 	if v, ok := io["24"]; ok {
 		raw["speed.io"] = asFloat64(v)
 	}

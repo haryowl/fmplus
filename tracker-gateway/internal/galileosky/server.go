@@ -363,8 +363,8 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fuelKeys[i]] = float64(n)
 		raw[fmt.Sprintf("tag.0x%02x", id)] = n
 	}
-	// 0x11–0x14: 1-byte user/CAN status nibbles.
-	for i, id := range []byte{0x11, 0x12, 0x13, 0x14} {
+	// 0x11–0x19: 1-byte user/CAN status nibbles.
+	for i, id := range []byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19} {
 		v, ok := tags[id]
 		if !ok || len(v) < 1 {
 			continue

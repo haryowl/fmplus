@@ -232,6 +232,14 @@ func TestPromoteTeltonikaScalars_IButton(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_GNSSQuality(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"181": 15, "182": 12, "69": 1})
+	if raw["gnss.pdop"] != 1.5 || raw["gnss.hdop"] != 1.2 || raw["gnss.status"] != 1.0 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)

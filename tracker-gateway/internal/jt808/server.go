@@ -1126,10 +1126,13 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0303: // info on-demand / cancel
 		if sess.device != nil && len(body) >= 2 {
+			flag := int(body[1]) // 0=cancel, 1=order (typical)
 			patch := map[string]any{
-				"proto_msg":   "0x0303",
-				"info_type":   int(body[0]),
-				"info_flag":   int(body[1]), // 0=cancel/order per standard variants
+				"proto_msg":     "0x0303",
+				"info_type":     int(body[0]),
+				"info_flag":     flag,
+				"info_ordered":  flag == 1,
+				"info_canceled": flag == 0,
 			}
 			_ = st.PatchLastStatus(ctx, sess.device, patch, nil)
 		}
@@ -1516,7 +1519,9 @@ func parseQuestionAnswer(body []byte) map[string]any {
 		if len(snip) > 64 {
 			snip = snip[:64]
 		}
-		out["answer_text"] = strings.TrimRight(string(snip), "\x00")
+		text := strings.TrimRight(string(snip), "\x00")
+		out["answer_text"] = text
+		out["answer.text"] = text
 		out["answer_hex"] = fmt.Sprintf("%x", snip)
 	}
 	return out
