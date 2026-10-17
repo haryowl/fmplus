@@ -91,6 +91,27 @@ func TestSpeedCourse_0x33(t *testing.T) {
 	}
 }
 
+func TestAltitudeHDOPVoltage(t *testing.T) {
+	alt := make([]byte, 2)
+	binary.LittleEndian.PutUint16(alt, uint16(int16(120)))
+	hdop := []byte{25} // 2.5
+	volt := make([]byte, 2)
+	binary.LittleEndian.PutUint16(volt, 12400) // 12.4 V
+	coords := make([]byte, 9)
+	coords[0] = 0x07 // GNSS OK + sats
+	tags := map[byte][]byte{0x30: coords, 0x34: alt, 0x35: hdop, 0x50: volt}
+	fix, ok := fixFromTags(tags)
+	if !ok || fix.Altitude == nil || *fix.Altitude != 120 {
+		t.Fatalf("alt ok=%v fix=%+v", ok, fix)
+	}
+	if fix.RawAttrs["hdop"] != 2.5 {
+		t.Fatalf("hdop=%v", fix.RawAttrs["hdop"])
+	}
+	if fix.RawAttrs["voltage.ext"] != 12.4 {
+		t.Fatalf("volt=%v", fix.RawAttrs["voltage.ext"])
+	}
+}
+
 func TestCRC16ModbusAndFrame(t *testing.T) {
 	payload := []byte("GETVER")
 	frame := buildFrame(payload)

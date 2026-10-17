@@ -415,6 +415,26 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			flag = 1
 		}
 		body = []byte{flag}
+	case "jt808_8801", "camera":
+		// Camera immediate shoot / record (pairs with 0x0805 response).
+		msgID = 0x8801
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8801Body(text)
+	case "jt808_8202", "track":
+		// Temporary location tracking: interval(WORD sec) + validity(DWORD sec).
+		msgID = 0x8202
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8202Body(text)
 	default:
 		// 0x8300: flag(1)+text. Hex-only Admin payloads skip UTF-8 mangling.
 		if cmd.PayloadHex != "" {
@@ -691,6 +711,11 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			_ = st.PatchLastStatus(ctx, sess.device, parseCANBus(body), nil)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0700: // driving record data upload (status patch — no full GB/T decode)
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, parseDrivingRecord(body), nil)
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0200: // location
 		ingestLocation(ctx, conn, st, sessions, sess, body, protoHint)
 		return replyGeneral(conn, sess, msgID, seq, 0)
@@ -813,6 +838,59 @@ func parseMultimediaMeta(body []byte) map[string]any {
 	if len(body) >= 7 {
 		out["media_id"] = binary.BigEndian.Uint32(body[3:7])
 	}
+	return out
+}
+
+// wrap8801Body builds a minimal 0x8801 camera command (channel + 1 shot + defaults).
+// text: channel number ("1") or "ch=N"; empty → channel 1.
+func wrap8801Body(text string) []byte {
+	ch := byte(1)
+	t := strings.TrimSpace(strings.ToLower(text))
+	if strings.HasPrefix(t, "ch=") {
+		t = strings.TrimPrefix(t, "ch=")
+	}
+	if n, err := strconv.Atoi(t); err == nil && n >= 0 && n <= 255 {
+		ch = byte(n)
+	}
+	// channel, cmd=1 (one photo), interval=0, save=0, res=0, quality=5, brightness/contrast/sat/chroma=0
+	body := make([]byte, 12)
+	body[0] = ch
+	body[1] = 1
+	body[5] = 5
+	return body
+}
+
+// wrap8202Body: "interval[,validity]" seconds — defaults 10s interval, 60s validity.
+func wrap8202Body(text string) []byte {
+	interval, validity := uint16(10), uint32(60)
+	parts := strings.Split(strings.TrimSpace(text), ",")
+	if len(parts) >= 1 {
+		if n, err := strconv.Atoi(strings.TrimSpace(parts[0])); err == nil && n >= 0 {
+			interval = uint16(n)
+		}
+	}
+	if len(parts) >= 2 {
+		if n, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil && n >= 0 {
+			validity = uint32(n)
+		}
+	}
+	body := make([]byte, 6)
+	binary.BigEndian.PutUint16(body[0:2], interval)
+	binary.BigEndian.PutUint32(body[2:6], validity)
+	return body
+}
+
+// parseDrivingRecord maps 0x0700 driving-record uplink (command word + data snippet).
+func parseDrivingRecord(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0700", "drv_len": len(body)}
+	if len(body) >= 1 {
+		out["drv_cmd"] = int(body[0])
+	}
+	snip := body
+	if len(snip) > 48 {
+		snip = snip[:48]
+	}
+	out["drv_head_hex"] = fmt.Sprintf("%x", snip)
 	return out
 }
 

@@ -252,6 +252,13 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		fix.Speed = &spd
 		fix.Heading = &hdg
 	}
+	if h, ok := tags[0x34]; ok && len(h) >= 2 {
+		alt := float64(int16(binary.LittleEndian.Uint16(h[0:2])))
+		fix.Altitude = &alt
+	}
+	if hd, ok := tags[0x35]; ok && len(hd) >= 1 {
+		fix.RawAttrs["hdop"] = float64(hd[0]) / 10.0
+	}
 	// Input status bit0 = input 0 (common ignition wiring); not tag 0x01 (hw version).
 	if st, ok := tags[0x46]; ok && len(st) >= 1 {
 		b := st[0]&0x01 != 0
@@ -260,6 +267,12 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 	if odo, ok := tags[0xd4]; ok && len(odo) >= 4 {
 		f := float64(binary.LittleEndian.Uint32(odo)) / 1000.0
 		fix.Odometer = &f
+	}
+	// Analog 0x50 often external voltage (mV) on Easy firmwares.
+	if v, ok := tags[0x50]; ok && len(v) >= 2 {
+		mv := float64(binary.LittleEndian.Uint16(v[0:2]))
+		fix.RawAttrs["voltage.ext"] = mv / 1000.0
+		fix.RawAttrs["tag.0x50"] = mv
 	}
 	return fix, true
 }

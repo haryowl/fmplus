@@ -228,7 +228,7 @@ func parseRecordPayload(data []byte, extended bool) []store.Fix {
 	if len(data) < 2 {
 		return nil
 	}
-	// records_left := data[0] — unused beyond protocol completeness
+	recordsLeft := int(data[0])
 	count := int(data[1])
 	off := 2
 	var fixes []store.Fix
@@ -281,14 +281,21 @@ func parseRecordPayload(data []byte, extended bool) []store.Fix {
 		hdg := float64(angle) / 100.0
 		altF := float64(alt) / 10.0
 		raw := map[string]any{
-			"io":           ioMap,
-			"event_io":     eventID,
-			"hdop":         int(hdop),
-			"record_index": i,
-			"extended":     extended,
+			"io":            ioMap,
+			"event_io":      eventID,
+			"hdop":          int(hdop),
+			"record_index":  i,
+			"records_left":  recordsLeft,
+			"extended":      extended,
 		}
 		for k, v := range ioMap {
 			raw["io."+k] = v
+		}
+		if v, ok := ioMap["66"]; ok {
+			raw["voltage.ext"] = asFloat64(v) / 1000.0
+		}
+		if v, ok := ioMap["67"]; ok {
+			raw["voltage.batt"] = asFloat64(v) / 1000.0
 		}
 		flattenEventAlarm(raw)
 		fix := store.Fix{

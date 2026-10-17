@@ -82,6 +82,13 @@ func TestParseCANBus(t *testing.T) {
 	}
 }
 
+func TestParseDrivingRecord(t *testing.T) {
+	m := parseDrivingRecord([]byte{0x15, 0x01, 0x02})
+	if m["drv_cmd"] != 0x15 {
+		t.Fatalf("%v", m)
+	}
+}
+
 func TestParseCameraShootResp(t *testing.T) {
 	body := make([]byte, 4+8)
 	binary.BigEndian.PutUint16(body[0:2], 42)

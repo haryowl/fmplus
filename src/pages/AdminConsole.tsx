@@ -176,6 +176,11 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
     protocols: ["jt808", "subiao"],
   },
   {
+    value: "jt808_8202",
+    label: "JT808 temp track (0x8202)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
     value: "jt808_8105",
     label: "JT808 terminal control (0x8105)",
     protocols: ["jt808", "subiao"],
@@ -183,6 +188,11 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
   {
     value: "jt808_8500",
     label: "JT808 vehicle control (0x8500)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8801",
+    label: "JT808 camera shoot (0x8801)",
     protocols: ["jt808", "subiao"],
   },
   { value: "teltonika_codec12", label: "Teltonika Codec12", protocols: ["teltonika"] },
@@ -212,6 +222,10 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "reset / shutdown / factory", hex: "03 or multi-byte control" };
     case "jt808_8500":
       return { text: "cut / oil_cut", hex: "01 or multi-byte body" };
+    case "jt808_8801":
+      return { text: "1 or ch=1", hex: "12-byte 0x8801 body" };
+    case "jt808_8202":
+      return { text: "10,60 (interval,validity sec)", hex: "6-byte body" };
     case "jt808_8103":
       return { text: "", hex: "TLV bytes (count auto-wrapped)" };
     case "raw":

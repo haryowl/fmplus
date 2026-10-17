@@ -135,10 +135,33 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 		for k, v := range io {
 			raw["io."+k] = v
 		}
+		promoteTeltonikaScalars(raw, io)
 		flattenEventAlarm(raw)
 		fixes = append(fixes, fix)
 	}
 	return n, fixes
+}
+
+// promoteTeltonikaScalars lifts common FMB AVL IDs onto remappable raw keys (partial set).
+func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
+	if raw == nil || io == nil {
+		return
+	}
+	if v, ok := io["66"]; ok {
+		raw["voltage.ext"] = asIOFloat(v) / 1000.0 // mV → V
+	}
+	if v, ok := io["67"]; ok {
+		raw["voltage.batt"] = asIOFloat(v) / 1000.0
+	}
+	if v, ok := io["21"]; ok {
+		raw["gsm.signal"] = asIOFloat(v)
+	}
+	if v, ok := io["24"]; ok {
+		raw["speed.io"] = asIOFloat(v)
+	}
+	if v, ok := io["199"]; ok {
+		raw["trip.odometer"] = asIOFloat(v)
+	}
 }
 
 func extractIO8(b []byte, off int) (int, any, map[string]any) {

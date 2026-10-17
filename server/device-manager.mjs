@@ -10,7 +10,9 @@ const COMMAND_TYPE_PROTOCOLS = {
   jt808_8105: ["jt808", "subiao"],
   jt808_8107: ["jt808", "subiao"],
   jt808_8201: ["jt808", "subiao"],
+  jt808_8202: ["jt808", "subiao"],
   jt808_8500: ["jt808", "subiao"],
+  jt808_8801: ["jt808", "subiao"],
   jt808: ["jt808", "subiao"],
   terminal_control: ["jt808", "subiao"],
   param: ["jt808", "subiao"],
@@ -19,6 +21,8 @@ const COMMAND_TYPE_PROTOCOLS = {
   query_params: ["jt808", "subiao"],
   query_attrs: ["jt808", "subiao"],
   query_location: ["jt808", "subiao"],
+  camera: ["jt808", "subiao"],
+  track: ["jt808", "subiao"],
   teltonika_codec12: ["teltonika"],
   concox_gprs: ["concox"],
   ruptela_sms: ["ruptela"],
@@ -289,7 +293,9 @@ export async function enqueueCommand(tenantId, deviceId, body) {
     "jt808_8105",
     "jt808_8107",
     "jt808_8201",
+    "jt808_8202",
     "jt808_8500",
+    "jt808_8801",
     "terminal_control",
     "teltonika_codec12",
     "concox_gprs",
@@ -304,6 +310,8 @@ export async function enqueueCommand(tenantId, deviceId, body) {
     "query_attrs",
     "query_location",
     "config",
+    "camera",
+    "track",
   ].includes(body.commandType)
     ? body.commandType
     : "text";

@@ -153,6 +153,15 @@ func TestExtractIO8E_NXScalarAndASCII(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars(t *testing.T) {
+	raw := map[string]any{}
+	io := map[string]any{"66": 12000, "67": 3800, "21": 4}
+	promoteTeltonikaScalars(raw, io)
+	if raw["voltage.ext"] != 12.0 || raw["voltage.batt"] != 3.8 || raw["gsm.signal"] != 4.0 {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)

@@ -1,6 +1,7 @@
 package jt808
 
 import (
+	"bytes"
 	"encoding/binary"
 	"testing"
 
@@ -241,6 +242,30 @@ func TestLooksLike8103Body(t *testing.T) {
 	ok := []byte{0x01, 0x00, 0x00, 0x00, 0x55, 0x01, 0xff}
 	if !looksLike8103Body(ok) {
 		t.Fatalf("single param %x", ok)
+	}
+}
+
+func TestEncodeDownlink_Camera8801(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{CommandType: "jt808_8801", PayloadText: "2"}, "13800138000")
+	if err != nil || len(out) < 10 {
+		t.Fatalf("err=%v len=%d", err, len(out))
+	}
+	raw := unescape(out)
+	if !bytes.Contains(raw, []byte{0x02, 0x01, 0x00, 0x00}) {
+		t.Fatalf("expected ch=2 cmd=1 in body, raw=%x", raw)
+	}
+}
+
+func TestEncodeDownlink_Track8202(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{CommandType: "jt808_8202", PayloadText: "5,30"}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := unescape(out)
+	if !bytes.Contains(raw, []byte{0x00, 0x05, 0x00, 0x00, 0x00, 0x1e}) {
+		t.Fatalf("interval/validity missing: %x", raw)
 	}
 }
 
