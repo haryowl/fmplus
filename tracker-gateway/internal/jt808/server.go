@@ -2897,17 +2897,13 @@ func parseDrivingRecord(body []byte) map[string]any {
 				out["driver.ic_card"] = s
 			}
 		}
-		// cmd 0x05 vehicle info / 0x08 speed-status log — hex snip only (layouts vary).
-		if (cmd == 0x05 || cmd == 0x08) && len(body) >= 2 {
+		// cmd 0x05/06/07/08/09/10/12/13/14 — hex snip only (layouts vary by recorder).
+		if hexKey, ok := drivingRecordHexKey[cmd]; ok && len(body) >= 2 {
 			tail := body[1:]
 			if len(tail) > 48 {
 				tail = tail[:48]
 			}
-			key := "drv.vehicle_info_hex"
-			if cmd == 0x08 {
-				key = "drv.speed_log_hex"
-			}
-			out[key] = fmt.Sprintf("%x", tail)
+			out[hexKey] = fmt.Sprintf("%x", tail)
 		}
 	}
 	snip := body
@@ -2935,6 +2931,19 @@ var drivingRecordCmdName = map[int]string{
 	0x12: "power_log",
 	0x13: "param_modify_log",
 	0x14: "speed_status_log_ext",
+}
+
+// drivingRecordHexKey maps cmds that store a remappable hex snip of the payload after cmd.
+var drivingRecordHexKey = map[int]string{
+	0x05: "drv.vehicle_info_hex",
+	0x06: "drv.signal_config_hex",
+	0x07: "drv.unique_number_hex",
+	0x08: "drv.speed_log_hex",
+	0x09: "drv.doubtful_hex",
+	0x10: "drv.timeout_driving_hex",
+	0x12: "drv.power_log_hex",
+	0x13: "drv.param_modify_hex",
+	0x14: "drv.speed_log_ext_hex",
 }
 
 // bcdNowUTC6 returns YYMMDDhhmmss as 6 BCD bytes (JT808 server time 0x8004).

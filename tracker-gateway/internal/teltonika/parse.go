@@ -287,6 +287,66 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["98"]; ok {
 		raw["geofence.zone20"] = asIOFloat(v)
 	}
+	if v, ok := io["99"]; ok {
+		raw["geofence.zone21"] = asIOFloat(v)
+	}
+	if v, ok := io["153"]; ok {
+		raw["geofence.zone22"] = asIOFloat(v)
+	}
+	if v, ok := io["154"]; ok {
+		raw["geofence.zone23"] = asIOFloat(v)
+	}
+	if v, ok := io["190"]; ok {
+		raw["geofence.zone24"] = asIOFloat(v)
+	}
+	if v, ok := io["191"]; ok {
+		raw["geofence.zone25"] = asIOFloat(v)
+	}
+	if v, ok := io["192"]; ok {
+		raw["geofence.zone26"] = asIOFloat(v)
+	}
+	if v, ok := io["193"]; ok {
+		raw["geofence.zone27"] = asIOFloat(v)
+	}
+	if v, ok := io["194"]; ok {
+		raw["geofence.zone28"] = asIOFloat(v)
+	}
+	if v, ok := io["195"]; ok {
+		raw["geofence.zone29"] = asIOFloat(v)
+	}
+	if v, ok := io["196"]; ok {
+		raw["geofence.zone30"] = asIOFloat(v)
+	}
+	if v, ok := io["197"]; ok {
+		raw["geofence.zone31"] = asIOFloat(v)
+	}
+	if v, ok := io["198"]; ok {
+		raw["geofence.zone32"] = asIOFloat(v)
+	}
+	if v, ok := io["208"]; ok {
+		raw["geofence.zone33"] = asIOFloat(v)
+	}
+	if v, ok := io["209"]; ok {
+		raw["geofence.zone34"] = asIOFloat(v)
+	}
+	if v, ok := io["216"]; ok {
+		raw["geofence.zone35"] = asIOFloat(v)
+	}
+	if v, ok := io["217"]; ok {
+		raw["geofence.zone36"] = asIOFloat(v)
+	}
+	if v, ok := io["218"]; ok {
+		raw["geofence.zone37"] = asIOFloat(v)
+	}
+	if v, ok := io["219"]; ok {
+		raw["geofence.zone38"] = asIOFloat(v)
+	}
+	if v, ok := io["220"]; ok {
+		raw["geofence.zone39"] = asIOFloat(v)
+	}
+	if v, ok := io["221"]; ok {
+		raw["geofence.zone40"] = asIOFloat(v)
+	}
 	if v, ok := io["175"]; ok {
 		raw["geofence.auto"] = asIOFloat(v)
 	}

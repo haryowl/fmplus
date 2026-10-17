@@ -503,6 +503,19 @@ func TestPromoteTeltonikaScalars_Geofence12to20AutoTempID(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_Geofence21to40(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{
+		"99": 1, "153": 2, "154": 0, "190": 3, "198": 1, "208": 2, "221": 1,
+	})
+	if raw["geofence.zone21"] != 1.0 || raw["geofence.zone23"] != 0.0 || raw["geofence.zone32"] != 1.0 {
+		t.Fatalf("21-32=%v", raw)
+	}
+	if raw["geofence.zone33"] != 2.0 || raw["geofence.zone40"] != 1.0 {
+		t.Fatalf("33-40=%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_BLELuminosityCustom(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{

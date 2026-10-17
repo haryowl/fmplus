@@ -226,6 +226,14 @@ func TestParseDrivingRecord(t *testing.T) {
 	if m9["drv.speed_log_hex"] != "beef" {
 		t.Fatalf("speed_log=%v", m9)
 	}
+	m10 := parseDrivingRecord([]byte{0x07, 0x11, 0x22})
+	if m10["drv.unique_number_hex"] != "1122" || m10["drv_cmd_name"] != "unique_number" {
+		t.Fatalf("unique=%v", m10)
+	}
+	m11 := parseDrivingRecord([]byte{0x10, 0xaa})
+	if m11["drv.timeout_driving_hex"] != "aa" {
+		t.Fatalf("timeout=%v", m11)
+	}
 }
 
 func TestParseRegister(t *testing.T) {
