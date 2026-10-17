@@ -12,8 +12,8 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
 | JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/heartbeat | — | platform link only |
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling | — | A/V hooks only |
-| Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/0x8a/0x94/0x21 | 0x80 GPRS | 0x16 GPS offset scan; 0x15/0x21 ack by serial |
-| Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records | cmd 108 SMS | CRC-CCITT Kermit; ACK cmd 100 (`64 01`) |
+| Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/0x8a/0x94/0x21 | 0x80 GPRS | 0x7979 long frames; 0x16 offset scan; ack by serial |
+| Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records | cmd 108 SMS | Kermit CRC; ACK 100; cmd7 ack corr=`108` |
 | Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + CRC16 Modbus | 0x01 + CRC | ack `0x02`+CRC; ignition via tag `0x46` |
 
 **Do not claim “full JT/T” or production 2-way until an adapter is marked `certified`.** Status lives in each `Adapter.Status()` and Admin protocol labels.

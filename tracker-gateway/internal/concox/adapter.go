@@ -49,16 +49,28 @@ func (Adapter) EncodeDownlinkSerial(cmd store.Command, serial uint16) ([]byte, e
 	return buildFrame(0x80, serial, info), nil
 }
 
-// DownlinkCorrID extracts the serial from a GT06 0x78 frame.
+// DownlinkCorrID extracts the serial from a GT06 0x7878 or extended 0x7979 frame.
 func DownlinkCorrID(framed []byte) string {
-	if len(framed) < 10 || framed[0] != 0x78 || framed[1] != 0x78 {
+	if len(framed) < 10 {
 		return ""
 	}
-	plen := int(framed[2])
-	if 3+plen > len(framed) || plen < 5 {
+	var content []byte
+	switch {
+	case framed[0] == 0x78 && framed[1] == 0x78:
+		plen := int(framed[2])
+		if 3+plen > len(framed) || plen < 5 {
+			return ""
+		}
+		content = framed[3 : 3+plen]
+	case framed[0] == 0x79 && framed[1] == 0x79:
+		plen := int(binary.BigEndian.Uint16(framed[2:4]))
+		if 4+plen > len(framed) || plen < 5 {
+			return ""
+		}
+		content = framed[4 : 4+plen]
+	default:
 		return ""
 	}
-	content := framed[3 : 3+plen]
 	ser := binary.BigEndian.Uint16(content[len(content)-4 : len(content)-2])
 	return fmt.Sprintf("%d", ser)
 }
@@ -70,9 +82,25 @@ func buildFrame(proto byte, serial uint16, extra []byte) []byte {
 	ser := make([]byte, 2)
 	binary.BigEndian.PutUint16(ser, serial)
 	body = append(body, ser...)
-	crcIn := append([]byte{byte(1 + len(extra) + 2 + 2)}, body...)
+	packetLen := len(body) + 2 // includes CRC
+	if packetLen <= 255 {
+		crcIn := append([]byte{byte(packetLen)}, body...)
+		sum := crc16ITU(crcIn)
+		out := []byte{0x78, 0x78, byte(packetLen)}
+		out = append(out, body...)
+		crcBuf := make([]byte, 2)
+		binary.BigEndian.PutUint16(crcBuf, sum)
+		out = append(out, crcBuf...)
+		out = append(out, 0x0d, 0x0a)
+		return out
+	}
+	// Extended GT06: 79 79 | len u16 BE | body | crc | 0D 0A
+	lenBuf := make([]byte, 2)
+	binary.BigEndian.PutUint16(lenBuf, uint16(packetLen))
+	crcIn := append(append([]byte{}, lenBuf...), body...)
 	sum := crc16ITU(crcIn)
-	out := []byte{0x78, 0x78, byte(len(body) + 2)}
+	out := []byte{0x79, 0x79}
+	out = append(out, lenBuf...)
 	out = append(out, body...)
 	crcBuf := make([]byte, 2)
 	binary.BigEndian.PutUint16(crcBuf, sum)

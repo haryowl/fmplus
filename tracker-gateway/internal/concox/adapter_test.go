@@ -36,3 +36,18 @@ func TestEncodeDownlink_SerialCorr(t *testing.T) {
 		t.Fatalf("corr=%s", DownlinkCorrID(out))
 	}
 }
+
+func TestBuildFrame_Extended7979(t *testing.T) {
+	// packetLen = len(extra)+5; need >255 → extra ≥ 251
+	extra := make([]byte, 251)
+	for i := range extra {
+		extra[i] = byte(i)
+	}
+	frame := buildFrame(0x80, 7, extra)
+	if frame[0] != 0x79 || frame[1] != 0x79 {
+		t.Fatalf("want 7979 got %x", frame[:2])
+	}
+	if DownlinkCorrID(frame) != "7" {
+		t.Fatalf("corr=%s", DownlinkCorrID(frame))
+	}
+}

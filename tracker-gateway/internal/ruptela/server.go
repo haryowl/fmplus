@@ -114,8 +114,10 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				if resp == "" {
 					resp = fmt.Sprintf("ruptela_cmd_7 %x", data)
 				}
-				_ = st.AckLatestSent(ctx, device.ID, true, resp)
+				ok := !ruptelaCmdFailed(resp)
+				_ = st.AckCommand(ctx, device.ID, "108", ok, resp)
 				_ = st.TouchSeen(ctx, device)
+				flushPending(ctx, conn, st, device.ID)
 			}
 			_ = writeRecordsAck(conn, true)
 		case 2, 105, 107: // config / command responses
@@ -128,8 +130,10 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				if len(rest) > 0 {
 					resp = strings.TrimSpace(string(rest))
 				}
-				_ = st.AckLatestSent(ctx, device.ID, true, resp)
+				ok := !ruptelaCmdFailed(resp)
+				_ = st.AckLatestSent(ctx, device.ID, ok, resp)
 				_ = st.TouchSeen(ctx, device)
+				flushPending(ctx, conn, st, device.ID)
 			}
 			_ = writeRecordsAck(conn, true)
 		default:
@@ -181,8 +185,21 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 			_ = st.MarkCommandFailed(ctx, cmd.ID, "write failed: "+err.Error())
 			return
 		}
-		_ = st.MarkCommandSent(ctx, cmd.ID)
+		_ = st.MarkCommandSentCorr(ctx, cmd.ID, "108")
 	}
+}
+
+func ruptelaCmdFailed(resp string) bool {
+	s := strings.TrimSpace(strings.ToUpper(resp))
+	if s == "" {
+		return false
+	}
+	for _, p := range []string{"ERROR", "FAIL", "NACK", "DENIED", "UNKNOWN"} {
+		if strings.HasPrefix(s, p) || strings.Contains(s, " "+p) {
+			return true
+		}
+	}
+	return false
 }
 
 // writeRecordsAck sends official cmd 100 ACK: 00 02 64 01 [CRC] (or ACK=0 NACK).

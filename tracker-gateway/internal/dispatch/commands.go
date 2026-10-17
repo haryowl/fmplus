@@ -24,6 +24,8 @@ func downlinkCorr(protocol, commandType string, payload []byte, sess *protocol.C
 		return jt808.DownlinkCorrID(payload)
 	case protocol == "concox" || commandType == "concox_gprs":
 		return concox.DownlinkCorrID(payload)
+	case protocol == "ruptela" || commandType == "ruptela_sms":
+		return "108"
 	default:
 		if sess != nil && sess.Meta != nil && sess.Meta["seq"] != "" {
 			return sess.Meta["seq"]

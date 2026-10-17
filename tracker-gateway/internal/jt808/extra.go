@@ -38,6 +38,45 @@ func parseAdditionalInfo(body []byte) map[string]any {
 			if l >= 2 {
 				add[key] = float64(binary.BigEndian.Uint16(val)) / 10.0
 			}
+		case 0x11: // overspeed extra: loc type + optional region id
+			if l >= 1 {
+				add["overspeed_loc_type"] = int(val[0])
+				add["alarm.overspeed"] = true
+			}
+			if l >= 5 {
+				add["overspeed_region_id"] = int(binary.BigEndian.Uint32(val[1:5]))
+			}
+		case 0x12: // in/out area/line
+			if l >= 1 {
+				add["area_loc_type"] = int(val[0])
+			}
+			if l >= 6 {
+				add["area_id"] = int(binary.BigEndian.Uint32(val[1:5]))
+				dir := int(val[5])
+				add["area_direction"] = dir
+				if dir == 0 {
+					add["alarm.fence_in"] = true
+				} else {
+					add["alarm.fence_out"] = true
+				}
+			}
+		case 0x25: // extended vehicle signal status bits
+			if l >= 4 {
+				sig := binary.BigEndian.Uint32(val)
+				add[key] = sig
+				add["status.acc"] = sig&0x01 != 0
+				add["status.door"] = sig&0x0400 != 0 || sig&0x1000 != 0
+				add["status.low_beam"] = sig&0x0100 != 0
+				add["status.high_beam"] = sig&0x0200 != 0
+			}
+		case 0x30: // wireless network signal strength
+			if l >= 1 {
+				add["gsm_signal"] = int(val[0])
+			}
+		case 0x31: // GNSS satellite count
+			if l >= 1 {
+				add["gnss_sats"] = int(val[0])
+			}
 		case 0x14, 0x15, 0x16, 0x17: // video / alarm related
 			add[key] = fmt.Sprintf("%x", val)
 		case 0x64, 0x65, 0x66, 0x67: // Su Biao ADAS/DSM/TPMS/BSD (vendor length varies)

@@ -8,6 +8,24 @@ import (
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
+func TestParseAdditionalInfo_AreaAndSignal(t *testing.T) {
+	base := make([]byte, 28)
+	// 0x12 in/out area: type, id u32, direction=0 (in)
+	// 0x25 signal dword with ACC bit0
+	// 0x30 gsm=20, 0x31 sats=12
+	tlv, _ := hex.DecodeString("1206000000010025040000000130011431010c")
+	add := parseAdditionalInfo(append(base, tlv...))
+	if add["alarm.fence_in"] != true {
+		t.Fatalf("fence_in missing: %v", add)
+	}
+	if add["status.acc"] != true {
+		t.Fatalf("acc: %v", add)
+	}
+	if add["gsm_signal"] != 20 || add["gnss_sats"] != 12 {
+		t.Fatalf("signal/sats: %v", add)
+	}
+}
+
 func TestParseAdditionalInfo_MileageFuel(t *testing.T) {
 	// 28-byte location stub + TLV 0x01 mileage + 0x02 fuel
 	base := make([]byte, 28)
