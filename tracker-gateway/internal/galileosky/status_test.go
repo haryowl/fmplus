@@ -60,3 +60,14 @@ func TestApplyStatusTags_BatteryJamming(t *testing.T) {
 		t.Fatalf("%v", raw)
 	}
 }
+
+func TestApplyStatusTags_PowerExt(t *testing.T) {
+	raw := map[string]any{}
+	evs := applyStatusTags(map[byte][]byte{0x44: {0x01}}, raw)
+	if len(evs) != 1 || evs[0].AlarmType != "power_ext" {
+		t.Fatalf("evs=%+v", evs)
+	}
+	if raw["alarm.power_ext"] != true {
+		t.Fatalf("%v", raw)
+	}
+}

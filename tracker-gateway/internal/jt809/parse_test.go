@@ -40,6 +40,10 @@ func TestParseVehicleUplink_MinimalGNSS(t *testing.T) {
 	if !okH || fixH.RawAttrs["location_history"] != true {
 		t.Fatalf("history=%v", fixH.RawAttrs)
 	}
+	fixS, _, okS := parseVehicleUplink(0x1202, rest)
+	if !okS || fixS.RawAttrs["location_supplement"] != true {
+		t.Fatalf("supplement=%v", fixS.RawAttrs)
+	}
 }
 
 func TestParseVehicleUplink_AltitudeState(t *testing.T) {

@@ -158,6 +158,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   108_safety_status_can_c0_history.sql
 #   109_register_aliases_movement_analog.sql
 #   110_attrs_hwfw_dallas_photo.sql
+#   111_0802_loc_ruptela_parity_809_galileo.sql
 npm run db:migrate
 
 cd tracker-gateway

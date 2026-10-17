@@ -443,6 +443,8 @@ func parseVehicleUplink(msgID uint16, rest []byte) (store.Fix, string, bool) {
 	switch msgID {
 	case 0x1200:
 		out.RawAttrs["location_realtime"] = true
+	case 0x1202:
+		out.RawAttrs["location_supplement"] = true
 	case 0x1203:
 		out.RawAttrs["location_history"] = true
 	}

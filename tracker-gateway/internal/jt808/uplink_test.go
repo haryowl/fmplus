@@ -205,6 +205,15 @@ func TestParseMultimediaRetrieveResp(t *testing.T) {
 	if m["media_channel"] != 1 || m["media_event"] != 2 {
 		t.Fatalf("%v", m)
 	}
+	long := make([]byte, 41)
+	copy(long, body)
+	m2 := parseMultimediaRetrieveResp(long)
+	if m2["media_has_location"] != true {
+		t.Fatalf("%v", m2)
+	}
+	if loc := multimediaRetrieveLocationBody(long); len(loc) != 28 {
+		t.Fatalf("loc=%d", len(loc))
+	}
 }
 
 func putI32BE(b []byte, v int32) {

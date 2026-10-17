@@ -59,6 +59,7 @@ func applyStatusTags(tags map[byte][]byte, raw map[string]any) []*store.SafetyEv
 			raw["status.ext44"] = val
 			if val&0x01 != 0 {
 				raw["alarm.power_ext"] = true
+				add("power_ext", 2, map[string]any{"alarm.power_ext": true, key: val})
 			}
 			if val&0x02 != 0 {
 				raw["alarm.battery_low"] = true

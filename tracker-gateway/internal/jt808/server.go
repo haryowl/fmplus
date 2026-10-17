@@ -1076,6 +1076,9 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			}
 			_ = st.AckCommand(ctx, sess.device.ID, corr, true,
 				fmt.Sprintf("jt808_0802 count=%v", patch["media_count"]))
+			if loc := multimediaRetrieveLocationBody(body); len(loc) >= 28 {
+				ingestLocation(ctx, conn, st, sessions, sess, loc, protoHint)
+			}
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0805: // camera shoot response (应答流水号 + result + media ids)
@@ -1400,6 +1403,15 @@ func multimediaLocationBody(body []byte) []byte {
 		return nil
 	}
 	return body[8:]
+}
+
+// multimediaRetrieveLocationBody returns first-item location from 0x0802 when present.
+// Layout: seq(2)+count(4)+id(4)+type+channel+event + optional 0x0200 (28+).
+func multimediaRetrieveLocationBody(body []byte) []byte {
+	if len(body) < 41 {
+		return nil
+	}
+	return body[13:]
 }
 
 // wrap8301Body builds minimal 0x8301 event setting: count + (id,len,text) items.
@@ -2592,6 +2604,9 @@ func parseMultimediaRetrieveResp(body []byte) map[string]any {
 	}
 	if len(body) >= 13 {
 		out["media_event"] = int(body[12])
+	}
+	if len(body) >= 41 {
+		out["media_has_location"] = true
 	}
 	snip := body
 	if len(snip) > 48 {

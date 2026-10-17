@@ -148,3 +148,11 @@ func TestPromoteRuptelaScalars_IButton(t *testing.T) {
 		t.Fatalf("%v", raw)
 	}
 }
+
+func TestPromoteRuptelaScalars_OverspeedICCID(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{"255": 90, "11": 898600123})
+	if raw["overspeed.threshold"] != 90.0 || raw["gsm.iccid"] != "898600123" {
+		t.Fatalf("%v", raw)
+	}
+}

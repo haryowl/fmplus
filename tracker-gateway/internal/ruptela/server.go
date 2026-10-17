@@ -450,11 +450,17 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["241"]; ok {
 		raw["gsm.operator"] = asFloat64(v)
 	}
+	if v, ok := io["11"]; ok {
+		raw["gsm.iccid"] = fmt.Sprintf("%v", v)
+	}
 	if v, ok := io["78"]; ok {
 		raw["ibutton.id"] = fmt.Sprintf("%v", v)
 	}
 	if v, ok := io["250"]; ok {
 		raw["trip.distance"] = asFloat64(v)
+	}
+	if v, ok := io["255"]; ok {
+		raw["overspeed.threshold"] = asFloat64(v)
 	}
 	if v, ok := io["181"]; ok {
 		raw["gnss.pdop"] = asFloat64(v) / 10.0
