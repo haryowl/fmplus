@@ -14,9 +14,19 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling | — | A/V hooks only |
 | Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm | 0x80 GPRS | heartbeat patches ACC without 0,0 fix |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | records + IO | cmd 108 SMS | config responses → command ack |
-| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags | 0x01 framed | reply tags → command ack; compressed experimental |
+| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + CRC16 Modbus | 0x01 + CRC | ack `0x02`+CRC; ignition via tag `0x46` |
 
 **Do not claim “full JT/T” or production 2-way until an adapter is marked `certified`.** Status lives in each `Adapter.Status()` and Admin protocol labels.
+
+### Official protocol sources
+
+| Vendor | Docs used |
+|--------|-----------|
+| Teltonika | [Codec](https://wiki.teltonika-gps.com/view/Codec) (8 / 8E / 12), [Data Sending Protocols](https://wiki.teltonika-gps.com/view/Teltonika_Data_Sending_Protocols), [Parameter / AVL IDs](https://wiki.teltonika-gps.com/view/Parameter_list) (e.g. FMB `io.239` ignition, `246` towing, `247` crash, `255` overspeed) |
+| Galileosky | [Protocol](https://base.galileosky.com/articles/#!en-documentation/galileosky-protocol), [Command list](https://base.galileosky.com/articles/#!en-documentation/command-list/q/command/qp/1) (SPA — cross-checked with published server-exchange PDF: CRC-16 Modbus, ack `0x02`+CRC, tag table) |
+| Concox / CMS | [CMSV7 download center](https://www.cmsv7.com/downloadCenter/index.html?lang=en&pageNow=1&pageSize=12&class1=3&class2=) + GT06 family protocol (login `0x01`, GPS `0x12`, status `0x13`, alarm `0x16`, server cmd `0x80`, CRC-ITU) |
+
+Adapters stay **partial** until exercised against real devices/firmware; wiki/PDF variance by model is expected.
 
 ### Command types (Admin → Device Manager)
 
@@ -53,6 +63,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   053_teltonika_io_depth.sql
 #   054_concox_alarm_maps.sql
 #   055_subiao_event_maps.sql
+#   056_galileosky_official_tags.sql
 npm run db:migrate
 
 cd tracker-gateway

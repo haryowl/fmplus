@@ -15,7 +15,8 @@ import (
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
-// Serve Galileosky Easy/Main TCP (header 0x01 tag packets).
+// Serve Galileosky Easy/Main TCP per official server exchange protocol:
+// [0x01][len LE, high bit=archive][tags…][CRC-16 Modbus]; ack = [0x02][crc LE].
 func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol.Registry) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -62,28 +63,25 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		if hdr[0] != 0x01 {
 			continue
 		}
-		length := int(binary.LittleEndian.Uint16(hdr[1:3]))
-		if length < 1 || length > 64*1024 {
+		lenRaw := binary.LittleEndian.Uint16(hdr[1:3])
+		tagLen := int(lenRaw & 0x7fff)
+		if tagLen < 1 || tagLen > 1000 {
 			return
 		}
-		body := make([]byte, length)
+		// tags + 2-byte CRC
+		body := make([]byte, tagLen+2)
 		if _, err := io.ReadFull(conn, body); err != nil {
 			return
 		}
-		if length < 2 {
-			continue
+		tagsBytes := body[:tagLen]
+		gotCRC := binary.LittleEndian.Uint16(body[tagLen : tagLen+2])
+		packetForCRC := append(append([]byte{}, hdr...), tagsBytes...)
+		calc := crc16Modbus(packetForCRC)
+		if calc != gotCRC {
+			log.Printf("[galileosky] bad CRC from %s got=%04x want=%04x — still parsing", conn.RemoteAddr(), gotCRC, calc)
 		}
-		payload := body[:length-1]
-		payload, compressed := maybeDecompress(hdr[0], payload)
-		if compressed {
-			log.Printf("[galileosky] compressed packet from %s (experimental — ack only)", conn.RemoteAddr())
-			if device != nil {
-				_ = st.TouchSeen(ctx, device)
-			}
-			_ = writeAck(conn)
-			continue
-		}
-		tags := parseTags(payload)
+
+		tags := parseTags(tagsBytes)
 		if v, ok := tags[0x03]; ok && len(v) >= 15 {
 			imei = string(v[:15])
 			device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "galileosky")
@@ -120,13 +118,13 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			flushPending(ctx, conn, st, device.ID)
 		} else if device != nil && !hasFix {
 			_ = st.TouchSeen(ctx, device)
-			// Non-fix uplink (status / command reply tags) closes the sent→acked loop.
 			if looksLikeCommandReply(tags) {
 				_ = st.AckLatestSent(ctx, device.ID, true, fmt.Sprintf("galileosky tags %v", tagsToRaw(tags)))
 			}
 			flushPending(ctx, conn, st, device.ID)
 		}
-		_ = writeAck(conn)
+		// Official confirm: header 0x02 + CRC of received packet.
+		_ = writeAck(conn, gotCRC)
 	}
 }
 
@@ -134,13 +132,11 @@ func looksLikeCommandReply(tags map[byte][]byte) bool {
 	if len(tags) == 0 {
 		return false
 	}
-	// Reply / confirm tags used by various Galileosky firmwares (model-dependent).
 	for _, t := range []byte{0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xff} {
 		if _, ok := tags[t]; ok {
 			return true
 		}
 	}
-	// Any packet with more than just IMEI is treated as a candidate reply.
 	if _, onlyIMEI := tags[0x03]; onlyIMEI && len(tags) == 1 {
 		return false
 	}
@@ -172,25 +168,31 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 	}
 }
 
-func writeAck(conn net.Conn) error {
-	_, err := conn.Write([]byte{0x02, 0x00, 0x00})
+func writeAck(conn net.Conn, packetCRC uint16) error {
+	buf := []byte{0x02, 0x00, 0x00}
+	binary.LittleEndian.PutUint16(buf[1:3], packetCRC)
+	_, err := conn.Write(buf)
 	return err
 }
 
 func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 	coords, ok := tags[0x30]
-	if !ok || len(coords) < 8 {
+	if !ok || len(coords) < 9 {
 		return store.Fix{}, false
 	}
-	latRaw := int32(binary.LittleEndian.Uint32(coords[0:4]))
-	lonRaw := int32(binary.LittleEndian.Uint32(coords[4:8]))
+	// Official: flags(1) + lat int32/1e6 + lon int32/1e6
+	flags := coords[0]
+	validNibble := (flags >> 4) & 0x0f
+	// 0 = GNSS OK, 2 = LBS OK; other = invalid
+	if validNibble != 0 && validNibble != 2 {
+		return store.Fix{}, false
+	}
+	sats := int(flags & 0x0f)
+	latRaw := int32(binary.LittleEndian.Uint32(coords[1:5]))
+	lonRaw := int32(binary.LittleEndian.Uint32(coords[5:9]))
 	lat := float64(latRaw) / 1_000_000.0
 	lon := float64(lonRaw) / 1_000_000.0
-	var sats *int
-	if len(coords) >= 9 {
-		n := int(coords[8])
-		sats = &n
-	}
+
 	var recorded time.Time
 	if dt, ok := tags[0x20]; ok && len(dt) >= 4 {
 		sec := binary.LittleEndian.Uint32(dt[0:4])
@@ -205,18 +207,19 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		Lat:            lat,
 		Lon:            lon,
 		RecordedAt:     recorded,
-		Satellites:     sats,
+		Satellites:     &sats,
 		SourceProtocol: "galileosky",
 		RawAttrs:       map[string]any{},
 	}
-	if sc, ok := tags[0x33]; ok && len(sc) >= 2 {
-		spd := float64(sc[0])
-		hdg := float64(sc[1]) * 2
+	if sc, ok := tags[0x33]; ok && len(sc) >= 4 {
+		spd := float64(binary.LittleEndian.Uint16(sc[0:2])) / 10.0
+		hdg := float64(binary.LittleEndian.Uint16(sc[2:4])) / 10.0
 		fix.Speed = &spd
 		fix.Heading = &hdg
 	}
-	if din, ok := tags[0x01]; ok && len(din) >= 1 {
-		b := din[0]&0x01 != 0
+	// Input status bit0 = input 0 (common ignition wiring); not tag 0x01 (hw version).
+	if st, ok := tags[0x46]; ok && len(st) >= 1 {
+		b := st[0]&0x01 != 0
 		fix.Ignition = &b
 	}
 	if odo, ok := tags[0xd4]; ok && len(odo) >= 4 {
