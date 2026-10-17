@@ -3,7 +3,8 @@ ALTER TABLE tracker_commands DROP CONSTRAINT IF EXISTS tracker_commands_command_
 ALTER TABLE tracker_commands
   ADD CONSTRAINT tracker_commands_command_type_check CHECK (command_type IN (
     'raw', 'text', 'jt808', 'jt808_8103', 'jt808_8500',
-    'teltonika_codec12', 'concox_gprs', 'param', 'control', 'vehicle_control'
+    'teltonika_codec12', 'concox_gprs', 'ruptela_sms',
+    'param', 'control', 'vehicle_control'
   ));
 
 INSERT INTO tracker_protocol_params (protocol, vendor_key, label, value_type, description) VALUES

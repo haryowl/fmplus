@@ -206,20 +206,23 @@ func tryFlushCommands(ctx context.Context, conn net.Conn, st *store.Store, sessi
 	if sess.device == nil {
 		return
 	}
-	cmd, err := st.NextPendingCommand(ctx, sess.device.ID)
-	if err != nil || cmd == nil {
-		return
-	}
-	payload := encodeJT808Downlink(sess, cmd)
-	if len(payload) == 0 {
-		return
-	}
-	if _, err := conn.Write(payload); err == nil {
+	for i := 0; i < 8; i++ {
+		cmd, err := st.NextPendingCommand(ctx, sess.device.ID)
+		if err != nil || cmd == nil {
+			return
+		}
+		payload := encodeJT808Downlink(sess.phone, &sess.seq, cmd)
+		if len(payload) == 0 {
+			return
+		}
+		if _, err := conn.Write(payload); err != nil {
+			return
+		}
 		_ = st.MarkCommandSent(ctx, cmd.ID)
 	}
 }
 
-func encodeJT808Downlink(sess *session, cmd *store.Command) []byte {
+func encodeJT808Downlink(phone string, seq *uint16, cmd *store.Command) []byte {
 	if cmd == nil {
 		return nil
 	}
@@ -231,7 +234,6 @@ func encodeJT808Downlink(sess *session, cmd *store.Command) []byte {
 	var body []byte
 	switch cmd.CommandType {
 	case "jt808_8103", "param":
-		// 0x8103 set terminal params — body: count(1) + raw param TLVs from hex/text
 		msgID = 0x8103
 		raw := cmd.PayloadBytes()
 		if len(raw) == 0 {
@@ -239,7 +241,6 @@ func encodeJT808Downlink(sess *session, cmd *store.Command) []byte {
 		}
 		body = append([]byte{1}, raw...)
 	case "jt808_8500", "control", "vehicle_control":
-		// 0x8500 vehicle control — flag byte (bit0 oil/electricity etc.)
 		msgID = 0x8500
 		flag := byte(0)
 		if text == "1" || text == "cut" || text == "oil_cut" {
@@ -250,17 +251,16 @@ func encodeJT808Downlink(sess *session, cmd *store.Command) []byte {
 		}
 		body = []byte{flag}
 	default:
-		// 0x8300 text message: flag(1) + text
 		body = append([]byte{0x01}, []byte(text)...)
 	}
-	return buildDownlinkFrame(sess, msgID, body)
+	return buildDownlinkFrame(phone, seq, msgID, body)
 }
 
-func buildDownlinkFrame(sess *session, msgID uint16, body []byte) []byte {
+func buildDownlinkFrame(phone string, seq *uint16, msgID uint16, body []byte) []byte {
 	header := make([]byte, 12)
 	binary.BigEndian.PutUint16(header[0:2], msgID)
 	binary.BigEndian.PutUint16(header[2:4], uint16(len(body)&0x3ff))
-	phoneDigits := sess.phone
+	phoneDigits := phone
 	for len(phoneDigits) < 12 {
 		phoneDigits = "0" + phoneDigits
 	}
@@ -272,8 +272,12 @@ func buildDownlinkFrame(sess *session, msgID uint16, body []byte) []byte {
 		lo := phoneDigits[i*2+1] - '0'
 		header[4+i] = (hi << 4) | lo
 	}
-	sess.seq++
-	binary.BigEndian.PutUint16(header[10:12], sess.seq)
+	if seq != nil {
+		*seq++
+		binary.BigEndian.PutUint16(header[10:12], *seq)
+	} else {
+		binary.BigEndian.PutUint16(header[10:12], 1)
+	}
 	msg := append(header, body...)
 	msg = append(msg, bcc(msg))
 	return escape(msg)

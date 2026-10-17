@@ -1887,6 +1887,8 @@ export default function AdminConsole() {
                         <option value="jt808_8103">JT808 set params (0x8103)</option>
                         <option value="jt808_8500">JT808 vehicle control (0x8500)</option>
                         <option value="teltonika_codec12">Teltonika Codec12</option>
+                        <option value="concox_gprs">Concox GPRS (0x80)</option>
+                        <option value="ruptela_sms">Ruptela SMS via GPRS (108)</option>
                         <option value="raw">Raw bytes (hex in payload)</option>
                       </select>
                     </label>

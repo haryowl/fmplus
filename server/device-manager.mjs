@@ -247,9 +247,19 @@ export async function enqueueCommand(tenantId, deviceId, body) {
       tenantId,
       deviceId,
       device.rows[0].protocol,
-      ["raw", "text", "jt808", "jt808_8103", "jt808_8500", "teltonika_codec12", "param", "control", "vehicle_control"].includes(
-        body.commandType,
-      )
+      [
+        "raw",
+        "text",
+        "jt808",
+        "jt808_8103",
+        "jt808_8500",
+        "teltonika_codec12",
+        "concox_gprs",
+        "ruptela_sms",
+        "param",
+        "control",
+        "vehicle_control",
+      ].includes(body.commandType)
         ? body.commandType
         : "text",
       String(body.payloadText || body.text || "").slice(0, 4000),

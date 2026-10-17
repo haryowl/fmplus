@@ -96,9 +96,28 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				}
 			}
 			_ = writeAck(conn, len(records))
+			flushPending(ctx, conn, st, device.ID)
 		default:
 			_ = writeAck(conn, 0)
 		}
+	}
+}
+
+func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID string) {
+	enc := Adapter{}
+	for i := 0; i < 4; i++ {
+		cmd, err := st.NextPendingCommand(ctx, deviceID)
+		if err != nil || cmd == nil {
+			return
+		}
+		payload, err := enc.EncodeDownlink(*cmd)
+		if err != nil || len(payload) == 0 {
+			return
+		}
+		if _, err := conn.Write(payload); err != nil {
+			return
+		}
+		_ = st.MarkCommandSent(ctx, cmd.ID)
 	}
 }
 

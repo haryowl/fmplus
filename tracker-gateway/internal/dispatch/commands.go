@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/concox"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/jt808"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/protocol"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/ruptela"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/teltonika"
 )
@@ -19,6 +21,8 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 	}
 	tel := teltonika.Adapter{}
 	cx := concox.Adapter{}
+	rup := ruptela.Adapter{}
+	jt := jt808.Adapter{}
 	for _, cmd := range cmds {
 		sess, ok := sessions.SessionByDevice(cmd.DeviceID)
 		if !ok || sess.Conn == nil {
@@ -30,9 +34,18 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 			payload, err = tel.EncodeDownlink(cmd)
 		case cmd.Protocol == "concox" || cmd.CommandType == "concox_gprs":
 			payload, err = cx.EncodeDownlink(cmd)
-		case cmd.Protocol == "jt808" || cmd.Protocol == "subiao":
-			// Prefer on-connection flush in jt808 (needs phone/seq); skip if already handled.
-			continue
+		case cmd.Protocol == "ruptela" || cmd.CommandType == "ruptela_sms":
+			payload, err = rup.EncodeDownlink(cmd)
+		case cmd.Protocol == "jt808" || cmd.Protocol == "subiao" ||
+			cmd.CommandType == "jt808" || cmd.CommandType == "jt808_8103" || cmd.CommandType == "jt808_8500":
+			phone := ""
+			if sess.Meta != nil {
+				phone = sess.Meta["phone"]
+			}
+			if phone == "" {
+				continue // wait for uplink flush with known phone
+			}
+			payload, err = jt.EncodeDownlink(cmd, phone)
 		default:
 			payload = cmd.PayloadBytes()
 			if len(payload) == 0 && cmd.PayloadText != "" {

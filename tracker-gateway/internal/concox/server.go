@@ -109,6 +109,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 							log.Printf("[concox] ingest %s: %v", imei, err)
 						}
 					}
+					flushPending(ctx, conn, st, device.ID)
 				}
 				_ = writeReply(conn, proto, serial, nil)
 			case 0x16: // alarm (often includes GPS)
@@ -183,6 +184,24 @@ func decodeFrame(frame []byte) (proto byte, info []byte, serial uint16, err erro
 	serial = binary.BigEndian.Uint16(content[len(content)-4 : len(content)-2])
 	info = content[1 : len(content)-4]
 	return proto, info, serial, nil
+}
+
+func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID string) {
+	enc := Adapter{}
+	for i := 0; i < 4; i++ {
+		cmd, err := st.NextPendingCommand(ctx, deviceID)
+		if err != nil || cmd == nil {
+			return
+		}
+		payload, err := enc.EncodeDownlink(*cmd)
+		if err != nil || len(payload) == 0 {
+			return
+		}
+		if _, err := conn.Write(payload); err != nil {
+			return
+		}
+		_ = st.MarkCommandSent(ctx, cmd.ID)
+	}
 }
 
 func writeReply(conn net.Conn, proto byte, serial uint16, extra []byte) error {
