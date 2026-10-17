@@ -115,6 +115,23 @@ func TestSafetyFromLocationTLVAlarms_Fence(t *testing.T) {
 	}
 }
 
+func TestParseAdditionalInfo_DriverIC32(t *testing.T) {
+	base := make([]byte, 28)
+	// status=1 login, time BCD 6 bytes, result=0, nameLen=3 "Bob", card "IC99" (len=16)
+	tlv, _ := hex.DecodeString("3210012601011201000003426f6249433939")
+	add := parseAdditionalInfo(append(base, tlv...))
+	if add["driver.ic_login"] != true || add["driver.ic_status"] != 1 {
+		t.Fatalf("login=%v", add)
+	}
+	if add["driver.ic_name"] != "Bob" || add["driver.ic_card"] != "IC99" {
+		t.Fatalf("name/card=%v", add)
+	}
+	ev := safetyFromLocationTLVAlarms(add, store.Fix{Lat: 1, Lon: 2, RecordedAt: time.Now().UTC()}, "jt808")
+	if ev == nil || ev.AlarmType != "driver_ic_login" {
+		t.Fatalf("safety=%+v", ev)
+	}
+}
+
 func TestParseAdditionalInfo_RouteTimeAndIO(t *testing.T) {
 	base := make([]byte, 28)
 	// 0x13: loc=1, route_id=7, result=1 (too long), time=120

@@ -39,6 +39,16 @@ func TestParseMultimediaAndTransparent(t *testing.T) {
 	if m["media_id"] != uint32(42) || m["media_type"] != 0 {
 		t.Fatalf("%v", m)
 	}
+	long := make([]byte, 36)
+	binary.BigEndian.PutUint32(long[0:4], 99)
+	long[4], long[5], long[6], long[7] = 0, 1, 2, 3
+	ml := parseMultimediaMeta(long)
+	if ml["media_id"] != uint32(99) || ml["media_channel"] != 3 || ml["media_has_location"] != true {
+		t.Fatalf("long=%v", ml)
+	}
+	if loc := multimediaLocationBody(long); len(loc) != 28 {
+		t.Fatalf("loc len=%d", len(loc))
+	}
 	tr := parseTransparent([]byte{0xF0, 'a', 'b'})
 	if tr["transparent_type"] != 0xF0 || tr["transparent_hex"] != "6162" {
 		t.Fatalf("%v", tr)

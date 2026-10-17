@@ -156,6 +156,39 @@ func parseAdditionalInfo(body []byte) map[string]any {
 				add[key] = ad
 				add["analog.ad2"] = ad
 			}
+		case 0x32: // IC card / driver identity status (partial)
+			if l >= 1 {
+				st := int(val[0])
+				add[key] = st
+				add["driver.ic_status"] = st
+				switch st {
+				case 1:
+					add["driver.ic_login"] = true
+				case 2:
+					add["driver.ic_logout"] = true
+				}
+			}
+			if l >= 7 {
+				add["driver.ic_time_bcd"] = fmt.Sprintf("%x", val[1:7])
+			}
+			if l >= 8 {
+				add["driver.ic_result"] = int(val[7])
+			}
+			if l >= 9 {
+				nameLen := int(val[8])
+				off := 9
+				if nameLen > 0 && 9+nameLen <= l {
+					add["driver.ic_name"] = strings.TrimSpace(string(val[9 : 9+nameLen]))
+					off = 9 + nameLen
+				}
+				if off < l {
+					// Remaining often certificate / card number ASCII.
+					card := strings.TrimRight(string(val[off:]), "\x00 ")
+					if card != "" {
+						add["driver.ic_card"] = card
+					}
+				}
+			}
 		case 0x25: // extended vehicle signal status bits
 			if l >= 4 {
 				sig := binary.BigEndian.Uint32(val)
@@ -404,7 +437,8 @@ func isRemappableSafetyKey(k string) bool {
 		"overspeed_loc_type", "overspeed_region_id", "area_loc_type", "area_id", "area_direction",
 		"mileage", "fuel.level", "speed.extra", "speed.pulse", "io.status", "io.status32", "manual_alarm_id",
 		"oil.quantity", "temp.cargo", "analog.ad", "analog.ad2",
-		"route_id", "route_time_loc_type", "route_time_result", "route_drive_time":
+		"route_id", "route_time_loc_type", "route_time_result", "route_drive_time",
+		"driver.ic_status", "driver.ic_card", "driver.ic_name", "driver.ic_result", "driver.ic_time_bcd":
 		return true
 	}
 	return strings.HasPrefix(k, "adas.") ||
@@ -412,7 +446,8 @@ func isRemappableSafetyKey(k string) bool {
 		strings.HasPrefix(k, "bsd.") ||
 		strings.HasPrefix(k, "alarm.") ||
 		strings.HasPrefix(k, "status.") ||
-		strings.HasPrefix(k, "video.")
+		strings.HasPrefix(k, "video.") ||
+		strings.HasPrefix(k, "driver.")
 }
 
 // FlattenAlarmBits exports location/GNSS alarm dword remaps for other adapters (e.g. JT809).
@@ -576,6 +611,8 @@ func safetyFromLocationTLVAlarms(add map[string]any, fix store.Fix, protocol str
 		{"alarm.fence_out", "fence_out", 1},
 		{"alarm.route_time_short", "route_time_short", 1},
 		{"alarm.route_time_long", "route_time_long", 1},
+		{"driver.ic_login", "driver_ic_login", 1},
+		{"driver.ic_logout", "driver_ic_logout", 1},
 	}
 	for _, p := range pairs {
 		if add[p.key] != true {

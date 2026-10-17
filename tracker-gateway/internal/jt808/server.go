@@ -1055,9 +1055,12 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			_ = st.PatchLastStatus(ctx, sess.device, parseMultimediaData(body), nil)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
-	case 0x0801: // multimedia event / metadata (no 1078 media stack)
+	case 0x0801: // multimedia event / metadata (+ optional embedded location)
 		if sess.device != nil {
 			_ = st.PatchLastStatus(ctx, sess.device, parseMultimediaMeta(body), nil)
+			if loc := multimediaLocationBody(body); len(loc) >= 28 {
+				ingestLocation(ctx, conn, st, sessions, sess, loc, protoHint)
+			}
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0802: // stored multimedia retrieval response (应答流水号 + count + items)
@@ -1307,8 +1310,21 @@ func parseUpgradeResult(body []byte) map[string]any {
 }
 
 // parseMultimediaMeta stores 0x0801 multimedia event fields (partial; no media body).
+// Preferred JT/T 808 layout: id(4)+type+format+event+channel + optional 0x0200 location (28+).
+// Short legacy layout (type+channel+event+id) kept when body < 8.
 func parseMultimediaMeta(body []byte) map[string]any {
 	out := map[string]any{"proto_msg": "0x0801", "media_hex": fmt.Sprintf("%x", body)}
+	if len(body) >= 8 {
+		out["media_id"] = binary.BigEndian.Uint32(body[0:4])
+		out["media_type"] = int(body[4])
+		out["media_code"] = int(body[5])
+		out["media_event"] = int(body[6])
+		out["media_channel"] = int(body[7])
+		if len(body) >= 36 {
+			out["media_has_location"] = true
+		}
+		return out
+	}
 	if len(body) >= 1 {
 		out["media_type"] = int(body[0])
 	}
@@ -1322,6 +1338,14 @@ func parseMultimediaMeta(body []byte) map[string]any {
 		out["media_id"] = binary.BigEndian.Uint32(body[3:7])
 	}
 	return out
+}
+
+// multimediaLocationBody returns the trailing 0x0200-style location blob from 0x0801 when present.
+func multimediaLocationBody(body []byte) []byte {
+	if len(body) < 36 {
+		return nil
+	}
+	return body[8:]
 }
 
 // wrap8301Body builds minimal 0x8301 event setting: count + (id,len,text) items.

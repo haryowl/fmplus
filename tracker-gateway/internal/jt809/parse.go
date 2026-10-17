@@ -147,6 +147,51 @@ func parseVehicleStatic(rest []byte) (plate string, patch map[string]any, ok boo
 	return plate, patch, plate != "" || len(data) > 0
 }
 
+// parseDriverReport extracts plate/color/state and fixed-width driver identity fields from 0x1208.
+// Layout (common interconnect): plate[21]+color[1]+state[1]+name[16]+id[20]+licence[40]+org[…].
+func parseDriverReport(rest []byte) (plate string, patch map[string]any, ok bool) {
+	patch = map[string]any{
+		"proto_msg":     "0x1208",
+		"body_len":      len(rest),
+		"driver_report": true,
+	}
+	if len(rest) < 21 {
+		return "", patch, false
+	}
+	plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
+	patch["vehicle_plate"] = plate
+	if len(rest) >= 22 {
+		patch["vehicle_color"] = int(rest[21])
+	}
+	if len(rest) >= 23 {
+		patch["driver_state"] = int(rest[22])
+	}
+	trimZ := func(b []byte) string {
+		return strings.TrimRight(string(b), "\x00 ")
+	}
+	if len(rest) >= 39 {
+		if s := trimZ(rest[23:39]); s != "" {
+			patch["driver_name"] = s
+		}
+	}
+	if len(rest) >= 59 {
+		if s := trimZ(rest[39:59]); s != "" {
+			patch["driver_id"] = s
+		}
+	}
+	if len(rest) >= 99 {
+		if s := trimZ(rest[59:99]); s != "" {
+			patch["driver_licence"] = s
+		}
+	}
+	if len(rest) > 99 {
+		if s := trimZ(rest[99:]); s != "" {
+			patch["driver_org"] = s
+		}
+	}
+	return plate, patch, plate != "" || len(rest) >= 23
+}
+
 // parseVehicleUplink extracts an experimental Fix from JT809 0x1200 / 0x1202 bodies.
 // Layouts vary by interconnect; this covers the common plate(21)+color(1)+data_type(2)+GNSS form.
 func parseVehicleUplink(msgID uint16, rest []byte) (store.Fix, string, bool) {

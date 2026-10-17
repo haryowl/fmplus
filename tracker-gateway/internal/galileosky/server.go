@@ -391,6 +391,18 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("can.%d", i+1)] = float64(n)
 		raw[fmt.Sprintf("tag.0x%02x", id)] = n
 	}
+	// 0x48: iButton / Dallas key (8-byte id as hex).
+	if v, ok := tags[0x48]; ok && len(v) >= 8 {
+		raw["ibutton.id"] = fmt.Sprintf("%x", v[:8])
+		raw["tag.0x48"] = raw["ibutton.id"]
+	}
+	// 0x5a: accelerometer axes (signed milli-g or device units).
+	if v, ok := tags[0x5a]; ok && len(v) >= 6 {
+		raw["accel.x"] = float64(int16(binary.LittleEndian.Uint16(v[0:2])))
+		raw["accel.y"] = float64(int16(binary.LittleEndian.Uint16(v[2:4])))
+		raw["accel.z"] = float64(int16(binary.LittleEndian.Uint16(v[4:6])))
+		raw["tag.0x5a"] = true
+	}
 	// 0x80–0x87: 8-byte Modbus / RS485 registers (low 4 bytes as uint32 when plausible).
 	for i, id := range []byte{0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87} {
 		v, ok := tags[id]

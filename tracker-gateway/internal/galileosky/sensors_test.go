@@ -117,3 +117,22 @@ func TestPromoteSensorTags_Sensor78(t *testing.T) {
 		t.Fatalf("%v", raw)
 	}
 }
+
+func TestPromoteSensorTags_IButtonAndAccel(t *testing.T) {
+	raw := map[string]any{}
+	key := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
+	accel := make([]byte, 6)
+	binary.LittleEndian.PutUint16(accel[0:2], 0xff9c) // -100
+	binary.LittleEndian.PutUint16(accel[2:4], 200)
+	binary.LittleEndian.PutUint16(accel[4:6], 980)
+	promoteSensorTags(raw, map[byte][]byte{0x48: key, 0x5a: accel})
+	if raw["ibutton.id"] != "0102030405060708" {
+		t.Fatalf("ibutton=%v", raw["ibutton.id"])
+	}
+	if raw["accel.x"] != float64(-100) || raw["accel.y"] != float64(200) || raw["accel.z"] != float64(980) {
+		t.Fatalf("accel=%v", raw)
+	}
+	if tagSize(0x48) != 8 || tagSize(0x5a) != 6 {
+		t.Fatalf("tagSize 0x48=%d 0x5a=%d", tagSize(0x48), tagSize(0x5a))
+	}
+}

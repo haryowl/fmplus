@@ -193,3 +193,27 @@ func TestParseVehicleStatic_Register(t *testing.T) {
 		t.Fatalf("%v", patch)
 	}
 }
+
+func TestParseDriverReport_Identity(t *testing.T) {
+	rest := make([]byte, 99+9)
+	copy(rest[0:21], []byte("B9999DRV"))
+	rest[21] = 2
+	rest[22] = 1 // login state
+	copy(rest[23:39], []byte("Driver One"))
+	copy(rest[39:59], []byte("ID1234567890"))
+	copy(rest[59:99], []byte("LIC-998877"))
+	copy(rest[99:], []byte("Org Fleet"))
+	plate, patch, ok := parseDriverReport(rest)
+	if !ok || plate != "B9999DRV" {
+		t.Fatalf("ok=%v plate=%q", ok, plate)
+	}
+	if patch["driver_state"] != 1 || patch["driver_name"] != "Driver One" {
+		t.Fatalf("%v", patch)
+	}
+	if patch["driver_id"] != "ID1234567890" || patch["driver_licence"] != "LIC-998877" {
+		t.Fatalf("%v", patch)
+	}
+	if patch["driver_org"] != "Org Fleet" {
+		t.Fatalf("%v", patch)
+	}
+}
