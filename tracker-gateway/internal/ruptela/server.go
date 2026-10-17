@@ -298,6 +298,9 @@ func parseRecordPayload(data []byte, extended bool) []store.Fix {
 			"extended":      extended,
 			"proto_msg":     protoMsg,
 		}
+		if hdop > 0 {
+			raw["gnss.hdop"] = float64(hdop) / 10.0
+		}
 		for k, v := range ioMap {
 			raw["io."+k] = v
 		}
@@ -323,6 +326,9 @@ func parseRecordPayload(data []byte, extended bool) []store.Fix {
 			fix.Ignition = &b
 		}
 		if v, ok := ioMap["65"]; ok {
+			f := asFloat64(v)
+			fix.Odometer = &f
+		} else if v, ok := ioMap["16"]; ok {
 			f := asFloat64(v)
 			fix.Odometer = &f
 		} else if v, ok := ioMap["199"]; ok {
@@ -517,6 +523,8 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 		raw["trip.odometer"] = asFloat64(v)
 	}
 	if v, ok := io["65"]; ok {
+		raw["odometer"] = asFloat64(v)
+	} else if v, ok := io["16"]; ok {
 		raw["odometer"] = asFloat64(v)
 	} else if v, ok := io["199"]; ok {
 		raw["odometer"] = asFloat64(v) / 1000.0

@@ -1455,6 +1455,28 @@ func parseUpgradeResult(body []byte) map[string]any {
 	return out
 }
 
+// mediaKindName maps JT/T 808 multimedia type byte to a remappable label.
+func mediaKindName(t int) string {
+	switch t {
+	case 0:
+		return "picture"
+	case 1:
+		return "audio"
+	case 2:
+		return "video"
+	default:
+		return fmt.Sprintf("type_%d", t)
+	}
+}
+
+func hoistMediaKind(out map[string]any, mediaType int) {
+	if out == nil {
+		return
+	}
+	out["media_type"] = mediaType
+	out["media_kind"] = mediaKindName(mediaType)
+}
+
 // parseMultimediaMeta stores 0x0801 multimedia event fields (partial; no media body).
 // Preferred JT/T 808 layout: id(4)+type+format+event+channel + optional 0x0200 location (28+).
 // Short legacy layout (type+channel+event+id) kept when body < 8.
@@ -1462,7 +1484,7 @@ func parseMultimediaMeta(body []byte) map[string]any {
 	out := map[string]any{"proto_msg": "0x0801", "media_hex": fmt.Sprintf("%x", body)}
 	if len(body) >= 8 {
 		out["media_id"] = binary.BigEndian.Uint32(body[0:4])
-		out["media_type"] = int(body[4])
+		hoistMediaKind(out, int(body[4]))
 		out["media_code"] = int(body[5])
 		out["media_event"] = int(body[6])
 		out["media_channel"] = int(body[7])
@@ -1472,7 +1494,7 @@ func parseMultimediaMeta(body []byte) map[string]any {
 		return out
 	}
 	if len(body) >= 1 {
-		out["media_type"] = int(body[0])
+		hoistMediaKind(out, int(body[0]))
 	}
 	if len(body) >= 2 {
 		out["media_channel"] = int(body[1])
@@ -2697,7 +2719,7 @@ func parseMultimediaRetrieveResp(body []byte) map[string]any {
 		out["media_id"] = binary.BigEndian.Uint32(body[6:10])
 	}
 	if len(body) >= 11 {
-		out["media_type"] = int(body[10])
+		hoistMediaKind(out, int(body[10]))
 	}
 	if len(body) >= 12 {
 		out["media_channel"] = int(body[11])
@@ -2861,7 +2883,7 @@ func parseMultimediaData(body []byte) map[string]any {
 		out["media_id"] = binary.BigEndian.Uint32(body[0:4])
 	}
 	if len(body) >= 5 {
-		out["media_type"] = int(body[4])
+		hoistMediaKind(out, int(body[4]))
 	}
 	if len(body) >= 6 {
 		out["media_code"] = int(body[5])

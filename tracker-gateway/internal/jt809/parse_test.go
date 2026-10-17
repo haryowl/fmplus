@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"math"
 	"testing"
+	"time"
 )
 
 func TestParseVehicleUplink_MinimalGNSS(t *testing.T) {
@@ -68,7 +69,7 @@ func TestParseVehicleUplink_AltitudeState(t *testing.T) {
 	off += 2
 	binary.BigEndian.PutUint16(rest[off:], uint16(int16(120))) // altitude
 	off += 2
-	binary.BigEndian.PutUint32(rest[off:], 0x01|0x0400) // ACC + oil_cut
+	binary.BigEndian.PutUint32(rest[off:], 0x01|0x02|0x0400) // ACC + GPS + oil_cut
 	off += 4
 	binary.BigEndian.PutUint32(rest[off:], 0x02) // alarm nonzero
 
@@ -76,8 +77,11 @@ func TestParseVehicleUplink_AltitudeState(t *testing.T) {
 	if !ok || fix.Altitude == nil || *fix.Altitude != 120 {
 		t.Fatalf("alt=%v ok=%v", fix.Altitude, ok)
 	}
-	if fix.RawAttrs["vehicle_state"] != int(0x01|0x0400) || fix.RawAttrs["status.acc"] != true {
+	if fix.RawAttrs["vehicle_state"] != int(0x01|0x02|0x0400) || fix.RawAttrs["status.acc"] != true {
 		t.Fatalf("%v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["status.gps"] != true {
+		t.Fatalf("status.gps missing: %v", fix.RawAttrs)
 	}
 	if fix.RawAttrs["status.oil_cut"] != true {
 		t.Fatalf("oil_cut missing: %v", fix.RawAttrs)
@@ -127,6 +131,12 @@ func TestParseVehicleUplink_EncryptAndTimeBCD(t *testing.T) {
 	}
 	if fix.RawAttrs["gnss_time_bcd"] != "260317123045" {
 		t.Fatalf("bcd=%v", fix.RawAttrs["gnss_time_bcd"])
+	}
+	if fix.RawAttrs["gnss_time"] != "2026-03-17T12:30:45Z" {
+		t.Fatalf("gnss_time=%v", fix.RawAttrs["gnss_time"])
+	}
+	if fix.RecordedAt.IsZero() || fix.RecordedAt.UTC().Format(time.RFC3339) != "2026-03-17T12:30:45Z" {
+		t.Fatalf("RecordedAt=%v", fix.RecordedAt)
 	}
 }
 

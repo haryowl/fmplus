@@ -58,6 +58,9 @@ func TestParseRecordPayload_ProtoMsgCmd1(t *testing.T) {
 	if fixes[0].RawAttrs["proto_msg"] != "ruptela_cmd_1" || fixes[0].RawAttrs["extended"] != false {
 		t.Fatalf("%v", fixes[0].RawAttrs)
 	}
+	if fixes[0].RawAttrs["hdop"] != 1 || fixes[0].RawAttrs["gnss.hdop"] != 0.1 {
+		t.Fatalf("hdop=%v", fixes[0].RawAttrs)
+	}
 }
 
 func TestParseRecordPayload_ProtoMsgCmd68(t *testing.T) {

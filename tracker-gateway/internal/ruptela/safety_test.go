@@ -150,6 +150,19 @@ func TestPromoteRuptelaScalars_Ignition(t *testing.T) {
 	}
 }
 
+func TestPromoteRuptelaScalars_OdometerIO16(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{"16": 12345})
+	if raw["odometer"] != 12345.0 {
+		t.Fatalf("%v", raw)
+	}
+	raw2 := map[string]any{}
+	promoteRuptelaScalars(raw2, map[string]any{"65": 99, "16": 12345})
+	if raw2["odometer"] != 99.0 {
+		t.Fatalf("65 should win: %v", raw2)
+	}
+}
+
 func TestPromoteRuptelaScalars_FuelAVL(t *testing.T) {
 	raw := map[string]any{}
 	promoteRuptelaScalars(raw, map[string]any{"12": 10, "13": 2.5, "48": 1000})

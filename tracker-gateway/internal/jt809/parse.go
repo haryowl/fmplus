@@ -504,7 +504,12 @@ func parseVehicleUplink(msgID uint16, rest []byte) (store.Fix, string, bool) {
 	off = 1
 	// Prefer 6-byte BCD datetime; skip if not plausible.
 	if off+6 <= len(gnss) {
-		out.RawAttrs["gnss_time_bcd"] = fmt.Sprintf("%x", gnss[off:off+6])
+		bcd := gnss[off : off+6]
+		out.RawAttrs["gnss_time_bcd"] = fmt.Sprintf("%x", bcd)
+		if ts, ok := parseWarnBcdTime(bcd); ok {
+			out.RawAttrs["gnss_time"] = ts.UTC().Format(time.RFC3339)
+			out.RecordedAt = ts.UTC()
+		}
 		off += 6
 	}
 	if off+8 > len(gnss) {
@@ -542,6 +547,9 @@ func parseVehicleUplink(msgID uint16, rest []byte) (store.Fix, string, bool) {
 		st := binary.BigEndian.Uint32(gnss[off : off+4])
 		out.RawAttrs["vehicle_state"] = int(st)
 		out.RawAttrs["status.acc"] = st&0x01 != 0
+		if st&0x02 != 0 {
+			out.RawAttrs["status.gps"] = true
+		}
 		jt808.HoistLocationStatusBits(st, out.RawAttrs)
 		off += 4
 	}

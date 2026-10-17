@@ -313,7 +313,10 @@ func TestParseAreaQueryResp_Rect(t *testing.T) {
 
 func TestSafetyFromEventID_Expanded(t *testing.T) {
 	cases := map[int]string{
-		5: "enter_area", 6: "leave_area", 12: "collision", 14: "driver_change",
+		5: "enter_area", 6: "leave_area",
+		7: "enter_route", 8: "leave_route",
+		9: "overspeed_road", 10: "underspeed_road", 11: "depart_route",
+		12: "collision", 14: "driver_change",
 	}
 	for id, want := range cases {
 		ev := safetyFromEventID(id, "jt808")
