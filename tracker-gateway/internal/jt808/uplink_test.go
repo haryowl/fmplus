@@ -218,6 +218,14 @@ func TestParseDrivingRecord(t *testing.T) {
 	if m7["drv.driver_id"] != "IDCARD999" || m7["drv.identity_hex"] == nil {
 		t.Fatalf("identity=%v", m7)
 	}
+	m8 := parseDrivingRecord([]byte{0x05, 0xde, 0xad})
+	if m8["drv.vehicle_info_hex"] != "dead" {
+		t.Fatalf("vehicle_info=%v", m8)
+	}
+	m9 := parseDrivingRecord([]byte{0x08, 0xbe, 0xef})
+	if m9["drv.speed_log_hex"] != "beef" {
+		t.Fatalf("speed_log=%v", m9)
+	}
 }
 
 func TestParseRegister(t *testing.T) {

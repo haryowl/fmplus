@@ -259,6 +259,47 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["65"]; ok {
 		raw["geofence.zone10"] = asIOFloat(v) // FMB geofence zone 10 event (not odometer)
 	}
+	// Zone 11 is AVL 70 on FMB, but 70 is already pcb.temp on PRO/FT — do not remap.
+	if v, ok := io["88"]; ok {
+		raw["geofence.zone12"] = asIOFloat(v)
+	}
+	if v, ok := io["91"]; ok {
+		raw["geofence.zone13"] = asIOFloat(v)
+	}
+	if v, ok := io["92"]; ok {
+		raw["geofence.zone14"] = asIOFloat(v)
+	}
+	if v, ok := io["93"]; ok {
+		raw["geofence.zone15"] = asIOFloat(v)
+	}
+	if v, ok := io["94"]; ok {
+		raw["geofence.zone16"] = asIOFloat(v)
+	}
+	if v, ok := io["95"]; ok {
+		raw["geofence.zone17"] = asIOFloat(v)
+	}
+	if v, ok := io["96"]; ok {
+		raw["geofence.zone18"] = asIOFloat(v)
+	}
+	if v, ok := io["97"]; ok {
+		raw["geofence.zone19"] = asIOFloat(v)
+	}
+	if v, ok := io["98"]; ok {
+		raw["geofence.zone20"] = asIOFloat(v)
+	}
+	if v, ok := io["175"]; ok {
+		raw["geofence.auto"] = asIOFloat(v)
+	}
+	if v, ok := io["76"]; ok {
+		raw["temp.id1"] = fmt.Sprintf("%v", v)
+	}
+	if v, ok := io["77"]; ok {
+		raw["temp.id2"] = fmt.Sprintf("%v", v)
+	}
+	if v, ok := io["79"]; ok {
+		raw["temp.id3"] = fmt.Sprintf("%v", v)
+	}
+	// AVL 71 = Dallas temp ID 4 — skipped (constraint).
 	if v, ok := io["381"]; ok {
 		raw["ground.sense"] = asIOBool(v)
 	}

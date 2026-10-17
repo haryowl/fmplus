@@ -2897,6 +2897,18 @@ func parseDrivingRecord(body []byte) map[string]any {
 				out["driver.ic_card"] = s
 			}
 		}
+		// cmd 0x05 vehicle info / 0x08 speed-status log — hex snip only (layouts vary).
+		if (cmd == 0x05 || cmd == 0x08) && len(body) >= 2 {
+			tail := body[1:]
+			if len(tail) > 48 {
+				tail = tail[:48]
+			}
+			key := "drv.vehicle_info_hex"
+			if cmd == 0x08 {
+				key = "drv.speed_log_hex"
+			}
+			out[key] = fmt.Sprintf("%x", tail)
+		}
 	}
 	snip := body
 	if len(snip) > 48 {

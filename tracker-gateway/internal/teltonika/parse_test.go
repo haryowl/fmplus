@@ -482,6 +482,27 @@ func TestPromoteTeltonikaScalars_GeofenceZones1to9(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_Geofence12to20AutoTempID(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{
+		"88": 1, "91": 2, "98": 3, "175": 1,
+		"76": "aa", "77": "bb", "79": "cc",
+		"70": 301, // still pcb.temp, not zone11
+	})
+	if raw["geofence.zone12"] != 1.0 || raw["geofence.zone20"] != 3.0 || raw["geofence.auto"] != 1.0 {
+		t.Fatalf("geofence=%v", raw)
+	}
+	if raw["temp.id1"] != "aa" || raw["temp.id3"] != "cc" {
+		t.Fatalf("temp id=%v", raw)
+	}
+	if raw["pcb.temp"] != 30.1 {
+		t.Fatalf("pcb.temp must keep AVL 70: %v", raw["pcb.temp"])
+	}
+	if _, ok := raw["geofence.zone11"]; ok {
+		t.Fatalf("must not remap AVL 70 to zone11: %v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_BLELuminosityCustom(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{
