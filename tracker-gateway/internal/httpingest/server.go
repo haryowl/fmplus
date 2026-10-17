@@ -119,16 +119,10 @@ func ingestJSONFix(ctx context.Context, st *store.Store, device *store.Device, p
 	heartbeat := asBool(payload["heartbeat"], payload["ping"])
 	lat := asFloat(payload["lat"], payload["latitude"])
 	lon := asFloat(payload["lon"], payload["lng"], payload["longitude"])
-	if heartbeat || lat == nil || lon == nil {
-		if err := st.TouchSeen(ctx, device); err != nil {
-			return err
-		}
-		return errHeartbeat
-	}
-
 	rawAttrs := map[string]any{}
 	for k, v := range payload {
-		if k == "lat" || k == "lon" || k == "latitude" || k == "longitude" || k == "lng" || k == "fixes" {
+		if k == "lat" || k == "lon" || k == "latitude" || k == "longitude" || k == "lng" || k == "fixes" ||
+			k == "heartbeat" || k == "ping" {
 			continue
 		}
 		rawAttrs[k] = v
@@ -141,6 +135,18 @@ func ingestJSONFix(ctx context.Context, st *store.Store, device *store.Device, p
 	flattenNestedVendorKeys(rawAttrs)
 	if acc := asBoolPtr(rawAttrs["status.acc"], rawAttrs["acc"]); acc != nil {
 		rawAttrs["status.acc"] = *acc
+	}
+
+	if heartbeat || lat == nil || lon == nil {
+		ign := asBoolPtr(payload["ignition"], rawAttrs["status.acc"], rawAttrs["acc"])
+		if len(rawAttrs) > 0 {
+			if err := st.PatchLastStatus(ctx, device, rawAttrs, ign); err != nil {
+				return err
+			}
+		} else if err := st.TouchSeen(ctx, device); err != nil {
+			return err
+		}
+		return errHeartbeat
 	}
 
 	fix := store.Fix{

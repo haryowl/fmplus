@@ -352,6 +352,10 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 	case "jt808_8107", "query_attrs":
 		msgID = 0x8107
 		body = nil // empty body
+	case "jt808_8201", "query_location":
+		// Platform queries terminal location; empty body (terminal replies 0x0201).
+		msgID = 0x8201
+		body = nil
 	case "jt808_8500", "control", "vehicle_control":
 		msgID = 0x8500
 		flag := byte(0)

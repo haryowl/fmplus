@@ -37,6 +37,7 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `jt808_8103` / `param` | jt808/subiao | set terminal params |
 | `jt808_8104` / `query_params` | jt808/subiao | query params (`all` or id list) |
 | `jt808_8107` / `query_attrs` | jt808/subiao | query terminal attributes |
+| `jt808_8201` / `query_location` | jt808/subiao | query current location |
 | `jt808_8500` / `control` | jt808/subiao | vehicle control |
 | `teltonika_codec12` | teltonika | Codec 12 GPRS |
 | `concox_gprs` | concox | GT06 0x80 |
@@ -75,6 +76,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   061_jt808_query_commands.sql
 #   062_jt808_location_tlv_params.sql
 #   063_jt808_driver_params.sql
+#   064_jt808_8201_ruptela_alarms.sql
 npm run db:migrate
 
 cd tracker-gateway
@@ -95,7 +97,7 @@ curl -X POST http://localhost:5080/ingest/v1/fix \
   -d '{"lat":-6.2,"lon":106.8,"speed":40,"ignition":true,"attrs":{"io":{"239":1}}}'
 ```
 
-Batch: `{"imei":"…","fixes":[{"lat":…,"lon":…}, …]}` (same auth). Heartbeat without coords: `{"heartbeat":true}` (updates `last_seen_at` only). Nested `attrs.io` / `alarm` / `status` flatten to dotted vendor keys; `alarm.*` / known `event_io` also insert safety events.
+Batch: `{"imei":"…","fixes":[{"lat":…,"lon":…}, …]}` (same auth). Heartbeat without coords: `{"heartbeat":true}` (updates `last_seen_at`; optional `attrs`/`status.acc` patch last status). Nested `attrs.io` / `alarm` / `status` flatten to dotted vendor keys; `alarm.*` / known `event_io` also insert safety events.
 
 Also: `GET /healthz`, `GET /metrics`, `GET /adapters`.
 

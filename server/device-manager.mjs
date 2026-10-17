@@ -254,6 +254,7 @@ export async function enqueueCommand(tenantId, deviceId, body) {
         "jt808_8103",
         "jt808_8104",
         "jt808_8107",
+        "jt808_8201",
         "jt808_8500",
         "teltonika_codec12",
         "concox_gprs",
