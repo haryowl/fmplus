@@ -347,8 +347,51 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["221"]; ok {
 		raw["geofence.zone40"] = asIOFloat(v)
 	}
+	if v, ok := io["222"]; ok {
+		raw["geofence.zone41"] = asIOFloat(v)
+	}
+	if v, ok := io["223"]; ok {
+		raw["geofence.zone42"] = asIOFloat(v)
+	}
+	if v, ok := io["224"]; ok {
+		raw["geofence.zone43"] = asIOFloat(v)
+	}
+	if v, ok := io["225"]; ok {
+		raw["geofence.zone44"] = asIOFloat(v)
+	}
+	if v, ok := io["226"]; ok {
+		raw["geofence.zone45"] = asIOFloat(v)
+	}
+	if v, ok := io["227"]; ok {
+		raw["geofence.zone46"] = asIOFloat(v)
+	}
+	if v, ok := io["228"]; ok {
+		raw["geofence.zone47"] = asIOFloat(v)
+	}
+	if v, ok := io["229"]; ok {
+		raw["geofence.zone48"] = asIOFloat(v)
+	}
+	if v, ok := io["230"]; ok {
+		raw["geofence.zone49"] = asIOFloat(v)
+	}
+	if v, ok := io["231"]; ok {
+		raw["geofence.zone50"] = asIOFloat(v)
+	}
 	if v, ok := io["175"]; ok {
 		raw["geofence.auto"] = asIOFloat(v)
+	}
+	if v, ok := io["236"]; ok {
+		raw["alarm.event"] = asIOBool(v)
+	}
+	if v, ok := io["254"]; ok {
+		// Wiki magnitude; AVL 253 already hoisted as green_driving.value (type) — do not remap.
+		raw["green_driving.magnitude"] = asIOFloat(v) / 100.0
+	}
+	if v, ok := io["257"]; ok {
+		raw["crash.trace"] = fmt.Sprintf("%v", v)
+	}
+	if v, ok := io["391"]; ok {
+		raw["status.private_mode"] = asIOBool(v)
 	}
 	if v, ok := io["76"]; ok {
 		raw["temp.id1"] = fmt.Sprintf("%v", v)

@@ -516,6 +516,25 @@ func TestPromoteTeltonikaScalars_Geofence21to40(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_Geofence41to50AlarmCrash(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{
+		"222": 1, "231": 2, "236": 1, "254": 123, "257": "deadbeef", "391": 1, "253": 2,
+	})
+	if raw["geofence.zone41"] != 1.0 || raw["geofence.zone50"] != 2.0 {
+		t.Fatalf("41-50=%v", raw)
+	}
+	if raw["alarm.event"] != true || raw["status.private_mode"] != true {
+		t.Fatalf("alarm/private=%v", raw)
+	}
+	if raw["green_driving.magnitude"] != 1.23 || raw["green_driving.value"] != 2.0 {
+		t.Fatalf("green=%v", raw) // 253 unchanged
+	}
+	if raw["crash.trace"] != "deadbeef" {
+		t.Fatalf("crash=%v", raw["crash.trace"])
+	}
+}
+
 func TestPromoteTeltonikaScalars_BLELuminosityCustom(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{
