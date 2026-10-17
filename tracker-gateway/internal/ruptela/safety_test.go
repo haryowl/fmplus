@@ -132,3 +132,11 @@ func TestPromoteRuptelaScalars_Ignition(t *testing.T) {
 		t.Fatalf("%v", raw)
 	}
 }
+
+func TestPromoteRuptelaScalars_DinDout(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{"1": 1, "3": 1, "179": 1})
+	if raw["status.din1"] != true || raw["status.din3"] != true || raw["status.dout1"] != true {
+		t.Fatalf("%v", raw)
+	}
+}

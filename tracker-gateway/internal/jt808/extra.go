@@ -194,9 +194,15 @@ func parseAdditionalInfo(body []byte) map[string]any {
 				sig := binary.BigEndian.Uint32(val)
 				add[key] = sig
 				add["status.acc"] = sig&0x01 != 0
+				add["status.left_turn"] = sig&0x02 != 0
+				add["status.right_turn"] = sig&0x04 != 0
+				add["status.wiper"] = sig&0x08 != 0
+				add["status.brake"] = sig&0x10 != 0
 				add["status.door"] = sig&0x0400 != 0 || sig&0x1000 != 0
 				add["status.low_beam"] = sig&0x0100 != 0
 				add["status.high_beam"] = sig&0x0200 != 0
+				add["status.fog"] = sig&0x0400 != 0
+				add["status.position_lamp"] = sig&0x0800 != 0
 			}
 		case 0x30: // wireless network signal strength
 			if l >= 1 {

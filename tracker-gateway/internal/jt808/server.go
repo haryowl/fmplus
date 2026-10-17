@@ -1130,7 +1130,11 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0702: // driver identity information report
 		if sess.device != nil {
-			_ = st.PatchLastStatus(ctx, sess.device, parseDriverIdentity(body), nil)
+			patch := parseDriverIdentity(body)
+			_ = st.PatchLastStatus(ctx, sess.device, patch, nil)
+			if ev := safetyFromDriverIdentity(patch, protoHint); ev != nil {
+				_ = st.InsertSafetyEvent(ctx, sess.device, *ev)
+			}
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0704: // batch location
@@ -1186,14 +1190,24 @@ func parseDriverIdentity(body []byte) map[string]any {
 	if len(body) < 1 {
 		return out
 	}
-	out["driver_state"] = int(body[0]) // 0x01 insert, 0x02 pull out (typical)
+	st := int(body[0])
+	out["driver_state"] = st // 0x01 insert, 0x02 pull out (typical)
+	out["driver.ic_status"] = st
+	switch st {
+	case 1:
+		out["driver.ic_login"] = true
+	case 2:
+		out["driver.ic_logout"] = true
+	}
 	off := 1
 	if len(body) >= off+6 {
 		out["driver_time"] = fmt.Sprintf("%x", body[off:off+6])
+		out["driver.ic_time_bcd"] = out["driver_time"]
 		off += 6
 	}
 	if len(body) >= off+1 {
 		out["driver_ic_result"] = int(body[off])
+		out["driver.ic_result"] = int(body[off])
 		off++
 	}
 	if len(body) >= off+1 {
@@ -1202,6 +1216,7 @@ func parseDriverIdentity(body []byte) map[string]any {
 		if n > 0 && off+n <= len(body) {
 			name := strings.TrimRight(string(body[off:off+n]), "\x00 ")
 			out["driver_name"] = name
+			out["driver.ic_name"] = name
 			off += n
 		}
 	}
@@ -1210,9 +1225,15 @@ func parseDriverIdentity(body []byte) map[string]any {
 		rest := strings.TrimRight(string(body[off:]), "\x00 ")
 		if rest != "" {
 			out["driver_cert"] = rest
+			out["driver.ic_card"] = rest
 		}
 	}
 	return out
+}
+
+// safetyFromDriverIdentity raises IC login/logout safety events from 0x0702 patches.
+func safetyFromDriverIdentity(patch map[string]any, protocol string) *store.SafetyEvent {
+	return safetyFromLocationTLVAlarms(patch, store.Fix{RecordedAt: time.Now().UTC()}, protocol)
 }
 
 // parseTerminalParams extracts remappable keys from 0x0104 param list

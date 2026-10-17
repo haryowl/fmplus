@@ -202,6 +202,17 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_DinDout(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"1": 1, "2": 0, "179": 1, "180": 0})
+	if raw["status.din1"] != true || raw["status.din2"] != false {
+		t.Fatalf("din=%v", raw)
+	}
+	if raw["status.dout1"] != true || raw["status.dout2"] != false {
+		t.Fatalf("dout=%v", raw)
+	}
+}
+
 func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)

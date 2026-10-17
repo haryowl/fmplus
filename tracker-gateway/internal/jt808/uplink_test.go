@@ -17,6 +17,13 @@ func TestParseDriverIdentity(t *testing.T) {
 	if m["driver_cert"] != "CERT123" {
 		t.Fatalf("cert=%v", m["driver_cert"])
 	}
+	if m["driver.ic_login"] != true || m["driver.ic_name"] != "John" {
+		t.Fatalf("login keys=%v", m)
+	}
+	ev := safetyFromDriverIdentity(m, "jt808")
+	if ev == nil || ev.AlarmType != "driver_ic_login" {
+		t.Fatalf("safety=%+v", ev)
+	}
 }
 
 func TestParseTerminalAttrs_Minimal(t *testing.T) {

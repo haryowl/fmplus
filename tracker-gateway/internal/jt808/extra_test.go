@@ -115,6 +115,19 @@ func TestSafetyFromLocationTLVAlarms_Fence(t *testing.T) {
 	}
 }
 
+func TestParseAdditionalInfo_Signal025Turns(t *testing.T) {
+	base := make([]byte, 28)
+	// ACC + left turn + brake + low beam: bits 0,1,4,8 → 0x00000113
+	tlv, _ := hex.DecodeString("250400000113")
+	add := parseAdditionalInfo(append(base, tlv...))
+	if add["status.acc"] != true || add["status.left_turn"] != true || add["status.brake"] != true {
+		t.Fatalf("%v", add)
+	}
+	if add["status.low_beam"] != true || add["status.right_turn"] != false {
+		t.Fatalf("beams/turn=%v", add)
+	}
+}
+
 func TestParseAdditionalInfo_DriverIC32(t *testing.T) {
 	base := make([]byte, 28)
 	// status=1 login, time BCD 6 bytes, result=0, nameLen=3 "Bob", card "IC99" (len=16)
