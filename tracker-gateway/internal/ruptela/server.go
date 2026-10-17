@@ -182,7 +182,7 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 			continue
 		}
 		if _, err := conn.Write(payload); err != nil {
-			_ = st.MarkCommandFailed(ctx, cmd.ID, "write failed: "+err.Error())
+			_ = st.RequeueCommand(ctx, cmd.ID)
 			return
 		}
 		_ = st.MarkCommandSentCorr(ctx, cmd.ID, "108")

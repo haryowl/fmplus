@@ -153,6 +153,74 @@ const TRACKER_PROTOCOL_OPTIONS = [
   { value: "other", label: "Other" },
 ];
 
+const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: string[] }> = [
+  { value: "text", label: "Text / GPRS (0x8300 / Codec12)" },
+  {
+    value: "jt808_8103",
+    label: "JT808 set params (0x8103)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8104",
+    label: "JT808 query params (0x8104)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8107",
+    label: "JT808 query attrs (0x8107)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8201",
+    label: "JT808 query location (0x8201)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8105",
+    label: "JT808 terminal control (0x8105)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8500",
+    label: "JT808 vehicle control (0x8500)",
+    protocols: ["jt808", "subiao"],
+  },
+  { value: "teltonika_codec12", label: "Teltonika Codec12", protocols: ["teltonika"] },
+  { value: "concox_gprs", label: "Concox GPRS (0x80)", protocols: ["concox"] },
+  { value: "ruptela_sms", label: "Ruptela SMS via GPRS (108)", protocols: ["ruptela"] },
+  {
+    value: "galileosky_text",
+    label: "Galileosky text (GETVER / MainPack…)",
+    protocols: ["galileosky"],
+  },
+  { value: "raw", label: "Raw bytes (hex in payload hex)" },
+];
+
+function commandTypesForProtocol(protocol: string) {
+  return COMMAND_TYPE_OPTIONS.filter(
+    (o) => !o.protocols || o.protocols.includes(protocol) || protocol === "",
+  );
+}
+
+function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string } {
+  switch (cmdType) {
+    case "jt808_8104":
+      return { text: "all or 0001,0002", hex: "optional id list as hex" };
+    case "jt808_8105":
+      return { text: "reset / shutdown / factory", hex: "03 or multi-byte control" };
+    case "jt808_8500":
+      return { text: "cut / oil_cut", hex: "01 or multi-byte body" };
+    case "jt808_8103":
+      return { text: "", hex: "TLV bytes (count auto-wrapped)" };
+    case "raw":
+      return { text: "", hex: "raw frame hex" };
+    case "galileosky_text":
+      return { text: "GETVER", hex: "" };
+    default:
+      return { text: "getinfo / cut / reset…", hex: "optional binary hex" };
+  }
+}
+
 type TrackerProfileRow = {
   id: string;
   name: string;
@@ -1267,6 +1335,11 @@ export default function AdminConsole() {
     setError("");
     try {
       const hex = cmdHex.replace(/[^0-9a-fA-F]/g, "");
+      if (hex.length % 2 === 1) {
+        setError("Payload hex must have an even number of digits");
+        setBusy(false);
+        return;
+      }
       await api(`/api/admin/tenants/${selectedId}/tracker-devices/${cmdDeviceId}/commands`, {
         method: "POST",
         body: JSON.stringify({
@@ -2260,18 +2333,13 @@ export default function AdminConsole() {
                     <label>
                       Command type
                       <select value={cmdType} onChange={(e) => setCmdType(e.target.value)}>
-                        <option value="text">Text / GPRS (0x8300 / Codec12)</option>
-                        <option value="jt808_8103">JT808 set params (0x8103)</option>
-                        <option value="jt808_8104">JT808 query params (0x8104)</option>
-                        <option value="jt808_8107">JT808 query attrs (0x8107)</option>
-                        <option value="jt808_8201">JT808 query location (0x8201)</option>
-                        <option value="jt808_8105">JT808 terminal control (0x8105)</option>
-                        <option value="jt808_8500">JT808 vehicle control (0x8500)</option>
-                        <option value="teltonika_codec12">Teltonika Codec12</option>
-                        <option value="concox_gprs">Concox GPRS (0x80)</option>
-                        <option value="ruptela_sms">Ruptela SMS via GPRS (108)</option>
-                        <option value="galileosky_text">Galileosky text (GETVER / MainPack…)</option>
-                        <option value="raw">Raw bytes (hex in payload)</option>
+                        {commandTypesForProtocol(
+                          trackerDevices.find((d) => d.id === cmdDeviceId)?.protocol || "",
+                        ).map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
                       </select>
                     </label>
                     <label>
@@ -2279,7 +2347,7 @@ export default function AdminConsole() {
                       <input
                         value={cmdText}
                         onChange={(e) => setCmdText(e.target.value)}
-                        placeholder="getinfo / cut / reset / all…"
+                        placeholder={commandPayloadPlaceholder(cmdType).text}
                       />
                     </label>
                     <label>
@@ -2287,7 +2355,7 @@ export default function AdminConsole() {
                       <input
                         value={cmdHex}
                         onChange={(e) => setCmdHex(e.target.value)}
-                        placeholder="8103 TLV / 8500 flag / raw bytes…"
+                        placeholder={commandPayloadPlaceholder(cmdType).hex}
                         spellCheck={false}
                       />
                     </label>
@@ -2325,10 +2393,16 @@ export default function AdminConsole() {
                               {c.corrId ? ` · corr ${c.corrId}` : ""}
                               {c.payloadText ? ` · ${c.payloadText.slice(0, 48)}` : ""}
                               {c.payloadHex ? ` · hex ${c.payloadHex.slice(0, 24)}` : ""}
-                              {c.responseText ? ` → ${c.responseText.slice(0, 48)}` : ""}
+                              {c.responseText ? (
+                                <span title={c.responseText}> → {c.responseText.slice(0, 64)}</span>
+                              ) : null}
                               <span className="muted">
                                 {" "}
                                 · {c.createdAt ? new Date(c.createdAt).toLocaleString() : "—"}
+                                {c.sentAt ? ` · sent ${new Date(c.sentAt).toLocaleString()}` : ""}
+                                {c.completedAt
+                                  ? ` · done ${new Date(c.completedAt).toLocaleString()}`
+                                  : ""}
                               </span>
                             </span>
                             {c.status === "pending" ? (

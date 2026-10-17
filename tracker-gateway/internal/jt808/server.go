@@ -231,7 +231,7 @@ func tryFlushCommands(ctx context.Context, conn net.Conn, st *store.Store, sessi
 			continue
 		}
 		if _, err := conn.Write(payload); err != nil {
-			_ = st.MarkCommandFailed(ctx, cmd.ID, "write failed: "+err.Error())
+			_ = st.RequeueCommand(ctx, cmd.ID)
 			return
 		}
 		corr := DownlinkCorrID(payload)
@@ -397,22 +397,42 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 		msgID = 0x8201
 		body = nil
 	case "jt808_8105", "terminal_control":
-		// 0x8105: single command byte (reset/shutdown/factory/…).
+		// 0x8105: command byte + optional parameter bytes (hex multi-byte or flag alias).
 		msgID = 0x8105
-		body = []byte{wrap8105Flag(cmd.PayloadHex, text)}
-	case "jt808_8500", "control", "vehicle_control":
-		msgID = 0x8500
-		flag := byte(0)
 		if cmd.PayloadHex != "" {
 			if raw := cmd.PayloadBytes(); len(raw) > 0 {
-				flag = raw[0]
+				body = raw
+				break
 			}
-		} else if text == "1" || text == "cut" || text == "oil_cut" {
+		}
+		body = []byte{wrap8105Flag("", text)}
+	case "jt808_8500", "control", "vehicle_control":
+		msgID = 0x8500
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw // full body when multi-byte control extensions
+				break
+			}
+		}
+		flag := byte(0)
+		if text == "1" || text == "cut" || text == "oil_cut" {
 			flag = 1
 		}
 		body = []byte{flag}
 	default:
-		body = append([]byte{0x01}, []byte(text)...)
+		// 0x8300: flag(1)+text. Hex-only Admin payloads skip UTF-8 mangling.
+		if cmd.PayloadHex != "" {
+			raw := cmd.PayloadBytes()
+			if len(raw) == 0 {
+				body = append([]byte{0x01}, []byte(text)...)
+			} else if raw[0] <= 0x03 {
+				body = raw // includes display/flag byte
+			} else {
+				body = append([]byte{0x01}, raw...)
+			}
+		} else {
+			body = append([]byte{0x01}, []byte(text)...)
+		}
 	}
 	return buildDownlinkFrameVer(phone, seq, msgID, body, v2019)
 }
@@ -527,10 +547,29 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 				corr = fmt.Sprintf("%d", binary.BigEndian.Uint16(body[0:2]))
 				paramsBody = body[2:]
 			}
-			_ = st.PatchLastStatus(ctx, sess.device, parseTerminalParams(paramsBody), nil)
-			_ = st.AckCommand(ctx, sess.device.ID, corr, true,
-				fmt.Sprintf("jt808_0104 len=%d", len(body)))
+			parsed, complete := parseTerminalParamsOK(paramsBody)
+			_ = st.PatchLastStatus(ctx, sess.device, parsed, nil)
+			_ = st.AckCommand(ctx, sess.device.ID, corr, complete,
+				fmt.Sprintf("jt808_0104 len=%d complete=%v", len(body), complete))
 			_ = st.TouchSeen(ctx, sess.device)
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0108: // terminal upgrade result (pairs with 0x8105 wireless upgrade)
+		if sess.device != nil {
+			corr := ""
+			resultBody := body
+			if len(body) >= 3 {
+				corr = fmt.Sprintf("%d", binary.BigEndian.Uint16(body[0:2]))
+				resultBody = body[2:]
+			}
+			patch := parseUpgradeResult(resultBody)
+			_ = st.PatchLastStatus(ctx, sess.device, patch, nil)
+			ok := true
+			if r, has := patch["upgrade_result"].(int); has {
+				ok = r == 0
+			}
+			_ = st.AckCommand(ctx, sess.device.ID, corr, ok,
+				fmt.Sprintf("jt808_0108 %v", patch["upgrade_result"]))
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0002: // heartbeat
@@ -650,13 +689,19 @@ func parseDriverIdentity(body []byte) map[string]any {
 // parseTerminalParams extracts remappable keys from 0x0104 param list
 // (count BYTE + N×{id DWORD, len BYTE, value}).
 func parseTerminalParams(body []byte) map[string]any {
+	out, _ := parseTerminalParamsOK(body)
+	return out
+}
+
+func parseTerminalParamsOK(body []byte) (map[string]any, bool) {
 	out := map[string]any{"proto_msg": "0x0104", "params_hex": fmt.Sprintf("%x", body)}
 	if len(body) < 1 {
-		return out
+		return out, false
 	}
 	count := int(body[0])
 	out["param_count"] = count
 	off := 1
+	parsed := 0
 	for i := 0; i < count && off+5 <= len(body); i++ {
 		id := binary.BigEndian.Uint32(body[off : off+4])
 		n := int(body[off+4])
@@ -666,6 +711,7 @@ func parseTerminalParams(body []byte) map[string]any {
 		}
 		val := body[off : off+n]
 		off += n
+		parsed++
 		key := fmt.Sprintf("param.0x%04x", id)
 		switch n {
 		case 1:
@@ -677,6 +723,21 @@ func parseTerminalParams(body []byte) map[string]any {
 		default:
 			out[key] = fmt.Sprintf("%x", val)
 		}
+	}
+	out["params_parsed"] = parsed
+	complete := parsed == count
+	out["params_complete"] = complete
+	return out, complete
+}
+
+// parseUpgradeResult maps 0x0108 upgrade result body (type + result).
+func parseUpgradeResult(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0108", "upgrade_hex": fmt.Sprintf("%x", body)}
+	if len(body) >= 1 {
+		out["upgrade_type"] = int(body[0])
+	}
+	if len(body) >= 2 {
+		out["upgrade_result"] = int(body[1]) // 0=ok
 	}
 	return out
 }

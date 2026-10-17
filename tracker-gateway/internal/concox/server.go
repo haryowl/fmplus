@@ -100,7 +100,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
 				_ = writeReply(conn, 0x13, serial, nil)
-			case 0x12, 0x22, 0x17: // GPS location / offline GPS re-upload
+			case 0x12, 0x22, 0x17, 0x26, 0x28, 0x1a: // GPS / offline / common GT06 variants
 				if device == nil && imei != "" {
 					device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "concox")
 				}
@@ -110,6 +110,11 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 						if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 							log.Printf("[concox] ingest %s: %v", imei, err)
 						}
+					} else {
+						_ = st.PatchLastStatus(ctx, device, map[string]any{
+							"proto_msg": fmt.Sprintf("0x%02x", proto),
+							"gps_hex":   fmt.Sprintf("%x", info),
+						}, nil)
 					}
 					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
@@ -171,15 +176,9 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
 				_ = writeReply(conn, 0x16, serial, nil)
-			case 0x23: // Wi‑Fi / LBS variant — patch cell attrs when present
+			case 0x23: // Wi‑Fi + LBS (GT06/CMS family)
 				if device != nil {
-					patch := parseLBS(info)
-					if len(patch) == 0 {
-						patch = map[string]any{"proto_msg": "0x23", "wifi_hex": fmt.Sprintf("%x", info)}
-					} else {
-						patch["proto_msg"] = "0x23"
-					}
-					_ = st.PatchLastStatus(ctx, device, patch, nil)
+					_ = st.PatchLastStatus(ctx, device, parseWiFi23(info), nil)
 					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
 				_ = writeReply(conn, 0x23, serial, nil)
@@ -270,7 +269,7 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 			continue
 		}
 		if _, err := conn.Write(payload); err != nil {
-			_ = st.MarkCommandFailed(ctx, cmd.ID, "write failed: "+err.Error())
+			_ = st.RequeueCommand(ctx, cmd.ID)
 			return
 		}
 		_ = st.MarkCommandSentCorr(ctx, cmd.ID, fmt.Sprintf("%d", ser))
@@ -449,6 +448,44 @@ func parseLBS(info []byte) map[string]any {
 		if len(info) >= 9 {
 			patch["rssi"] = int(info[8])
 		}
+	}
+	return patch
+}
+
+// parseWiFi23 decodes GT06/CMS 0x23: LBS (9) + wifi_count + N×(MAC6 + RSSI1).
+func parseWiFi23(info []byte) map[string]any {
+	patch := map[string]any{"proto_msg": "0x23", "wifi_hex": fmt.Sprintf("%x", info)}
+	if len(info) < 9 {
+		return patch
+	}
+	lbs := parseLBS(info[:9])
+	for k, v := range lbs {
+		if k == "proto" || k == "info_hex" {
+			continue
+		}
+		patch[k] = v
+	}
+	off := 9
+	if off >= len(info) {
+		return patch
+	}
+	n := int(info[off])
+	off++
+	if n < 0 {
+		n = 0
+	}
+	if n > 16 {
+		n = 16
+	}
+	patch["wifi_ap_count"] = n
+	for i := 0; i < n && off+7 <= len(info); i++ {
+		mac := fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x",
+			info[off], info[off+1], info[off+2], info[off+3], info[off+4], info[off+5])
+		rssi := int(info[off+6])
+		off += 7
+		prefix := fmt.Sprintf("wifi.%d", i+1)
+		patch[prefix+".mac"] = mac
+		patch[prefix+".rssi"] = rssi
 	}
 	return patch
 }

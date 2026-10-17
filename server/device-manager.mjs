@@ -239,6 +239,12 @@ export async function enqueueCommand(tenantId, deviceId, body) {
     err.status = 404;
     throw err;
   }
+  const hexRaw = String(body.payloadHex || body.hex || "").replace(/[^0-9a-fA-F]/g, "");
+  if (hexRaw.length % 2 === 1) {
+    const err = new Error("payloadHex must have an even number of hex digits");
+    err.status = 400;
+    throw err;
+  }
   const inserted = await dbQuery(
     `INSERT INTO tracker_commands (
        tenant_id, device_id, protocol, command_type, payload_text, payload_hex, status
@@ -272,7 +278,7 @@ export async function enqueueCommand(tenantId, deviceId, body) {
         ? body.commandType
         : "text",
       String(body.payloadText || body.text || "").slice(0, 4000),
-      String(body.payloadHex || body.hex || "").replace(/[^0-9a-fA-F]/g, "").slice(0, 8000),
+      hexRaw.slice(0, 8000),
     ],
   );
   const row = inserted.rows[0];

@@ -10,12 +10,21 @@ import (
 func TestParseTerminalParams(t *testing.T) {
 	// count=1, id=0x0001, len=2, value=0x00A0
 	body := []byte{0x01, 0x00, 0x00, 0x00, 0x01, 0x02, 0x00, 0xA0}
-	out := parseTerminalParams(body)
-	if out["param_count"] != 1 {
-		t.Fatalf("%v", out)
+	out, ok := parseTerminalParamsOK(body)
+	if !ok || out["param_count"] != 1 {
+		t.Fatalf("%v ok=%v", out, ok)
 	}
 	if out["param.0x0001"] != 0xA0 {
 		t.Fatalf("param=%v", out["param.0x0001"])
+	}
+	// truncated: count=2 but only one TLV
+	_, ok = parseTerminalParamsOK([]byte{0x02, 0x00, 0x00, 0x00, 0x01, 0x02, 0x00, 0xA0})
+	if ok {
+		t.Fatal("expected incomplete")
+	}
+	up := parseUpgradeResult([]byte{0x00, 0x00})
+	if up["upgrade_result"] != 0 {
+		t.Fatalf("%v", up)
 	}
 }
 

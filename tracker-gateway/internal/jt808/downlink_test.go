@@ -90,6 +90,61 @@ func TestEncodeDownlink_Terminal8105(t *testing.T) {
 	if wrap8105Flag("", "shutdown") != 2 || wrap8105Flag("04", "") != 4 {
 		t.Fatal("wrap8105Flag")
 	}
+	multi, err := ad.EncodeDownlink(store.Command{
+		CommandType: "jt808_8105", PayloadHex: "00616263",
+	}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mraw := unescape(multi)
+	mbodyLen := int(binary.BigEndian.Uint16(mraw[2:4]) & 0x3ff)
+	mbody := mraw[12 : 12+mbodyLen]
+	if len(mbody) != 4 || mbody[0] != 0 || string(mbody[1:]) != "abc" {
+		t.Fatalf("multi8105=%x", mbody)
+	}
+}
+
+func TestEncodeDownlink_Hex8300And8500(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{
+		CommandType: "text", PayloadHex: "48656c6c6f", // Hello without flag
+	}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := unescape(out)
+	bodyLen := int(binary.BigEndian.Uint16(raw[2:4]) & 0x3ff)
+	body := raw[12 : 12+bodyLen]
+	if body[0] != 0x01 || string(body[1:]) != "Hello" {
+		t.Fatalf("8300 hex body=%x", body)
+	}
+	withFlag, err := ad.EncodeDownlink(store.Command{
+		CommandType: "text", PayloadHex: "014849",
+	}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wraw := unescape(withFlag)
+	wlen := int(binary.BigEndian.Uint16(wraw[2:4]) & 0x3ff)
+	wbody := wraw[12 : 12+wlen]
+	if len(wbody) != 3 || wbody[0] != 0x01 {
+		t.Fatalf("flag body=%x", wbody)
+	}
+	ctrl, err := ad.EncodeDownlink(store.Command{
+		CommandType: "jt808_8500", PayloadHex: "0102",
+	}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	craw := unescape(ctrl)
+	if binary.BigEndian.Uint16(craw[0:2]) != 0x8500 {
+		t.Fatalf("msg=%04x", binary.BigEndian.Uint16(craw[0:2]))
+	}
+	clen := int(binary.BigEndian.Uint16(craw[2:4]) & 0x3ff)
+	cbody := craw[12 : 12+clen]
+	if len(cbody) != 2 || cbody[0] != 1 || cbody[1] != 2 {
+		t.Fatalf("8500 multi=%x", cbody)
+	}
 }
 
 func TestEncodeDownlink_Query8201(t *testing.T) {

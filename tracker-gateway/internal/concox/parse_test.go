@@ -148,6 +148,22 @@ func TestParseLBS_Minimal(t *testing.T) {
 	}
 }
 
+func TestParseWiFi23(t *testing.T) {
+	// LBS 9 bytes + count=1 + MAC aabbccddeeff + rssi 30
+	info := []byte{
+		0x01, 0xfe, 0x0a, 0x12, 0x34, 0x01, 0x02, 0x03, 0x14,
+		0x01,
+		0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x1e,
+	}
+	p := parseWiFi23(info)
+	if p["cell_id"] != 0x010203 || p["wifi_ap_count"] != 1 {
+		t.Fatalf("%v", p)
+	}
+	if p["wifi.1.mac"] != "aa:bb:cc:dd:ee:ff" || p["wifi.1.rssi"] != 30 {
+		t.Fatalf("ap=%v", p)
+	}
+}
+
 func TestCRC16ITU_KnownVector(t *testing.T) {
 	// Empty → 0xFFFF init leaves 0xFFFF for empty input
 	if crc16ITU(nil) != 0xFFFF {
