@@ -186,6 +186,57 @@ func tryWarnGNSS(rest []byte, off int) (lat, lon float64, ok bool) {
 	return lat, lon, true
 }
 
+// parseVehicleList1500 extracts plate/color from 0x1500 vehicle-list notifies.
+func parseVehicleList1500(rest []byte) (plate string, patch map[string]any, ok bool) {
+	patch = map[string]any{"proto_msg": "0x1500", "body_len": len(rest), "vehicle_list": true}
+	if len(rest) < 21 {
+		return "", patch, false
+	}
+	plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
+	patch["vehicle_plate"] = plate
+	if len(rest) >= 22 {
+		patch["vehicle_color"] = int(rest[21])
+	}
+	if len(rest) >= 23 {
+		patch["vehicle_flag"] = int(rest[22])
+	}
+	return plate, patch, plate != ""
+}
+
+// parseMediaUpload160x extracts plate + media type/size/name from 0x1601/0x1602.
+func parseMediaUpload160x(msgID uint16, rest []byte) (plate string, patch map[string]any, ok bool) {
+	patch = map[string]any{
+		"proto_msg": fmt.Sprintf("0x%04x", msgID),
+		"body_len":  len(rest),
+	}
+	if msgID == 0x1602 {
+		patch["media_complete"] = true
+	} else {
+		patch["media_upload"] = true
+	}
+	if len(rest) < 21 {
+		return "", patch, false
+	}
+	plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
+	patch["vehicle_plate"] = plate
+	if len(rest) >= 22 {
+		patch["media_type"] = int(rest[21])
+	}
+	if len(rest) >= 26 {
+		patch["media_size"] = int(binary.BigEndian.Uint32(rest[22:26]))
+	}
+	if len(rest) > 26 {
+		name := strings.TrimRight(string(rest[26:]), "\x00 ")
+		if len(name) > 128 {
+			name = name[:128]
+		}
+		if name != "" && isMostlyPrintable(name) {
+			patch["media_file"] = name
+		}
+	}
+	return plate, patch, plate != "" || len(rest) >= 22
+}
+
 // parseMediaAttach1210 extracts plate + attach length / optional filename from 0x1210.
 func parseMediaAttach1210(rest []byte) (plate string, patch map[string]any, ok bool) {
 	patch = map[string]any{

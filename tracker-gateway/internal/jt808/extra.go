@@ -472,6 +472,18 @@ func hoistLocationStatusBits(status uint32, raw map[string]any) {
 	if status&(0x2000|0x4000|0x8000|0x10000|0x20000) != 0 {
 		raw["status.door"] = true
 	}
+	if status&0x40000 != 0 {
+		raw["status.gnss_gps"] = true
+	}
+	if status&0x80000 != 0 {
+		raw["status.gnss_beidou"] = true
+	}
+	if status&0x100000 != 0 {
+		raw["status.gnss_glonass"] = true
+	}
+	if status&0x200000 != 0 {
+		raw["status.gnss_galileo"] = true
+	}
 }
 
 func isRemappableSafetyKey(k string) bool {

@@ -221,6 +221,14 @@ func TestPromoteTeltonikaScalars_GSMOperator(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_IButton(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{"78": "a1b2c3d4"})
+	if raw["ibutton.id"] != "a1b2c3d4" {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)

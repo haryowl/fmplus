@@ -411,6 +411,21 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("can.%d", i+1)] = float64(n)
 		raw[fmt.Sprintf("tag.0x%02x", id)] = n
 	}
+	// 0xE0–0xE6: command / text replies (length-prefixed ASCII).
+	for _, id := range []byte{0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6} {
+		v, ok := tags[id]
+		if !ok || len(v) == 0 {
+			continue
+		}
+		s := strings.TrimSpace(string(v))
+		if s == "" {
+			continue
+		}
+		raw["cmd.reply"] = s
+		raw["cmd.reply_tag"] = fmt.Sprintf("0x%02x", id)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = s
+		break
+	}
 	// 0x48: iButton / Dallas key (8-byte id as hex).
 	if v, ok := tags[0x48]; ok && len(v) >= 8 {
 		raw["ibutton.id"] = fmt.Sprintf("%x", v[:8])

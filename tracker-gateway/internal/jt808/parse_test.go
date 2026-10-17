@@ -99,6 +99,19 @@ func TestParseLocation_StatusBitsOilDoor(t *testing.T) {
 	}
 }
 
+func TestParseLocation_StatusBitsGNSSConstellation(t *testing.T) {
+	body := mustHex(t, goldenLocationHex)
+	// bit18 GPS + bit19 Beidou
+	binary.BigEndian.PutUint32(body[4:8], 0x40000|0x80000)
+	fix, ok := parseLocation(body)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["status.gnss_gps"] != true || fix.RawAttrs["status.gnss_beidou"] != true {
+		t.Fatalf("%v", fix.RawAttrs)
+	}
+}
+
 func TestParseLocation_TooShort(t *testing.T) {
 	_, ok := parseLocation([]byte{1, 2, 3})
 	if ok {

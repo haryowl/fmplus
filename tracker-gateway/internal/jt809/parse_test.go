@@ -201,6 +201,33 @@ func TestParseMediaAttach1210_File(t *testing.T) {
 	}
 }
 
+func TestParseVehicleList1500(t *testing.T) {
+	rest := make([]byte, 23)
+	copy(rest[0:21], []byte("B3333LST"))
+	rest[21] = 2
+	rest[22] = 1
+	plate, patch, ok := parseVehicleList1500(rest)
+	if !ok || plate != "B3333LST" || patch["vehicle_color"] != 2 || patch["vehicle_flag"] != 1 {
+		t.Fatalf("plate=%q patch=%v", plate, patch)
+	}
+}
+
+func TestParseMediaUpload160x(t *testing.T) {
+	rest := make([]byte, 26+7)
+	copy(rest[0:21], []byte("B2222UP"))
+	rest[21] = 3
+	binary.BigEndian.PutUint32(rest[22:26], 100)
+	copy(rest[26:], []byte("pic.jpg"))
+	plate, patch, ok := parseMediaUpload160x(0x1601, rest)
+	if !ok || plate != "B2222UP" || patch["media_file"] != "pic.jpg" || patch["media_upload"] != true {
+		t.Fatalf("%v", patch)
+	}
+	_, patch2, ok2 := parseMediaUpload160x(0x1602, rest)
+	if !ok2 || patch2["media_complete"] != true {
+		t.Fatalf("%v", patch2)
+	}
+}
+
 func TestFlatten809InfoType_SOS(t *testing.T) {
 	raw := map[string]any{}
 	flatten809InfoType(1, raw)

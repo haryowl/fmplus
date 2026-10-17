@@ -118,6 +118,14 @@ func TestPromoteSensorTags_Sensor78(t *testing.T) {
 	}
 }
 
+func TestPromoteSensorTags_CmdReply(t *testing.T) {
+	raw := map[string]any{}
+	promoteSensorTags(raw, map[byte][]byte{0xe1: []byte("OK SET")})
+	if raw["cmd.reply"] != "OK SET" || raw["cmd.reply_tag"] != "0xe1" {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestPromoteSensorTags_OdometerAndArchive(t *testing.T) {
 	raw := map[string]any{}
 	odo := make([]byte, 4)

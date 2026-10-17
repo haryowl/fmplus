@@ -308,42 +308,26 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 		} else {
 			log.Printf("[jt809] alarm 0x%04x plate=%q type=%s (unregistered)", msgID, plate, ev.AlarmType)
 		}
-	case 0x1500: // vehicle added / platform vehicle list notify (experimental — plate only)
-		plate := ""
-		if len(rest) >= 21 {
-			plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
+	case 0x1500: // vehicle added / platform vehicle list notify
+		plate, patch, ok := parseVehicleList1500(rest)
+		if !ok {
+			log.Printf("[jt809] 0x1500 len=%d (no parse)", length)
+			break
 		}
 		device := find809Device(ctx, st, plate, *platformKey, conn.RemoteAddr().String())
-		patch := map[string]any{"proto_msg": "0x1500", "vehicle_plate": plate, "body_len": len(rest)}
-		if len(rest) >= 22 {
-			patch["vehicle_color"] = int(rest[21])
-		}
 		if device != nil {
 			_ = st.PatchLastStatus(ctx, device, patch, nil)
 			_ = st.TouchSeen(ctx, device)
 		} else {
 			log.Printf("[jt809] 0x1500 plate=%q (unregistered)", plate)
 		}
-	case 0x1601, 0x1602: // media upload notify / complete (experimental — plate + size)
-		plate := ""
-		if len(rest) >= 21 {
-			plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
+	case 0x1601, 0x1602: // media upload notify / complete
+		plate, patch, ok := parseMediaUpload160x(msgID, rest)
+		if !ok {
+			log.Printf("[jt809] 0x%04x len=%d (no parse)", msgID, length)
+			break
 		}
 		device := find809Device(ctx, st, plate, *platformKey, conn.RemoteAddr().String())
-		patch := map[string]any{
-			"proto_msg":     fmt.Sprintf("0x%04x", msgID),
-			"vehicle_plate": plate,
-			"body_len":      len(rest),
-		}
-		if msgID == 0x1602 {
-			patch["media_complete"] = true
-		}
-		if len(rest) >= 22 {
-			patch["media_type"] = int(rest[21])
-		}
-		if len(rest) >= 26 {
-			patch["media_size"] = int(binary.BigEndian.Uint32(rest[22:26]))
-		}
 		if device != nil {
 			_ = st.PatchLastStatus(ctx, device, patch, nil)
 			_ = st.TouchSeen(ctx, device)
