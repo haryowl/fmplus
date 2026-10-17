@@ -1317,10 +1317,18 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["server.backup"] = string(raw)
 	case 0x0018:
 		out["server.port"] = decoded
+	case 0x0019:
+		out["server.udp_port"] = decoded
+	case 0x001a:
+		out["server.udp_port_backup"] = decoded
 	case 0x0020:
 		out["report.interval"] = decoded
+	case 0x0022:
+		out["report.interval_unlogin"] = decoded
 	case 0x0027:
 		out["report.interval_dormant"] = decoded
+	case 0x0028:
+		out["report.interval_urgent"] = decoded
 	case 0x0029:
 		out["report.interval_default"] = decoded
 	case 0x0012:
@@ -1337,10 +1345,18 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["alarm.mask"] = decoded
 	case 0x0051:
 		out["alarm.sms_switch"] = decoded
+	case 0x0053:
+		out["speed.warn_delta"] = decoded
 	case 0x0055:
 		out["speed.max"] = decoded
 	case 0x0056:
 		out["speed.duration"] = decoded
+	case 0x0057:
+		out["collision.time"] = decoded
+	case 0x0058:
+		out["collision.accel"] = decoded
+	case 0x0059:
+		out["rollover.angle"] = decoded
 	case 0x0080:
 		out["mileage.factor"] = decoded
 	case 0x0081:

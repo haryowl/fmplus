@@ -242,6 +242,12 @@ func TestParseAreaQueryResp_Circle(t *testing.T) {
 	if m["geofence.lat"].(float64) > -6.19 || m["geofence.lat"].(float64) < -6.21 {
 		t.Fatalf("lat=%v", m["geofence.lat"])
 	}
+	if m["area_count"] != uint32(1) {
+		t.Fatalf("area_count=%v", m["area_count"])
+	}
+	if _, ok := m["geofence.attr"]; !ok {
+		t.Fatalf("geofence.attr missing: %v", m)
+	}
 }
 
 func TestParseAreaQueryResp_Route(t *testing.T) {

@@ -98,6 +98,28 @@ func TestHoistTerminalParam_AlarmMask(t *testing.T) {
 	}
 }
 
+func TestHoistTerminalParam_UDPCollisionReport(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0019, 7611, nil, out)
+	hoistTerminalParam(0x001a, 7612, nil, out)
+	hoistTerminalParam(0x0022, 120, nil, out)
+	hoistTerminalParam(0x0028, 5, nil, out)
+	hoistTerminalParam(0x0053, 10, nil, out)
+	hoistTerminalParam(0x0057, 4, nil, out)
+	hoistTerminalParam(0x0058, 50, nil, out)
+	hoistTerminalParam(0x0059, 30, nil, out)
+	if out["server.udp_port"] != 7611 || out["server.udp_port_backup"] != 7612 {
+		t.Fatalf("udp=%v", out)
+	}
+	if out["report.interval_unlogin"] != 120 || out["report.interval_urgent"] != 5 {
+		t.Fatalf("report=%v", out)
+	}
+	if out["speed.warn_delta"] != 10 || out["collision.time"] != 4 ||
+		out["collision.accel"] != 50 || out["rollover.angle"] != 30 {
+		t.Fatalf("collision=%v", out)
+	}
+}
+
 func TestHoistTerminalParam_NetworkAndReportVariants(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x0001, 60, nil, out)
