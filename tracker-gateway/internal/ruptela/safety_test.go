@@ -236,6 +236,14 @@ func TestPromoteRuptelaScalars_FuelAVL(t *testing.T) {
 	if raw10["engine.fuel_rate"] != 12.0 || raw10["battery.current"] != 1.5 {
 		t.Fatalf("fuel_rate/batt=%v", raw10)
 	}
+	raw11 := map[string]any{}
+	promoteRuptelaScalars(raw11, map[string]any{"80": 1, "541": 99, "543": 52, "544": 10})
+	if raw11["network.data_mode"] != 1.0 || raw11["fuel.air_equivalence"] != 0.99 {
+		t.Fatalf("mode/equiv=%v", raw11)
+	}
+	if raw11["hybrid.system_voltage"] != 52.0 || raw11["hybrid.system_current"] != 10.0 {
+		t.Fatalf("hybrid sys=%v", raw11)
+	}
 	raw2 := map[string]any{}
 	promoteRuptelaScalars(raw2, map[string]any{"48": 500})
 	if raw2["fuel.used"] != 500.0 || raw2["fuel.used_total"] != 500.0 {

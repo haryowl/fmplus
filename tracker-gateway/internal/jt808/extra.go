@@ -747,6 +747,7 @@ func safetyFromVideoAdditional(add map[string]any, fix store.Fix, protocol strin
 		{"alarm.video_occlude", "video_occlude"},
 		{"alarm.video_storage", "video_storage"},
 		{"alarm.video_storage_fault", "video_storage"},
+		{"alarm.video_other_device", "video_other_device"},
 		{"alarm.video_illegal_access", "video_illegal_access"},
 		{"alarm.video_encode", "video_encode"},
 		{"alarm.video_overload", "video_overload"},

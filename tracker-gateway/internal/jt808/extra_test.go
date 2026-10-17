@@ -227,6 +227,11 @@ func TestDecodeVideoAlarmWord(t *testing.T) {
 	if add3["alarm.video_storage_fault"] != true {
 		t.Fatalf("fault=%v", add3)
 	}
+	other := map[string]any{"alarm.video_other_device": true}
+	ev := safetyFromVideoAdditional(other, store.Fix{Lat: 1, Lon: 2, RecordedAt: time.Now().UTC()}, "jt808")
+	if ev == nil || ev.AlarmType != "video_other_device" {
+		t.Fatalf("safety=%+v", ev)
+	}
 }
 
 func TestSafetyFromAdditional_SuBiao(t *testing.T) {
