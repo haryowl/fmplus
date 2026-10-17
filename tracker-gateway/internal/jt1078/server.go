@@ -128,22 +128,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				sig := parseSignalingPayload(dataType, payload)
 				hdr := parseSignalingHeader(frame[:16])
 				if device != nil && st != nil {
-					patch := map[string]any{
-						"proto_msg":   "jt1078_signaling",
-						"av_channel":  int(channel),
-						"av_datatype": int(dataType),
-						"av_kind":     kind,
-						"av_frames":   channels[channel],
-					}
-					if sim != "" {
-						patch["av_sim"] = sim
-					}
-					for k, v := range hdr {
-						patch[k] = v
-					}
-					for k, v := range sig {
-						patch[k] = v
-					}
+					patch := buildSignalingPatch(channel, dataType, channels[channel], hdr, sig, sim)
 					_ = st.PatchLastStatus(ctx, device, patch, nil)
 					_ = st.TouchSeen(ctx, device)
 				}

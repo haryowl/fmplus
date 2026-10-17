@@ -5,6 +5,26 @@ import (
 	"fmt"
 )
 
+// buildSignalingPatch merges header/payload hints into a Device Manager status patch.
+func buildSignalingPatch(channel byte, dataType byte, frames int, hdr, sig map[string]any, sim string) map[string]any {
+	patch := map[string]any{}
+	for k, v := range hdr {
+		patch[k] = v
+	}
+	for k, v := range sig {
+		patch[k] = v
+	}
+	patch["proto_msg"] = "jt1078_signaling"
+	patch["av_channel"] = int(channel)
+	patch["av_datatype"] = int(dataType)
+	patch["av_kind"] = avDataKind(dataType & 0x0f)
+	patch["av_frames"] = frames
+	if sim != "" {
+		patch["av_sim"] = sim
+	}
+	return patch
+}
+
 // parseSignalingHeader lifts common 16-byte JT1078-style header fields (experimental).
 // Layout after magic: datatype(1) channel(1) length(2) then often BCD SIM(6) + seq/ts variants.
 func parseSignalingHeader(hdr []byte) map[string]any {

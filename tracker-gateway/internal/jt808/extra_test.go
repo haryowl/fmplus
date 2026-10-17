@@ -235,11 +235,43 @@ func TestDecodeSubiaoBody_ADAS_FCW(t *testing.T) {
 	}
 }
 
+func TestDecodeSubiaoBody_ADAS_Extended(t *testing.T) {
+	cases := []struct {
+		typ byte
+		key string
+	}{
+		{5, "adas.lane_change"},
+		{6, "adas.road_sign"},
+		{7, "adas.obstacle"},
+		{99, "adas.other"},
+	}
+	for _, c := range cases {
+		add := map[string]any{}
+		decodeSubiaoBody(0x64, []byte{c.typ, 0x01}, add)
+		if add[c.key] != true {
+			t.Fatalf("type=%d add=%v", c.typ, add)
+		}
+	}
+}
+
 func TestDecodeSubiaoBody_DSM_Phone(t *testing.T) {
 	add := map[string]any{}
 	decodeSubiaoBody(0x65, []byte{0x02, 0x01}, add)
 	if add["dsm.phone"] != true || add["subiao_event"] != "phone" {
 		t.Fatalf("add=%v", add)
+	}
+}
+
+func TestDecodeSubiaoBody_DSM_Extended(t *testing.T) {
+	add := map[string]any{}
+	decodeSubiaoBody(0x65, []byte{0x05, 0x01}, add)
+	if add["dsm.driver"] != true {
+		t.Fatalf("driver=%v", add)
+	}
+	add2 := map[string]any{}
+	decodeSubiaoBody(0x65, []byte{0x63, 0x01}, add2)
+	if add2["dsm.other"] != true {
+		t.Fatalf("other=%v", add2)
 	}
 }
 

@@ -97,3 +97,23 @@ func TestHoistTerminalParam_AlarmMask(t *testing.T) {
 		t.Fatalf("%v", out)
 	}
 }
+
+func TestHoistTerminalParam_PhoneSpeedMileageVehicle(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0040, nil, []byte("13800138000"), out)
+	hoistTerminalParam(0x0041, nil, []byte("*RESET#"), out)
+	hoistTerminalParam(0x0048, nil, []byte("SMS"), out)
+	hoistTerminalParam(0x0056, 10, nil, out)
+	hoistTerminalParam(0x0080, 1.0, nil, out)
+	hoistTerminalParam(0x0081, 11, nil, out)
+	hoistTerminalParam(0x0082, 101, nil, out)
+	if out["phone.monitor"] != "13800138000" || out["phone.reset"] != "*RESET#" || out["phone.sms"] != "SMS" {
+		t.Fatalf("phone=%v", out)
+	}
+	if out["speed.duration"] != 10 || out["mileage.factor"] != 1.0 {
+		t.Fatalf("speed/mileage=%v", out)
+	}
+	if out["vehicle.province"] != 11 || out["vehicle.city"] != 101 {
+		t.Fatalf("vehicle=%v", out)
+	}
+}

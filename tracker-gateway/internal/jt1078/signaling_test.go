@@ -47,6 +47,21 @@ func TestParseSignalingPayload_PTZ(t *testing.T) {
 	}
 }
 
+func TestBuildSignalingPatch_AvFrames(t *testing.T) {
+	hdr := parseSignalingHeader(make([]byte, 16))
+	sig := parseSignalingPayload(0x00, []byte{0x01, 0x02, 0x03, 0x04})
+	patch := buildSignalingPatch(2, 0x00, 7, hdr, sig, "13800138000")
+	if patch["proto_msg"] != "jt1078_signaling" || patch["av_frames"] != 7 {
+		t.Fatalf("%v", patch)
+	}
+	if patch["av_channel"] != 2 || patch["av_sim"] != "13800138000" {
+		t.Fatalf("%v", patch)
+	}
+	if patch["av_payload_len"] != 4 {
+		t.Fatalf("payload=%v", patch)
+	}
+}
+
 func TestParseSignalingPayload_Audio(t *testing.T) {
 	payload := make([]byte, 9)
 	payload[0] = 0x10 // audio type
