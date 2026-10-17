@@ -181,6 +181,11 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
     protocols: ["jt808", "subiao"],
   },
   {
+    value: "jt808_8204",
+    label: "JT808 link detect (0x8204)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
     value: "jt808_8105",
     label: "JT808 terminal control (0x8105)",
     protocols: ["jt808", "subiao"],
@@ -193,6 +198,16 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
   {
     value: "jt808_8801",
     label: "JT808 camera shoot (0x8801)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8702",
+    label: "JT808 query driver (0x8702)",
+    protocols: ["jt808", "subiao"],
+  },
+  {
+    value: "jt808_8700",
+    label: "JT808 driving record (0x8700)",
     protocols: ["jt808", "subiao"],
   },
   { value: "teltonika_codec12", label: "Teltonika Codec12", protocols: ["teltonika"] },
@@ -226,6 +241,11 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "1 or ch=1", hex: "12-byte 0x8801 body" };
     case "jt808_8202":
       return { text: "10,60 (interval,validity sec)", hex: "6-byte body" };
+    case "jt808_8700":
+      return { text: "collect / 0x00", hex: "cmd byte(+params)" };
+    case "jt808_8702":
+    case "jt808_8204":
+      return { text: "(empty body)", hex: "" };
     case "jt808_8103":
       return { text: "", hex: "TLV bytes (count auto-wrapped)" };
     case "raw":

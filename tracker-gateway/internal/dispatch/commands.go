@@ -22,9 +22,10 @@ func isJT808Command(protocol, commandType string) bool {
 	}
 	switch commandType {
 	case "jt808", "jt808_8103", "jt808_8104", "jt808_8105", "jt808_8107",
-		"jt808_8201", "jt808_8202", "jt808_8500", "jt808_8801", "terminal_control",
+		"jt808_8201", "jt808_8202", "jt808_8204", "jt808_8500", "jt808_8801",
+		"jt808_8700", "jt808_8702", "terminal_control",
 		"param", "control", "vehicle_control", "query_params", "query_attrs",
-		"query_location", "camera", "track":
+		"query_location", "camera", "track", "driver_query", "driving_record", "link_detect":
 		return true
 	}
 	return false

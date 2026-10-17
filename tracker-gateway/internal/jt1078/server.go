@@ -82,8 +82,12 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					"channel": fmt.Sprintf("%d", channel),
 					"role":    "av-signaling",
 				}
-				// Best-effort SIM / terminal id in early payload bytes (ASCII digits).
-				if sim := extractSIMHint(frame[16:]); sim != "" {
+				// SIM: ASCII digits in payload, else BCD in common 16-byte header slots [8:14].
+				sim := extractSIMHint(frame[16:])
+				if sim == "" && len(frame) >= 14 {
+					sim = bcdSIM(frame[8:14])
+				}
+				if sim != "" {
 					meta["sim"] = sim
 					if device == nil && st != nil {
 						device = deviceauth.FindByIMEI(ctx, st, sim, conn.RemoteAddr().String(), "jt1078")
@@ -159,6 +163,29 @@ func extractSIMHint(payload []byte) string {
 	}
 	if len(digits) >= 11 {
 		return string(digits)
+	}
+	return ""
+}
+
+// bcdSIM decodes 6 BCD bytes (phone/SIM) used in many JT1078 RTP-style headers.
+func bcdSIM(b []byte) string {
+	const hex = "0123456789abcdef"
+	out := make([]byte, 0, len(b)*2)
+	for _, v := range b {
+		hi, lo := v>>4, v&0x0f
+		if hi <= 9 {
+			out = append(out, hex[hi])
+		}
+		if lo <= 9 {
+			out = append(out, hex[lo])
+		}
+	}
+	s := string(out)
+	for len(s) > 1 && s[0] == '0' {
+		s = s[1:]
+	}
+	if len(s) >= 11 {
+		return s
 	}
 	return ""
 }

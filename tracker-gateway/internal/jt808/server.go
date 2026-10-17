@@ -435,6 +435,24 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			}
 		}
 		body = wrap8202Body(text)
+	case "jt808_8702", "driver_query":
+		// Request driver identity upload — empty body; terminal replies 0x0702.
+		msgID = 0x8702
+		body = nil
+	case "jt808_8700", "driving_record":
+		// Driving record collect command — BYTE cmd (+ optional params as hex).
+		msgID = 0x8700
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = []byte{wrap8700Cmd(text)}
+	case "jt808_8204", "link_detect":
+		// 2019 link detection — empty body.
+		msgID = 0x8204
+		body = nil
 	default:
 		// 0x8300: flag(1)+text. Hex-only Admin payloads skip UTF-8 mangling.
 		if cmd.PayloadHex != "" {
@@ -596,6 +614,11 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			_ = st.TouchSeen(ctx, sess.device)
 		}
 		return reply(conn, sess, 0x8004, bcdNowUTC6())
+	case 0x0005: // terminal requests missing subpackages — status only (no retransmit yet)
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, parseSubpkgRetransmit(body), nil)
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0003: // terminal logout — tear down session binding
 		if sess.device != nil {
 			_ = st.TouchSeen(ctx, sess.device)
@@ -838,6 +861,38 @@ func parseMultimediaMeta(body []byte) map[string]any {
 	if len(body) >= 7 {
 		out["media_id"] = binary.BigEndian.Uint32(body[3:7])
 	}
+	return out
+}
+
+// wrap8700Cmd maps Admin text to a common driving-record collect command byte.
+func wrap8700Cmd(text string) byte {
+	switch strings.TrimSpace(strings.ToLower(text)) {
+	case "", "collect", "0x00", "0":
+		return 0x00
+	case "standard", "0x01", "1":
+		return 0x01
+	default:
+		if n, err := strconv.ParseUint(strings.TrimPrefix(strings.TrimSpace(text), "0x"), 16, 8); err == nil {
+			return byte(n)
+		}
+		return 0x00
+	}
+}
+
+// parseSubpkgRetransmit maps 0x0005 (first packet id + total + id list) for status.
+func parseSubpkgRetransmit(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0005", "retransmit_len": len(body)}
+	if len(body) >= 2 {
+		out["first_packet_id"] = int(binary.BigEndian.Uint16(body[0:2]))
+	}
+	if len(body) >= 3 {
+		out["retransmit_count"] = int(body[2])
+	}
+	snip := body
+	if len(snip) > 32 {
+		snip = snip[:32]
+	}
+	out["retransmit_hex"] = fmt.Sprintf("%x", snip)
 	return out
 }
 

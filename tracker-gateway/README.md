@@ -7,14 +7,14 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | Adapter | Port env | Default | Status | Uplink | Downlink | Notes |
 |---------|----------|---------|--------|--------|----------|-------|
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat + alarm safety | — | nested attrs flatten; `alarm.*` → safety |
-| Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | soft text corr; voltage/GSM promote; event IO → safety |
-| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/0003–4/0104–8/0500/0301/0700/0705/0800–5/0900 | 0x8300/8103–7/8201–2/8500/8801 | camera+track downlink; logout unbind |
+| Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | Codec13/14 response parse; soft corr; voltage/GSM |
+| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/0003–5/0104–8/0500/0301/0700–5/0800–5/0900 | 0x8300/8103–7/8201–4/8500/8700–2/8801 | driver/record/camera/track; logout |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
-| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/logout/HB + 0x1200 + 0x1400 | — | 0x5B CRC framing; plate ingest; alarm → safety |
-| JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling + ACK + SIM bind | — | no RTP / no 808 media bridge |
+| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/logout/HB + 0x1200/01 + 0x1400 | — | 0x5B CRC framing; plate ingest; alarm → safety |
+| JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling + ACK + SIM (ASCII/BCD) | — | no RTP / no 808 media bridge |
 | Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS | 0x80 GPRS | paused for depth — GT06 deferred |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records | 108/105/107 | voltage IO; records_left; corr by cmd/soft |
-| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | alt/HDOP/voltage; status safety; soft corr |
+| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | alt/HDOP/voltage/IO; status safety; soft corr |
 
 **Do not claim “full JT/T” or production 2-way until an adapter is marked `certified`.** Status lives in each `Adapter.Status()` and Admin protocol labels.
 
@@ -42,6 +42,9 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `jt808_8500` / `control` | jt808/subiao | vehicle control |
 | `jt808_8801` / `camera` | jt808/subiao | camera shoot (pairs 0x0805) |
 | `jt808_8202` / `track` | jt808/subiao | temporary location track |
+| `jt808_8702` / `driver_query` | jt808/subiao | request driver identity (→0x0702) |
+| `jt808_8700` / `driving_record` | jt808/subiao | driving record collect (→0x0700) |
+| `jt808_8204` / `link_detect` | jt808/subiao | 2019 link detection |
 | `teltonika_codec12` | teltonika | Codec 12 GPRS |
 | `concox_gprs` | concox | GT06 0x80 |
 | `ruptela_sms` | ruptela | command 108 |
@@ -90,6 +93,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   070_uplink_remap_seeds.sql
 #   071_ruptela_cmd_types.sql
 #   072_jt808_camera_track.sql
+#   073_jt808_driver_record.sql
 npm run db:migrate
 
 cd tracker-gateway

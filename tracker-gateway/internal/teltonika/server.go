@@ -173,18 +173,20 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 	}
 }
 
-// parseCodec12Response decodes Codec 12/13 type=0x06 response body.
-// ok=false for empty body or ERROR/FAIL style replies (wiki GPRS command responses).
+// parseCodec12Response decodes Codec 12/13/14 type=0x06 (or 0x11 nACK) response body.
+// Codec13: size includes 4-byte unix timestamp before ASCII. Codec14: size includes 8-byte IMEI.
+// ok=false for empty body, nACK, or ERROR/FAIL style replies (wiki GPRS command responses).
 func parseCodec12Response(payload []byte) (string, bool) {
-	// 0x0C|0x0D | qty | type=0x06 | size u32 BE | body | qty
+	// 0x0C|0x0D|0x0E | qty | type | size u32 BE | [ts|imei] | body | qty
 	if len(payload) < 8 {
 		return fmt.Sprintf("%x", payload), false
 	}
+	codec := payload[0]
 	typ := payload[2]
 	szOff := 3
-	if typ != 0x06 && typ != 0x05 {
+	if typ != 0x06 && typ != 0x05 && typ != 0x11 {
 		// some firmwares omit qty and put type at [1]
-		if payload[1] == 0x06 || payload[1] == 0x05 {
+		if payload[1] == 0x06 || payload[1] == 0x05 || payload[1] == 0x11 {
 			szOff = 2
 			typ = payload[1]
 		}
@@ -200,8 +202,26 @@ func parseCodec12Response(payload []byte) (string, bool) {
 	if sz < 0 {
 		return fmt.Sprintf("%x", payload), false
 	}
-	body := string(payload[start : start+sz])
-	ok := typ == 0x06 && sz > 0 && !codec12LooksFailed(body)
+	bodyStart, bodyLen := start, sz
+	switch codec {
+	case 0x0d: // Codec13 — unix timestamp precedes response
+		if bodyLen < 4 {
+			return fmt.Sprintf("%x", payload[start:start+sz]), false
+		}
+		bodyStart += 4
+		bodyLen -= 4
+	case 0x0e: // Codec14 — 8-byte IMEI precedes response
+		if bodyLen < 8 {
+			return fmt.Sprintf("%x", payload[start:start+sz]), false
+		}
+		bodyStart += 8
+		bodyLen -= 8
+	}
+	body := string(payload[bodyStart : bodyStart+bodyLen])
+	if typ == 0x11 {
+		return body, false // Codec14 nACK
+	}
+	ok := typ == 0x06 && bodyLen > 0 && !codec12LooksFailed(body)
 	return body, ok
 }
 

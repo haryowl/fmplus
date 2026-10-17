@@ -269,6 +269,36 @@ func TestEncodeDownlink_Track8202(t *testing.T) {
 	}
 }
 
+func TestEncodeDownlink_Driver8702(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{CommandType: "jt808_8702"}, "13800138000")
+	if err != nil || len(out) < 8 {
+		t.Fatalf("err=%v len=%d", err, len(out))
+	}
+	raw := unescape(out)
+	if !bytes.Contains(raw, []byte{0x87, 0x02}) {
+		t.Fatalf("msg id missing: %x", raw)
+	}
+}
+
+func TestEncodeDownlink_DrivingRecord8700(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{CommandType: "jt808_8700", PayloadText: "collect"}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := unescape(out)
+	if !bytes.Contains(raw, []byte{0x87, 0x00}) {
+		t.Fatalf("%x", raw)
+	}
+}
+
+func TestWrap8700Cmd(t *testing.T) {
+	if wrap8700Cmd("") != 0 || wrap8700Cmd("0x15") != 0x15 {
+		t.Fatal(wrap8700Cmd(""), wrap8700Cmd("0x15"))
+	}
+}
+
 func TestEncodeDownlink_RequiresPhone(t *testing.T) {
 	ad := Adapter{}
 	_, err := ad.EncodeDownlink(store.Command{PayloadText: "x"}, "")

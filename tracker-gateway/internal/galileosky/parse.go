@@ -180,6 +180,8 @@ func tagSize(tag byte) int {
 		return 1
 	case 0x46: // input status (bit per input)
 		return 2
+	case 0x47: // output status (bit per output) — same width as inputs on many firmwares
+		return 2
 	case 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57: // analog / input values
 		return 2
 	case 0xd4, 0xd5, 0xd6, 0xd7: // odometer / counters

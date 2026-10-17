@@ -13,3 +13,14 @@ func TestExtractSIMHint(t *testing.T) {
 		t.Fatal("expected digits after binary prefix")
 	}
 }
+
+func TestBcdSIM(t *testing.T) {
+	// 013800138000 → trim leading 0 → 13800138000
+	b := []byte{0x01, 0x38, 0x00, 0x13, 0x80, 0x00}
+	if got := bcdSIM(b); got != "13800138000" {
+		t.Fatalf("got=%q", got)
+	}
+	if bcdSIM([]byte{0x00, 0x00}) != "" {
+		t.Fatal("short BCD")
+	}
+}
