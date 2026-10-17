@@ -119,12 +119,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				}
 				tagRaw := tagsToRaw(tags)
 				fix.RawAttrs["tags"] = tagRaw
-				if archive {
-					fix.RawAttrs["archive"] = true
-				}
-				if len(records) > 1 {
-					fix.RawAttrs["record_count"] = len(records)
-				}
+				applyPacketMeta(fix.RawAttrs, archive, len(records))
 				for k, v := range tagRaw {
 					fix.RawAttrs["tag."+k] = v
 				}
@@ -161,6 +156,19 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		}
 		// Official confirm: header 0x02 + CRC of received packet.
 		_ = writeAck(conn, gotCRC)
+	}
+}
+
+// applyPacketMeta sets archive / multi-record remappable keys on a fix.
+func applyPacketMeta(raw map[string]any, archive bool, numRecords int) {
+	if raw == nil {
+		return
+	}
+	if archive {
+		raw["archive"] = true
+	}
+	if numRecords > 1 {
+		raw["record_count"] = numRecords
 	}
 }
 

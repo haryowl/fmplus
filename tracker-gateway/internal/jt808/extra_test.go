@@ -153,6 +153,12 @@ func TestParseAdditionalInfo_DriverIC32(t *testing.T) {
 	if add["driver.ic_login"] != true || add["driver.ic_status"] != 1 {
 		t.Fatalf("login=%v", add)
 	}
+	if add["driver.ic_result"] != 0 {
+		t.Fatalf("result=%v", add["driver.ic_result"])
+	}
+	if add["driver.ic_time_bcd"] != "260101120100" {
+		t.Fatalf("bcd=%v", add["driver.ic_time_bcd"])
+	}
 	if add["driver.ic_name"] != "Bob" || add["driver.ic_card"] != "IC99" {
 		t.Fatalf("name/card=%v", add)
 	}
@@ -272,6 +278,14 @@ func TestDecodeSubiaoBody_DSM_Extended(t *testing.T) {
 	decodeSubiaoBody(0x65, []byte{0x63, 0x01}, add2)
 	if add2["dsm.other"] != true {
 		t.Fatalf("other=%v", add2)
+	}
+}
+
+func TestDecodeSubiaoBody_TPMS(t *testing.T) {
+	add := map[string]any{}
+	decodeSubiaoBody(0x66, []byte{0x01, 0x01}, add)
+	if add["tpms.alarm"] != true || add["subiao_event"] != "tpms" {
+		t.Fatalf("add=%v", add)
 	}
 }
 

@@ -98,6 +98,35 @@ func TestHoistTerminalParam_AlarmMask(t *testing.T) {
 	}
 }
 
+func TestHoistTerminalParam_NetworkAndReportVariants(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0001, 60, nil, out)
+	hoistTerminalParam(0x0002, 30, nil, out)
+	hoistTerminalParam(0x0003, 3, nil, out)
+	hoistTerminalParam(0x0010, nil, []byte("cmnet"), out)
+	hoistTerminalParam(0x0011, nil, []byte("user"), out)
+	hoistTerminalParam(0x0013, nil, []byte("gps.example.com"), out)
+	hoistTerminalParam(0x0017, nil, []byte("bak.example.com"), out)
+	hoistTerminalParam(0x0018, 7611, nil, out)
+	hoistTerminalParam(0x0020, 30, nil, out)
+	hoistTerminalParam(0x0027, 300, nil, out)
+	hoistTerminalParam(0x0029, 60, nil, out)
+	hoistTerminalParam(0x0084, 1, nil, out)
+	if out["heartbeat.interval"] != 60 || out["tcp.timeout"] != 30 || out["tcp.retry"] != 3 {
+		t.Fatalf("tcp=%v", out)
+	}
+	if out["apn.main"] != "cmnet" || out["apn.user"] != "user" || out["server.main"] != "gps.example.com" {
+		t.Fatalf("apn/server=%v", out)
+	}
+	if out["server.backup"] != "bak.example.com" || out["server.port"] != 7611 {
+		t.Fatalf("backup=%v", out)
+	}
+	if out["report.interval"] != 30 || out["report.interval_dormant"] != 300 ||
+		out["report.interval_default"] != 60 || out["vehicle.plate_color"] != 1 {
+		t.Fatalf("report/plate=%v", out)
+	}
+}
+
 func TestHoistTerminalParam_PhoneSpeedMileageVehicle(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x0040, nil, []byte("13800138000"), out)
