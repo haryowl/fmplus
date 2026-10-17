@@ -474,15 +474,34 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 		}
 		body = wrap8203Body(text)
 	case "jt808_8600", "geofence_set":
-		// Set circular area (minimal single circle) or raw hex body.
-		msgID = 0x8600
+		// Set circular (0x8600) or rectangular (0x8602 when type=rect) area.
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				if strings.Contains(strings.ToLower(text), "type=rect") {
+					msgID = 0x8602
+				} else {
+					msgID = 0x8600
+				}
+				body = raw
+				break
+			}
+		}
+		if looksLikeRectGeofence(text) {
+			msgID = 0x8602
+			body = wrap8602Body(text)
+		} else {
+			msgID = 0x8600
+			body = wrap8600Body(text)
+		}
+	case "jt808_8602":
+		msgID = 0x8602
 		if cmd.PayloadHex != "" {
 			if raw := cmd.PayloadBytes(); len(raw) > 0 {
 				body = raw
 				break
 			}
 		}
-		body = wrap8600Body(text)
+		body = wrap8602Body(text)
 	case "jt808_8601", "geofence_del":
 		// Delete circular area(s): count=0 → all; else DWORD area ids (hex or csv).
 		msgID = 0x8601
@@ -1163,6 +1182,13 @@ func wrap8203Body(text string) []byte {
 	return body
 }
 
+// looksLikeRectGeofence detects type=rect or lat1/lon1/lat2/lon2 DSL.
+func looksLikeRectGeofence(text string) bool {
+	t := strings.ToLower(text)
+	return strings.Contains(t, "type=rect") ||
+		(strings.Contains(t, "lat1=") && strings.Contains(t, "lat2="))
+}
+
 // wrap8600Body builds a minimal 0x8600 single circular area.
 // text: "id=1,lat=-6.2,lon=106.8,r=500" (degrees, radius meters).
 func wrap8600Body(text string) []byte {
@@ -1211,6 +1237,58 @@ func wrap8600Body(text string) []byte {
 	return body
 }
 
+// wrap8602Body builds a minimal 0x8602 single rectangular area.
+// text: "id=1,lat1=-6.1,lon1=106.7,lat2=-6.3,lon2=106.9" (NW/SE corners, degrees).
+func wrap8602Body(text string) []byte {
+	var id uint32 = 1
+	var lat1, lon1, lat2, lon2 float64
+	for _, part := range strings.Split(strings.TrimSpace(text), ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		k, v := strings.ToLower(kv[0]), strings.TrimSpace(kv[1])
+		switch k {
+		case "id":
+			if n, err := strconv.ParseUint(v, 10, 32); err == nil {
+				id = uint32(n)
+			}
+		case "lat1", "nlat", "top":
+			if n, err := strconv.ParseFloat(v, 64); err == nil {
+				lat1 = n
+			}
+		case "lon1", "lng1", "left":
+			if n, err := strconv.ParseFloat(v, 64); err == nil {
+				lon1 = n
+			}
+		case "lat2", "slat", "bottom":
+			if n, err := strconv.ParseFloat(v, 64); err == nil {
+				lat2 = n
+			}
+		case "lon2", "lng2", "right":
+			if n, err := strconv.ParseFloat(v, 64); err == nil {
+				lon2 = n
+			}
+		}
+	}
+	body := make([]byte, 2+4+2+4+4+4+4)
+	body[0] = 0 // property=update
+	body[1] = 1 // count
+	off := 2
+	binary.BigEndian.PutUint32(body[off:], id)
+	off += 4
+	binary.BigEndian.PutUint16(body[off:], 0) // attribute
+	off += 2
+	binary.BigEndian.PutUint32(body[off:], uint32(int32(lat1*1e6)))
+	off += 4
+	binary.BigEndian.PutUint32(body[off:], uint32(int32(lon1*1e6)))
+	off += 4
+	binary.BigEndian.PutUint32(body[off:], uint32(int32(lat2*1e6)))
+	off += 4
+	binary.BigEndian.PutUint32(body[off:], uint32(int32(lon2*1e6)))
+	return body
+}
+
 // wrap8601Body builds 0x8601 delete circular area: 0=all, else count + DWORD ids.
 func wrap8601Body(text string) []byte {
 	t := strings.TrimSpace(strings.ToLower(text))
@@ -1245,14 +1323,42 @@ func wrap8601Body(text string) []byte {
 	return body
 }
 
-// parseAreaQueryResp maps 0x0608 area/route query response (type + count snippet).
+// parseAreaQueryResp maps 0x0608 area/route query response (type + count + first area).
 func parseAreaQueryResp(body []byte) map[string]any {
 	out := map[string]any{"proto_msg": "0x0608", "area_resp_len": len(body)}
+	qType := 0
 	if len(body) >= 1 {
-		out["area_query_type"] = int(body[0])
+		qType = int(body[0])
+		out["area_query_type"] = qType
 	}
 	if len(body) >= 5 {
 		out["area_count"] = int(binary.BigEndian.Uint32(body[1:5]))
+	}
+	rec := body
+	if len(rec) > 5 {
+		rec = rec[5:]
+	} else {
+		rec = nil
+	}
+	// First record: id(4)+attr(2)+…
+	if len(rec) >= 6 {
+		out["geofence.id"] = binary.BigEndian.Uint32(rec[0:4])
+		out["geofence.attr"] = int(binary.BigEndian.Uint16(rec[4:6]))
+	}
+	switch qType {
+	case 1: // circle: lat, lon, radius
+		if len(rec) >= 18 {
+			out["geofence.lat"] = float64(int32(binary.BigEndian.Uint32(rec[6:10]))) / 1e6
+			out["geofence.lon"] = float64(int32(binary.BigEndian.Uint32(rec[10:14]))) / 1e6
+			out["geofence.radius"] = binary.BigEndian.Uint32(rec[14:18])
+		}
+	case 2: // rectangle: NW + SE corners
+		if len(rec) >= 22 {
+			out["geofence.lat1"] = float64(int32(binary.BigEndian.Uint32(rec[6:10]))) / 1e6
+			out["geofence.lon1"] = float64(int32(binary.BigEndian.Uint32(rec[10:14]))) / 1e6
+			out["geofence.lat2"] = float64(int32(binary.BigEndian.Uint32(rec[14:18]))) / 1e6
+			out["geofence.lon2"] = float64(int32(binary.BigEndian.Uint32(rec[18:22]))) / 1e6
+		}
 	}
 	snip := body
 	if len(snip) > 48 {

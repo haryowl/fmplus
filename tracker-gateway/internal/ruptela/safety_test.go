@@ -21,6 +21,17 @@ func TestSafetyFromEventIO_Overspeed(t *testing.T) {
 	}
 }
 
+func TestSafetyFromEventIO_SOS(t *testing.T) {
+	fix := store.Fix{
+		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{"event_io": 1},
+	}
+	ev := safetyFromEventIO(fix)
+	if ev == nil || ev.AlarmType != "sos" {
+		t.Fatalf("%+v", ev)
+	}
+}
+
 func TestSafetyFromEventIO_Unknown(t *testing.T) {
 	fix := store.Fix{RawAttrs: map[string]any{"event_io": 999}}
 	if safetyFromEventIO(fix) != nil {

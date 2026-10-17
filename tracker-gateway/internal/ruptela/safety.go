@@ -14,9 +14,16 @@ type knownEvent struct {
 
 // Overlap with Teltonika AVL where Ruptela FM configs share IO numbering.
 var knownEventIO = map[int]knownEvent{
+	1:   {"sos", 2, "alarm.sos"},       // DIN1 / SOS on many FM configs
+	2:   {"door", 1, "alarm.door"},     // DIN2 / door
+	3:   {"door", 1, "alarm.door"},
 	5:   {"ignition", 1, "alarm.ignition"},
+	9:   {"sos", 2, "alarm.sos"},
+	14:  {"door", 1, "alarm.door"},
+	15:  {"door", 1, "alarm.door"},
 	175: {"geofence", 1, "alarm.geofence"},
 	236: {"alarm", 2, "alarm.generic"},
+	239: {"ignition", 1, "alarm.ignition"},
 	240: {"movement", 1, "alarm.movement"},
 	246: {"towing", 2, "alarm.towing"},
 	247: {"crash", 2, "alarm.crash"},

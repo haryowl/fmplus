@@ -30,3 +30,20 @@ func TestBcdSIM(t *testing.T) {
 		t.Fatal("short BCD")
 	}
 }
+
+func TestParseSignalingPayload_PTZ(t *testing.T) {
+	m := parseSignalingPayload(0x04, []byte{0x01, 0x02, 0xaa})
+	if m["av_ptz_cmd"] != 1 || m["av_stream"] != 2 {
+		t.Fatalf("%v", m)
+	}
+	if m["av_payload_len"] != 3 {
+		t.Fatalf("%v", m)
+	}
+}
+
+func TestParseSignalingPayload_VideoSSRC(t *testing.T) {
+	m := parseSignalingPayload(0x00, []byte{0x12, 0x34, 0x56, 0x78})
+	if m["av_ssrc"] != uint32(0x12345678) {
+		t.Fatalf("%v", m)
+	}
+}

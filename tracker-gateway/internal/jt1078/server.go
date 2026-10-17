@@ -124,14 +124,20 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				}
 				kind := avDataKind(dataType)
 				meta["av_kind"] = kind
+				payload := frame[16:]
+				sig := parseSignalingPayload(dataType, payload)
 				if device != nil && st != nil {
-					_ = st.PatchLastStatus(ctx, device, map[string]any{
+					patch := map[string]any{
 						"proto_msg":   "jt1078_signaling",
 						"av_channel":  int(channel),
 						"av_datatype": int(dataType),
 						"av_kind":     kind,
 						"av_frames":   channels[channel],
-					}, nil)
+					}
+					for k, v := range sig {
+						patch[k] = v
+					}
+					_ = st.PatchLastStatus(ctx, device, patch, nil)
 					_ = st.TouchSeen(ctx, device)
 				}
 				if channels[channel] <= 3 || channels[channel]%50 == 0 {

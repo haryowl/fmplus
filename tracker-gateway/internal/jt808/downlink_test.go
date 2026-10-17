@@ -372,6 +372,41 @@ func TestWrap8600Body(t *testing.T) {
 	}
 }
 
+func TestWrap8602Body(t *testing.T) {
+	b := wrap8602Body("id=3,lat1=-6.1,lon1=106.7,lat2=-6.3,lon2=106.9")
+	if b[0] != 0 || b[1] != 1 || binary.BigEndian.Uint32(b[2:6]) != 3 {
+		t.Fatalf("%x", b)
+	}
+	wantLat := int32(-6100000)
+	if binary.BigEndian.Uint32(b[8:12]) != uint32(wantLat) {
+		t.Fatalf("lat1 %x", b)
+	}
+}
+
+func TestLooksLikeRectGeofence(t *testing.T) {
+	if !looksLikeRectGeofence("type=rect,id=1") || !looksLikeRectGeofence("lat1=1,lat2=2") {
+		t.Fatal("expected rect")
+	}
+	if looksLikeRectGeofence("id=1,lat=-6,lon=106,r=100") {
+		t.Fatal("circle should not look like rect")
+	}
+}
+
+func TestEncodeDownlink_GeofenceSetRect(t *testing.T) {
+	ad := Adapter{}
+	out, err := ad.EncodeDownlink(store.Command{
+		CommandType: "geofence_set",
+		PayloadText: "type=rect,id=2,lat1=-6.1,lon1=106.7,lat2=-6.3,lon2=106.9",
+	}, "13800138000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := unescape(out)
+	if !bytes.Contains(raw, []byte{0x86, 0x02}) {
+		t.Fatalf("expected 0x8602: %x", raw)
+	}
+}
+
 func TestEncodeDownlink_RequiresPhone(t *testing.T) {
 	ad := Adapter{}
 	_, err := ad.EncodeDownlink(store.Command{PayloadText: "x"}, "")

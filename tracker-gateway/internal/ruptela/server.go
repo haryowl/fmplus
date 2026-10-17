@@ -141,10 +141,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					_ = st.AckCommand(ctx, device.ID, corr, ok, resp)
 				}
 				if cmd == 3 {
-					_ = st.PatchLastStatus(ctx, device, map[string]any{
-						"proto_msg": "ruptela_cmd_3",
-						"ident":     resp,
-					}, nil)
+					_ = st.PatchLastStatus(ctx, device, parseIdentResponse(resp), nil)
 				}
 				_ = st.TouchSeen(ctx, device)
 				flushPending(ctx, conn, st, device.ID)

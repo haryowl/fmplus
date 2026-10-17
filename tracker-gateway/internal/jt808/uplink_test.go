@@ -148,6 +148,43 @@ func TestParseMultimediaRetrieveResp(t *testing.T) {
 	}
 }
 
+func putI32BE(b []byte, v int32) {
+	binary.BigEndian.PutUint32(b, uint32(v))
+}
+
+func TestParseAreaQueryResp_Circle(t *testing.T) {
+	body := make([]byte, 5+18)
+	body[0] = 1 // circle
+	binary.BigEndian.PutUint32(body[1:5], 1)
+	binary.BigEndian.PutUint32(body[5:9], 42)
+	binary.BigEndian.PutUint16(body[9:11], 0)
+	putI32BE(body[11:15], -6200000)
+	putI32BE(body[15:19], 106800000)
+	binary.BigEndian.PutUint32(body[19:23], 500)
+	m := parseAreaQueryResp(body)
+	if m["geofence.id"] != uint32(42) || m["geofence.radius"] != uint32(500) {
+		t.Fatalf("%v", m)
+	}
+	if m["geofence.lat"].(float64) > -6.19 || m["geofence.lat"].(float64) < -6.21 {
+		t.Fatalf("lat=%v", m["geofence.lat"])
+	}
+}
+
+func TestParseAreaQueryResp_Rect(t *testing.T) {
+	body := make([]byte, 5+22)
+	body[0] = 2
+	binary.BigEndian.PutUint32(body[1:5], 1)
+	binary.BigEndian.PutUint32(body[5:9], 9)
+	putI32BE(body[11:15], -6100000)
+	putI32BE(body[15:19], 106700000)
+	putI32BE(body[19:23], -6300000)
+	putI32BE(body[23:27], 106900000)
+	m := parseAreaQueryResp(body)
+	if m["geofence.id"] != uint32(9) || m["geofence.lat2"] == nil {
+		t.Fatalf("%v", m)
+	}
+}
+
 func TestSafetyFromEventID_Expanded(t *testing.T) {
 	cases := map[int]string{
 		5: "enter_area", 6: "leave_area", 12: "collision", 14: "driver_change",
