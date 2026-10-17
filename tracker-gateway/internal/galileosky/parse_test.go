@@ -123,6 +123,9 @@ func TestAltitudeHDOPVoltage(t *testing.T) {
 	if fix.RawAttrs["voltage.ext"] != 12.4 {
 		t.Fatalf("volt=%v", fix.RawAttrs["voltage.ext"])
 	}
+	if fix.RawAttrs["tag.0x50"] != 12400.0 && fix.RawAttrs["tag.0x50"] != 12400 {
+		t.Fatalf("tag.0x50=%v", fix.RawAttrs["tag.0x50"])
+	}
 }
 
 func TestCRC16ModbusAndFrame(t *testing.T) {

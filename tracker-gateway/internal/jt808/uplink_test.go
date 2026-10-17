@@ -132,6 +132,9 @@ func TestParseCANBus(t *testing.T) {
 	if m["can.0.data0"] != 1 || m["can.first_id"] != int(0x18FEEF00) {
 		t.Fatalf("first=%v", m)
 	}
+	if m["can.first_data"] != "0102030405060708" {
+		t.Fatalf("first_data=%v", m["can.first_data"])
+	}
 }
 
 func TestParseDrivingRecord(t *testing.T) {
@@ -247,6 +250,9 @@ func TestParseAreaQueryResp_Circle(t *testing.T) {
 	}
 	if _, ok := m["geofence.attr"]; !ok {
 		t.Fatalf("geofence.attr missing: %v", m)
+	}
+	if _, ok := m["area_head_hex"].(string); !ok {
+		t.Fatalf("area_head_hex missing: %v", m)
 	}
 }
 
