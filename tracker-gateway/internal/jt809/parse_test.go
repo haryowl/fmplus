@@ -130,6 +130,38 @@ func TestParseVehicleUplink_EncryptAndTimeBCD(t *testing.T) {
 	}
 }
 
+func TestParseVehicleUplink_Door1AndCircuit(t *testing.T) {
+	rest := make([]byte, 24+1+6+8+2+2+2+4+4)
+	copy(rest[0:21], []byte("B2222DR1"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 0x0200)
+	off := 24
+	rest[off] = 0
+	off++
+	off += 6
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(106.8*1e6))))
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(-6.2*1e6))))
+	off += 4
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint32(rest[off:], 0x2000|0x0800) // door1 + circuit_cut
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], 0)
+
+	fix, _, ok := parseVehicleUplink(0x1202, rest)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["status.door1"] != true || fix.RawAttrs["status.circuit_cut"] != true {
+		t.Fatalf("door1/circuit=%v", fix.RawAttrs)
+	}
+}
+
 func TestParseVehicleUplink_Door345(t *testing.T) {
 	rest := make([]byte, 24+1+6+8+2+2+2+4+4)
 	copy(rest[0:21], []byte("B3333DR5"))

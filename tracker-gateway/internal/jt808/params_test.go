@@ -88,3 +88,12 @@ func TestHoistTerminalParam_APNAndReport(t *testing.T) {
 		t.Fatalf("plate/speed=%v", out)
 	}
 }
+
+func TestHoistTerminalParam_AlarmMask(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0050, 0x0f, nil, out)
+	hoistTerminalParam(0x0051, 0x03, nil, out)
+	if out["alarm.mask"] != 0x0f || out["alarm.sms_switch"] != 0x03 {
+		t.Fatalf("%v", out)
+	}
+}

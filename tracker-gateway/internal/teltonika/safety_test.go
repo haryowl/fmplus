@@ -107,6 +107,19 @@ func TestFlattenEventAlarm_GreenDrivingDuration(t *testing.T) {
 	}
 }
 
+func TestFlattenEventAlarm_SOS(t *testing.T) {
+	raw := map[string]any{"event_io": 1}
+	flattenEventAlarm(raw)
+	if raw["alarm.sos"] != true || raw["alarm_level"] != 2 {
+		t.Fatalf("sos1=%v", raw)
+	}
+	raw9 := map[string]any{"event_io": 9}
+	flattenEventAlarm(raw9)
+	if raw9["alarm.sos"] != true {
+		t.Fatalf("sos9=%v", raw9)
+	}
+}
+
 func TestFlattenEventAlarm_GreenDriving(t *testing.T) {
 	raw := map[string]any{"event_io": 253}
 	flattenEventAlarm(raw)
