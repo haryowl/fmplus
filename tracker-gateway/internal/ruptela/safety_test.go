@@ -231,6 +231,11 @@ func TestPromoteRuptelaScalars_FuelAVL(t *testing.T) {
 	if raw9["engine.injection_timing"] != -5.0 {
 		t.Fatalf("injection=%v", raw9["engine.injection_timing"])
 	}
+	raw10 := map[string]any{}
+	promoteRuptelaScalars(raw10, map[string]any{"60": 1200, "68": 1500})
+	if raw10["engine.fuel_rate"] != 12.0 || raw10["battery.current"] != 1.5 {
+		t.Fatalf("fuel_rate/batt=%v", raw10)
+	}
 	raw2 := map[string]any{}
 	promoteRuptelaScalars(raw2, map[string]any{"48": 500})
 	if raw2["fuel.used"] != 500.0 || raw2["fuel.used_total"] != 500.0 {

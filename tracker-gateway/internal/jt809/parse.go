@@ -316,7 +316,7 @@ func parseMediaUpload160x(msgID uint16, rest []byte) (plate string, patch map[st
 	plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
 	patch["vehicle_plate"] = plate
 	if len(rest) >= 22 {
-		patch["media_type"] = int(rest[21])
+		jt808.HoistMediaKind(patch, int(rest[21]))
 	}
 	if len(rest) >= 26 {
 		patch["media_size"] = int(binary.BigEndian.Uint32(rest[22:26]))

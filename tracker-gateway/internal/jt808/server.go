@@ -1570,6 +1570,11 @@ func hoistMediaKind(out map[string]any, mediaType int) {
 	out["media_kind"] = mediaKindName(mediaType)
 }
 
+// HoistMediaKind maps media_type onto remappable media_kind (shared by JT808/JT809).
+func HoistMediaKind(out map[string]any, mediaType int) {
+	hoistMediaKind(out, mediaType)
+}
+
 // parseMultimediaMeta stores 0x0801 multimedia event fields (partial; no media body).
 // Preferred JT/T 808 layout: id(4)+type+format+event+channel + optional 0x0200 location (28+).
 // Short legacy layout (type+channel+event+id) kept when body < 8.

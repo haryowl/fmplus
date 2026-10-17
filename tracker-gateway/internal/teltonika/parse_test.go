@@ -297,6 +297,11 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 	if raw8["engine.injection_timing"] != 12.5 {
 		t.Fatalf("injection=%v", raw8["engine.injection_timing"])
 	}
+	raw9 := map[string]any{}
+	promoteTeltonikaScalars(raw9, map[string]any{"60": 850, "68": 2500})
+	if raw9["engine.fuel_rate"] != 8.5 || raw9["battery.current"] != 2.5 {
+		t.Fatalf("fuel_rate/batt=%v", raw9)
+	}
 }
 
 func TestPromoteTeltonikaScalars_SleepIdling(t *testing.T) {

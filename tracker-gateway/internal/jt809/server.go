@@ -162,6 +162,11 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 			sessions.Bind(sess)
 		}
 		*bound = sess
+		if st != nil && *platformKey != "" {
+			if d := deviceauth.FindByIMEI(ctx, st, *platformKey, conn.RemoteAddr().String(), "jt809"); d != nil {
+				_ = st.PatchLastStatus(ctx, d, login, nil)
+			}
+		}
 		respBody := make([]byte, 26)
 		binary.BigEndian.PutUint32(respBody[0:4], 26)
 		binary.BigEndian.PutUint16(respBody[8:10], 0x1002)

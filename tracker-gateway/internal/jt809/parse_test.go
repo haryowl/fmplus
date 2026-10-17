@@ -565,6 +565,14 @@ func TestParseMediaUpload160x(t *testing.T) {
 	if !ok || plate != "B2222UP" || patch["media_file"] != "pic.jpg" || patch["media_upload"] != true {
 		t.Fatalf("%v", patch)
 	}
+	if patch["media_type"] != 3 || patch["media_kind"] != "type_3" {
+		t.Fatalf("kind=%v", patch)
+	}
+	rest[21] = 0
+	_, pic, _ := parseMediaUpload160x(0x1601, rest)
+	if pic["media_kind"] != "picture" {
+		t.Fatalf("picture kind=%v", pic)
+	}
 	_, patch2, ok2 := parseMediaUpload160x(0x1602, rest)
 	if !ok2 || patch2["media_complete"] != true {
 		t.Fatalf("%v", patch2)
