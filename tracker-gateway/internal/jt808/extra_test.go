@@ -118,6 +118,14 @@ func TestSafetyFromLocationTLVAlarms_Fence(t *testing.T) {
 	}
 }
 
+func TestHoistLocationStatusBits_SouthWestEncrypted(t *testing.T) {
+	raw := map[string]any{}
+	hoistLocationStatusBits(0x04|0x08|0x20, raw) // south + west + encrypted
+	if raw["status.south"] != true || raw["status.west"] != true || raw["status.encrypted"] != true {
+		t.Fatalf("%v", raw)
+	}
+}
+
 func TestParseAdditionalInfo_Signal025Turns(t *testing.T) {
 	base := make([]byte, 28)
 	// ACC + left turn + brake + low beam: bits 0,1,4,8 → 0x00000113

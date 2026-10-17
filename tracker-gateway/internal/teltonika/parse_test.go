@@ -231,9 +231,12 @@ func TestPromoteTeltonikaScalars_Accel(t *testing.T) {
 
 func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 	raw := map[string]any{}
-	promoteTeltonikaScalars(raw, map[string]any{"89": 75, "239": 1, "16": 12345})
+	promoteTeltonikaScalars(raw, map[string]any{"89": 75, "239": 1, "16": 12345, "12": 10, "13": 2.5, "48": 1000})
 	if raw["fuel.level"] != 75.0 || raw["status.ignition"] != true || raw["odometer"] != 12345.0 {
 		t.Fatalf("%v", raw)
+	}
+	if raw["fuel.used"] != 10.0 || raw["fuel.rate"] != 2.5 || raw["fuel.used_total"] != 1000.0 {
+		t.Fatalf("fuel avl=%v", raw)
 	}
 }
 

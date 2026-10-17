@@ -192,6 +192,18 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["89"]; ok {
 		raw["fuel.level"] = asIOFloat(v)
 	}
+	if v, ok := io["12"]; ok {
+		raw["fuel.used"] = asIOFloat(v)
+	}
+	if v, ok := io["13"]; ok {
+		raw["fuel.rate"] = asIOFloat(v)
+	}
+	if v, ok := io["48"]; ok {
+		raw["fuel.used_total"] = asIOFloat(v)
+		if _, has := raw["fuel.used"]; !has {
+			raw["fuel.used"] = asIOFloat(v)
+		}
+	}
 	if v, ok := io["239"]; ok {
 		raw["status.ignition"] = asIOBool(v)
 	} else if v, ok := io["1"]; ok {

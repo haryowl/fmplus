@@ -73,3 +73,79 @@ func (t *subpkgTracker) gcLocked() {
 		}
 	}
 }
+
+// outboundSubpkg holds escaped frames for one logical downlink (shared seq).
+type outboundSubpkg struct {
+	total  int
+	frames map[int][]byte // 1-based package index → escaped 0x7e…0x7e frame
+	expiry time.Time
+}
+
+// outboundSubpkgCache remembers multi-fragment downlinks for 0x0005 resend.
+type outboundSubpkgCache struct {
+	mu   sync.Mutex
+	bufs map[string]*outboundSubpkg
+}
+
+func newOutboundSubpkgCache() *outboundSubpkgCache {
+	return &outboundSubpkgCache{bufs: map[string]*outboundSubpkg{}}
+}
+
+func outboundKey(phone string, seq uint16) string {
+	return fmt.Sprintf("%s|%d", phone, seq)
+}
+
+func (c *outboundSubpkgCache) put(phone string, seq uint16, total int, frames map[int][]byte) {
+	if c == nil || phone == "" || total < 2 || len(frames) == 0 {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.gcLocked()
+	cp := make(map[int][]byte, len(frames))
+	for i, f := range frames {
+		b := make([]byte, len(f))
+		copy(b, f)
+		cp[i] = b
+	}
+	c.bufs[outboundKey(phone, seq)] = &outboundSubpkg{
+		total:  total,
+		frames: cp,
+		expiry: time.Now().Add(2 * time.Minute),
+	}
+}
+
+// framesFor returns escaped frames for requested 1-based indexes; miss lists unknown ids.
+func (c *outboundSubpkgCache) framesFor(phone string, seq uint16, ids []int) (resent [][]byte, miss []int) {
+	if c == nil || phone == "" {
+		return nil, append([]int(nil), ids...)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.gcLocked()
+	a := c.bufs[outboundKey(phone, seq)]
+	if a == nil {
+		return nil, append([]int(nil), ids...)
+	}
+	a.expiry = time.Now().Add(2 * time.Minute)
+	for _, id := range ids {
+		f, ok := a.frames[id]
+		if !ok || len(f) == 0 {
+			miss = append(miss, id)
+			continue
+		}
+		cp := make([]byte, len(f))
+		copy(cp, f)
+		resent = append(resent, cp)
+	}
+	return resent, miss
+}
+
+func (c *outboundSubpkgCache) gcLocked() {
+	now := time.Now()
+	for k, a := range c.bufs {
+		if now.After(a.expiry) {
+			delete(c.bufs, k)
+		}
+	}
+}

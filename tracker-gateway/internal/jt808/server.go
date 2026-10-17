@@ -59,12 +59,13 @@ type session struct {
 	label       string
 	bound       *protocol.ConnSession
 	subpkgs     *subpkgTracker
+	outbound    *outboundSubpkgCache
 	version2019 bool
 }
 
 func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry, label string) {
 	metrics.ConnOpen()
-	sess := &session{label: label, subpkgs: newSubpkgTracker()}
+	sess := &session{label: label, subpkgs: newSubpkgTracker(), outbound: newOutboundSubpkgCache()}
 	defer func() {
 		metrics.ConnClose()
 		if sessions != nil && sess.bound != nil {
@@ -221,7 +222,7 @@ func tryFlushCommands(ctx context.Context, conn net.Conn, st *store.Store, sessi
 		if err != nil || cmd == nil {
 			return
 		}
-		payload := encodeJT808DownlinkVer(sess.phone, &sess.seq, cmd, sess.version2019)
+		payload := encodeJT808DownlinkVerOut(sess.phone, &sess.seq, cmd, sess.version2019, sess.outbound)
 		if len(payload) == 0 {
 			_ = st.MarkCommandFailed(ctx, cmd.ID, "jt808 empty downlink")
 			continue
@@ -453,6 +454,10 @@ func encodeJT808Downlink(phone string, seq *uint16, cmd *store.Command) []byte {
 }
 
 func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019 bool) []byte {
+	return encodeJT808DownlinkVerOut(phone, seq, cmd, v2019, nil)
+}
+
+func encodeJT808DownlinkVerOut(phone string, seq *uint16, cmd *store.Command, v2019 bool, outCache *outboundSubpkgCache) []byte {
 	if cmd == nil {
 		return nil
 	}
@@ -828,7 +833,7 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 			body = append([]byte{flag}, []byte(msg)...)
 		}
 	}
-	return buildDownlinkFrameVer(phone, seq, msgID, body, v2019)
+	return buildDownlinkFrameVerOut(phone, seq, msgID, body, v2019, outCache)
 }
 
 func buildDownlinkFrame(phone string, seq *uint16, msgID uint16, body []byte) []byte {
@@ -838,6 +843,10 @@ func buildDownlinkFrame(phone string, seq *uint16, msgID uint16, body []byte) []
 const jt808MaxBody = 1023
 
 func buildDownlinkFrameVer(phone string, seq *uint16, msgID uint16, body []byte, v2019 bool) []byte {
+	return buildDownlinkFrameVerOut(phone, seq, msgID, body, v2019, nil)
+}
+
+func buildDownlinkFrameVerOut(phone string, seq *uint16, msgID uint16, body []byte, v2019 bool, outCache *outboundSubpkgCache) []byte {
 	if len(body) <= jt808MaxBody {
 		var n uint16 = 1
 		if seq != nil {
@@ -858,6 +867,7 @@ func buildDownlinkFrameVer(phone string, seq *uint16, msgID uint16, body []byte,
 		n = *seq
 	}
 	out := make([]byte, 0, len(body)+total*24)
+	frames := make(map[int][]byte, total)
 	for i := 0; i < total; i++ {
 		start := i * jt808MaxBody
 		end := start + jt808MaxBody
@@ -868,7 +878,12 @@ func buildDownlinkFrameVer(phone string, seq *uint16, msgID uint16, body []byte,
 		header := packJT808HeaderSub(msgID, frag, phone, n, v2019, total, i+1)
 		msg := append(header, frag...)
 		msg = append(msg, bcc(msg))
-		out = append(out, escape(msg)...)
+		esc := escape(msg)
+		frames[i+1] = esc
+		out = append(out, esc...)
+	}
+	if outCache != nil {
+		outCache.put(phone, n, total, frames)
 	}
 	return out
 }
@@ -997,9 +1012,27 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			_ = st.TouchSeen(ctx, sess.device)
 		}
 		return reply(conn, sess, 0x8004, bcdNowUTC6())
-	case 0x0005: // terminal requests missing subpackages — status only (no retransmit yet)
+	case 0x0005: // terminal requests missing subpackages — resend cached outbound frags
+		patch := parseSubpkgRetransmit(body)
+		if sess.outbound != nil {
+			orig := 0
+			if v, ok := patch["first_packet_id"].(int); ok {
+				orig = v
+			}
+			ids, _ := patch["retransmit_ids"].([]int)
+			resent, miss := sess.outbound.framesFor(phone, uint16(orig), ids)
+			for _, f := range resent {
+				if _, err := conn.Write(f); err != nil {
+					return err
+				}
+			}
+			patch["retransmit_resent"] = len(resent)
+			if len(miss) > 0 {
+				patch["retransmit_miss"] = miss
+			}
+		}
 		if sess.device != nil {
-			_ = st.PatchLastStatus(ctx, sess.device, parseSubpkgRetransmit(body), nil)
+			_ = st.PatchLastStatus(ctx, sess.device, patch, nil)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0003: // terminal logout — tear down session binding
@@ -1348,14 +1381,32 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["phone.monitor"] = string(raw)
 	case 0x0041:
 		out["phone.reset"] = string(raw)
+	case 0x0042:
+		out["phone.restore"] = string(raw)
+	case 0x0043:
+		out["phone.sms_platform"] = string(raw)
+	case 0x0044:
+		out["phone.tts"] = string(raw)
+	case 0x0045:
+		out["phone.answer_strategy"] = decoded
+	case 0x0046:
+		out["phone.call_max_sec"] = decoded
+	case 0x0047:
+		out["phone.call_month_max"] = decoded
 	case 0x0048:
 		out["phone.sms"] = string(raw)
+	case 0x0049:
+		out["phone.privilege"] = string(raw)
 	case 0x0050:
 		out["alarm.mask"] = decoded
 	case 0x0051:
 		out["alarm.sms_switch"] = decoded
+	case 0x0052:
+		out["alarm.shoot_switch"] = decoded
 	case 0x0053:
 		out["speed.warn_delta"] = decoded
+	case 0x0054:
+		out["alarm.shoot_store"] = decoded
 	case 0x0055:
 		out["speed.max"] = decoded
 	case 0x0056:

@@ -101,6 +101,34 @@ func TestHoistTerminalParam_AlarmMask(t *testing.T) {
 	}
 }
 
+func TestHoistTerminalParam_PhoneAlarmShoot(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0042, nil, []byte("RESTORE"), out)
+	hoistTerminalParam(0x0043, nil, []byte("SMS-PLAT"), out)
+	hoistTerminalParam(0x0044, nil, []byte("TTS"), out)
+	hoistTerminalParam(0x0045, 1, nil, out)
+	hoistTerminalParam(0x0046, 60, nil, out)
+	hoistTerminalParam(0x0047, 3600, nil, out)
+	hoistTerminalParam(0x0049, nil, []byte("PRIV"), out)
+	hoistTerminalParam(0x0052, 0xff, nil, out)
+	hoistTerminalParam(0x0054, 0x0f, nil, out)
+	if out["phone.restore"] != "RESTORE" || out["phone.sms_platform"] != "SMS-PLAT" {
+		t.Fatalf("phone=%v", out)
+	}
+	if out["phone.tts"] != "TTS" || out["phone.answer_strategy"] != 1 {
+		t.Fatalf("tts/answer=%v", out)
+	}
+	if out["phone.call_max_sec"] != 60 || out["phone.call_month_max"] != 3600 {
+		t.Fatalf("call=%v", out)
+	}
+	if out["phone.privilege"] != "PRIV" {
+		t.Fatalf("priv=%v", out)
+	}
+	if out["alarm.shoot_switch"] != 0xff || out["alarm.shoot_store"] != 0x0f {
+		t.Fatalf("shoot=%v", out)
+	}
+}
+
 func TestHoistTerminalParam_InflectionDistance(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x0023, 30, nil, out)

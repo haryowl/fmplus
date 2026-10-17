@@ -150,6 +150,19 @@ func TestPromoteRuptelaScalars_Ignition(t *testing.T) {
 	}
 }
 
+func TestPromoteRuptelaScalars_FuelAVL(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{"12": 10, "13": 2.5, "48": 1000})
+	if raw["fuel.used"] != 10.0 || raw["fuel.rate"] != 2.5 || raw["fuel.used_total"] != 1000.0 {
+		t.Fatalf("%v", raw)
+	}
+	raw2 := map[string]any{}
+	promoteRuptelaScalars(raw2, map[string]any{"48": 500})
+	if raw2["fuel.used"] != 500.0 || raw2["fuel.used_total"] != 500.0 {
+		t.Fatalf("alias=%v", raw2)
+	}
+}
+
 func TestPromoteRuptelaScalars_DinDout(t *testing.T) {
 	raw := map[string]any{}
 	promoteRuptelaScalars(raw, map[string]any{"1": 1, "3": 1, "179": 1})

@@ -453,8 +453,17 @@ func hoistLocationStatusBits(status uint32, raw map[string]any) {
 	if raw == nil {
 		return
 	}
+	if status&0x04 != 0 {
+		raw["status.south"] = true
+	}
+	if status&0x08 != 0 {
+		raw["status.west"] = true
+	}
 	if status&0x10 != 0 {
 		raw["status.out_of_service"] = true
+	}
+	if status&0x20 != 0 {
+		raw["status.encrypted"] = true
 	}
 	// Bits 8–9: load (00 empty, 01 half, 10 reserved, 11 full).
 	switch (status >> 8) & 0x03 {

@@ -347,3 +347,25 @@ func TestBuildDownlink_OutboundSubpkg(t *testing.T) {
 		t.Fatalf("expected ≥2 frames (4 0x7e), got %d", n7e)
 	}
 }
+
+func TestOutboundSubpkgCache_Resend(t *testing.T) {
+	body := make([]byte, jt808MaxBody+10)
+	for i := range body {
+		body[i] = byte(i)
+	}
+	cache := newOutboundSubpkgCache()
+	var seq uint16
+	_ = buildDownlinkFrameVerOut("13800138000", &seq, 0x8300, body, false, cache)
+	if seq != 1 {
+		t.Fatalf("seq=%d", seq)
+	}
+	resent, miss := cache.framesFor("13800138000", 1, []int{1, 2, 9})
+	if len(resent) != 2 || len(miss) != 1 || miss[0] != 9 {
+		t.Fatalf("resent=%d miss=%v", len(resent), miss)
+	}
+	for _, f := range resent {
+		if len(f) < 2 || f[0] != 0x7e || f[len(f)-1] != 0x7e {
+			t.Fatalf("bad frame len=%d", len(f))
+		}
+	}
+}
