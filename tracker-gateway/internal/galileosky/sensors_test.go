@@ -187,6 +187,34 @@ func TestPromoteSensorTags_AnalogA2A3(t *testing.T) {
 	}
 }
 
+func TestPromoteSensorTags_ExtUserCanAnalogAux(t *testing.T) {
+	raw := map[string]any{}
+	u21 := make([]byte, 4)
+	c68 := make([]byte, 4)
+	cC4 := make([]byte, 4)
+	aA4 := make([]byte, 4)
+	binary.LittleEndian.PutUint32(u21, 91)
+	binary.LittleEndian.PutUint32(c68, 68)
+	binary.LittleEndian.PutUint32(cC4, 196)
+	binary.LittleEndian.PutUint32(aA4, 1400)
+	aux1 := make([]byte, 2)
+	aux2 := make([]byte, 2)
+	binary.LittleEndian.PutUint16(aux1, 31)
+	binary.LittleEndian.PutUint16(aux2, 32)
+	promoteSensorTags(raw, map[byte][]byte{
+		0x21: u21, 0x68: c68, 0xc4: cC4, 0xa4: aA4, 0x31: aux1, 0x32: aux2,
+	})
+	if raw["user.9"] != float64(91) || raw["can.9"] != float64(68) {
+		t.Fatalf("user/can=%v", raw)
+	}
+	if raw["can.17"] != float64(196) || raw["analog.14"] != float64(1400) {
+		t.Fatalf("can17/analog14=%v", raw)
+	}
+	if raw["gnss.aux1"] != float64(31) || raw["gnss.aux2"] != float64(32) {
+		t.Fatalf("aux=%v", raw)
+	}
+}
+
 func TestPromoteSensorTags_CmdReply(t *testing.T) {
 	raw := map[string]any{}
 	promoteSensorTags(raw, map[byte][]byte{0xe1: []byte("OK SET")})

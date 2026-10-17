@@ -419,6 +419,28 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		}
 		raw[fmt.Sprintf("user.%d", i)] = int(v[0])
 	}
+	// 0x21–0x2F: extended 4-byte user/data channels.
+	for i := 0; i < 15; i++ {
+		id := byte(0x21 + i)
+		v, ok := tags[id]
+		if !ok || len(v) < 4 {
+			continue
+		}
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw[fmt.Sprintf("user.%d", i+9)] = float64(n)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+	}
+	// 0x31 / 0x32: GNSS auxiliary quality words (2-byte LE, units model-dependent).
+	if v, ok := tags[0x31]; ok && len(v) >= 2 {
+		n := binary.LittleEndian.Uint16(v[0:2])
+		raw["gnss.aux1"] = float64(n)
+		raw["tag.0x31"] = int(n)
+	}
+	if v, ok := tags[0x32]; ok && len(v) >= 2 {
+		n := binary.LittleEndian.Uint16(v[0:2])
+		raw["gnss.aux2"] = float64(n)
+		raw["tag.0x32"] = int(n)
+	}
 	// 0xd5–0xd7: additional counters (units model-dependent).
 	for i, id := range []byte{0xd5, 0xd6, 0xd7} {
 		v, ok := tags[id]
@@ -459,6 +481,17 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("can.%d", i+1)] = float64(n)
 		raw[fmt.Sprintf("tag.0x%02x", id)] = n
 	}
+	// 0x68–0x6F: extended CAN / RS485 channels (4-byte LE).
+	for i := 0; i < 8; i++ {
+		id := byte(0x68 + i)
+		v, ok := tags[id]
+		if !ok || len(v) < 4 {
+			continue
+		}
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw[fmt.Sprintf("can.%d", i+9)] = float64(n)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+	}
 	// 0xC0–0xC3: additional CAN / RS485 channels (4-byte LE).
 	for i, id := range []byte{0xc0, 0xc1, 0xc2, 0xc3} {
 		v, ok := tags[id]
@@ -469,6 +502,17 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("can.%d", i+5)] = float64(n)
 		raw[fmt.Sprintf("tag.0x%02x", id)] = n
 	}
+	// 0xC4–0xCF: further CAN / RS485 channels (4-byte LE).
+	for i := 0; i < 12; i++ {
+		id := byte(0xc4 + i)
+		v, ok := tags[id]
+		if !ok || len(v) < 4 {
+			continue
+		}
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw[fmt.Sprintf("can.%d", i+17)] = float64(n)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+	}
 	// 0xA0–0xA3: extended analog / sensor payloads (4-byte LE, units model-dependent).
 	for i, id := range []byte{0xa0, 0xa1, 0xa2, 0xa3} {
 		v, ok := tags[id]
@@ -477,6 +521,17 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		}
 		n := binary.LittleEndian.Uint32(v[0:4])
 		raw[fmt.Sprintf("analog.%d", i+10)] = float64(n)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+	}
+	// 0xA4–0xAF: further analog / sensor payloads (4-byte LE).
+	for i := 0; i < 12; i++ {
+		id := byte(0xa4 + i)
+		v, ok := tags[id]
+		if !ok || len(v) < 4 {
+			continue
+		}
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw[fmt.Sprintf("analog.%d", i+14)] = float64(n)
 		raw[fmt.Sprintf("tag.0x%02x", id)] = n
 	}
 	// 0xE0–0xE6: command / text replies (length-prefixed ASCII).

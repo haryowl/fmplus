@@ -483,6 +483,7 @@ func hoistLocationStatusBits(status uint32, raw map[string]any) {
 		raw["status.load_half"] = true
 	case 2:
 		raw["vehicle.load"] = "reserved"
+		raw["status.load_reserved"] = true
 	case 3:
 		raw["vehicle.load"] = "full"
 		raw["status.load_full"] = true

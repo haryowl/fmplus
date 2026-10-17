@@ -83,9 +83,14 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					"role":    "av-signaling",
 				}
 				// SIM: ASCII digits in payload, else BCD in common 16-byte header slots [8:14].
-				sim := extractSIMHint(frame[16:])
-				if sim == "" && len(frame) >= 14 {
-					sim = bcdSIM(frame[8:14])
+				simASCII := extractSIMHint(frame[16:])
+				simBCD := ""
+				if len(frame) >= 14 {
+					simBCD = bcdSIM(frame[8:14])
+				}
+				sim := simASCII
+				if sim == "" {
+					sim = simBCD
 				}
 				if sim != "" {
 					meta["sim"] = sim
@@ -128,7 +133,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				sig := parseSignalingPayload(dataType, payload)
 				hdr := parseSignalingHeader(frame[:16])
 				if device != nil && st != nil {
-					patch := buildSignalingPatch(channel, dataType, channels[channel], hdr, sig, sim)
+					patch := buildSignalingPatch(channel, dataType, channels[channel], hdr, sig, simBCD, simASCII)
 					_ = st.PatchLastStatus(ctx, device, patch, nil)
 					_ = st.TouchSeen(ctx, device)
 				}

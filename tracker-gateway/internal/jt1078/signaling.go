@@ -6,7 +6,8 @@ import (
 )
 
 // buildSignalingPatch merges header/payload hints into a Device Manager status patch.
-func buildSignalingPatch(channel byte, dataType byte, frames int, hdr, sig map[string]any, sim string) map[string]any {
+// Prefer ASCII payload SIM for merged av_sim; keep BCD/ASCII provenance separately.
+func buildSignalingPatch(channel byte, dataType byte, frames int, hdr, sig map[string]any, simBCD, simASCII string) map[string]any {
 	patch := map[string]any{}
 	for k, v := range hdr {
 		patch[k] = v
@@ -19,6 +20,16 @@ func buildSignalingPatch(channel byte, dataType byte, frames int, hdr, sig map[s
 	patch["av_datatype"] = int(dataType)
 	patch["av_kind"] = avDataKind(dataType & 0x0f)
 	patch["av_frames"] = frames
+	if simBCD != "" {
+		patch["av_sim_bcd"] = simBCD
+	}
+	if simASCII != "" {
+		patch["av_sim_ascii"] = simASCII
+	}
+	sim := simASCII
+	if sim == "" {
+		sim = simBCD
+	}
 	if sim != "" {
 		patch["av_sim"] = sim
 	}

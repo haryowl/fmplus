@@ -381,4 +381,9 @@ func TestHoistLocationStatusBits(t *testing.T) {
 	if raw["status.gnss_glonass"] != true || raw["status.gnss_galileo"] != true {
 		t.Fatalf("gnss=%v", raw)
 	}
+	raw2 := map[string]any{}
+	HoistLocationStatusBits(0x200, raw2) // bits 8–9 = 10 → reserved
+	if raw2["vehicle.load"] != "reserved" || raw2["status.load_reserved"] != true {
+		t.Fatalf("reserved=%v", raw2)
+	}
 }

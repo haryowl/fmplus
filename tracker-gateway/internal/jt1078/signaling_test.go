@@ -50,15 +50,19 @@ func TestParseSignalingPayload_PTZ(t *testing.T) {
 func TestBuildSignalingPatch_AvFrames(t *testing.T) {
 	hdr := parseSignalingHeader(make([]byte, 16))
 	sig := parseSignalingPayload(0x00, []byte{0x01, 0x02, 0x03, 0x04})
-	patch := buildSignalingPatch(2, 0x00, 7, hdr, sig, "13800138000")
+	patch := buildSignalingPatch(2, 0x00, 7, hdr, sig, "13800138000", "")
 	if patch["proto_msg"] != "jt1078_signaling" || patch["av_frames"] != 7 {
 		t.Fatalf("%v", patch)
 	}
-	if patch["av_channel"] != 2 || patch["av_sim"] != "13800138000" {
+	if patch["av_channel"] != 2 || patch["av_sim"] != "13800138000" || patch["av_sim_bcd"] != "13800138000" {
 		t.Fatalf("%v", patch)
 	}
 	if patch["av_payload_len"] != 4 {
 		t.Fatalf("payload=%v", patch)
+	}
+	patch2 := buildSignalingPatch(1, 0x00, 1, hdr, sig, "111", "22233344455")
+	if patch2["av_sim"] != "22233344455" || patch2["av_sim_ascii"] != "22233344455" || patch2["av_sim_bcd"] != "111" {
+		t.Fatalf("prefer ascii=%v", patch2)
 	}
 }
 
