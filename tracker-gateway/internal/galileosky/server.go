@@ -3,6 +3,7 @@ package galileosky
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -119,27 +120,52 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			flushPending(ctx, conn, st, device.ID)
 		} else if device != nil && !hasFix {
 			_ = st.TouchSeen(ctx, device)
+			// Non-fix uplink (status / command reply tags) closes the sent→acked loop.
+			if looksLikeCommandReply(tags) {
+				_ = st.AckLatestSent(ctx, device.ID, true, fmt.Sprintf("galileosky tags %v", tagsToRaw(tags)))
+			}
 			flushPending(ctx, conn, st, device.ID)
 		}
 		_ = writeAck(conn)
 	}
 }
 
+func looksLikeCommandReply(tags map[byte][]byte) bool {
+	if len(tags) == 0 {
+		return false
+	}
+	// Reply / confirm tags used by various Galileosky firmwares (model-dependent).
+	for _, t := range []byte{0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xff} {
+		if _, ok := tags[t]; ok {
+			return true
+		}
+	}
+	// Any packet with more than just IMEI is treated as a candidate reply.
+	if _, onlyIMEI := tags[0x03]; onlyIMEI && len(tags) == 1 {
+		return false
+	}
+	return len(tags) > 0 && !hasCoordTag(tags)
+}
+
+func hasCoordTag(tags map[byte][]byte) bool {
+	_, ok := tags[0x30]
+	return ok
+}
+
 func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID string) {
-	// Galileosky has no certified binary downlink yet — send raw/text payloads as-is (MVP).
+	ad := Adapter{}
 	for i := 0; i < 4; i++ {
 		cmd, err := st.NextPendingCommand(ctx, deviceID)
 		if err != nil || cmd == nil {
 			return
 		}
-		payload := cmd.PayloadBytes()
-		if len(payload) == 0 && cmd.PayloadText != "" {
-			payload = []byte(cmd.PayloadText)
-		}
-		if len(payload) == 0 {
-			return
+		payload, encErr := ad.EncodeDownlink(*cmd)
+		if encErr != nil || len(payload) == 0 {
+			_ = st.MarkCommandFailed(ctx, cmd.ID, "galileosky encode failed")
+			continue
 		}
 		if _, err := conn.Write(payload); err != nil {
+			_ = st.MarkCommandFailed(ctx, cmd.ID, "write failed: "+err.Error())
 			return
 		}
 		_ = st.MarkCommandSent(ctx, cmd.ID)

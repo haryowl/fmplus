@@ -3,6 +3,8 @@ package galileosky
 import (
 	"encoding/hex"
 	"testing"
+
+	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
 func TestParseTags_IMEIAndCoords(t *testing.T) {
@@ -57,4 +59,41 @@ func TestTagSize_Odometer(t *testing.T) {
 	if len(tags[0xd4]) != 4 {
 		t.Fatalf("odo tag missing: %#v", tags)
 	}
+}
+
+func TestEncodeDownlink_Frame(t *testing.T) {
+	ad := Adapter{}
+	frame, err := ad.EncodeDownlink(storeCommand("GETVER"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame[0] != 0x01 {
+		t.Fatalf("hdr=%x", frame[0])
+	}
+	if len(frame) != 3+6+1 { // hdr+len + GETVER + xor
+		t.Fatalf("len=%d frame=%x", len(frame), frame)
+	}
+	var xor byte
+	for _, b := range []byte("GETVER") {
+		xor ^= b
+	}
+	if frame[len(frame)-1] != xor {
+		t.Fatalf("checksum=%x want %x", frame[len(frame)-1], xor)
+	}
+}
+
+func TestLooksLikeCommandReply(t *testing.T) {
+	if looksLikeCommandReply(map[byte][]byte{0x03: []byte("352094081234567")}) {
+		t.Fatal("IMEI-only should not look like reply")
+	}
+	if !looksLikeCommandReply(map[byte][]byte{0xe1: {1, 2, 3, 4}}) {
+		t.Fatal("0xe1 should look like reply")
+	}
+	if looksLikeCommandReply(map[byte][]byte{0x30: make([]byte, 9)}) {
+		t.Fatal("coords-only should not look like reply")
+	}
+}
+
+func storeCommand(text string) store.Command {
+	return store.Command{PayloadText: text}
 }

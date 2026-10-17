@@ -1,0 +1,32 @@
+package ruptela
+
+import (
+	"testing"
+	"time"
+
+	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
+)
+
+func TestSafetyFromEventIO_Overspeed(t *testing.T) {
+	fix := store.Fix{
+		Lat: -6.2, Lon: 106.8, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{"event_io": 255},
+	}
+	ev := safetyFromEventIO(fix)
+	if ev == nil || ev.AlarmType != "overspeed" {
+		t.Fatalf("ev=%+v", ev)
+	}
+	if ev.RawAttrs["alarm.overspeed"] != true {
+		t.Fatalf("raw=%v", ev.RawAttrs)
+	}
+}
+
+func TestSafetyFromEventIO_Unknown(t *testing.T) {
+	fix := store.Fix{RawAttrs: map[string]any{"event_io": 999}}
+	if safetyFromEventIO(fix) != nil {
+		t.Fatal("expected nil for unknown event")
+	}
+	if safetyFromEventIO(store.Fix{}) != nil {
+		t.Fatal("expected nil for empty")
+	}
+}

@@ -39,6 +39,7 @@ import {
 import {
   createProfile,
   deleteMapRule,
+  cancelCommand,
   enqueueCommand,
   lastFixPreview,
   listCommands,
@@ -454,6 +455,26 @@ export async function handleAdminRequest(req, res) {
           error: err instanceof Error ? err.message : "Gateway unreachable",
         });
       }
+      return true;
+    }
+
+    const commandOneMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-devices\/([0-9a-f-]{36})\/commands\/([0-9a-f-]{36})$/i.exec(
+        path,
+      );
+    if (commandOneMatch) {
+      const tenantId = commandOneMatch[1];
+      const deviceId = commandOneMatch[2];
+      const commandId = commandOneMatch[3];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "DELETE") {
+        const command = await cancelCommand(tenantId, deviceId, commandId);
+        await writeAudit(admin.id, "tracker_command.cancel", { tenantId, deviceId, commandId });
+        json(res, 200, { command });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
       return true;
     }
 

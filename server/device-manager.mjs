@@ -295,6 +295,26 @@ export async function listCommands(tenantId, deviceId, limit = 50) {
   }));
 }
 
+/** Cancel a pending (or unsent) command; sent commands cannot be pulled back from the wire. */
+export async function cancelCommand(tenantId, deviceId, commandId) {
+  const updated = await dbQuery(
+    `UPDATE tracker_commands
+     SET status = 'failed',
+         response_text = 'cancelled by admin',
+         completed_at = now()
+     WHERE tenant_id = $1 AND device_id = $2 AND id = $3
+       AND status = 'pending'
+     RETURNING id, status`,
+    [tenantId, deviceId, commandId],
+  );
+  if (!updated.rows[0]) {
+    const err = new Error("Pending command not found (already sent or completed)");
+    err.status = 404;
+    throw err;
+  }
+  return { id: updated.rows[0].id, status: updated.rows[0].status };
+}
+
 export async function listSafetyEvents(tenantId, { deviceId, limit = 50 } = {}) {
   const lim = Math.min(Number(limit) || 50, 200);
   const rows = deviceId

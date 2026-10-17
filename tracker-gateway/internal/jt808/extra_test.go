@@ -48,3 +48,15 @@ func TestSafetyFromAlarmWord_SOS(t *testing.T) {
 		t.Fatal("expected nil for zero alarm")
 	}
 }
+
+func TestFlattenAlarmBits_OnFix(t *testing.T) {
+	raw := map[string]any{}
+	flattenAlarmBits(1<<0|1<<1, raw) // sos + overspeed
+	if raw["alarm.sos"] != true || raw["alarm.overspeed"] != true {
+		t.Fatalf("raw=%v", raw)
+	}
+	flattenAlarmBits(0, raw)
+	if len(raw) != 2 {
+		t.Fatalf("zero alarm should not clear existing keys: %v", raw)
+	}
+}

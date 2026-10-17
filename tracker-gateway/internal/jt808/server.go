@@ -471,6 +471,15 @@ func parseLocation(body []byte) (store.Fix, bool) {
 	}
 	altF := float64(alt)
 	ign := status&0x01 != 0
+	raw := map[string]any{
+		"status":     status,
+		"alarm":      alarm,
+		"status.acc": ign,
+	}
+	if status&0x02 != 0 {
+		raw["status.gps"] = true
+	}
+	flattenAlarmBits(alarm, raw)
 	return store.Fix{
 		Lat:        lat,
 		Lon:        lon,
@@ -479,7 +488,7 @@ func parseLocation(body []byte) (store.Fix, bool) {
 		Heading:    &dir,
 		Altitude:   &altF,
 		Ignition:   &ign,
-		RawAttrs:   map[string]any{"status": status, "alarm": alarm},
+		RawAttrs:   raw,
 	}, true
 }
 

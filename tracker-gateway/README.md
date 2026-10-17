@@ -14,7 +14,7 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling | — | A/V hooks only |
 | Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm | 0x80 GPRS | heartbeat patches ACC without 0,0 fix |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | records + IO | cmd 108 SMS | config responses → command ack |
-| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags | raw/text MVP | compressed packets experimental |
+| Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags | 0x01 framed | reply tags → command ack; compressed experimental |
 
 **Do not claim “full JT/T” or production 2-way until an adapter is marked `certified`.** Status lives in each `Adapter.Status()` and Admin protocol labels.
 
@@ -30,7 +30,9 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | `ruptela_sms` | ruptela | command 108 |
 | `raw` | any | hex payload as-is |
 
-Stale commands: **pending** > 24h or **sent** > 30m → `expired`. Encode errors → `failed`.
+Stale commands: **pending** > 24h or **sent** > 30m → `expired`. Encode/write errors → `failed`. Admin can **cancel** pending commands (not already sent). Remap rules support transforms: `identity`, `scale`, `offset`, `bit_mask`, `invert_bool`, `enum_map`.
+
+JT808 location fixes flatten `alarm.*` bits and `status.acc` onto `raw_attrs` for Device Manager remap (same keys as safety events).
 
 ## Architecture
 
@@ -44,7 +46,12 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 ## Run
 
 ```bash
-# migrate first (050–053 device manager / IO / commands)
+# migrate first — device manager + command types + IO/alarm seeds
+#   050_device_manager.sql
+#   051_tracker_command_types.sql
+#   052_subiao_protocol_params.sql
+#   053_teltonika_io_depth.sql
+#   054_concox_alarm_maps.sql
 npm run db:migrate
 
 cd tracker-gateway
@@ -52,7 +59,9 @@ go mod tidy
 go run .
 ```
 
-Requires `DATABASE_URL` (same as fms-embed). Optional Admin proxy: `TRACKER_GATEWAY_URL` (default `http://127.0.0.1:5080`).
+Requires `DATABASE_URL` (same as fms-embed).
+
+Admin gateway status proxy: set `TRACKER_GATEWAY_URL` (default `http://127.0.0.1:5080`) so Device Manager can call `/healthz` + `/adapters`.
 
 ## HTTP ingest
 

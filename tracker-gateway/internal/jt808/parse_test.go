@@ -44,6 +44,28 @@ func TestParseLocation_Golden(t *testing.T) {
 	if fix.Ignition == nil || *fix.Ignition {
 		t.Errorf("ignition=%v want false", fix.Ignition)
 	}
+	if fix.RawAttrs["status.acc"] != false {
+		t.Errorf("status.acc=%v want false", fix.RawAttrs["status.acc"])
+	}
+}
+
+func TestParseLocation_AlarmBitsFlattened(t *testing.T) {
+	body := mustHex(t, goldenLocationHex)
+	binary.BigEndian.PutUint32(body[0:4], 1<<0) // SOS
+	binary.BigEndian.PutUint32(body[4:8], 0x01)  // ACC on
+	fix, ok := parseLocation(body)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["alarm.sos"] != true {
+		t.Fatalf("expected alarm.sos on fix raw_attrs: %v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["status.acc"] != true {
+		t.Fatalf("expected status.acc: %v", fix.RawAttrs)
+	}
+	if fix.Ignition == nil || !*fix.Ignition {
+		t.Fatal("expected ignition true")
+	}
 }
 
 func TestParseLocation_WestNorth(t *testing.T) {

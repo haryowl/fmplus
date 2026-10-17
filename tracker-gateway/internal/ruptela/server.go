@@ -92,6 +92,9 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			}
 			for _, fix := range records {
 				fix.SourceProtocol = "ruptela"
+				if ev := safetyFromEventIO(fix); ev != nil {
+					_ = st.InsertSafetyEvent(ctx, device, *ev)
+				}
 				if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 					log.Printf("[ruptela] ingest %s: %v", imei, err)
 				}

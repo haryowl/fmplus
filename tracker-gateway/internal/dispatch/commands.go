@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/concox"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/galileosky"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/jt808"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/protocol"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/ruptela"
@@ -23,6 +24,7 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 	cx := concox.Adapter{}
 	rup := ruptela.Adapter{}
 	jt := jt808.Adapter{}
+	gs := galileosky.Adapter{}
 	for _, cmd := range cmds {
 		sess, ok := sessions.SessionByDevice(cmd.DeviceID)
 		if !ok || sess.Conn == nil {
@@ -48,11 +50,7 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 			}
 			payload, encErr = jt.EncodeDownlink(cmd, phone)
 		case cmd.Protocol == "galileosky":
-			// MVP: raw/text only until a certified Galileosky downlink frame exists.
-			payload = cmd.PayloadBytes()
-			if len(payload) == 0 && cmd.PayloadText != "" {
-				payload = []byte(cmd.PayloadText)
-			}
+			payload, encErr = gs.EncodeDownlink(cmd)
 		default:
 			payload = cmd.PayloadBytes()
 			if len(payload) == 0 && cmd.PayloadText != "" {

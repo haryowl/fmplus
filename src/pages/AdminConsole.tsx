@@ -452,6 +452,8 @@ export default function AdminConsole() {
   const [dmProfileId, setDmProfileId] = useState("");
   const [dmVendorKey, setDmVendorKey] = useState("io.239");
   const [dmAppParam, setDmAppParam] = useState("ignition");
+  const [dmTransform, setDmTransform] = useState("identity");
+  const [dmTransformArg, setDmTransformArg] = useState("");
   const [protocolParams, setProtocolParams] = useState<TrackerProtocolParam[]>([]);
   const [cmdDeviceId, setCmdDeviceId] = useState("");
   const [cmdText, setCmdText] = useState("");
@@ -989,6 +991,26 @@ export default function AdminConsole() {
     if (!selectedId || selectedId === "new" || !dmProfileId) return;
     setBusy(true);
     setError("");
+    let transformArg: Record<string, unknown> = {};
+    if (dmTransformArg.trim()) {
+      try {
+        const parsed = JSON.parse(dmTransformArg) as unknown;
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("transform arg must be a JSON object");
+        }
+        transformArg = parsed as Record<string, unknown>;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Invalid transform arg JSON");
+        setBusy(false);
+        return;
+      }
+    } else if (dmTransform === "scale") {
+      transformArg = { scale: 1 };
+    } else if (dmTransform === "offset") {
+      transformArg = { offset: 0 };
+    } else if (dmTransform === "bit_mask") {
+      transformArg = { mask: 1 };
+    }
     try {
       await api(`/api/admin/tenants/${selectedId}/tracker-param-maps`, {
         method: "POST",
@@ -996,13 +1018,50 @@ export default function AdminConsole() {
           profileId: dmProfileId,
           vendorKey: dmVendorKey.trim(),
           appParamId: dmAppParam,
-          transform: "identity",
+          transform: dmTransform,
+          transformArg,
         }),
       });
-      setNotice(`Mapped ${dmVendorKey} → ${dmAppParam}`);
+      setNotice(`Mapped ${dmVendorKey} → ${dmAppParam} (${dmTransform})`);
       await loadMapRules(selectedId, dmProfileId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Map rule failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeMapRule(ruleId: string) {
+    if (!selectedId || selectedId === "new" || !dmProfileId) return;
+    if (!window.confirm("Delete this remap rule?")) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/admin/tenants/${selectedId}/tracker-param-maps/${ruleId}`, {
+        method: "DELETE",
+      });
+      setNotice("Remap rule deleted");
+      await loadMapRules(selectedId, dmProfileId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelPendingCommand(commandId: string) {
+    if (!selectedId || selectedId === "new" || !cmdDeviceId) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(
+        `/api/admin/tenants/${selectedId}/tracker-devices/${cmdDeviceId}/commands/${commandId}`,
+        { method: "DELETE" },
+      );
+      setNotice("Command cancelled");
+      await loadCommandHistory(cmdDeviceId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cancel failed");
     } finally {
       setBusy(false);
     }
@@ -2007,6 +2066,14 @@ export default function AdminConsole() {
                         <span>
                           <code>{r.vendorKey}</code> → <strong>{r.appParamId}</strong> ({r.transform})
                         </span>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          disabled={busy}
+                          onClick={() => void removeMapRule(r.id)}
+                        >
+                          Delete
+                        </button>
                       </li>
                     ))}
                     {mapRules.length === 0 ? (
@@ -2046,6 +2113,25 @@ export default function AdminConsole() {
                           </option>
                         ))}
                       </select>
+                    </label>
+                    <label>
+                      Transform
+                      <select value={dmTransform} onChange={(e) => setDmTransform(e.target.value)}>
+                        <option value="identity">identity</option>
+                        <option value="scale">scale</option>
+                        <option value="offset">offset</option>
+                        <option value="bit_mask">bit_mask</option>
+                        <option value="invert_bool">invert_bool</option>
+                        <option value="enum_map">enum_map</option>
+                      </select>
+                    </label>
+                    <label>
+                      Transform arg (JSON)
+                      <input
+                        value={dmTransformArg}
+                        onChange={(e) => setDmTransformArg(e.target.value)}
+                        placeholder='{"scale":0.001} / {"mask":1} / {"map":{"0":false}}'
+                      />
                     </label>
                     <div className="span-2 admin-actions">
                       <button type="submit" className="btn btn-secondary" disabled={busy || !dmProfileId}>
@@ -2134,6 +2220,16 @@ export default function AdminConsole() {
                                 · {c.createdAt ? new Date(c.createdAt).toLocaleString() : "—"}
                               </span>
                             </span>
+                            {c.status === "pending" ? (
+                              <button
+                                type="button"
+                                className="btn-ghost"
+                                disabled={busy}
+                                onClick={() => void cancelPendingCommand(c.id)}
+                              >
+                                Cancel
+                              </button>
+                            ) : null}
                           </li>
                         );
                       })}
