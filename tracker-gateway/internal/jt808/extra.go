@@ -203,6 +203,7 @@ func parseAdditionalInfo(body []byte) map[string]any {
 				add["status.right_turn"] = sig&0x04 != 0
 				add["status.wiper"] = sig&0x08 != 0
 				add["status.brake"] = sig&0x10 != 0
+				add["status.card_reader"] = sig&0x20 != 0
 				add["status.door"] = sig&0x0400 != 0 || sig&0x1000 != 0
 				add["status.low_beam"] = sig&0x0100 != 0
 				add["status.high_beam"] = sig&0x0200 != 0

@@ -430,6 +430,9 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["89"]; ok {
 		raw["fuel.level"] = asFloat64(v)
 	}
+	if v, ok := io["759"]; ok {
+		raw["fuel.type"] = asFloat64(v)
+	}
 	if v, ok := io["84"]; ok {
 		raw["fuel.volume"] = asFloat64(v)
 	}
@@ -580,6 +583,15 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	}
 	if v, ok := io["241"]; ok {
 		raw["gsm.operator"] = asFloat64(v)
+	}
+	if v, ok := io["205"]; ok {
+		raw["gsm.cell_id"] = asFloat64(v)
+	}
+	if v, ok := io["206"]; ok {
+		raw["gsm.lac"] = asFloat64(v)
+	}
+	if v, ok := io["237"]; ok {
+		raw["network.type"] = asFloat64(v)
 	}
 	if v, ok := io["11"]; ok {
 		raw["gsm.iccid"] = fmt.Sprintf("%v", v)

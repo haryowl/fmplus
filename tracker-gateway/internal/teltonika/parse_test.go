@@ -310,6 +310,14 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 	if raw10["hybrid.system_voltage"] != 48.5 || raw10["hybrid.system_current"] != -6.0 {
 		t.Fatalf("hybrid sys=%v", raw10)
 	}
+	raw11 := map[string]any{}
+	promoteTeltonikaScalars(raw11, map[string]any{"237": 3, "205": 12345, "206": 1001, "759": 1})
+	if raw11["network.type"] != 3.0 || raw11["gsm.cell_id"] != 12345.0 || raw11["gsm.lac"] != 1001.0 {
+		t.Fatalf("net/gsm=%v", raw11)
+	}
+	if raw11["fuel.type"] != 1.0 {
+		t.Fatalf("fuel.type=%v", raw11["fuel.type"])
+	}
 }
 
 func TestPromoteTeltonikaScalars_SleepIdling(t *testing.T) {

@@ -166,6 +166,15 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["241"]; ok {
 		raw["gsm.operator"] = asIOFloat(v)
 	}
+	if v, ok := io["205"]; ok {
+		raw["gsm.cell_id"] = asIOFloat(v)
+	}
+	if v, ok := io["206"]; ok {
+		raw["gsm.lac"] = asIOFloat(v)
+	}
+	if v, ok := io["237"]; ok {
+		raw["network.type"] = asIOFloat(v)
+	}
 	if v, ok := io["11"]; ok {
 		raw["gsm.iccid"] = fmt.Sprintf("%v", v)
 	}
@@ -191,6 +200,9 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	}
 	if v, ok := io["89"]; ok {
 		raw["fuel.level"] = asIOFloat(v)
+	}
+	if v, ok := io["759"]; ok {
+		raw["fuel.type"] = asIOFloat(v)
 	}
 	if v, ok := io["84"]; ok {
 		raw["fuel.volume"] = asIOFloat(v)

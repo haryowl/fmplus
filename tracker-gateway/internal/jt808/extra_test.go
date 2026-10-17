@@ -128,11 +128,14 @@ func TestHoistLocationStatusBits_SouthWestEncrypted(t *testing.T) {
 
 func TestParseAdditionalInfo_Signal025Turns(t *testing.T) {
 	base := make([]byte, 28)
-	// ACC + left turn + brake + low beam: bits 0,1,4,8 → 0x00000113
-	tlv, _ := hex.DecodeString("250400000113")
+	// ACC + left turn + brake + card_reader + low beam: bits 0,1,4,5,8 → 0x00000133
+	tlv, _ := hex.DecodeString("250400000133")
 	add := parseAdditionalInfo(append(base, tlv...))
 	if add["status.acc"] != true || add["status.left_turn"] != true || add["status.brake"] != true {
 		t.Fatalf("%v", add)
+	}
+	if add["status.card_reader"] != true {
+		t.Fatalf("card_reader=%v", add)
 	}
 	if add["status.low_beam"] != true || add["status.right_turn"] != false {
 		t.Fatalf("beams/turn=%v", add)
