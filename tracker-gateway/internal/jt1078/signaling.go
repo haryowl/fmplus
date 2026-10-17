@@ -12,9 +12,16 @@ func parseSignalingHeader(hdr []byte) map[string]any {
 	if len(hdr) < 16 {
 		return out
 	}
+	out["av_datatype"] = int(hdr[4])
+	out["av_channel"] = int(hdr[5])
 	out["av_payload_declared"] = int(binary.BigEndian.Uint16(hdr[6:8]))
 	// Bytes 14–15 frequently carry a packet/sequence counter on vendor stacks.
 	out["av_seq"] = int(binary.BigEndian.Uint16(hdr[14:16]))
+	// Soft correlation hint for Admin/Device Manager after a 0x9101 live request.
+	kind := hdr[4] & 0x0f
+	if kind <= 0x03 {
+		out["av_live"] = true
+	}
 	return out
 }
 

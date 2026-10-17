@@ -130,3 +130,11 @@ func TestFlattenAlarmBits_OnFix(t *testing.T) {
 		t.Fatalf("zero alarm should not clear existing keys: %v", raw)
 	}
 }
+
+func TestFlattenAlarmBits_CameraAndDayDrive(t *testing.T) {
+	raw := map[string]any{}
+	flattenAlarmBits(1<<11|1<<16, raw)
+	if raw["alarm.camera_fault"] != true || raw["alarm.day_drive_timeout"] != true {
+		t.Fatalf("%v", raw)
+	}
+}

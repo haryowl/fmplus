@@ -56,4 +56,7 @@ func TestParseSignalingHeader(t *testing.T) {
 	if m["av_payload_declared"] != 10 || m["av_seq"] != 7 {
 		t.Fatalf("%v", m)
 	}
+	if m["av_channel"] != 1 || m["av_datatype"] != 0 || m["av_live"] != true {
+		t.Fatalf("%v", m)
+	}
 }
