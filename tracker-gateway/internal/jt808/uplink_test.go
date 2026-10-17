@@ -132,8 +132,11 @@ func TestParseCANBus(t *testing.T) {
 	if m["can.0.id"] != int(0x18FEEF00) || m["can.0.data"] != "0102030405060708" {
 		t.Fatalf("%v", m)
 	}
-	if m["can.0.data0"] != 1 || m["can.first_id"] != int(0x18FEEF00) {
+	if m["can.0.data0"] != 1 || m["can.0.data1"] != 2 || m["can.first_id"] != int(0x18FEEF00) {
 		t.Fatalf("first=%v", m)
+	}
+	if m["can_len"] != len(body) {
+		t.Fatalf("can_len=%v", m["can_len"])
 	}
 	if m["can.first_data"] != "0102030405060708" {
 		t.Fatalf("first_data=%v", m["can.first_data"])
@@ -155,6 +158,9 @@ func TestParseCANBus(t *testing.T) {
 	m2 := parseCANBus(body2)
 	if m2["can.1.id"] != int(0x18FEF100) || m2["can.1.data"] != "0908070605040302" {
 		t.Fatalf("can.1=%v", m2)
+	}
+	if m2["can.1.data0"] != 9 || m2["can.1.data1"] != 8 {
+		t.Fatalf("can.1 bytes=%v", m2)
 	}
 }
 

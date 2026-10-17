@@ -328,6 +328,9 @@ func TestSafetyFromAlarmWord_SOS(t *testing.T) {
 	if ev.RawAttrs["alarm.sos"] != true {
 		t.Fatalf("raw=%v", ev.RawAttrs)
 	}
+	if ev.RawAttrs["alarm_word"] != uint32(1) && ev.RawAttrs["alarm_word"] != 1 {
+		t.Fatalf("alarm_word=%v", ev.RawAttrs["alarm_word"])
+	}
 	if ev.RawAttrs["alarm_level"] != 2 {
 		t.Fatalf("alarm_level=%v", ev.RawAttrs["alarm_level"])
 	}

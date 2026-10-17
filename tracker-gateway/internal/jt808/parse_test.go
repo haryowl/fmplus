@@ -47,6 +47,12 @@ func TestParseLocation_Golden(t *testing.T) {
 	if fix.RawAttrs["status.acc"] != false {
 		t.Errorf("status.acc=%v want false", fix.RawAttrs["status.acc"])
 	}
+	if fix.RawAttrs["status"] != uint32(4) && fix.RawAttrs["status"] != 4 {
+		t.Errorf("status dword=%v want 4", fix.RawAttrs["status"])
+	}
+	if fix.RawAttrs["alarm"] != uint32(0) && fix.RawAttrs["alarm"] != 0 {
+		t.Errorf("alarm dword=%v want 0", fix.RawAttrs["alarm"])
+	}
 }
 
 func TestParseLocation_AlarmBitsFlattened(t *testing.T) {
