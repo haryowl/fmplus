@@ -49,7 +49,7 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 				continue // wait for uplink flush with known phone
 			}
 			payload, encErr = jt.EncodeDownlink(cmd, phone)
-		case cmd.Protocol == "galileosky":
+		case cmd.Protocol == "galileosky" || cmd.CommandType == "galileosky_text":
 			payload, encErr = gs.EncodeDownlink(cmd)
 		default:
 			payload = cmd.PayloadBytes()

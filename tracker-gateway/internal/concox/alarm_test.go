@@ -36,3 +36,11 @@ func TestSafetyFromAlarm(t *testing.T) {
 		t.Fatalf("raw=%v", ev.RawAttrs)
 	}
 }
+
+func TestApplyAlarmAttrs_OnFix(t *testing.T) {
+	raw := map[string]any{}
+	applyAlarmAttrs([]byte{0x00, 0x01, 0x00, 0x01}, raw) // SOS
+	if raw["alarm.sos"] != true || raw["alarm_code"] != 1 {
+		t.Fatalf("raw=%v", raw)
+	}
+}

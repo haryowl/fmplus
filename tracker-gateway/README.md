@@ -38,6 +38,7 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `teltonika_codec12` | teltonika | Codec 12 GPRS |
 | `concox_gprs` | concox | GT06 0x80 |
 | `ruptela_sms` | ruptela | command 108 |
+| `galileosky_text` | galileosky | 0x01 + CRC-16 Modbus text |
 | `raw` | any | hex payload as-is |
 
 Stale commands: **pending** > 24h or **sent** > 30m → `expired`. Encode/write errors → `failed`. Admin can **cancel** pending commands (not already sent). Remap rules support transforms: `identity`, `scale`, `offset`, `bit_mask`, `invert_bool`, `enum_map`.
@@ -64,6 +65,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   054_concox_alarm_maps.sql
 #   055_subiao_event_maps.sql
 #   056_galileosky_official_tags.sql
+#   057_galileosky_command_type.sql
 npm run db:migrate
 
 cd tracker-gateway

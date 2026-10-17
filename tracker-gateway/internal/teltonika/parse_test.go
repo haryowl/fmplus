@@ -82,6 +82,21 @@ func TestParseAVL_BuiltCodec8MatchesGoldenLayout(t *testing.T) {
 	}
 }
 
+func TestExtractIO8E_EventIDTwoBytes(t *testing.T) {
+	// event 0x00EF (239), total IO 0, empty N1..N8, NX=0
+	b := mustHex(t, "00ef"+"0000"+"0000"+"0000"+"0000"+"0000"+"0000")
+	off, event, io := extractIO8E(b, 0)
+	if event != 239 {
+		t.Fatalf("event=%v want 239", event)
+	}
+	if len(io) != 0 {
+		t.Fatalf("io=%v", io)
+	}
+	if off != len(b) {
+		t.Fatalf("off=%d want %d", off, len(b))
+	}
+}
+
 func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)

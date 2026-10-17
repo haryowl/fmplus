@@ -256,6 +256,7 @@ export async function enqueueCommand(tenantId, deviceId, body) {
         "teltonika_codec12",
         "concox_gprs",
         "ruptela_sms",
+        "galileosky_text",
         "param",
         "control",
         "vehicle_control",

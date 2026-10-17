@@ -129,6 +129,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				if device != nil {
 					if fix, ok := parseGPS(info, proto); ok {
 						fix.SourceProtocol = "concox"
+						applyAlarmAttrs(info, fix.RawAttrs)
 						_ = deviceauth.Ingest(ctx, st, device, fix)
 						if ev := safetyFromAlarm(info, fix); ev != nil {
 							_ = st.InsertSafetyEvent(ctx, device, *ev)
@@ -394,30 +395,49 @@ func parseHeartbeat(info []byte) (map[string]any, *bool) {
 	return patch, &acc
 }
 
+// GT06 alarm type byte → remappable alarm.* key (protocol PDF / CMSV7 family).
+var concoxAlarmNames = map[byte]string{
+	0x01: "sos",
+	0x02: "power_cut",
+	0x03: "vibration",
+	0x04: "fence_in",
+	0x05: "fence_out",
+	0x06: "overspeed",
+	0x09: "moving",
+	0x0a: "enter_gps",
+	0x0b: "gps_lost",
+	0x0c: "power_on",
+	0x0d: "gps_ok",
+	0x0e: "power_off",
+	0x13: "remove",
+	0x14: "wear",
+	0x19: "illegal_move",
+	0x23: "fall",
+	0x29: "crash",
+}
+
+func applyAlarmAttrs(info []byte, raw map[string]any) {
+	if raw == nil {
+		return
+	}
+	code, ok := extractAlarmCode(info)
+	if !ok {
+		return
+	}
+	name := concoxAlarmNames[code]
+	if name == "" {
+		name = fmt.Sprintf("0x%02x", code)
+	}
+	raw["alarm_code"] = int(code)
+	raw["alarm."+name] = true
+}
+
 func safetyFromAlarm(info []byte, fix store.Fix) *store.SafetyEvent {
 	code, ok := extractAlarmCode(info)
 	if !ok {
 		return nil
 	}
-	alarmType := map[byte]string{
-		0x01: "sos",
-		0x02: "power_cut",
-		0x03: "vibration",
-		0x04: "fence_in",
-		0x05: "fence_out",
-		0x06: "overspeed",
-		0x09: "moving",
-		0x0a: "enter_gps",
-		0x0b: "gps_lost",
-		0x0c: "power_on",
-		0x0d: "gps_ok",
-		0x0e: "power_off",
-		0x13: "remove",
-		0x14: "wear",
-		0x19: "illegal_move",
-		0x23: "fall",
-		0x29: "crash",
-	}[code]
+	alarmType := concoxAlarmNames[code]
 	if alarmType == "" {
 		alarmType = fmt.Sprintf("alarm_0x%02x", code)
 	}
@@ -427,9 +447,9 @@ func safetyFromAlarm(info []byte, fix store.Fix) *store.SafetyEvent {
 		level = 2
 	}
 	raw := map[string]any{
-		"alarm_code":   int(code),
-		"alarm_level":  level,
-		"proto":        0x16,
+		"alarm_code":  int(code),
+		"alarm_level": level,
+		"proto":       0x16,
 	}
 	raw["alarm."+alarmType] = true
 	return &store.SafetyEvent{

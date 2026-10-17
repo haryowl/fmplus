@@ -2196,6 +2196,7 @@ export default function AdminConsole() {
                           if (d?.protocol === "teltonika") setCmdType("teltonika_codec12");
                           else if (d?.protocol === "concox") setCmdType("concox_gprs");
                           else if (d?.protocol === "ruptela") setCmdType("ruptela_sms");
+                          else if (d?.protocol === "galileosky") setCmdType("galileosky_text");
                           else if (d?.protocol === "jt808" || d?.protocol === "subiao")
                             setCmdType("text");
                           else setCmdType("text");
@@ -2220,6 +2221,7 @@ export default function AdminConsole() {
                         <option value="teltonika_codec12">Teltonika Codec12</option>
                         <option value="concox_gprs">Concox GPRS (0x80)</option>
                         <option value="ruptela_sms">Ruptela SMS via GPRS (108)</option>
+                        <option value="galileosky_text">Galileosky text (GETVER / MainPack…)</option>
                         <option value="raw">Raw bytes (hex in payload)</option>
                       </select>
                     </label>
