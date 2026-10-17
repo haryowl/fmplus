@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"strings"
@@ -16,7 +15,7 @@ import (
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
-// Serve a JT/T 809 platform-exchange listener (experimental framing + login/heartbeat + minimal 0x1200).
+// Serve a JT/T 809 platform-exchange listener (experimental 0x5B framing + CRC + login/HB/0x1200/0x1400).
 // Full MoT interconnect is checklist-driven; this establishes the adapter port.
 func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol.Registry) error {
 	ln, err := net.Listen("tcp", addr)
@@ -54,80 +53,129 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		_ = conn.Close()
 	}()
 	platformKey := conn.RemoteAddr().String()
+	buf := make([]byte, 0, 4096)
+	tmp := make([]byte, 2048)
 	for {
 		_ = conn.SetDeadline(time.Now().Add(5 * time.Minute))
-		hdr := make([]byte, 22) // JT809 header length (typical)
-		if _, err := io.ReadFull(conn, hdr); err != nil {
+		n, err := conn.Read(tmp)
+		if err != nil {
 			return
 		}
-		length := int(binary.BigEndian.Uint32(hdr[0:4]))
-		if length < 22 || length > 2*1024*1024 {
-			metrics.DecodeErr()
-			return
-		}
-		rest := make([]byte, length-22)
-		if length > 22 {
-			if _, err := io.ReadFull(conn, rest); err != nil {
-				return
-			}
-		}
-		msgID := binary.BigEndian.Uint16(hdr[8:10])
-		switch msgID {
-		case 0x1001: // login
-			if len(rest) >= 4 {
-				platformKey = fmt.Sprintf("809-%d", binary.BigEndian.Uint32(rest[0:4]))
-			}
-			bound = &protocol.ConnSession{
-				DeviceID: "", // platform link — not a single vehicle
-				IMEI:     platformKey,
-				Protocol: "jt809",
-				Conn:     conn,
-				Meta:     map[string]string{"role": "platform"},
-			}
-			if sessions != nil {
-				sessions.Bind(bound)
-			}
-			resp := make([]byte, 26)
-			binary.BigEndian.PutUint32(resp[0:4], 26)
-			binary.BigEndian.PutUint16(resp[8:10], 0x1002)
-			resp[22] = 0 // result OK
-			_, _ = conn.Write(resp)
-			log.Printf("[jt809] platform login ok key=%s", platformKey)
-		case 0x1005: // heartbeat from subordinate platform
-			resp := make([]byte, 22)
-			binary.BigEndian.PutUint32(resp[0:4], 22)
-			binary.BigEndian.PutUint16(resp[8:10], 0x1006)
-			_, _ = conn.Write(resp)
-		case 0x1200, 0x1202: // vehicle dynamic / location uplink (experimental)
-			fix, plate, ok := parseVehicleUplink(msgID, rest)
+		buf = append(buf, tmp[:n]...)
+		for {
+			payload, rest, ok := takeFrame809(buf)
 			if !ok {
-				log.Printf("[jt809] vehicle uplink 0x%04x len=%d (no fix)", msgID, length)
-				break
-			}
-			device := find809Device(ctx, st, plate, platformKey, conn.RemoteAddr().String())
-			if device != nil {
-				if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
-					log.Printf("[jt809] ingest %s: %v", plate, err)
+				if rest != nil {
+					buf = rest
 				}
-			} else {
-				log.Printf("[jt809] vehicle uplink 0x%04x plate=%q (unregistered)", msgID, plate)
-			}
-		case 0x1400, 0x1402: // vehicle alarm / warn (experimental)
-			plate, ev, ok := parseVehicleAlarm(msgID, rest)
-			if !ok || ev == nil {
-				log.Printf("[jt809] alarm 0x%04x len=%d (no parse)", msgID, length)
+				// Legacy fallback: raw length-prefixed header without 0x5B (lab tools).
+				if len(buf) >= 22 && buf[0] != 0x5b {
+					if handled, remain := tryLegacyFrame(ctx, conn, st, sessions, &bound, &platformKey, buf); handled {
+						buf = remain
+						continue
+					}
+				}
 				break
 			}
-			device := find809Device(ctx, st, plate, platformKey, conn.RemoteAddr().String())
-			if device != nil {
-				_ = st.InsertSafetyEvent(ctx, device, *ev)
-				_ = st.PatchLastStatus(ctx, device, ev.RawAttrs, nil)
-			} else {
-				log.Printf("[jt809] alarm 0x%04x plate=%q type=%s (unregistered)", msgID, plate, ev.AlarmType)
+			buf = rest
+			if len(payload) < 22 {
+				metrics.DecodeErr()
+				continue
 			}
-		default:
-			log.Printf("[jt809] msg 0x%04x len=%d (experimental — not fully decoded)", msgID, length)
+			handleMessage(ctx, conn, st, sessions, &bound, &platformKey, payload)
 		}
+		if len(buf) > 2*1024*1024 {
+			return
+		}
+		// Drop leading junk if no frame start soon.
+		if len(buf) > 64*1024 && buf[0] != 0x5b {
+			buf = buf[1:]
+		}
+	}
+}
+
+func tryLegacyFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry,
+	bound **protocol.ConnSession, platformKey *string, buf []byte) (bool, []byte) {
+	length := int(binary.BigEndian.Uint32(buf[0:4]))
+	if length < 22 || length > 2*1024*1024 || len(buf) < length {
+		return false, buf
+	}
+	payload := buf[:length]
+	handleMessage(ctx, conn, st, sessions, bound, platformKey, payload)
+	return true, buf[length:]
+}
+
+func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry,
+	bound **protocol.ConnSession, platformKey *string, payload []byte) {
+	length := int(binary.BigEndian.Uint32(payload[0:4]))
+	if length < 22 || length > len(payload) {
+		// Some peers set MsgLength to full packet; tolerate payload-as-body.
+		length = len(payload)
+	}
+	msgID := binary.BigEndian.Uint16(payload[8:10])
+	rest := payload[22:]
+	if length > 22 && length <= len(payload) {
+		rest = payload[22:length]
+	}
+	switch msgID {
+	case 0x1001: // login
+		if len(rest) >= 4 {
+			*platformKey = fmt.Sprintf("809-%d", binary.BigEndian.Uint32(rest[0:4]))
+		}
+		sess := &protocol.ConnSession{
+			DeviceID: "",
+			IMEI:     *platformKey,
+			Protocol: "jt809",
+			Conn:     conn,
+			Meta:     map[string]string{"role": "platform"},
+		}
+		if sessions != nil {
+			if *bound != nil {
+				sessions.Unbind(*bound)
+			}
+			sessions.Bind(sess)
+		}
+		*bound = sess
+		respBody := make([]byte, 26)
+		binary.BigEndian.PutUint32(respBody[0:4], 26)
+		binary.BigEndian.PutUint16(respBody[8:10], 0x1002)
+		respBody[22] = 0 // result OK
+		_, _ = conn.Write(wrapFrame809(respBody))
+		log.Printf("[jt809] platform login ok key=%s", *platformKey)
+	case 0x1005: // heartbeat
+		respBody := make([]byte, 22)
+		binary.BigEndian.PutUint32(respBody[0:4], 22)
+		binary.BigEndian.PutUint16(respBody[8:10], 0x1006)
+		_, _ = conn.Write(wrapFrame809(respBody))
+	case 0x1200, 0x1202:
+		fix, plate, ok := parseVehicleUplink(msgID, rest)
+		if !ok {
+			log.Printf("[jt809] vehicle uplink 0x%04x len=%d (no fix)", msgID, length)
+			break
+		}
+		device := find809Device(ctx, st, plate, *platformKey, conn.RemoteAddr().String())
+		if device != nil {
+			if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
+				log.Printf("[jt809] ingest %s: %v", plate, err)
+			}
+		} else {
+			log.Printf("[jt809] vehicle uplink 0x%04x plate=%q (unregistered)", msgID, plate)
+		}
+	case 0x1400, 0x1402:
+		plate, ev, ok := parseVehicleAlarm(msgID, rest)
+		if !ok || ev == nil {
+			log.Printf("[jt809] alarm 0x%04x len=%d (no parse)", msgID, length)
+			break
+		}
+		device := find809Device(ctx, st, plate, *platformKey, conn.RemoteAddr().String())
+		if device != nil {
+			_ = st.InsertSafetyEvent(ctx, device, *ev)
+			_ = st.PatchLastStatus(ctx, device, ev.RawAttrs, nil)
+		} else {
+			log.Printf("[jt809] alarm 0x%04x plate=%q type=%s (unregistered)", msgID, plate, ev.AlarmType)
+		}
+	default:
+		log.Printf("[jt809] msg 0x%04x len=%d (experimental — not fully decoded)", msgID, length)
 	}
 }
 

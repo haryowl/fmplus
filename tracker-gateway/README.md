@@ -10,7 +10,7 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | Teltonika Codec 8/8E/16 | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | bad CRC → zero-ack+drop; soft text corr; expanded event IO → safety |
 | JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/0003–0004/0104–0108/0500/0301/0705/0800/0801/0805/0900 | 0x8300/8103–8107/8201/8500 | bind on register; logout unbind; bad BCC → fail ack |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
-| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/HB + 0x1200 fix + 0x1400 alarm | — | plate+GNSS ingest; alarm → safety |
+| JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/HB + 0x1200 fix + 0x1400 alarm | — | 0x5B CRC framing; plate ingest; alarm → safety |
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling + ACK + SIM bind | — | no RTP / no 808 media bridge |
 | Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS | 0x80 GPRS | paused for depth — GT06 deferred |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records | 108/105/107 | Kermit; bad CRC → NACK 100; corr by cmd |
