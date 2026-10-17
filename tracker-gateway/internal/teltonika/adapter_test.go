@@ -32,6 +32,20 @@ func TestEncodeDownlink_Codec12_Getio(t *testing.T) {
 	}
 }
 
+func TestEncodeDownlink_Codec13(t *testing.T) {
+	out, err := EncodeGPRS(store.Command{CommandType: "teltonika_codec13", PayloadText: "getinfo"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out[8] != 0x0d {
+		t.Fatalf("codec=%02x", out[8])
+	}
+	// size field at [11:15] should be 4+7=11
+	if out[11] != 0 || out[12] != 0 || out[13] != 0 || out[14] != 11 {
+		t.Fatalf("size bytes %x", out[11:15])
+	}
+}
+
 func TestEncodeDownlink_Codec14_IMEI(t *testing.T) {
 	out, err := EncodeGPRS(store.Command{CommandType: "teltonika_codec14", PayloadText: "getinfo"}, "352093081452251")
 	if err != nil {

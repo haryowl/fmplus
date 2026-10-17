@@ -2229,6 +2229,17 @@ func parseAreaQueryResp(body []byte) map[string]any {
 			out["geofence.lat"] = float64(int32(binary.BigEndian.Uint32(rec[8:12]))) / 1e6
 			out["geofence.lon"] = float64(int32(binary.BigEndian.Uint32(rec[12:16]))) / 1e6
 		}
+	case 4: // route: id+attr+width+inflection count + first point (partial)
+		if len(rec) >= 8 {
+			out["route.width"] = int(binary.BigEndian.Uint16(rec[6:8]))
+		}
+		if len(rec) >= 10 {
+			out["route.point_count"] = int(binary.BigEndian.Uint16(rec[8:10]))
+		}
+		if len(rec) >= 18 {
+			out["route.lat"] = float64(int32(binary.BigEndian.Uint32(rec[10:14]))) / 1e6
+			out["route.lon"] = float64(int32(binary.BigEndian.Uint32(rec[14:18]))) / 1e6
+		}
 	}
 	snip := body
 	if len(snip) > 48 {

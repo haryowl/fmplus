@@ -135,6 +135,9 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 						"av_kind":     kind,
 						"av_frames":   channels[channel],
 					}
+					if sim != "" {
+						patch["av_sim"] = sim
+					}
 					for k, v := range hdr {
 						patch[k] = v
 					}

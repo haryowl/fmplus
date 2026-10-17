@@ -53,8 +53,8 @@ func downlinkCorr(cmd store.Command, payload []byte, sess *protocol.ConnSession)
 		// No wire serial — soft text corr; AckSoftOrLatest on E0–E6 replies.
 		return store.SoftTextCorr(cmd.PayloadText)
 	case cmd.Protocol == "teltonika" || cmd.CommandType == "teltonika_codec12" ||
-		cmd.CommandType == "teltonika_codec14":
-		// Codec12/14 have no stable echo id — soft text corr when payload echoes.
+		cmd.CommandType == "teltonika_codec13" || cmd.CommandType == "teltonika_codec14":
+		// Codec12/13/14 have no stable echo id — soft text corr when payload echoes.
 		return store.SoftTextCorr(cmd.PayloadText)
 	default:
 		if sess != nil && sess.Meta != nil && sess.Meta["seq"] != "" {
@@ -101,7 +101,7 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 		encErr := error(nil)
 		switch {
 		case cmd.Protocol == "teltonika" || cmd.CommandType == "teltonika_codec12" ||
-			cmd.CommandType == "teltonika_codec14":
+			cmd.CommandType == "teltonika_codec13" || cmd.CommandType == "teltonika_codec14":
 			payload, encErr = teltonika.EncodeGPRS(cmd, sess.IMEI)
 		case cmd.Protocol == "concox" || cmd.CommandType == "concox_gprs":
 			var ser uint16 = 1

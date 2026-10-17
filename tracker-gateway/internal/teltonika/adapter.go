@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/protocol"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
@@ -33,8 +34,11 @@ func EncodeGPRS(cmd store.Command, imei string) ([]byte, error) {
 	if text == "" {
 		text = string(cmd.PayloadBytes())
 	}
-	if cmd.CommandType == "teltonika_codec14" {
+	switch cmd.CommandType {
+	case "teltonika_codec14":
 		return encodeCodec14(text, imei)
+	case "teltonika_codec13":
+		return encodeCodec13(text)
 	}
 	return encodeCodec12(text)
 }
@@ -47,6 +51,22 @@ func encodeCodec12(text string) ([]byte, error) {
 	sz := make([]byte, 4)
 	binary.BigEndian.PutUint32(sz, uint32(len(body)))
 	avl = append(avl, sz...)
+	avl = append(avl, body...)
+	avl = append(avl, 0x01)
+	return wrapAVLPacket(avl), nil
+}
+
+// encodeCodec13 builds Codec 13 GPRS command (unix timestamp before ASCII body).
+func encodeCodec13(text string) ([]byte, error) {
+	body := []byte(text)
+	ts := make([]byte, 4)
+	binary.BigEndian.PutUint32(ts, uint32(time.Now().UTC().Unix()))
+	avl := make([]byte, 0, 8+4+len(body))
+	avl = append(avl, 0x0d, 0x01, 0x05)
+	sz := make([]byte, 4)
+	binary.BigEndian.PutUint32(sz, uint32(4+len(body)))
+	avl = append(avl, sz...)
+	avl = append(avl, ts...)
 	avl = append(avl, body...)
 	avl = append(avl, 0x01)
 	return wrapAVLPacket(avl), nil

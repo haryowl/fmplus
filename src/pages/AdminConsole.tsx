@@ -246,6 +246,7 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
     protocols: ["jt808", "subiao"],
   },
   { value: "teltonika_codec12", label: "Teltonika Codec12", protocols: ["teltonika"] },
+  { value: "teltonika_codec13", label: "Teltonika Codec13 (timestamp)", protocols: ["teltonika"] },
   { value: "teltonika_codec14", label: "Teltonika Codec14 (IMEI)", protocols: ["teltonika"] },
   {
     value: "jt808_8203",
@@ -420,6 +421,8 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
       return { text: "13800138000 or listen:138…", hex: "flag + phone digits" };
     case "jt808_8401":
       return { text: "clear or type=1,items=1:13800138000:Home", hex: "full 0x8401 body" };
+    case "teltonika_codec13":
+      return { text: "getinfo (unix ts auto)", hex: "" };
     case "teltonika_codec14":
       return { text: "getinfo (IMEI from session)", hex: "" };
     case "jt808_8103":

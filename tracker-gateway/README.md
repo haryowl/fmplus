@@ -59,6 +59,7 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `jt808_8700` / `driving_record` | jt808/subiao | driving record collect (→0x0700) |
 | `jt808_8204` / `link_detect` | jt808/subiao | 2019 link detection |
 | `teltonika_codec12` | teltonika | Codec 12 GPRS |
+| `teltonika_codec13` | teltonika | Codec 13 GPRS (unix timestamp) |
 | `teltonika_codec14` | teltonika | Codec 14 GPRS (IMEI gated) |
 | `jt808_8203` / `alarm_confirm` | jt808/subiao | manual confirm alarm |
 | `jt808_8600` / `geofence_set` | jt808/subiao | set circle/rect/poly/route (`type=…`) |
@@ -141,6 +142,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   092_jt808_manual_alarm_809_gnss.sql
 #   093_jt808_oil_temp_galileo_modbus.sql
 #   094_jt808_pulse_ad_can_809_gnss.sql
+#   095_teltonika_codec13_jt1078_route.sql
 npm run db:migrate
 
 cd tracker-gateway

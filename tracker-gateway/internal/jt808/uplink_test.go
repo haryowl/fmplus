@@ -190,6 +190,25 @@ func TestParseAreaQueryResp_Circle(t *testing.T) {
 	}
 }
 
+func TestParseAreaQueryResp_Route(t *testing.T) {
+	body := make([]byte, 5+18)
+	body[0] = 4 // route
+	binary.BigEndian.PutUint32(body[1:5], 1)
+	binary.BigEndian.PutUint32(body[5:9], 3) // id
+	binary.BigEndian.PutUint16(body[9:11], 0)
+	binary.BigEndian.PutUint16(body[11:13], 50) // width
+	binary.BigEndian.PutUint16(body[13:15], 2)  // points
+	putI32BE(body[15:19], -6200000)
+	putI32BE(body[19:23], 106800000)
+	m := parseAreaQueryResp(body)
+	if m["route.width"] != 50 || m["route.point_count"] != 2 {
+		t.Fatalf("%v", m)
+	}
+	if m["route.lat"].(float64) > -6.19 || m["route.lat"].(float64) < -6.21 {
+		t.Fatalf("lat=%v", m["route.lat"])
+	}
+}
+
 func TestParseAreaQueryResp_Rect(t *testing.T) {
 	body := make([]byte, 5+22)
 	body[0] = 2
