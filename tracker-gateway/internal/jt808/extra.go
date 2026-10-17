@@ -54,6 +54,22 @@ func parseAdditionalInfo(body []byte) map[string]any {
 				add[key] = id
 				flattenManualAlarmID(id, add)
 			}
+		case 0x05: // oil / tire pressure related (DWORD — units vendor-dependent)
+			if l >= 4 {
+				n := binary.BigEndian.Uint32(val)
+				add[key] = int(n)
+				add["oil.quantity"] = float64(n) / 10.0
+			} else if l >= 2 {
+				n := binary.BigEndian.Uint16(val)
+				add[key] = int(n)
+				add["oil.quantity"] = float64(n) / 10.0
+			}
+		case 0x06: // carriage / cargo temperature (°C×10, signed)
+			if l >= 2 {
+				t10 := int16(binary.BigEndian.Uint16(val[0:2]))
+				add[key] = int(t10)
+				add["temp.cargo"] = float64(t10) / 10.0
+			}
 		case 0x11: // overspeed extra: loc type + optional region id
 			if l >= 1 {
 				add["overspeed_loc_type"] = int(val[0])
@@ -353,6 +369,7 @@ func isRemappableSafetyKey(k string) bool {
 	case "alarm_level", "tpms.alarm", "gsm_signal", "gnss_sats",
 		"overspeed_loc_type", "overspeed_region_id", "area_loc_type", "area_id", "area_direction",
 		"mileage", "fuel.level", "speed.extra", "io.status", "manual_alarm_id",
+		"oil.quantity", "temp.cargo",
 		"route_id", "route_time_loc_type", "route_time_result", "route_drive_time":
 		return true
 	}

@@ -49,6 +49,19 @@ func TestParseAdditionalInfo_MileageFuel(t *testing.T) {
 	}
 }
 
+func TestParseAdditionalInfo_OilAndCargoTemp(t *testing.T) {
+	base := make([]byte, 28)
+	// 0x05 DWORD 1234 → 123.4; 0x06 int16 255 → 25.5°C
+	tlv, _ := hex.DecodeString("0504000004d2060200ff")
+	add := parseAdditionalInfo(append(base, tlv...))
+	if add["oil.quantity"] != 123.4 {
+		t.Fatalf("oil=%v", add["oil.quantity"])
+	}
+	if add["temp.cargo"] != 25.5 {
+		t.Fatalf("temp=%v", add["temp.cargo"])
+	}
+}
+
 func TestParseAdditionalInfo_ManualAlarmID(t *testing.T) {
 	base := make([]byte, 28)
 	// 0x04 len=2 id=1 (SOS)
