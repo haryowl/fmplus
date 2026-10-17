@@ -424,7 +424,7 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	} else if v, ok := io["5"]; ok {
 		raw["status.ignition"] = asTruthy(v)
 	}
-	for i, id := range []string{"1", "2", "3", "4"} {
+	for i, id := range []string{"1", "2", "3", "4", "5", "6", "7", "8"} {
 		if v, ok := io[id]; ok {
 			raw[fmt.Sprintf("status.din%d", i+1)] = asTruthy(v)
 		}

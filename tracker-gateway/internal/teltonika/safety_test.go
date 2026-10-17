@@ -107,6 +107,21 @@ func TestFlattenEventAlarm_GreenDrivingDuration(t *testing.T) {
 	}
 }
 
+func TestFlattenEventAlarm_GreenDriving(t *testing.T) {
+	raw := map[string]any{"event_io": 253}
+	flattenEventAlarm(raw)
+	if raw["alarm.green_driving"] != true || raw["alarm_level"] != 1 {
+		t.Fatalf("%v", raw)
+	}
+	ev := safetyFromEventIO(store.Fix{
+		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{"event_io": 253},
+	})
+	if ev == nil || ev.AlarmType != "green_driving" {
+		t.Fatalf("%+v", ev)
+	}
+}
+
 func TestFlattenEventAlarm_GeofenceUnplug(t *testing.T) {
 	raw := map[string]any{"event_io": 175}
 	flattenEventAlarm(raw)

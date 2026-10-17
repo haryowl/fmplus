@@ -242,6 +242,10 @@ func TestPromoteTeltonikaScalars_DinDout(t *testing.T) {
 	if raw["status.dout1"] != true || raw["status.dout2"] != false {
 		t.Fatalf("dout=%v", raw)
 	}
+	promoteTeltonikaScalars(raw, map[string]any{"5": 1, "8": 1})
+	if raw["status.din5"] != true || raw["status.din8"] != true {
+		t.Fatalf("din58=%v", raw)
+	}
 }
 
 func TestPromoteTeltonikaScalars_GSMOperator(t *testing.T) {

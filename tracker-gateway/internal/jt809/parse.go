@@ -509,6 +509,8 @@ func parseVehicleUplink(msgID uint16, rest []byte) (store.Fix, string, bool) {
 		return out, plate, plate != ""
 	}
 	out.Lon, out.Lat = lon, lat
+	out.RawAttrs["lat"] = lat
+	out.RawAttrs["lon"] = lon
 	if off+2 <= len(gnss) {
 		spd := float64(binary.BigEndian.Uint16(gnss[off:off+2])) / 10.0
 		out.Speed = &spd

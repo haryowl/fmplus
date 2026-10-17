@@ -125,6 +125,18 @@ func TestParseLocation_StatusBitsGNSSConstellation(t *testing.T) {
 	}
 }
 
+func TestParseLocation_StatusBitsGPS(t *testing.T) {
+	body := mustHex(t, goldenLocationHex)
+	binary.BigEndian.PutUint32(body[4:8], 0x02) // bit1 GPS positioned
+	fix, ok := parseLocation(body)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["status.gps"] != true {
+		t.Fatalf("gps=%v", fix.RawAttrs)
+	}
+}
+
 func TestParseLocation_StatusBitsLoadFull(t *testing.T) {
 	body := mustHex(t, goldenLocationHex)
 	binary.BigEndian.PutUint32(body[4:8], 0x0300) // bits 8–9 full

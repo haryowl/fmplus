@@ -223,6 +223,12 @@ func TestParseVehicleUplink_LoadAndGNSSConstellation(t *testing.T) {
 	if fix.RawAttrs["status.gnss_gps"] != true || fix.RawAttrs["status.gnss_beidou"] != true {
 		t.Fatalf("gnss=%v", fix.RawAttrs)
 	}
+	if lat, ok := fix.RawAttrs["lat"].(float64); !ok || math.Abs(lat-(-6.2)) > 1e-6 {
+		t.Fatalf("lat=%v", fix.RawAttrs["lat"])
+	}
+	if lon, ok := fix.RawAttrs["lon"].(float64); !ok || math.Abs(lon-106.8) > 1e-6 {
+		t.Fatalf("lon=%v", fix.RawAttrs["lon"])
+	}
 }
 
 func TestParseVehicleUplink_OutOfServiceLoadHalf(t *testing.T) {

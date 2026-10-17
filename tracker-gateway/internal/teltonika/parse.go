@@ -195,7 +195,7 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	} else if v, ok := io["1"]; ok {
 		raw["status.ignition"] = asIOBool(v)
 	}
-	for i, id := range []string{"1", "2", "3", "4"} {
+	for i, id := range []string{"1", "2", "3", "4", "5", "6", "7", "8"} {
 		if v, ok := io[id]; ok {
 			raw[fmt.Sprintf("status.din%d", i+1)] = asIOBool(v)
 		}

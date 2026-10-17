@@ -157,6 +157,18 @@ func TestPromoteRuptelaScalars_DinDout(t *testing.T) {
 	if raw["status.din2"] != true || raw["status.din4"] != true || raw["status.dout2"] != true {
 		t.Fatalf("din24/dout2=%v", raw)
 	}
+	promoteRuptelaScalars(raw, map[string]any{"5": 1, "8": 1})
+	if raw["status.din5"] != true || raw["status.din8"] != true {
+		t.Fatalf("din58=%v", raw)
+	}
+}
+
+func TestPromoteRuptelaScalars_BLETemp2GNSS(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{"26": 215, "69": 1})
+	if raw["ble.temp2"] != 21.5 || raw["gnss.status"] != 1.0 {
+		t.Fatalf("%v", raw)
+	}
 }
 
 func TestPromoteRuptelaScalars_IButton(t *testing.T) {
