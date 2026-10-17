@@ -223,6 +223,14 @@ func TestPromoteRuptelaScalars_FuelAVL(t *testing.T) {
 	if raw8["obd.mil_time"] != 15.0 || raw8["obd.codes_cleared_time"] != 45.0 {
 		t.Fatalf("mil time=%v", raw8)
 	}
+	raw9 := map[string]any{}
+	promoteRuptelaScalars(raw9, map[string]any{"49": 200, "57": 70, "59": -500})
+	if raw9["obd.codes_cleared_distance"] != 200.0 || raw9["hybrid.battery_life"] != 70.0 {
+		t.Fatalf("cleared/hybrid=%v", raw9)
+	}
+	if raw9["engine.injection_timing"] != -5.0 {
+		t.Fatalf("injection=%v", raw9["engine.injection_timing"])
+	}
 	raw2 := map[string]any{}
 	promoteRuptelaScalars(raw2, map[string]any{"48": 500})
 	if raw2["fuel.used"] != 500.0 || raw2["fuel.used_total"] != 500.0 {

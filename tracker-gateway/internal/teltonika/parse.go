@@ -228,6 +228,15 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["56"]; ok {
 		raw["fuel.rail_absolute"] = asIOFloat(v) * 10.0 // kPa ×10
 	}
+	if v, ok := io["49"]; ok {
+		raw["obd.codes_cleared_distance"] = asIOFloat(v) // km
+	}
+	if v, ok := io["57"]; ok {
+		raw["hybrid.battery_life"] = asIOFloat(v) // %
+	}
+	if v, ok := io["59"]; ok {
+		raw["engine.injection_timing"] = asIOFloat(v) / 100.0 // ° ×0.01
+	}
 	if v, ok := io["34"]; ok {
 		raw["fuel.pressure"] = asIOFloat(v)
 	}

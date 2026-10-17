@@ -99,11 +99,12 @@ func TestAltitudeHDOPVoltage(t *testing.T) {
 	binary.LittleEndian.PutUint16(alt, uint16(int16(120)))
 	hdop := []byte{25} // 2.5
 	pdop := []byte{30} // 3.0
+	vdop := []byte{25} // 2.5
 	volt := make([]byte, 2)
 	binary.LittleEndian.PutUint16(volt, 12400) // 12.4 V
 	coords := make([]byte, 9)
 	coords[0] = 0x07 // GNSS OK + sats
-	tags := map[byte][]byte{0x30: coords, 0x34: alt, 0x35: hdop, 0x36: pdop, 0x50: volt}
+	tags := map[byte][]byte{0x30: coords, 0x34: alt, 0x35: hdop, 0x36: pdop, 0x37: vdop, 0x50: volt}
 	fix, ok := fixFromTags(tags)
 	if !ok || fix.Altitude == nil || *fix.Altitude != 120 {
 		t.Fatalf("alt ok=%v fix=%+v", ok, fix)
@@ -116,6 +117,9 @@ func TestAltitudeHDOPVoltage(t *testing.T) {
 	}
 	if fix.RawAttrs["gnss.pdop"] != 3.0 || fix.RawAttrs["pdop"] != 3.0 {
 		t.Fatalf("pdop=%v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["gnss.vdop"] != 2.5 || fix.RawAttrs["vdop"] != 2.5 {
+		t.Fatalf("vdop=%v", fix.RawAttrs)
 	}
 	if fix.RawAttrs["gnss.sats"] != 7 || fix.RawAttrs["gnss.fix"] != true {
 		t.Fatalf("sats=%v", fix.RawAttrs)

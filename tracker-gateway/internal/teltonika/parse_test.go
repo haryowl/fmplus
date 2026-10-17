@@ -289,6 +289,14 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 	if raw7["obd.mil_time"] != 60.0 || raw7["obd.codes_cleared_time"] != 120.0 {
 		t.Fatalf("mil time=%v", raw7)
 	}
+	raw8 := map[string]any{}
+	promoteTeltonikaScalars(raw8, map[string]any{"49": 500, "57": 88, "59": 1250})
+	if raw8["obd.codes_cleared_distance"] != 500.0 || raw8["hybrid.battery_life"] != 88.0 {
+		t.Fatalf("cleared/hybrid=%v", raw8)
+	}
+	if raw8["engine.injection_timing"] != 12.5 {
+		t.Fatalf("injection=%v", raw8["engine.injection_timing"])
+	}
 }
 
 func TestPromoteTeltonikaScalars_SleepIdling(t *testing.T) {
