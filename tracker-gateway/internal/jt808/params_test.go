@@ -17,6 +17,9 @@ func TestParseTerminalParams(t *testing.T) {
 	if out["param.0x0001"] != 0xA0 {
 		t.Fatalf("param=%v", out["param.0x0001"])
 	}
+	if out["heartbeat.interval"] != 0xA0 {
+		t.Fatalf("hoist=%v", out["heartbeat.interval"])
+	}
 	// truncated: count=2 but only one TLV
 	_, ok = parseTerminalParamsOK([]byte{0x02, 0x00, 0x00, 0x00, 0x01, 0x02, 0x00, 0xA0})
 	if ok {
@@ -56,5 +59,14 @@ func TestQueryAliasesEncode(t *testing.T) {
 		if err != nil || len(out) < 5 {
 			t.Fatalf("%s: %v %x", typ, err, out)
 		}
+	}
+}
+
+func TestHoistTerminalParam_APNAndReport(t *testing.T) {
+	out := map[string]any{}
+	hoistTerminalParam(0x0010, "cmnet", []byte("cmnet"), out)
+	hoistTerminalParam(0x0020, 30, nil, out)
+	if out["apn.main"] != "cmnet" || out["report.interval"] != 30 {
+		t.Fatalf("%v", out)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/jt808"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/protocol"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
@@ -184,6 +185,11 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 		}
 		device := find809Device(ctx, st, plate, *platformKey, conn.RemoteAddr().String())
 		if device != nil {
+			if al, ok := asUint32(fix.RawAttrs["gnss_alarm"]); ok && al != 0 {
+				if ev := jt808.SafetyFromAlarmWord(al, fix, "jt809"); ev != nil {
+					_ = st.InsertSafetyEvent(ctx, device, *ev)
+				}
+			}
 			if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 				log.Printf("[jt809] ingest %s: %v", plate, err)
 			}
@@ -357,6 +363,20 @@ func find809Device(ctx context.Context, st *store.Store, plate, platformKey, rem
 		device = deviceauth.FindByIMEI(ctx, st, strings.ReplaceAll(plate, " ", ""), remote, "jt809")
 	}
 	return device
+}
+
+func asUint32(v any) (uint32, bool) {
+	switch t := v.(type) {
+	case int:
+		return uint32(t), true
+	case int64:
+		return uint32(t), true
+	case uint32:
+		return t, true
+	case float64:
+		return uint32(t), true
+	}
+	return 0, false
 }
 
 type Adapter struct{}

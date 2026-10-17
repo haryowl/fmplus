@@ -49,6 +49,19 @@ func TestParseAdditionalInfo_MileageFuel(t *testing.T) {
 	}
 }
 
+func TestParseAdditionalInfo_PulseSpeedAndAD(t *testing.T) {
+	base := make([]byte, 28)
+	// 0x07 WORD 400 → 40.0; 0x19 DWORD 12345 → 123.45
+	tlv, _ := hex.DecodeString("07020190190400003039")
+	add := parseAdditionalInfo(append(base, tlv...))
+	if add["speed.pulse"] != 40.0 {
+		t.Fatalf("pulse=%v", add["speed.pulse"])
+	}
+	if add["analog.ad"] != 123.45 {
+		t.Fatalf("ad=%v", add["analog.ad"])
+	}
+}
+
 func TestParseAdditionalInfo_OilAndCargoTemp(t *testing.T) {
 	base := make([]byte, 28)
 	// 0x05 DWORD 1234 → 123.4; 0x06 int16 255 → 25.5°C

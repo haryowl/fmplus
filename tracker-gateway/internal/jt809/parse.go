@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/haryowl/fmplus/tracker-gateway/internal/jt808"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
@@ -219,6 +220,7 @@ func parseVehicleUplink(msgID uint16, rest []byte) (store.Fix, string, bool) {
 		out.RawAttrs["gnss_alarm"] = int(al)
 		if al != 0 {
 			out.RawAttrs["alarm.gnss"] = true
+			jt808.FlattenAlarmBits(al, out.RawAttrs)
 		}
 	}
 	return out, plate, true

@@ -1239,21 +1239,59 @@ func parseTerminalParamsOK(body []byte) (map[string]any, bool) {
 		off += n
 		parsed++
 		key := fmt.Sprintf("param.0x%04x", id)
+		var decoded any
 		switch n {
 		case 1:
-			out[key] = int(val[0])
+			decoded = int(val[0])
 		case 2:
-			out[key] = int(binary.BigEndian.Uint16(val))
+			decoded = int(binary.BigEndian.Uint16(val))
 		case 4:
-			out[key] = int(binary.BigEndian.Uint32(val))
+			decoded = int(binary.BigEndian.Uint32(val))
 		default:
-			out[key] = fmt.Sprintf("%x", val)
+			decoded = fmt.Sprintf("%x", val)
 		}
+		out[key] = decoded
+		hoistTerminalParam(id, decoded, val, out)
 	}
 	out["params_parsed"] = parsed
 	complete := parsed == count
 	out["params_complete"] = complete
 	return out, complete
+}
+
+// hoistTerminalParam maps common JT/T 808 terminal param IDs onto remappable named keys.
+func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) {
+	if out == nil {
+		return
+	}
+	switch id {
+	case 0x0001:
+		out["heartbeat.interval"] = decoded
+	case 0x0002:
+		out["tcp.timeout"] = decoded
+	case 0x0003:
+		out["tcp.retry"] = decoded
+	case 0x0010:
+		out["apn.main"] = string(raw)
+	case 0x0011:
+		out["apn.user"] = string(raw)
+	case 0x0013:
+		out["server.main"] = string(raw)
+	case 0x0017:
+		out["server.backup"] = string(raw)
+	case 0x0018:
+		out["server.port"] = decoded
+	case 0x0020:
+		out["report.interval"] = decoded
+	case 0x0027:
+		out["report.interval_dormant"] = decoded
+	case 0x0029:
+		out["report.interval_default"] = decoded
+	case 0x0055:
+		out["speed.max"] = decoded
+	case 0x0056:
+		out["speed.duration"] = decoded
+	}
 }
 
 // parseUpgradeResult maps 0x0108 upgrade result body (type + result).
@@ -2494,15 +2532,34 @@ func bcdNowUTC6() []byte {
 	}
 }
 
-// parseCANBus stores 0x0705 CAN uplink header fields (partial — no signal decode).
+// parseCANBus stores 0x0705 CAN uplink: count + BCD time + per-item id/data (partial — no signal decode).
 func parseCANBus(body []byte) map[string]any {
 	out := map[string]any{"proto_msg": "0x0705", "can_len": len(body)}
-	if len(body) >= 2 {
-		out["can_item_count"] = int(binary.BigEndian.Uint16(body[0:2]))
+	if len(body) < 2 {
+		return out
 	}
-	if len(body) >= 7 {
-		out["can_time_bcd"] = fmt.Sprintf("%x", body[2:7])
+	count := int(binary.BigEndian.Uint16(body[0:2]))
+	out["can_item_count"] = count
+	off := 2
+	if off+5 <= len(body) {
+		out["can_time_bcd"] = fmt.Sprintf("%x", body[off:off+5])
+		off += 5
 	}
+	const itemSize = 12 // DWORD id + 8 data
+	maxItems := 8
+	if count < maxItems {
+		maxItems = count
+	}
+	parsed := 0
+	for i := 0; i < maxItems && off+itemSize <= len(body); i++ {
+		id := binary.BigEndian.Uint32(body[off : off+4])
+		data := body[off+4 : off+12]
+		out[fmt.Sprintf("can.%d.id", i)] = int(id)
+		out[fmt.Sprintf("can.%d.data", i)] = fmt.Sprintf("%x", data)
+		off += itemSize
+		parsed++
+	}
+	out["can_parsed"] = parsed
 	snip := body
 	if len(snip) > 48 {
 		snip = snip[:48]

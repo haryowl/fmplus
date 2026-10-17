@@ -354,8 +354,8 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("temp.%d", i+1)] = float64(t10) / 10.0
 		raw[fmt.Sprintf("tag.0x%02x", id)] = int(t10)
 	}
-	// 0x74–0x77: additional 1-Wire / humidity-style payloads (model-dependent).
-	for i, id := range []byte{0x74, 0x75, 0x76, 0x77} {
+	// 0x74–0x7b: additional 1-Wire / humidity-style payloads (model-dependent).
+	for i, id := range []byte{0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x7b} {
 		v, ok := tags[id]
 		if !ok || len(v) < 2 {
 			continue

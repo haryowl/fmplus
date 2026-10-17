@@ -70,6 +70,35 @@ func TestParseVehicleUplink_AltitudeState(t *testing.T) {
 	}
 }
 
+func TestParseVehicleUplink_GNSSAlarmBits(t *testing.T) {
+	rest := make([]byte, 24+1+6+8+2+2+2+4+4)
+	copy(rest[0:21], []byte("B4444SOS"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 0x0200)
+	off := 24
+	rest[off] = 0
+	off++
+	off += 6
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(106.8*1e6))))
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(-6.2*1e6))))
+	off += 4
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint32(rest[off:], 0)
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], 1) // SOS bit0
+
+	fix, _, ok := parseVehicleUplink(0x1200, rest)
+	if !ok || fix.RawAttrs["alarm.sos"] != true {
+		t.Fatalf("%v ok=%v", fix.RawAttrs, ok)
+	}
+}
+
 func TestParseVehicleUplink_Short(t *testing.T) {
 	_, _, ok := parseVehicleUplink(0x1202, []byte{1, 2, 3})
 	if ok {

@@ -87,10 +87,17 @@ func TestBcdNowUTC6(t *testing.T) {
 }
 
 func TestParseCANBus(t *testing.T) {
-	body := make([]byte, 10)
-	binary.BigEndian.PutUint16(body[0:2], 3)
+	// count=1, BCD 5 bytes, one item: id=0x18FEEF00 + 8 data
+	body := make([]byte, 2+5+12)
+	binary.BigEndian.PutUint16(body[0:2], 1)
+	copy(body[2:7], []byte{0x12, 0x30, 0x00, 0x00, 0x00})
+	binary.BigEndian.PutUint32(body[7:11], 0x18FEEF00)
+	copy(body[11:19], []byte{1, 2, 3, 4, 5, 6, 7, 8})
 	m := parseCANBus(body)
-	if m["can_item_count"] != 3 {
+	if m["can_item_count"] != 1 || m["can_parsed"] != 1 {
+		t.Fatalf("%v", m)
+	}
+	if m["can.0.id"] != int(0x18FEEF00) || m["can.0.data"] != "0102030405060708" {
 		t.Fatalf("%v", m)
 	}
 }

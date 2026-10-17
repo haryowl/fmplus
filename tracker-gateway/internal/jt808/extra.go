@@ -70,6 +70,12 @@ func parseAdditionalInfo(body []byte) map[string]any {
 				add[key] = int(t10)
 				add["temp.cargo"] = float64(t10) / 10.0
 			}
+		case 0x07: // pulse / recorder speed 1/10 km/h
+			if l >= 2 {
+				spd := float64(binary.BigEndian.Uint16(val)) / 10.0
+				add[key] = spd
+				add["speed.pulse"] = spd
+			}
 		case 0x11: // overspeed extra: loc type + optional region id
 			if l >= 1 {
 				add["overspeed_loc_type"] = int(val[0])
@@ -121,6 +127,16 @@ func parseAdditionalInfo(body []byte) map[string]any {
 			} else if l >= 1 {
 				add[key] = int(val[0])
 				add["io.status"] = int(val[0])
+			}
+		case 0x19: // analog / AD (DWORD, often 0.01 units)
+			if l >= 4 {
+				ad := float64(binary.BigEndian.Uint32(val)) / 100.0
+				add[key] = ad
+				add["analog.ad"] = ad
+			} else if l >= 2 {
+				ad := float64(binary.BigEndian.Uint16(val)) / 100.0
+				add[key] = ad
+				add["analog.ad"] = ad
 			}
 		case 0x25: // extended vehicle signal status bits
 			if l >= 4 {
@@ -368,8 +384,8 @@ func isRemappableSafetyKey(k string) bool {
 	switch k {
 	case "alarm_level", "tpms.alarm", "gsm_signal", "gnss_sats",
 		"overspeed_loc_type", "overspeed_region_id", "area_loc_type", "area_id", "area_direction",
-		"mileage", "fuel.level", "speed.extra", "io.status", "manual_alarm_id",
-		"oil.quantity", "temp.cargo",
+		"mileage", "fuel.level", "speed.extra", "speed.pulse", "io.status", "manual_alarm_id",
+		"oil.quantity", "temp.cargo", "analog.ad",
 		"route_id", "route_time_loc_type", "route_time_result", "route_drive_time":
 		return true
 	}
@@ -379,6 +395,16 @@ func isRemappableSafetyKey(k string) bool {
 		strings.HasPrefix(k, "alarm.") ||
 		strings.HasPrefix(k, "status.") ||
 		strings.HasPrefix(k, "video.")
+}
+
+// FlattenAlarmBits exports location/GNSS alarm dword remaps for other adapters (e.g. JT809).
+func FlattenAlarmBits(alarm uint32, dest map[string]any) {
+	flattenAlarmBits(alarm, dest)
+}
+
+// SafetyFromAlarmWord exports alarm-dword → safety for cross-protocol reuse (JT809 GNSS).
+func SafetyFromAlarmWord(alarm uint32, fix store.Fix, protocol string) *store.SafetyEvent {
+	return safetyFromAlarmWord(alarm, fix, protocol)
 }
 
 // hoistLocationTLV copies remappable location additional-info keys onto fix raw_attrs top-level.
