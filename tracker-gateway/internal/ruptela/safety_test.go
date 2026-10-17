@@ -30,3 +30,11 @@ func TestSafetyFromEventIO_Unknown(t *testing.T) {
 		t.Fatal("expected nil for empty")
 	}
 }
+
+func TestFlattenEventAlarm(t *testing.T) {
+	raw := map[string]any{"event_io": 246}
+	flattenEventAlarm(raw)
+	if raw["alarm.towing"] != true {
+		t.Fatalf("raw=%v", raw)
+	}
+}

@@ -26,12 +26,41 @@ func TestSafetyFromAdditional_SuBiao(t *testing.T) {
 	add := map[string]any{
 		"subiao_type":  "0x64",
 		"subiao_level": 2,
-		"0x64":         "0201",
+		"subiao_event": "fcw",
+		"adas.fcw":     true,
+		"0x64":         "0102",
 	}
 	fix := store.Fix{Lat: -6.2, Lon: 106.8, RecordedAt: time.Now().UTC()}
 	ev := safetyFromAdditional(add, fix, "subiao")
-	if ev == nil || ev.AlarmType != "adas" || ev.AlarmLevel != 2 {
+	if ev == nil || ev.AlarmType != "adas_fcw" || ev.AlarmLevel != 2 {
 		t.Fatalf("ev=%+v", ev)
+	}
+	if ev.RawAttrs["adas.fcw"] != true {
+		t.Fatalf("raw=%v", ev.RawAttrs)
+	}
+}
+
+func TestDecodeSubiaoBody_ADAS_FCW(t *testing.T) {
+	add := map[string]any{}
+	decodeSubiaoBody(0x64, []byte{0x01, 0x02}, add) // type=FCW, level=2
+	if add["subiao_level"] != 2 || add["adas.fcw"] != true || add["subiao_event"] != "fcw" {
+		t.Fatalf("add=%v", add)
+	}
+}
+
+func TestDecodeSubiaoBody_DSM_Phone(t *testing.T) {
+	add := map[string]any{}
+	decodeSubiaoBody(0x65, []byte{0x02, 0x01}, add)
+	if add["dsm.phone"] != true || add["subiao_event"] != "phone" {
+		t.Fatalf("add=%v", add)
+	}
+}
+
+func TestDecodeSubiaoBody_BSD(t *testing.T) {
+	add := map[string]any{}
+	decodeSubiaoBody(0x67, []byte{0x02, 0x01}, add)
+	if add["bsd.left"] != true || add["bsd.blind"] != true {
+		t.Fatalf("add=%v", add)
 	}
 }
 

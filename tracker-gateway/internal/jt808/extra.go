@@ -3,6 +3,7 @@ package jt808
 import (
 	"encoding/binary"
 	"fmt"
+	"strings"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
@@ -39,12 +40,10 @@ func parseAdditionalInfo(body []byte) map[string]any {
 			}
 		case 0x14, 0x15, 0x16, 0x17: // video / alarm related
 			add[key] = fmt.Sprintf("%x", val)
-		case 0x64, 0x65, 0x66, 0x67: // Su Biao ADAS/DSM/BSD style bodies (vendor length varies)
+		case 0x64, 0x65, 0x66, 0x67: // Su Biao ADAS/DSM/TPMS/BSD (vendor length varies)
 			add[key] = fmt.Sprintf("%x", val)
 			add["subiao_type"] = key
-			if l >= 1 {
-				add["subiao_level"] = int(val[0])
-			}
+			decodeSubiaoBody(id, val, add)
 		default:
 			if l <= 8 {
 				add[key] = readBE(val)
@@ -132,12 +131,135 @@ func safetyFromAlarmWord(alarm uint32, fix store.Fix, protocol string) *store.Sa
 	}
 }
 
+// decodeSubiaoBody extracts event type/level and remappable adas.*/dsm.*/bsd.* keys.
+// Common compact layout: byte0 = event type, byte1 = alarm level (1|2). Vendor bodies vary.
+func decodeSubiaoBody(id byte, val []byte, add map[string]any) {
+	if len(val) == 0 {
+		return
+	}
+	eventType := int(val[0])
+	level := 1
+	if len(val) >= 2 {
+		level = int(val[1])
+		if level < 1 || level > 3 {
+			// Some firmwares put level first then type.
+			if val[0] >= 1 && val[0] <= 3 {
+				level = int(val[0])
+				eventType = int(val[1])
+			} else {
+				level = 1
+			}
+		}
+	} else if eventType >= 1 && eventType <= 3 && len(val) == 1 {
+		// Ambiguous single-byte: treat as level only (legacy).
+		level = eventType
+		eventType = 0
+	}
+	add["subiao_level"] = level
+	add["subiao_event_id"] = eventType
+	add["alarm_level"] = level
+
+	switch id {
+	case 0x64: // ADAS
+		key, name := adasEventKey(eventType)
+		add["subiao_event"] = name
+		if key != "" {
+			add[key] = true
+		}
+	case 0x65: // DSM
+		key, name := dsmEventKey(eventType)
+		add["subiao_event"] = name
+		if key != "" {
+			add[key] = true
+		}
+	case 0x66: // TPMS
+		add["subiao_event"] = "tpms"
+		add["tpms.alarm"] = true
+	case 0x67: // BSD
+		key, name := bsdEventKey(eventType)
+		add["subiao_event"] = name
+		if key != "" {
+			add[key] = true
+		}
+		add["bsd.blind"] = true
+	}
+}
+
+func isRemappableSafetyKey(k string) bool {
+	if k == "alarm_level" || k == "tpms.alarm" {
+		return true
+	}
+	return strings.HasPrefix(k, "adas.") ||
+		strings.HasPrefix(k, "dsm.") ||
+		strings.HasPrefix(k, "bsd.")
+}
+
+func adasEventKey(eventType int) (key, name string) {
+	switch eventType {
+	case 1:
+		return "adas.fcw", "fcw"
+	case 2:
+		return "adas.ldw", "ldw"
+	case 3:
+		return "adas.close", "close_vehicle"
+	case 4:
+		return "adas.pcw", "pcw"
+	case 5:
+		return "adas.lane_change", "frequent_lane_change"
+	case 6:
+		return "adas.road_sign", "road_sign"
+	case 7:
+		return "adas.obstacle", "obstacle"
+	default:
+		if eventType == 0 {
+			return "adas.fcw", "adas" // unknown → keep FCW remap path usable
+		}
+		return "adas.other", fmt.Sprintf("adas_%d", eventType)
+	}
+}
+
+func dsmEventKey(eventType int) (key, name string) {
+	switch eventType {
+	case 1:
+		return "dsm.fatigue", "fatigue"
+	case 2:
+		return "dsm.phone", "phone"
+	case 3:
+		return "dsm.smoke", "smoke"
+	case 4:
+		return "dsm.distract", "distract"
+	case 5:
+		return "dsm.driver", "driver_abnormal"
+	default:
+		if eventType == 0 {
+			return "dsm.fatigue", "dsm"
+		}
+		return "dsm.other", fmt.Sprintf("dsm_%d", eventType)
+	}
+}
+
+func bsdEventKey(eventType int) (key, name string) {
+	switch eventType {
+	case 1:
+		return "bsd.rear", "rear"
+	case 2:
+		return "bsd.left", "left_rear"
+	case 3:
+		return "bsd.right", "right_rear"
+	default:
+		return "bsd.blind", "bsd"
+	}
+}
+
 func safetyFromAdditional(add map[string]any, fix store.Fix, protocol string) *store.SafetyEvent {
 	subType, _ := add["subiao_type"].(string)
 	if subType == "" {
 		return nil
 	}
 	level, _ := add["subiao_level"].(int)
+	if level < 1 {
+		level = 1
+	}
 	alarmType := map[string]string{
 		"0x64": "adas",
 		"0x65": "dsm",
@@ -147,19 +269,13 @@ func safetyFromAdditional(add map[string]any, fix store.Fix, protocol string) *s
 	if alarmType == "" {
 		alarmType = "subiao_" + subType
 	}
+	if ev, _ := add["subiao_event"].(string); ev != "" && ev != alarmType {
+		alarmType = alarmType + "_" + ev
+	}
 	lat, lon := fix.Lat, fix.Lon
 	raw := map[string]any{}
 	for k, v := range add {
 		raw[k] = v
-	}
-	// Remappable vendor keys for Device Manager Su Biao profiles.
-	switch subType {
-	case "0x64":
-		raw["adas.fcw"] = true
-	case "0x65":
-		raw["dsm.fatigue"] = true
-	case "0x67":
-		raw["bsd.blind"] = true
 	}
 	raw["alarm_level"] = level
 	return &store.SafetyEvent{

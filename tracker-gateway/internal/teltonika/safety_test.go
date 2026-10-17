@@ -24,3 +24,11 @@ func TestSafetyFromEventIO_IgnoreZero(t *testing.T) {
 		t.Fatal("expected nil")
 	}
 }
+
+func TestFlattenEventAlarm(t *testing.T) {
+	raw := map[string]any{"event_io": 247}
+	flattenEventAlarm(raw)
+	if raw["alarm.crash"] != true {
+		t.Fatalf("raw=%v", raw)
+	}
+}

@@ -6,6 +6,43 @@ import (
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
+type knownEvent struct {
+	name  string
+	level int
+	key   string
+}
+
+// Overlap with Teltonika AVL where Ruptela FM configs share IO numbering.
+var knownEventIO = map[int]knownEvent{
+	236: {"alarm", 2, "alarm.generic"},
+	246: {"towing", 2, "alarm.towing"},
+	247: {"crash", 2, "alarm.crash"},
+	249: {"jamming", 2, "alarm.jamming"},
+	251: {"idling", 1, "alarm.idling"},
+	252: {"unplug", 2, "alarm.unplug"},
+	253: {"green_driving", 1, "alarm.green_driving"},
+	255: {"overspeed", 1, "alarm.overspeed"},
+	175: {"geofence", 1, "alarm.geofence"},
+	5:   {"ignition", 1, "alarm.ignition"},
+}
+
+// flattenEventAlarm writes remappable alarm.* onto fix raw_attrs when event_io is known.
+func flattenEventAlarm(raw map[string]any) {
+	if raw == nil {
+		return
+	}
+	eid, ok := asEventID(raw["event_io"])
+	if !ok || eid == 0 {
+		return
+	}
+	k, ok := knownEventIO[eid]
+	if !ok {
+		return
+	}
+	raw[k.key] = true
+	raw["alarm_level"] = k.level
+}
+
 // safetyFromEventIO raises a safety event for known high-signal Ruptela event IDs.
 // IO IDs are model/config dependent; Device Manager can remap alarm.* on safety raw_attrs.
 func safetyFromEventIO(fix store.Fix) *store.SafetyEvent {
@@ -16,25 +53,7 @@ func safetyFromEventIO(fix store.Fix) *store.SafetyEvent {
 	if !ok || eid == 0 {
 		return nil
 	}
-	type known struct {
-		name  string
-		level int
-		key   string
-	}
-	// Overlap with Teltonika AVL where Ruptela FM configs share IO numbering.
-	m := map[int]known{
-		236: {"alarm", 2, "alarm.generic"},
-		246: {"towing", 2, "alarm.towing"},
-		247: {"crash", 2, "alarm.crash"},
-		249: {"jamming", 2, "alarm.jamming"},
-		251: {"idling", 1, "alarm.idling"},
-		252: {"unplug", 2, "alarm.unplug"},
-		253: {"green_driving", 1, "alarm.green_driving"},
-		255: {"overspeed", 1, "alarm.overspeed"},
-		175: {"geofence", 1, "alarm.geofence"},
-		5:   {"ignition", 1, "alarm.ignition"},
-	}
-	k, ok := m[eid]
+	k, ok := knownEventIO[eid]
 	if !ok {
 		return nil
 	}

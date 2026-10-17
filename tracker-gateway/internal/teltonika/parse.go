@@ -125,6 +125,7 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 		for k, v := range io {
 			raw["io."+k] = v
 		}
+		flattenEventAlarm(raw)
 		fixes = append(fixes, fix)
 	}
 	return n, fixes

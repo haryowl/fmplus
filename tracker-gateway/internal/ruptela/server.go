@@ -238,6 +238,7 @@ func parseRecords(data []byte) ([]store.Fix, string) {
 		for k, v := range ioMap {
 			raw["io."+k] = v
 		}
+		flattenEventAlarm(raw)
 		fix := store.Fix{
 			Lat:            lat,
 			Lon:            lon,

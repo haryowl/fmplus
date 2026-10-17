@@ -52,6 +52,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   052_subiao_protocol_params.sql
 #   053_teltonika_io_depth.sql
 #   054_concox_alarm_maps.sql
+#   055_subiao_event_maps.sql
 npm run db:migrate
 
 cd tracker-gateway
@@ -81,8 +82,9 @@ Also: `GET /healthz`, `GET /metrics`, `GET /adapters`.
 Admin → tenant → **Device Manager**:
 
 - Pick a **profile** (Teltonika FMB, JT808+Su Biao, …)
-- Map vendor keys (`io.239`, `add.0x01`, `tag.0x33`, `alarm.sos`, …) → app params
-- Queue **downlink** commands (flushed when device is online)
+- Map vendor keys (`io.239`, `add.0x01`, `tag.0x33`, `alarm.sos`, `adas.fcw`, …) → app params (profile or per-device override)
+- Transforms: `identity` / `scale` / `bit_mask` / …
+- Queue **downlink** commands (flushed when device is online); cancel pending from Admin
 - **Refresh gateway status** for online sessions / adapter catalog
 
 ## Extending protocols

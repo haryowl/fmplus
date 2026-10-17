@@ -179,6 +179,8 @@ type TrackerProtocolParam = {
 
 type TrackerMapRule = {
   id: string;
+  profileId?: string | null;
+  deviceId?: string | null;
   vendorKey: string;
   appParamId: string;
   transform: string;
@@ -454,6 +456,7 @@ export default function AdminConsole() {
   const [dmAppParam, setDmAppParam] = useState("ignition");
   const [dmTransform, setDmTransform] = useState("identity");
   const [dmTransformArg, setDmTransformArg] = useState("");
+  const [dmMapDeviceId, setDmMapDeviceId] = useState("");
   const [protocolParams, setProtocolParams] = useState<TrackerProtocolParam[]>([]);
   const [cmdDeviceId, setCmdDeviceId] = useState("");
   const [cmdText, setCmdText] = useState("");
@@ -561,7 +564,14 @@ export default function AdminConsole() {
     }
   }, [trackerProfiles]);
 
-  const loadMapRules = useCallback(async (tenantId: string, profileId: string) => {
+  const loadMapRules = useCallback(async (tenantId: string, profileId: string, deviceId = "") => {
+    if (deviceId) {
+      const data = await api<{ rules: TrackerMapRule[] }>(
+        `/api/admin/tenants/${tenantId}/tracker-param-maps?deviceId=${encodeURIComponent(deviceId)}`,
+      );
+      setMapRules(data.rules);
+      return;
+    }
     if (!profileId) {
       setMapRules([]);
       return;
@@ -613,10 +623,11 @@ export default function AdminConsole() {
   }, [selectedId, loadFieldUsers, loadTrackerDevices, loadUnassignedTrackers, loadDeviceManager]);
 
   useEffect(() => {
-    if (!selectedId || selectedId === "new" || !dmProfileId) return;
-    void loadMapRules(selectedId, dmProfileId).catch((err: Error) => setError(err.message));
-    void loadProtocolParamsForProfile(dmProfileId);
-  }, [selectedId, dmProfileId, loadMapRules, loadProtocolParamsForProfile]);
+    if (!selectedId || selectedId === "new") return;
+    if (!dmMapDeviceId && !dmProfileId) return;
+    void loadMapRules(selectedId, dmProfileId, dmMapDeviceId).catch((err: Error) => setError(err.message));
+    if (dmProfileId) void loadProtocolParamsForProfile(dmProfileId);
+  }, [selectedId, dmProfileId, dmMapDeviceId, loadMapRules, loadProtocolParamsForProfile]);
 
   const filteredTenants = useMemo(() => {
     const q = tenantQuery.trim().toLowerCase();
@@ -988,7 +999,8 @@ export default function AdminConsole() {
 
   async function addMapRule(e: FormEvent) {
     e.preventDefault();
-    if (!selectedId || selectedId === "new" || !dmProfileId) return;
+    if (!selectedId || selectedId === "new") return;
+    if (!dmMapDeviceId && !dmProfileId) return;
     setBusy(true);
     setError("");
     let transformArg: Record<string, unknown> = {};
@@ -1015,15 +1027,21 @@ export default function AdminConsole() {
       await api(`/api/admin/tenants/${selectedId}/tracker-param-maps`, {
         method: "POST",
         body: JSON.stringify({
-          profileId: dmProfileId,
+          ...(dmMapDeviceId
+            ? { deviceId: dmMapDeviceId }
+            : { profileId: dmProfileId }),
           vendorKey: dmVendorKey.trim(),
           appParamId: dmAppParam,
           transform: dmTransform,
           transformArg,
         }),
       });
-      setNotice(`Mapped ${dmVendorKey} → ${dmAppParam} (${dmTransform})`);
-      await loadMapRules(selectedId, dmProfileId);
+      setNotice(
+        dmMapDeviceId
+          ? `Device override ${dmVendorKey} → ${dmAppParam}`
+          : `Mapped ${dmVendorKey} → ${dmAppParam} (${dmTransform})`,
+      );
+      await loadMapRules(selectedId, dmProfileId, dmMapDeviceId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Map rule failed");
     } finally {
@@ -1032,7 +1050,7 @@ export default function AdminConsole() {
   }
 
   async function removeMapRule(ruleId: string) {
-    if (!selectedId || selectedId === "new" || !dmProfileId) return;
+    if (!selectedId || selectedId === "new") return;
     if (!window.confirm("Delete this remap rule?")) return;
     setBusy(true);
     setError("");
@@ -1041,7 +1059,7 @@ export default function AdminConsole() {
         method: "DELETE",
       });
       setNotice("Remap rule deleted");
-      await loadMapRules(selectedId, dmProfileId);
+      await loadMapRules(selectedId, dmProfileId, dmMapDeviceId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     } finally {
@@ -2051,11 +2069,29 @@ export default function AdminConsole() {
                     Profile
                     <select
                       value={dmProfileId}
-                      onChange={(e) => setDmProfileId(e.target.value)}
+                      onChange={(e) => {
+                        setDmMapDeviceId("");
+                        setDmProfileId(e.target.value);
+                      }}
+                      disabled={!!dmMapDeviceId}
                     >
                       {trackerProfiles.map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name} ({p.protocol}/{p.completeness})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Or device override
+                    <select
+                      value={dmMapDeviceId}
+                      onChange={(e) => setDmMapDeviceId(e.target.value)}
+                    >
+                      <option value="">(use profile rules)</option>
+                      {trackerDevices.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.imei} · {d.protocol || "?"}
                         </option>
                       ))}
                     </select>
@@ -2065,6 +2101,7 @@ export default function AdminConsole() {
                       <li key={r.id}>
                         <span>
                           <code>{r.vendorKey}</code> → <strong>{r.appParamId}</strong> ({r.transform})
+                          {r.deviceId ? <span className="muted"> · device</span> : null}
                         </span>
                         <button
                           type="button"
@@ -2077,7 +2114,11 @@ export default function AdminConsole() {
                       </li>
                     ))}
                     {mapRules.length === 0 ? (
-                      <li className="muted admin-empty">No remap rules on this profile yet.</li>
+                      <li className="muted admin-empty">
+                        {dmMapDeviceId
+                          ? "No device-level remap overrides yet."
+                          : "No remap rules on this profile yet."}
+                      </li>
                     ) : null}
                   </ul>
                   <form className="admin-form-grid" onSubmit={(e) => void addMapRule(e)}>
@@ -2134,8 +2175,12 @@ export default function AdminConsole() {
                       />
                     </label>
                     <div className="span-2 admin-actions">
-                      <button type="submit" className="btn btn-secondary" disabled={busy || !dmProfileId}>
-                        Add remap rule
+                      <button
+                        type="submit"
+                        className="btn btn-secondary"
+                        disabled={busy || (!dmProfileId && !dmMapDeviceId)}
+                      >
+                        {dmMapDeviceId ? "Add device override" : "Add remap rule"}
                       </button>
                     </div>
                   </form>
