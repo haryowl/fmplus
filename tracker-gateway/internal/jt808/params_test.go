@@ -46,6 +46,9 @@ func TestParseMultimediaAndTransparent(t *testing.T) {
 	if ml["media_id"] != uint32(99) || ml["media_channel"] != 3 || ml["media_has_location"] != true {
 		t.Fatalf("long=%v", ml)
 	}
+	if ml["media_code"] != 1 || ml["media_event"] != 2 {
+		t.Fatalf("code/event=%v", ml)
+	}
 	if loc := multimediaLocationBody(long); len(loc) != 28 {
 		t.Fatalf("loc len=%d", len(loc))
 	}
