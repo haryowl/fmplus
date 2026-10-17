@@ -423,6 +423,40 @@ export async function handleAdminRequest(req, res) {
       return true;
     }
 
+    if (path === "/api/admin/tracker-gateway/status") {
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method !== "GET") {
+        json(res, 405, { error: "Method not allowed" });
+        return true;
+      }
+      const base = String(process.env.TRACKER_GATEWAY_URL || "http://127.0.0.1:5080").replace(
+        /\/+$/,
+        "",
+      );
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 2500);
+        const [healthRes, adaptersRes] = await Promise.all([
+          fetch(`${base}/healthz`, { signal: ctrl.signal }),
+          fetch(`${base}/adapters`, { signal: ctrl.signal }),
+        ]);
+        clearTimeout(t);
+        const health = healthRes.ok ? await healthRes.json() : { ok: false, error: healthRes.status };
+        const adapters = adaptersRes.ok
+          ? await adaptersRes.json()
+          : { error: adaptersRes.status };
+        json(res, 200, { ok: true, base, health, adapters });
+      } catch (err) {
+        json(res, 200, {
+          ok: false,
+          base,
+          error: err instanceof Error ? err.message : "Gateway unreachable",
+        });
+      }
+      return true;
+    }
+
     const commandsMatch =
       /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-devices\/([0-9a-f-]{36})\/commands$/i.exec(
         path,

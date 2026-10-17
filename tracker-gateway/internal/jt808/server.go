@@ -3,6 +3,7 @@ package jt808
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -321,7 +322,19 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 		}
 		bindSession(sessions, sess, conn)
 		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0001: // terminal general response (command ack)
+		if sess.device != nil && len(body) >= 5 {
+			result := body[4]
+			respMsg := binary.BigEndian.Uint16(body[2:4])
+			ok := result == 0
+			_ = st.AckLatestSent(ctx, sess.device.ID, ok,
+				fmt.Sprintf("jt808_0001 msg=0x%04x result=%d", respMsg, result))
+		}
+		return nil // no reply to a reply
 	case 0x0002: // heartbeat
+		if sess.device != nil {
+			_ = st.TouchSeen(ctx, sess.device)
+		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0704: // batch location
 		if len(body) >= 3 {

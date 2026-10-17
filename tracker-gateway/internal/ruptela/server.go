@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
@@ -22,7 +23,7 @@ func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol
 	if err != nil {
 		return err
 	}
-	log.Printf("[ruptela] listening on %s (status=mvp)", addr)
+	log.Printf("[ruptela] listening on %s (status=partial)", addr)
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
@@ -97,10 +98,40 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			}
 			_ = writeAck(conn, len(records))
 			flushPending(ctx, conn, st, device.ID)
+		case 2, 105, 107: // config / command responses (IMEI may be present)
+			imei := ""
+			if len(data) >= 9 {
+				imeiNum := binary.BigEndian.Uint64(data[1:9])
+				imei = strconv.FormatUint(imeiNum, 10)
+			}
+			device := boundDevice(bound)
+			if device == nil && imei != "" {
+				device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "ruptela")
+			}
+			if device != nil {
+				resp := fmt.Sprintf("ruptela_cmd_%d %x", packetID, data)
+				if packetID == 2 && len(data) > 9 {
+					resp = string(data[9:])
+				}
+				_ = st.AckLatestSent(ctx, device.ID, true, strings.TrimSpace(resp))
+				_ = st.TouchSeen(ctx, device)
+			}
+			_ = writeAck(conn, 0)
 		default:
+			if device := boundDevice(bound); device != nil {
+				_ = st.TouchSeen(ctx, device)
+			}
 			_ = writeAck(conn, 0)
 		}
 	}
+}
+
+func boundDevice(bound *protocol.ConnSession) *store.Device {
+	if bound == nil {
+		return nil
+	}
+	// Lightweight stub — callers that need full Device should FindByIMEI; Ack only needs ID.
+	return &store.Device{ID: bound.DeviceID, IMEI: bound.IMEI, Protocol: bound.Protocol}
 }
 
 func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID string) {

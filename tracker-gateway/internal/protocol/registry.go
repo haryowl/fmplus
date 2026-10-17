@@ -101,3 +101,35 @@ func (r *Registry) SendToDevice(deviceID string, payload []byte) error {
 	_, err := sess.Conn.Write(payload)
 	return err
 }
+
+// Snapshot returns adapter catalog + online session counts (for /adapters health).
+func (r *Registry) Snapshot() map[string]any {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	adapters := make([]map[string]any, 0, len(r.adapters))
+	for _, a := range r.adapters {
+		adapters = append(adapters, map[string]any{
+			"name":        a.Name(),
+			"displayName": a.DisplayName(),
+			"status":      a.Status(),
+			"defaultAddr": a.DefaultAddr(),
+		})
+	}
+	sessions := make([]map[string]any, 0, len(r.byDevice))
+	byProto := map[string]int{}
+	for _, s := range r.byDevice {
+		sessions = append(sessions, map[string]any{
+			"deviceId": s.DeviceID,
+			"imei":     s.IMEI,
+			"protocol": s.Protocol,
+		})
+		byProto[s.Protocol]++
+	}
+	return map[string]any{
+		"adapters":       adapters,
+		"onlineCount":    len(r.byDevice),
+		"onlineByProto":  byProto,
+		"onlineSessions": sessions,
+		"note":           "Adapters are MVP/partial/experimental until certified",
+	}
+}

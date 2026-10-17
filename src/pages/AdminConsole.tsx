@@ -439,6 +439,19 @@ export default function AdminConsole() {
   const [cmdDeviceId, setCmdDeviceId] = useState("");
   const [cmdText, setCmdText] = useState("");
   const [cmdType, setCmdType] = useState("text");
+  const [cmdHistory, setCmdHistory] = useState<
+    Array<{
+      id: string;
+      status: string;
+      commandType: string;
+      payloadText?: string;
+      responseText?: string;
+      createdAt: string;
+      sentAt?: string | null;
+      completedAt?: string | null;
+    }>
+  >([]);
+  const [gatewayStatus, setGatewayStatus] = useState<string>("");
   const [previewDeviceId, setPreviewDeviceId] = useState("");
   const [remapPreview, setRemapPreview] = useState<string>("");
   const [safetyEvents, setSafetyEvents] = useState<
@@ -991,6 +1004,64 @@ export default function AdminConsole() {
     }
   }
 
+  async function loadGatewayStatus() {
+    try {
+      const data = await api<{
+        ok: boolean;
+        base?: string;
+        error?: string;
+        health?: { onlineCount?: number; connectionsOpen?: number; fixesIngested?: number };
+        adapters?: {
+          onlineCount?: number;
+          onlineByProto?: Record<string, number>;
+          adapters?: Array<{ name: string; status: string; displayName?: string }>;
+        };
+      }>("/api/admin/tracker-gateway/status");
+      if (!data.ok) {
+        setGatewayStatus(`Gateway offline (${data.base || "?"}): ${data.error || "unreachable"}`);
+        return;
+      }
+      const online = data.adapters?.onlineCount ?? data.health?.onlineCount ?? 0;
+      const byProto = data.adapters?.onlineByProto
+        ? Object.entries(data.adapters.onlineByProto)
+            .map(([k, v]) => `${k}:${v}`)
+            .join(" ")
+        : "";
+      const catalog = (data.adapters?.adapters || [])
+        .map((a) => `${a.name}=${a.status}`)
+        .join(", ");
+      setGatewayStatus(
+        `Online sessions: ${online}${byProto ? ` (${byProto})` : ""} · fixes=${data.health?.fixesIngested ?? "—"} · ${catalog || "no adapters"}`,
+      );
+    } catch (err) {
+      setGatewayStatus(err instanceof Error ? err.message : "Gateway status failed");
+    }
+  }
+
+  async function loadCommandHistory(deviceId: string) {
+    if (!selectedId || selectedId === "new" || !deviceId) {
+      setCmdHistory([]);
+      return;
+    }
+    try {
+      const data = await api<{
+        commands: Array<{
+          id: string;
+          status: string;
+          commandType: string;
+          payloadText?: string;
+          responseText?: string;
+          createdAt: string;
+          sentAt?: string | null;
+          completedAt?: string | null;
+        }>;
+      }>(`/api/admin/tenants/${selectedId}/tracker-devices/${deviceId}/commands`);
+      setCmdHistory(data.commands || []);
+    } catch {
+      setCmdHistory([]);
+    }
+  }
+
   async function sendDeviceCommand(e: FormEvent) {
     e.preventDefault();
     if (!selectedId || selectedId === "new" || !cmdDeviceId) return;
@@ -1003,6 +1074,7 @@ export default function AdminConsole() {
       });
       setNotice("Command queued — device receives it on next online session");
       setCmdText("");
+      await loadCommandHistory(cmdDeviceId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Command failed");
     } finally {
@@ -1822,6 +1894,17 @@ export default function AdminConsole() {
                       <strong>MVP/partial</strong> until certified — not full 2-way production yet.
                     </p>
                   </header>
+                  <div className="admin-actions" style={{ marginBottom: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={busy}
+                      onClick={() => void loadGatewayStatus()}
+                    >
+                      Refresh gateway status
+                    </button>
+                  </div>
+                  {gatewayStatus ? <p className="admin-notice">{gatewayStatus}</p> : null}
                   <label>
                     Profile
                     <select
@@ -1871,7 +1954,14 @@ export default function AdminConsole() {
                   <form className="admin-form-grid" onSubmit={(e) => void sendDeviceCommand(e)}>
                     <label>
                       Send command to device
-                      <select value={cmdDeviceId} onChange={(e) => setCmdDeviceId(e.target.value)}>
+                      <select
+                        value={cmdDeviceId}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          setCmdDeviceId(id);
+                          void loadCommandHistory(id);
+                        }}
+                      >
                         <option value="">Select device…</option>
                         {trackerDevices.map((d) => (
                           <option key={d.id} value={d.id}>
@@ -1904,8 +1994,35 @@ export default function AdminConsole() {
                       <button type="submit" className="btn btn-secondary" disabled={busy || !cmdDeviceId}>
                         Queue downlink
                       </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={busy || !cmdDeviceId}
+                        onClick={() => void loadCommandHistory(cmdDeviceId)}
+                      >
+                        Refresh commands
+                      </button>
                     </div>
                   </form>
+                  {cmdHistory.length > 0 ? (
+                    <ul className="admin-field-list">
+                      {cmdHistory.slice(0, 12).map((c) => (
+                        <li key={c.id}>
+                          <span>
+                            <strong>{c.status}</strong> · {c.commandType}
+                            {c.payloadText ? ` · ${c.payloadText.slice(0, 48)}` : ""}
+                            {c.responseText ? ` → ${c.responseText.slice(0, 48)}` : ""}
+                            <span className="muted">
+                              {" "}
+                              · {c.createdAt ? new Date(c.createdAt).toLocaleString() : "—"}
+                            </span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : cmdDeviceId ? (
+                    <p className="muted">No commands queued for this device yet.</p>
+                  ) : null}
                   <div className="admin-form-grid">
                     <label>
                       Remap preview device

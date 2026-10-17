@@ -3,6 +3,7 @@ package teltonika
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -114,6 +115,16 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		if !verifyAVLCRC(payload, crcBuf) {
 			log.Printf("[teltonika] bad CRC for %s — still attempting parse", imei)
 		}
+		// Codec 12/13 GPRS command response (not AVL records).
+		if len(payload) > 0 && (payload[0] == 0x0c || payload[0] == 0x0d) {
+			resp := parseCodec12Response(payload)
+			_ = st.AckLatestSent(ctx, device.ID, true, resp)
+			ack := make([]byte, 4)
+			if _, err := conn.Write(ack); err != nil {
+				return
+			}
+			continue
+		}
 		count, fixes := parseAVL(payload)
 		for _, fix := range fixes {
 			fix.SourceProtocol = "teltonika"
@@ -126,5 +137,39 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		if _, err := conn.Write(ack); err != nil {
 			return
 		}
+		flushPending(ctx, conn, st, device.ID)
 	}
+}
+
+func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID string) {
+	enc := Adapter{}
+	for i := 0; i < 4; i++ {
+		cmd, err := st.NextPendingCommand(ctx, deviceID)
+		if err != nil || cmd == nil {
+			return
+		}
+		payload, err := enc.EncodeDownlink(*cmd)
+		if err != nil || len(payload) == 0 {
+			return
+		}
+		if _, err := conn.Write(payload); err != nil {
+			return
+		}
+		_ = st.MarkCommandSent(ctx, cmd.ID)
+	}
+}
+
+func parseCodec12Response(payload []byte) string {
+	// 0x0C|0x0D | qty | type=0x06 | size u32 BE | body | qty
+	if len(payload) < 8 {
+		return fmt.Sprintf("%x", payload)
+	}
+	sz := int(binary.BigEndian.Uint32(payload[3:7]))
+	if 7+sz > len(payload) {
+		sz = len(payload) - 7
+	}
+	if sz < 0 {
+		return fmt.Sprintf("%x", payload)
+	}
+	return string(payload[7 : 7+sz])
 }

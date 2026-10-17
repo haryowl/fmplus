@@ -38,6 +38,10 @@ WHERE p.tenant_id IS NULL AND p.protocol = 'concox'
   );
 
 INSERT INTO tracker_protocol_params (protocol, vendor_key, label, value_type, description) VALUES
+  ('concox', 'alarm.sos', 'SOS', 'bool', 'Concox SOS alarm'),
+  ('concox', 'alarm.power_cut', 'Power cut', 'bool', 'Concox power cut alarm'),
+  ('concox', 'alarm.overspeed', 'Overspeed', 'bool', 'Concox overspeed alarm'),
+  ('concox', 'alarm_code', 'Alarm code', 'number', 'Raw GT06 0x16 alarm byte'),
   ('ruptela', 'io.5', 'DIN / ignition', 'bool', 'Common Ruptela DIN1 / ignition'),
   ('ruptela', 'io.239', 'Ignition (alt)', 'bool', 'Alternate ignition IO on some FM configs'),
   ('ruptela', 'io.65', 'Odometer', 'number', 'Odometer (units model-dependent)'),

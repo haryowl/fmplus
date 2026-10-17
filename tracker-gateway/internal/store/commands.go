@@ -102,6 +102,24 @@ func (s *Store) EnqueueCommandResult(ctx context.Context, commandID string, ok b
 	return err
 }
 
+// AckLatestSent marks the most recent sent (or pending) command for a device as acked/failed.
+func (s *Store) AckLatestSent(ctx context.Context, deviceID string, ok bool, response string) error {
+	status := "acked"
+	if !ok {
+		status = "failed"
+	}
+	_, err := s.pool.Exec(ctx, `
+		UPDATE tracker_commands
+		SET status = $2, response_text = $3, completed_at = now()
+		WHERE id = (
+			SELECT id FROM tracker_commands
+			WHERE device_id = $1::uuid AND status IN ('sent', 'pending')
+			ORDER BY COALESCE(sent_at, created_at) DESC
+			LIMIT 1
+		)`, deviceID, status, response)
+	return err
+}
+
 func (s *Store) InsertSafetyEvent(ctx context.Context, device *Device, ev SafetyEvent) error {
 	if device == nil {
 		return nil

@@ -22,7 +22,7 @@ func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol
 	if err != nil {
 		return err
 	}
-	log.Printf("[concox] listening on %s (status=mvp)", addr)
+	log.Printf("[concox] listening on %s (status=partial)", addr)
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
@@ -112,12 +112,32 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					flushPending(ctx, conn, st, device.ID)
 				}
 				_ = writeReply(conn, proto, serial, nil)
+			case 0x15: // string / command response from terminal
+				if device != nil {
+					resp := string(info)
+					if len(info) > 1 {
+						// common: len byte + ascii
+						n := int(info[0])
+						if n > 0 && 1+n <= len(info) {
+							resp = string(info[1 : 1+n])
+						}
+					}
+					_ = st.AckLatestSent(ctx, device.ID, true, resp)
+					_ = st.TouchSeen(ctx, device)
+				}
+				_ = writeReply(conn, 0x15, serial, nil)
 			case 0x16: // alarm (often includes GPS)
 				if device != nil {
 					if fix, ok := parseGPS(info, proto); ok {
 						fix.SourceProtocol = "concox"
 						_ = deviceauth.Ingest(ctx, st, device, fix)
+						if ev := safetyFromAlarm(info, fix); ev != nil {
+							_ = st.InsertSafetyEvent(ctx, device, *ev)
+						}
+					} else if ev := safetyFromAlarm(info, store.Fix{RecordedAt: time.Now().UTC()}); ev != nil {
+						_ = st.InsertSafetyEvent(ctx, device, *ev)
 					}
+					flushPending(ctx, conn, st, device.ID)
 				}
 				_ = writeReply(conn, 0x16, serial, nil)
 			default:
@@ -343,6 +363,78 @@ func parseGPS(info []byte, proto byte) (store.Fix, bool) {
 		SourceProtocol: "concox",
 	}
 	return fix, true
+}
+
+func safetyFromAlarm(info []byte, fix store.Fix) *store.SafetyEvent {
+	code, ok := extractAlarmCode(info)
+	if !ok {
+		return nil
+	}
+	alarmType := map[byte]string{
+		0x01: "sos",
+		0x02: "power_cut",
+		0x03: "vibration",
+		0x04: "fence_in",
+		0x05: "fence_out",
+		0x06: "overspeed",
+		0x09: "moving",
+		0x0a: "enter_gps",
+		0x0b: "gps_lost",
+		0x0c: "power_on",
+		0x0d: "gps_ok",
+		0x0e: "power_off",
+		0x13: "remove",
+		0x14: "wear",
+		0x19: "illegal_move",
+		0x23: "fall",
+		0x29: "crash",
+	}[code]
+	if alarmType == "" {
+		alarmType = fmt.Sprintf("alarm_0x%02x", code)
+	}
+	lat, lon := fix.Lat, fix.Lon
+	level := 1
+	if code == 0x01 || code == 0x02 || code == 0x29 {
+		level = 2
+	}
+	raw := map[string]any{
+		"alarm_code":   int(code),
+		"alarm_level":  level,
+		"proto":        0x16,
+	}
+	raw["alarm."+alarmType] = true
+	return &store.SafetyEvent{
+		RecordedAt:     fix.RecordedAt,
+		AlarmType:      alarmType,
+		AlarmLevel:     level,
+		Lat:            &lat,
+		Lon:            &lon,
+		RawAttrs:       raw,
+		SourceProtocol: "concox",
+	}
+}
+
+// extractAlarmCode finds GT06 0x16 alarm type byte after GPS+LBS when possible.
+func extractAlarmCode(info []byte) (byte, bool) {
+	if len(info) < 1 {
+		return 0, false
+	}
+	// Prefer dedicated alarm byte near the end (before language uint16).
+	if len(info) >= 3 {
+		code := info[len(info)-3]
+		if code != 0 {
+			return code, true
+		}
+	}
+	// Fallback: scan for known alarm codes in the tail half.
+	start := len(info) / 2
+	for i := start; i < len(info); i++ {
+		switch info[i] {
+		case 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x09, 0x0c, 0x0e, 0x13, 0x19, 0x23, 0x29:
+			return info[i], true
+		}
+	}
+	return 0, false
 }
 
 func parseDateTime(b []byte) time.Time {
