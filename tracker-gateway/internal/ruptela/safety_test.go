@@ -361,6 +361,19 @@ func TestPromoteRuptelaScalars_ISO6709(t *testing.T) {
 	}
 }
 
+func TestPromoteRuptelaScalars_CANChipAxle(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{
+		"81": 55, "83": 200, "115": 850, "118": 1100, "14": "8986",
+	})
+	if raw["can.vehicle_speed"] != 55.0 || raw["can.fuel_consumed"] != 20.0 || raw["can.coolant_temp"] != 85.0 {
+		t.Fatalf("%v", raw)
+	}
+	if raw["axle.load1"] != 1100.0 || raw["gsm.iccid2"] != "8986" {
+		t.Fatalf("axle/iccid=%v", raw)
+	}
+}
+
 func TestPromoteRuptelaScalars_GeofenceAlarmParity(t *testing.T) {
 	raw := map[string]any{}
 	promoteRuptelaScalars(raw, map[string]any{

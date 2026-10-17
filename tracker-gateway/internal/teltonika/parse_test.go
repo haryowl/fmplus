@@ -516,6 +516,24 @@ func TestPromoteTeltonikaScalars_Geofence21to40(t *testing.T) {
 	}
 }
 
+func TestPromoteTeltonikaScalars_CANChipAxle(t *testing.T) {
+	raw := map[string]any{}
+	promoteTeltonikaScalars(raw, map[string]any{
+		"14": "898600999", "81": 60, "82": 40, "83": 125, "85": 1800,
+		"87": 10000, "105": 9000, "107": 50, "115": 905, "168": 24,
+		"118": 1000, "122": 5000,
+	})
+	if raw["gsm.iccid2"] != "898600999" || raw["can.vehicle_speed"] != 60.0 || raw["can.throttle"] != 40.0 {
+		t.Fatalf("iccid/speed/throttle=%v", raw)
+	}
+	if raw["can.fuel_consumed"] != 12.5 || raw["can.engine_rpm"] != 1800.0 || raw["can.coolant_temp"] != 90.5 {
+		t.Fatalf("fuel/rpm/coolant=%v", raw)
+	}
+	if raw["can.mileage"] != 10000.0 || raw["can.fuel_counted"] != 5.0 || raw["axle.load1"] != 1000.0 || raw["axle.load5"] != 5000.0 {
+		t.Fatalf("mileage/axle=%v", raw)
+	}
+}
+
 func TestPromoteTeltonikaScalars_Geofence41to50AlarmCrash(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{

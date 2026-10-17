@@ -393,6 +393,52 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["391"]; ok {
 		raw["status.private_mode"] = asIOBool(v)
 	}
+	if v, ok := io["14"]; ok {
+		raw["gsm.iccid2"] = fmt.Sprintf("%v", v)
+	}
+	// FMB150/FMC250 CAN chip (distinct from classic OBD AVL 30–60).
+	if v, ok := io["81"]; ok {
+		raw["can.vehicle_speed"] = asIOFloat(v)
+	}
+	if v, ok := io["82"]; ok {
+		raw["can.throttle"] = asIOFloat(v)
+	}
+	if v, ok := io["83"]; ok {
+		raw["can.fuel_consumed"] = asIOFloat(v) / 10.0 // L ×0.1
+	}
+	if v, ok := io["85"]; ok {
+		raw["can.engine_rpm"] = asIOFloat(v)
+	}
+	if v, ok := io["87"]; ok {
+		raw["can.mileage"] = asIOFloat(v)
+	}
+	if v, ok := io["105"]; ok {
+		raw["can.mileage_counted"] = asIOFloat(v)
+	}
+	if v, ok := io["107"]; ok {
+		raw["can.fuel_counted"] = asIOFloat(v) / 10.0
+	}
+	if v, ok := io["115"]; ok {
+		raw["can.coolant_temp"] = asIOFloat(v) / 10.0 // °C ×0.1
+	}
+	if v, ok := io["168"]; ok {
+		raw["can.battery_voltage"] = asIOFloat(v)
+	}
+	if v, ok := io["118"]; ok {
+		raw["axle.load1"] = asIOFloat(v)
+	}
+	if v, ok := io["119"]; ok {
+		raw["axle.load2"] = asIOFloat(v)
+	}
+	if v, ok := io["120"]; ok {
+		raw["axle.load3"] = asIOFloat(v)
+	}
+	if v, ok := io["121"]; ok {
+		raw["axle.load4"] = asIOFloat(v)
+	}
+	if v, ok := io["122"]; ok {
+		raw["axle.load5"] = asIOFloat(v)
+	}
 	if v, ok := io["76"]; ok {
 		raw["temp.id1"] = fmt.Sprintf("%v", v)
 	}
