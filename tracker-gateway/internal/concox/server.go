@@ -270,23 +270,8 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 }
 
 func writeReply(conn net.Conn, proto byte, serial uint16, extra []byte) error {
-	// 78 78 | len | proto | [extra] | serial | crc | 0D 0A
-	body := make([]byte, 0, 8+len(extra))
-	body = append(body, proto)
-	body = append(body, extra...)
-	ser := make([]byte, 2)
-	binary.BigEndian.PutUint16(ser, serial)
-	body = append(body, ser...)
-	crcIn := append([]byte{byte(1 + len(extra) + 2 + 2)}, body...)
-	// CRC over packet length through serial number (Concox docs)
-	sum := crc16ITU(crcIn)
-	out := []byte{0x78, 0x78, byte(len(body) + 2)}
-	out = append(out, body...)
-	crcBuf := make([]byte, 2)
-	binary.BigEndian.PutUint16(crcBuf, sum)
-	out = append(out, crcBuf...)
-	out = append(out, 0x0d, 0x0a)
-	_, err := conn.Write(out)
+	// Same framing as downlink (0x7878 or extended 0x7979 when large).
+	_, err := conn.Write(buildFrame(proto, serial, extra))
 	return err
 }
 

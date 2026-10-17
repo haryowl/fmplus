@@ -3,7 +3,6 @@ package galileosky
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -137,7 +136,8 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			} else if device != nil && !hasFix && !ingested {
 				_ = st.TouchSeen(ctx, device)
 				if looksLikeCommandReply(tags) {
-					_ = st.AckLatestSent(ctx, device.ID, true, fmt.Sprintf("galileosky tags %v", tagsToRaw(tags)))
+					text, ok := formatCommandReply(tags)
+					_ = st.AckLatestSent(ctx, device.ID, ok, text)
 				}
 			}
 		}

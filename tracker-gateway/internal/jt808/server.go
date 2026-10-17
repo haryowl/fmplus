@@ -511,6 +511,11 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			}
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0702: // driver identity information report
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, parseDriverIdentity(body), nil)
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0704: // batch location
 		if len(body) >= 3 {
 			count := int(binary.BigEndian.Uint16(body[0:2]))
@@ -532,6 +537,42 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 	default:
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	}
+}
+
+// parseDriverIdentity extracts remappable driver fields from JT808 0x0702.
+// Layout (common): state(1) + time(6 BCD) + IC result(1) + driver name len(1) + name + …
+func parseDriverIdentity(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0702", "driver_hex": fmt.Sprintf("%x", body)}
+	if len(body) < 1 {
+		return out
+	}
+	out["driver_state"] = int(body[0]) // 0x01 insert, 0x02 pull out (typical)
+	off := 1
+	if len(body) >= off+6 {
+		out["driver_time"] = fmt.Sprintf("%x", body[off:off+6])
+		off += 6
+	}
+	if len(body) >= off+1 {
+		out["driver_ic_result"] = int(body[off])
+		off++
+	}
+	if len(body) >= off+1 {
+		n := int(body[off])
+		off++
+		if n > 0 && off+n <= len(body) {
+			name := strings.TrimRight(string(body[off:off+n]), "\x00 ")
+			out["driver_name"] = name
+			off += n
+		}
+	}
+	if off < len(body) {
+		// Remaining often: qualification cert ASCII / agency
+		rest := strings.TrimRight(string(body[off:]), "\x00 ")
+		if rest != "" {
+			out["driver_cert"] = rest
+		}
+	}
+	return out
 }
 
 // parseTerminalAttrs extracts remappable keys from 0x0107 (best-effort layout).

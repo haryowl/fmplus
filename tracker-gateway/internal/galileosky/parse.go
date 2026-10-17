@@ -3,6 +3,7 @@ package galileosky
 import (
 	"encoding/binary"
 	"fmt"
+	"strings"
 )
 
 // parseTags walks Galileosky Easy/Main tags per official tag length table.
@@ -39,6 +40,20 @@ func parseTagRecords(payload []byte) []map[byte][]byte {
 		tag := payload[off]
 		off++
 		size := tagSize(tag)
+		if size == -3 {
+			// 1-byte length + payload (command reply tags 0xE0–0xE6).
+			if off >= len(payload) {
+				break
+			}
+			n := int(payload[off])
+			off++
+			if n < 0 || off+n > len(payload) {
+				break
+			}
+			flat = append(flat, tv{tag, append([]byte(nil), payload[off:off+n]...)})
+			off += n
+			continue
+		}
 		if size < 0 {
 			if off >= len(payload) {
 				break
@@ -118,6 +133,13 @@ func tagsToRaw(tags map[byte][]byte) map[string]any {
 			}
 			continue
 		}
+		if k >= 0xe0 && k <= 0xe6 {
+			s := strings.TrimSpace(string(v))
+			if s != "" {
+				m[key] = s
+				continue
+			}
+		}
 		switch len(v) {
 		case 1:
 			m[key] = int(v[0])
@@ -166,8 +188,9 @@ func tagSize(tag byte) int {
 		return 4
 	case 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87:
 		return 8
-	case 0xe1, 0xe2, 0xe3, 0xe4, 0xe5:
-		return 4
+	case 0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6:
+		// Length-prefixed command/text reply (1-byte len + ASCII/data).
+		return -3
 	default:
 		if tag >= 0x11 && tag <= 0x19 {
 			return 1

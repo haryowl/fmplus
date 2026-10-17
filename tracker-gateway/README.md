@@ -8,7 +8,7 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 |---------|----------|---------|--------|--------|----------|-------|
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat + alarm safety | — | nested attrs flatten; `alarm.*` → safety |
 | Teltonika Codec 8/8E | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | event IO → safety for known alarms |
-| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/batch/subpkg/2019/0107/0301 | 0x8300/8103/8500 | outbound subpkg; ack corr; alarm/Su Biao → safety |
+| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/0702/0107/0301 | 0x8300/8103/8104/8500 | driver ID; outbound subpkg; ack corr |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
 | JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/heartbeat | — | platform link only |
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling | — | A/V hooks only |
@@ -74,6 +74,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   060_tracker_command_corr.sql
 #   061_jt808_query_commands.sql
 #   062_jt808_location_tlv_params.sql
+#   063_jt808_driver_params.sql
 npm run db:migrate
 
 cd tracker-gateway

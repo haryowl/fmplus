@@ -4,6 +4,20 @@ import (
 	"testing"
 )
 
+func TestParseDriverIdentity(t *testing.T) {
+	// state=1, time 6 bytes, ic=0, name len=4 "John"
+	body := []byte{0x01, 0x24, 0x06, 0x01, 0x10, 0x30, 0x00, 0x00, 0x04}
+	body = append(body, []byte("John")...)
+	body = append(body, []byte("CERT123")...)
+	m := parseDriverIdentity(body)
+	if m["driver_state"] != 1 || m["driver_name"] != "John" {
+		t.Fatalf("%v", m)
+	}
+	if m["driver_cert"] != "CERT123" {
+		t.Fatalf("cert=%v", m["driver_cert"])
+	}
+}
+
 func TestParseTerminalAttrs_Minimal(t *testing.T) {
 	body := make([]byte, 1+5+20+7+10)
 	body[0] = 0x01
