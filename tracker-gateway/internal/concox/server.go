@@ -3,6 +3,7 @@ package concox
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"math"
@@ -11,16 +12,17 @@ import (
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/protocol"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
 // Serve Concox / GT06-family TCP (login 0x01, GPS 0x12/0x22, heartbeat 0x13).
-func Serve(ctx context.Context, addr string, st *store.Store) error {
+func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol.Registry) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
-	log.Printf("[concox] listening on %s", addr)
+	log.Printf("[concox] listening on %s (status=mvp)", addr)
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
@@ -36,14 +38,18 @@ func Serve(ctx context.Context, addr string, st *store.Store) error {
 				continue
 			}
 		}
-		go handleConn(ctx, conn, st)
+		go handleConn(ctx, conn, st, sessions)
 	}
 }
 
-func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
+func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry) {
 	metrics.ConnOpen()
+	var bound *protocol.ConnSession
 	defer func() {
 		metrics.ConnClose()
+		if sessions != nil && bound != nil {
+			sessions.Unbind(bound)
+		}
 		_ = conn.Close()
 	}()
 	var device *store.Device
@@ -77,8 +83,20 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 				if device == nil {
 					continue
 				}
+				bound = &protocol.ConnSession{
+					DeviceID: device.ID, IMEI: device.IMEI, Protocol: "concox", Conn: conn,
+				}
+				if sessions != nil {
+					sessions.Bind(bound)
+				}
 				_ = writeReply(conn, 0x01, serial, nil)
 			case 0x13: // heartbeat / status
+				if device != nil {
+					_ = st.TouchSeen(ctx, device)
+					if len(info) > 0 {
+						log.Printf("[concox] heartbeat %s status=%x", imei, info)
+					}
+				}
 				_ = writeReply(conn, 0x13, serial, nil)
 			case 0x12, 0x22: // GPS location
 				if device == nil && imei != "" {
@@ -276,16 +294,36 @@ func parseGPS(info []byte, proto byte) (store.Fix, bool) {
 		lon = -math.Abs(lon)
 	}
 	hdg := float64(courseStatus & 0x03FF)
-	return store.Fix{
+	// Course/status high bits also carry ACC on many GT06 clones (bit 15 / 0x8000).
+	acc := courseStatus&0x8000 != 0
+	raw := map[string]any{
+		"proto":         proto,
+		"course_status": courseStatus,
+		"status": map[string]any{
+			"acc":   acc,
+			"north": courseStatus&0x0400 != 0,
+			"west":  courseStatus&0x0800 != 0,
+		},
+	}
+	// Remaining bytes often include MCC/MNC/LAC/Cell — stash hex for Device Manager.
+	if rem := off + 2; rem < len(info) {
+		raw["tail_hex"] = fmt.Sprintf("%x", info[rem:])
+		if rem+2 <= len(info) {
+			raw["mcc"] = int(binary.BigEndian.Uint16(info[rem : rem+2]))
+		}
+	}
+	fix := store.Fix{
 		Lat:            lat,
 		Lon:            lon,
 		RecordedAt:     ts,
 		Speed:          &speed,
 		Heading:        &hdg,
 		Satellites:     &sats,
-		RawAttrs:       map[string]any{"proto": proto},
+		Ignition:       &acc,
+		RawAttrs:       raw,
 		SourceProtocol: "concox",
-	}, true
+	}
+	return fix, true
 }
 
 func parseDateTime(b []byte) time.Time {

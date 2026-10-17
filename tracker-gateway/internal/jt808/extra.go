@@ -85,13 +85,27 @@ func safetyFromAdditional(add map[string]any, fix store.Fix, protocol string) *s
 		alarmType = "subiao_" + subType
 	}
 	lat, lon := fix.Lat, fix.Lon
+	raw := map[string]any{}
+	for k, v := range add {
+		raw[k] = v
+	}
+	// Remappable vendor keys for Device Manager Su Biao profiles.
+	switch subType {
+	case "0x64":
+		raw["adas.fcw"] = true
+	case "0x65":
+		raw["dsm.fatigue"] = true
+	case "0x67":
+		raw["bsd.blind"] = true
+	}
+	raw["alarm_level"] = level
 	return &store.SafetyEvent{
 		RecordedAt:     fix.RecordedAt,
 		AlarmType:      alarmType,
 		AlarmLevel:     level,
 		Lat:            &lat,
 		Lon:            &lon,
-		RawAttrs:       add,
+		RawAttrs:       raw,
 		SourceProtocol: protocol,
 	}
 }

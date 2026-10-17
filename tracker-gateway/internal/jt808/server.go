@@ -227,10 +227,38 @@ func encodeJT808Downlink(sess *session, cmd *store.Command) []byte {
 	if text == "" {
 		text = string(cmd.PayloadBytes())
 	}
-	// 0x8300 text message: flag(1) + text
-	body := append([]byte{0x01}, []byte(text)...)
+	var msgID uint16 = 0x8300
+	var body []byte
+	switch cmd.CommandType {
+	case "jt808_8103", "param":
+		// 0x8103 set terminal params — body: count(1) + raw param TLVs from hex/text
+		msgID = 0x8103
+		raw := cmd.PayloadBytes()
+		if len(raw) == 0 {
+			raw = []byte(text)
+		}
+		body = append([]byte{1}, raw...)
+	case "jt808_8500", "control", "vehicle_control":
+		// 0x8500 vehicle control — flag byte (bit0 oil/electricity etc.)
+		msgID = 0x8500
+		flag := byte(0)
+		if text == "1" || text == "cut" || text == "oil_cut" {
+			flag = 1
+		}
+		if len(cmd.PayloadBytes()) > 0 {
+			flag = cmd.PayloadBytes()[0]
+		}
+		body = []byte{flag}
+	default:
+		// 0x8300 text message: flag(1) + text
+		body = append([]byte{0x01}, []byte(text)...)
+	}
+	return buildDownlinkFrame(sess, msgID, body)
+}
+
+func buildDownlinkFrame(sess *session, msgID uint16, body []byte) []byte {
 	header := make([]byte, 12)
-	binary.BigEndian.PutUint16(header[0:2], 0x8300)
+	binary.BigEndian.PutUint16(header[0:2], msgID)
 	binary.BigEndian.PutUint16(header[2:4], uint16(len(body)&0x3ff))
 	phoneDigits := sess.phone
 	for len(phoneDigits) < 12 {

@@ -14,5 +14,5 @@ func (Adapter) Status() string      { return protocol.StatusMVP }
 func (Adapter) DefaultAddr() string { return ":3047" }
 
 func (Adapter) Serve(ctx context.Context, addr string, deps protocol.Deps) error {
-	return Serve(ctx, addr, deps.Store)
+	return Serve(ctx, addr, deps.Store, deps.Sessions)
 }

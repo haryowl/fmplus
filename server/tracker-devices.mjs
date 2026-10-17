@@ -75,6 +75,21 @@ function cleanVideoField(v, max) {
   return s || null;
 }
 
+/** Prefer a global (tenant_id NULL) system profile for the protocol. */
+export async function defaultProfileIdForProtocol(protocol) {
+  const proto = normalizeProtocol(protocol);
+  const rows = await dbQuery(
+    `SELECT id FROM tracker_device_profiles
+     WHERE tenant_id IS NULL AND protocol = $1
+     ORDER BY CASE completeness
+       WHEN 'certified' THEN 0 WHEN 'partial' THEN 1 WHEN 'mvp' THEN 2 ELSE 3 END,
+       name ASC
+     LIMIT 1`,
+    [proto],
+  );
+  return rows.rows[0]?.id || null;
+}
+
 export function publicTrackerDevice(row, { includeTokenHint = false } = {}) {
   if (!row) return null;
   const out = {
@@ -162,10 +177,17 @@ export async function createTrackerDevice(tenantId, body) {
   const videoChannelId = cleanVideoField(body.videoChannelId ?? body.video_channel_id, 64);
   const videoRtspUrl = cleanVideoField(body.videoRtspUrl ?? body.video_rtsp_url, 500);
   const videoNotes = cleanVideoField(body.videoNotes ?? body.video_notes, 500);
-  const profileId =
+  let profileId =
     body.profileId || body.profile_id
       ? String(body.profileId || body.profile_id).trim() || null
       : null;
+  if (!profileId) {
+    try {
+      profileId = await defaultProfileIdForProtocol(protocol);
+    } catch {
+      profileId = null;
+    }
+  }
   const inserted = await dbQuery(
     `INSERT INTO tracker_devices (
        tenant_id, imei, unique_id, protocol, label, armada_user_id, auth_token_hash, enabled,
@@ -388,6 +410,7 @@ export async function claimUnassignedTrackerImei(tenantId, body) {
     imei,
     label: body?.label,
     protocol: body?.protocol || row.protocol || "other",
+    profileId: body?.profileId || body?.profile_id || null,
     armadaUserId: body?.armadaUserId,
     authToken: body?.authToken,
     uniqueId: body?.uniqueId,

@@ -63,6 +63,7 @@ type TrackerDeviceRow = {
   videoChannelId?: string;
   videoRtspUrl?: string;
   videoNotes?: string;
+  profileId?: string | null;
   lastSeenAt?: string | null;
   lastFix?: { lat: number; lon: number; recordedAt: string | null; speed: number | null } | null;
 };
@@ -437,6 +438,7 @@ export default function AdminConsole() {
   const [dmAppParam, setDmAppParam] = useState("ignition");
   const [cmdDeviceId, setCmdDeviceId] = useState("");
   const [cmdText, setCmdText] = useState("");
+  const [cmdType, setCmdType] = useState("text");
   const [previewDeviceId, setPreviewDeviceId] = useState("");
   const [remapPreview, setRemapPreview] = useState<string>("");
   const [safetyEvents, setSafetyEvents] = useState<
@@ -445,6 +447,7 @@ export default function AdminConsole() {
   const [tdImei, setTdImei] = useState("");
   const [tdLabel, setTdLabel] = useState("");
   const [tdProtocol, setTdProtocol] = useState("teltonika");
+  const [tdProfileId, setTdProfileId] = useState("");
   const [tdArmadaUserId, setTdArmadaUserId] = useState("");
   const [tdVideoChannelId, setTdVideoChannelId] = useState("");
   const [tdVideoRtspUrl, setTdVideoRtspUrl] = useState("");
@@ -816,6 +819,7 @@ export default function AdminConsole() {
             imei: tdImei.trim(),
             label: tdLabel.trim(),
             protocol: tdProtocol,
+            profileId: tdProfileId || null,
             armadaUserId: tdArmadaUserId.trim() ? Number(tdArmadaUserId) : null,
             videoChannelId: tdVideoChannelId.trim() || null,
             videoRtspUrl: tdVideoRtspUrl.trim() || null,
@@ -832,6 +836,24 @@ export default function AdminConsole() {
       await loadTrackerDevices(selectedId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create device");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function assignDeviceProfile(deviceId: string, profileId: string) {
+    if (!selectedId || selectedId === "new") return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/admin/tenants/${selectedId}/tracker-devices/${deviceId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ profileId: profileId || null }),
+      });
+      setNotice(profileId ? "Device profile updated" : "Device profile cleared");
+      await loadTrackerDevices(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Profile assign failed");
     } finally {
       setBusy(false);
     }
@@ -977,7 +999,7 @@ export default function AdminConsole() {
     try {
       await api(`/api/admin/tenants/${selectedId}/tracker-devices/${cmdDeviceId}/commands`, {
         method: "POST",
-        body: JSON.stringify({ commandType: "text", payloadText: cmdText.trim() }),
+        body: JSON.stringify({ commandType: cmdType, payloadText: cmdText.trim() }),
       });
       setNotice("Command queued — device receives it on next online session");
       setCmdText("");
@@ -1859,11 +1881,21 @@ export default function AdminConsole() {
                       </select>
                     </label>
                     <label>
-                      Text / GPRS payload
+                      Command type
+                      <select value={cmdType} onChange={(e) => setCmdType(e.target.value)}>
+                        <option value="text">Text / GPRS (0x8300 / Codec12)</option>
+                        <option value="jt808_8103">JT808 set params (0x8103)</option>
+                        <option value="jt808_8500">JT808 vehicle control (0x8500)</option>
+                        <option value="teltonika_codec12">Teltonika Codec12</option>
+                        <option value="raw">Raw bytes (hex in payload)</option>
+                      </select>
+                    </label>
+                    <label>
+                      Payload
                       <input
                         value={cmdText}
                         onChange={(e) => setCmdText(e.target.value)}
-                        placeholder="getinfo"
+                        placeholder="getinfo / cut / hex…"
                       />
                     </label>
                     <div className="span-2 admin-actions">
@@ -2027,6 +2059,28 @@ export default function AdminConsole() {
                                   ? ` · last ${d.lastFix.lat.toFixed(5)}, ${d.lastFix.lon.toFixed(5)}`
                                   : " · no fix yet"}
                               </span>
+                              <label className="muted" style={{ display: "block", marginTop: 6 }}>
+                                Profile{" "}
+                                <select
+                                  value={d.profileId || ""}
+                                  disabled={busy}
+                                  onChange={(e) => void assignDeviceProfile(d.id, e.target.value)}
+                                >
+                                  <option value="">(auto / none)</option>
+                                  {trackerProfiles
+                                    .filter((p) => p.protocol === d.protocol || !d.protocol)
+                                    .concat(
+                                      trackerProfiles.filter(
+                                        (p) => p.protocol !== d.protocol && !!d.protocol,
+                                      ),
+                                    )
+                                    .map((p) => (
+                                      <option key={p.id} value={p.id}>
+                                        {p.name} ({p.completeness})
+                                      </option>
+                                    ))}
+                                </select>
+                              </label>
                             </div>
                           </div>
                           <div className="admin-field-row-actions">
@@ -2077,12 +2131,33 @@ export default function AdminConsole() {
                       </label>
                       <label>
                         Protocol
-                        <select value={tdProtocol} onChange={(e) => setTdProtocol(e.target.value)}>
+                        <select
+                          value={tdProtocol}
+                          onChange={(e) => {
+                            const proto = e.target.value;
+                            setTdProtocol(proto);
+                            const match = trackerProfiles.find((p) => p.protocol === proto);
+                            setTdProfileId(match?.id || "");
+                          }}
+                        >
                           {TRACKER_PROTOCOL_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>
                               {o.label}
                             </option>
                           ))}
+                        </select>
+                      </label>
+                      <label>
+                        Device Manager profile
+                        <select value={tdProfileId} onChange={(e) => setTdProfileId(e.target.value)}>
+                          <option value="">Auto (system default for protocol)</option>
+                          {trackerProfiles
+                            .filter((p) => !tdProtocol || p.protocol === tdProtocol)
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} ({p.completeness})
+                              </option>
+                            ))}
                         </select>
                       </label>
                       <label>

@@ -148,6 +148,10 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 	if !acceptsDevices(device.TelematicsSource) {
 		return fmt.Errorf("tenant telematics_source does not accept devices")
 	}
+	// Heartbeats / opaque packets must use TouchSeen — never write Null Island.
+	if fix.Lat == 0 && fix.Lon == 0 {
+		return s.TouchSeen(ctx, device)
+	}
 	if fix.RecordedAt.IsZero() {
 		fix.RecordedAt = time.Now().UTC()
 	}
@@ -215,6 +219,18 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 		WHERE id = $1::uuid AND tenant_id = $2::uuid`,
 		device.ID, device.TenantID, fix.RecordedAt,
 	)
+	return err
+}
+
+// TouchSeen updates device last_seen without writing a fix (heartbeats).
+func (s *Store) TouchSeen(ctx context.Context, device *Device) error {
+	if device == nil {
+		return nil
+	}
+	_, err := s.pool.Exec(ctx, `
+		UPDATE tracker_devices
+		SET last_seen_at = GREATEST(COALESCE(last_seen_at, now()), now()), updated_at = now()
+		WHERE id = $1::uuid`, device.ID)
 	return err
 }
 

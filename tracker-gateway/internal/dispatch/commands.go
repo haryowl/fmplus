@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/haryowl/fmplus/tracker-gateway/internal/concox"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/protocol"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/teltonika"
@@ -17,17 +18,22 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 		return
 	}
 	tel := teltonika.Adapter{}
+	cx := concox.Adapter{}
 	for _, cmd := range cmds {
 		sess, ok := sessions.SessionByDevice(cmd.DeviceID)
 		if !ok || sess.Conn == nil {
 			continue
 		}
 		var payload []byte
-		switch cmd.Protocol {
-		case "teltonika":
+		switch {
+		case cmd.Protocol == "teltonika" || cmd.CommandType == "teltonika_codec12":
 			payload, err = tel.EncodeDownlink(cmd)
+		case cmd.Protocol == "concox" || cmd.CommandType == "concox_gprs":
+			payload, err = cx.EncodeDownlink(cmd)
+		case cmd.Protocol == "jt808" || cmd.Protocol == "subiao":
+			// Prefer on-connection flush in jt808 (needs phone/seq); skip if already handled.
+			continue
 		default:
-			// JT808/subiao flush on-read in jt808 handler; raw hex/text fallback here
 			payload = cmd.PayloadBytes()
 			if len(payload) == 0 && cmd.PayloadText != "" {
 				payload = []byte(cmd.PayloadText)

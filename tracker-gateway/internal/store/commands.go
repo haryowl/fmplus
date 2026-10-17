@@ -112,6 +112,21 @@ func (s *Store) InsertSafetyEvent(ctx context.Context, device *Device, ev Safety
 	if ev.RawAttrs == nil {
 		ev.RawAttrs = map[string]any{}
 	}
+	// Promote Su Biao type keys into remappable vendor keys for Device Manager.
+	if st, ok := ev.RawAttrs["subiao_type"].(string); ok && st != "" {
+		switch st {
+		case "0x64":
+			ev.RawAttrs["adas.fcw"] = true
+		case "0x65":
+			ev.RawAttrs["dsm.fatigue"] = true
+		case "0x67":
+			ev.RawAttrs["bsd_blind"] = true
+			ev.RawAttrs["bsd.blind"] = true
+		}
+	}
+	if rules, err := s.LoadRemapRules(ctx, device.ID, device.ProfileID); err == nil && len(rules) > 0 {
+		ev.MappedAttrs = ApplyRemap(ev.RawAttrs, rules)
+	}
 	if ev.MappedAttrs == nil {
 		ev.MappedAttrs = map[string]any{}
 	}

@@ -3,6 +3,7 @@ package ruptela
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -11,16 +12,17 @@ import (
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
+	"github.com/haryowl/fmplus/tracker-gateway/internal/protocol"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
 // Serve Ruptela FM TCP (records packet id 1, ACK id 100).
-func Serve(ctx context.Context, addr string, st *store.Store) error {
+func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol.Registry) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
-	log.Printf("[ruptela] listening on %s", addr)
+	log.Printf("[ruptela] listening on %s (status=mvp)", addr)
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
@@ -36,14 +38,18 @@ func Serve(ctx context.Context, addr string, st *store.Store) error {
 				continue
 			}
 		}
-		go handleConn(ctx, conn, st)
+		go handleConn(ctx, conn, st, sessions)
 	}
 }
 
-func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
+func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry) {
 	metrics.ConnOpen()
+	var bound *protocol.ConnSession
 	defer func() {
 		metrics.ConnClose()
+		if sessions != nil && bound != nil {
+			sessions.Unbind(bound)
+		}
 		_ = conn.Close()
 	}()
 	for {
@@ -61,21 +67,27 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 			return
 		}
 		data := payload[:length]
-		// crc := binary.BigEndian.Uint16(payload[length:]) — accepted without strict check for dialect drift
 		if len(data) < 1 {
 			continue
 		}
 		packetID := data[0]
 		switch packetID {
-		case 1: // records
+		case 1, 7: // classic + dynamic/extended records
 			records, imei := parseRecords(data[1:])
 			if imei == "" {
+				_ = writeAck(conn, 0)
 				continue
 			}
 			device := deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "ruptela")
 			if device == nil {
 				_ = writeAck(conn, 0)
 				continue
+			}
+			if sessions != nil && bound == nil {
+				bound = &protocol.ConnSession{
+					DeviceID: device.ID, IMEI: device.IMEI, Protocol: "ruptela", Conn: conn,
+				}
+				sessions.Bind(bound)
 			}
 			for _, fix := range records {
 				fix.SourceProtocol = "ruptela"
@@ -84,19 +96,6 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store) {
 				}
 			}
 			_ = writeAck(conn, len(records))
-		case 7: // dynamic records / extended — treat similarly when possible
-			records, imei := parseRecords(data[1:])
-			if imei != "" {
-				if device := deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "ruptela"); device != nil {
-					for _, fix := range records {
-						fix.SourceProtocol = "ruptela"
-						_ = deviceauth.Ingest(ctx, st, device, fix)
-					}
-					_ = writeAck(conn, len(records))
-					continue
-				}
-			}
-			_ = writeAck(conn, 0)
 		default:
 			_ = writeAck(conn, 0)
 		}
@@ -168,17 +167,22 @@ func parseRecords(data []byte) ([]store.Fix, string) {
 		off++
 		speed := binary.BigEndian.Uint16(data[off : off+2])
 		off += 2
-		// skip event IO id + IO elements roughly (1 + variable) — consume remaining until next record heuristically
+		ioMap := map[string]any{}
+		var eventID any
 		if off < len(data) {
-			// eventIO (1) + N1 + N2*2 + N4*4 + N8*8
-			off = skipRuptelaIO(data, off)
+			off, eventID, ioMap = extractRuptelaIO(data, off)
 		}
 		lon := float64(lonRaw) / 1e7
 		lat := float64(latRaw) / 1e7
 		spd := float64(speed)
 		hdg := float64(angle)
 		altF := float64(alt)
-		fixes = append(fixes, store.Fix{
+		raw := map[string]any{
+			"io":           ioMap,
+			"event_io":     eventID,
+			"record_index": i,
+		}
+		fix := store.Fix{
 			Lat:            lat,
 			Lon:            lon,
 			RecordedAt:     time.Unix(ts, 0).UTC(),
@@ -187,42 +191,107 @@ func parseRecords(data []byte) ([]store.Fix, string) {
 			Altitude:       &altF,
 			Satellites:     &sats,
 			SourceProtocol: "ruptela",
-			RawAttrs: map[string]any{
-				"io": map[string]any{"record_index": i, "event": "parsed"},
-			},
-		})
+			RawAttrs:       raw,
+		}
+		// Common Ruptela IO IDs (model-dependent; Device Manager remaps io.* too).
+		if v, ok := ioMap["5"]; ok {
+			b := asTruthy(v)
+			fix.Ignition = &b
+		} else if v, ok := ioMap["239"]; ok {
+			b := asTruthy(v)
+			fix.Ignition = &b
+		}
+		if v, ok := ioMap["65"]; ok {
+			f := asFloat64(v)
+			fix.Odometer = &f
+		} else if v, ok := ioMap["199"]; ok {
+			f := asFloat64(v) / 1000.0
+			fix.Odometer = &f
+		}
+		fixes = append(fixes, fix)
 	}
 	return fixes, imei
 }
 
-func skipRuptelaIO(b []byte, off int) int {
+func extractRuptelaIO(b []byte, off int) (int, any, map[string]any) {
+	io := map[string]any{}
+	var event any
 	if off >= len(b) {
-		return off
+		return off, event, io
 	}
-	off++ // event IO id
+	event = int(b[off])
+	off++
 	if off >= len(b) {
-		return off
+		return off, event, io
 	}
 	n1 := int(b[off])
 	off++
-	off += n1 * 2 // id(1)+value(1) — some use id+val; ruptela uses id(1)+val(1) for 1-byte
+	for i := 0; i < n1 && off+2 <= len(b); i++ {
+		id := int(b[off])
+		off++
+		io[fmt.Sprintf("%d", id)] = int(b[off])
+		off++
+	}
 	if off >= len(b) {
-		return off
+		return off, event, io
 	}
 	n2 := int(b[off])
 	off++
-	off += n2 * 3
+	for i := 0; i < n2 && off+3 <= len(b); i++ {
+		id := int(b[off])
+		off++
+		io[fmt.Sprintf("%d", id)] = int(binary.BigEndian.Uint16(b[off : off+2]))
+		off += 2
+	}
 	if off >= len(b) {
-		return off
+		return off, event, io
 	}
 	n4 := int(b[off])
 	off++
-	off += n4 * 5
+	for i := 0; i < n4 && off+5 <= len(b); i++ {
+		id := int(b[off])
+		off++
+		io[fmt.Sprintf("%d", id)] = int64(binary.BigEndian.Uint32(b[off : off+4]))
+		off += 4
+	}
 	if off >= len(b) {
-		return off
+		return off, event, io
 	}
 	n8 := int(b[off])
 	off++
-	off += n8 * 9
-	return off
+	for i := 0; i < n8 && off+9 <= len(b); i++ {
+		id := int(b[off])
+		off++
+		io[fmt.Sprintf("%d", id)] = int64(binary.BigEndian.Uint64(b[off : off+8]))
+		off += 8
+	}
+	return off, event, io
+}
+
+func asTruthy(v any) bool {
+	switch t := v.(type) {
+	case bool:
+		return t
+	case int:
+		return t != 0
+	case int64:
+		return t != 0
+	case float64:
+		return t != 0
+	default:
+		return false
+	}
+}
+
+func asFloat64(v any) float64 {
+	switch t := v.(type) {
+	case int:
+		return float64(t)
+	case int64:
+		return float64(t)
+	case float64:
+		return t
+	default:
+		return 0
+	}
 }
