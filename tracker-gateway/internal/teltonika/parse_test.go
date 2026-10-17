@@ -171,6 +171,10 @@ func TestPromoteTeltonikaScalars_BLE(t *testing.T) {
 	if raw["ble.temp1"] != 21.5 || raw["ble.humidity"] != 55.0 || raw["ble.battery"] != 90.0 {
 		t.Fatalf("%v", raw)
 	}
+	promoteTeltonikaScalars(raw, map[string]any{"27": 180, "28": 190})
+	if raw["ble.temp3"] != 18.0 || raw["ble.temp4"] != 19.0 {
+		t.Fatalf("temp34=%v", raw)
+	}
 }
 
 func TestPromoteTeltonikaScalars_DallasTemp(t *testing.T) {

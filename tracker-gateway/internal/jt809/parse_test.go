@@ -145,6 +145,72 @@ func TestParseVehicleUplink_GNSSAlarmBits(t *testing.T) {
 	}
 }
 
+func TestParseVehicleUplink_LoadAndGNSSConstellation(t *testing.T) {
+	rest := make([]byte, 24+1+6+8+2+2+2+4+4)
+	copy(rest[0:21], []byte("B7777LDG"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 0x0200)
+	off := 24
+	rest[off] = 0
+	off++
+	off += 6
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(106.8*1e6))))
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(-6.2*1e6))))
+	off += 4
+	binary.BigEndian.PutUint16(rest[off:], 50)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 90)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 10)
+	off += 2
+	// ACC + load full (bits 8–9) + GPS + Beidou
+	binary.BigEndian.PutUint32(rest[off:], 0x01|(3<<8)|0x40000|0x80000)
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], 0)
+
+	fix, _, ok := parseVehicleUplink(0x1202, rest)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["status.acc"] != true || fix.RawAttrs["vehicle.load"] != "full" ||
+		fix.RawAttrs["status.load_full"] != true {
+		t.Fatalf("load=%v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["status.gnss_gps"] != true || fix.RawAttrs["status.gnss_beidou"] != true {
+		t.Fatalf("gnss=%v", fix.RawAttrs)
+	}
+}
+
+func TestParseVehicleUplink_IllegalIgnitionAlarm(t *testing.T) {
+	rest := make([]byte, 24+1+6+8+2+2+2+4+4)
+	copy(rest[0:21], []byte("B8888IGN"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 0x0200)
+	off := 24
+	rest[off] = 0
+	off++
+	off += 6
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(106.8*1e6))))
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(-6.2*1e6))))
+	off += 4
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint32(rest[off:], 0)
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], 1<<28) // illegal_ignition
+
+	fix, _, ok := parseVehicleUplink(0x1200, rest)
+	if !ok || fix.RawAttrs["alarm.illegal_ignition"] != true {
+		t.Fatalf("%v ok=%v", fix.RawAttrs, ok)
+	}
+}
+
 func TestParseVehicleUplink_Short(t *testing.T) {
 	_, _, ok := parseVehicleUplink(0x1202, []byte{1, 2, 3})
 	if ok {

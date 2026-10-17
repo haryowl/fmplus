@@ -149,6 +149,8 @@ func parseAdditionalInfo(body []byte) map[string]any {
 				add["status.din4"] = io&0x08 != 0
 				add["status.dout1"] = io&0x0100 != 0
 				add["status.dout2"] = io&0x0200 != 0
+				add["status.dout3"] = io&0x0400 != 0
+				add["status.dout4"] = io&0x0800 != 0
 			}
 		case 0x2b: // analog AD2 (DWORD, often 0.01 units)
 			if l >= 4 {

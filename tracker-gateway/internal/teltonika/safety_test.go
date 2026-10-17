@@ -91,6 +91,22 @@ func TestFlattenIOAlarms_Idling(t *testing.T) {
 	}
 }
 
+func TestFlattenEventAlarm_GreenDrivingDuration(t *testing.T) {
+	raw := map[string]any{"event_io": 243}
+	flattenEventAlarm(raw)
+	if raw["alarm.green_driving_duration"] != true {
+		t.Fatalf("%v", raw)
+	}
+	fix := store.Fix{
+		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{"event_io": 243},
+	}
+	ev := safetyFromEventIO(fix)
+	if ev == nil || ev.AlarmType != "green_driving" {
+		t.Fatalf("%+v", ev)
+	}
+}
+
 func TestSafetyFromIO_Overspeed(t *testing.T) {
 	fix := store.Fix{
 		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),

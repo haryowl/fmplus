@@ -126,6 +126,23 @@ func TestParseAdditionalInfo_Signal025Turns(t *testing.T) {
 	if add["status.low_beam"] != true || add["status.right_turn"] != false {
 		t.Fatalf("beams/turn=%v", add)
 	}
+	tlv2, _ := hex.DecodeString("250400000300") // high + low beam
+	add2 := parseAdditionalInfo(append(base, tlv2...))
+	if add2["status.high_beam"] != true || add2["status.low_beam"] != true {
+		t.Fatalf("beams=%v", add2)
+	}
+}
+
+func TestParseAdditionalInfo_IO2A_Dout34(t *testing.T) {
+	base := make([]byte, 28)
+	tlv, _ := hex.DecodeString("2a0400000c00") // dout3+dout4
+	add := parseAdditionalInfo(append(base, tlv...))
+	if add["status.dout3"] != true || add["status.dout4"] != true {
+		t.Fatalf("dout34=%v", add)
+	}
+	if add["status.dout1"] != false || add["status.dout2"] != false {
+		t.Fatalf("dout12 should be false: %v", add)
+	}
 }
 
 func TestParseAdditionalInfo_DriverIC32(t *testing.T) {
@@ -264,6 +281,15 @@ func TestFlattenAlarmBits_CameraAndDayDrive(t *testing.T) {
 	raw := map[string]any{}
 	flattenAlarmBits(1<<11|1<<16, raw)
 	if raw["alarm.camera_fault"] != true || raw["alarm.day_drive_timeout"] != true {
+		t.Fatalf("%v", raw)
+	}
+}
+
+func TestFlattenAlarmBits_Tier2(t *testing.T) {
+	raw := map[string]any{}
+	flattenAlarmBits(1<<3|1<<6|1<<28, raw)
+	if raw["alarm.fatigue_early"] != true || raw["alarm.gnss_short"] != true ||
+		raw["alarm.illegal_ignition"] != true {
 		t.Fatalf("%v", raw)
 	}
 }

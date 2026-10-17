@@ -153,6 +153,10 @@ func TestPromoteRuptelaScalars_DinDout(t *testing.T) {
 	if raw["status.din1"] != true || raw["status.din3"] != true || raw["status.dout1"] != true {
 		t.Fatalf("%v", raw)
 	}
+	promoteRuptelaScalars(raw, map[string]any{"2": 1, "4": 1, "180": 1})
+	if raw["status.din2"] != true || raw["status.din4"] != true || raw["status.dout2"] != true {
+		t.Fatalf("din24/dout2=%v", raw)
+	}
 }
 
 func TestPromoteRuptelaScalars_IButton(t *testing.T) {
