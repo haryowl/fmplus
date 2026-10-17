@@ -50,12 +50,13 @@ func serveLabeled(ctx context.Context, addr string, st *store.Store, sessions *p
 }
 
 type session struct {
-	phone   string
-	device  *store.Device
-	seq     uint16
-	label   string
-	bound   *protocol.ConnSession
-	subpkgs *subpkgTracker
+	phone       string
+	device      *store.Device
+	seq         uint16
+	label       string
+	bound       *protocol.ConnSession
+	subpkgs     *subpkgTracker
+	version2019 bool
 }
 
 func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry, label string) {
@@ -190,12 +191,16 @@ func bindSession(sessions *protocol.Registry, sess *session, conn net.Conn) {
 	if sessions == nil || sess.device == nil {
 		return
 	}
+	meta := map[string]string{"phone": sess.phone, "seq": fmt.Sprintf("%d", sess.seq)}
+	if sess.version2019 {
+		meta["jt808_ver"] = "2019"
+	}
 	bound := &protocol.ConnSession{
 		DeviceID: sess.device.ID,
 		IMEI:     sess.device.IMEI,
 		Protocol: sess.label,
 		Conn:     conn,
-		Meta:     map[string]string{"phone": sess.phone},
+		Meta:     meta,
 	}
 	if sess.bound != nil {
 		sessions.Unbind(sess.bound)
@@ -213,14 +218,20 @@ func tryFlushCommands(ctx context.Context, conn net.Conn, st *store.Store, sessi
 		if err != nil || cmd == nil {
 			return
 		}
-		payload := encodeJT808Downlink(sess.phone, &sess.seq, cmd)
+		payload := encodeJT808DownlinkVer(sess.phone, &sess.seq, cmd, sess.version2019)
 		if len(payload) == 0 {
 			return
 		}
 		if _, err := conn.Write(payload); err != nil {
 			return
 		}
-		_ = st.MarkCommandSent(ctx, cmd.ID)
+		_ = st.MarkCommandSentCorr(ctx, cmd.ID, fmt.Sprintf("%d", sess.seq))
+		if sess.bound != nil && sess.bound.Meta != nil {
+			sess.bound.Meta["seq"] = fmt.Sprintf("%d", sess.seq)
+			if sess.version2019 {
+				sess.bound.Meta["jt808_ver"] = "2019"
+			}
+		}
 	}
 }
 
@@ -256,6 +267,10 @@ func looksLike8103Body(raw []byte) bool {
 }
 
 func encodeJT808Downlink(phone string, seq *uint16, cmd *store.Command) []byte {
+	return encodeJT808DownlinkVer(phone, seq, cmd, false)
+}
+
+func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019 bool) []byte {
 	if cmd == nil {
 		return nil
 	}
@@ -287,31 +302,20 @@ func encodeJT808Downlink(phone string, seq *uint16, cmd *store.Command) []byte {
 	default:
 		body = append([]byte{0x01}, []byte(text)...)
 	}
-	return buildDownlinkFrame(phone, seq, msgID, body)
+	return buildDownlinkFrameVer(phone, seq, msgID, body, v2019)
 }
 
 func buildDownlinkFrame(phone string, seq *uint16, msgID uint16, body []byte) []byte {
-	header := make([]byte, 12)
-	binary.BigEndian.PutUint16(header[0:2], msgID)
-	binary.BigEndian.PutUint16(header[2:4], uint16(len(body)&0x3ff))
-	phoneDigits := phone
-	for len(phoneDigits) < 12 {
-		phoneDigits = "0" + phoneDigits
-	}
-	if len(phoneDigits) > 12 {
-		phoneDigits = phoneDigits[len(phoneDigits)-12:]
-	}
-	for i := 0; i < 6; i++ {
-		hi := phoneDigits[i*2] - '0'
-		lo := phoneDigits[i*2+1] - '0'
-		header[4+i] = (hi << 4) | lo
-	}
+	return buildDownlinkFrameVer(phone, seq, msgID, body, false)
+}
+
+func buildDownlinkFrameVer(phone string, seq *uint16, msgID uint16, body []byte, v2019 bool) []byte {
+	var n uint16 = 1
 	if seq != nil {
 		*seq++
-		binary.BigEndian.PutUint16(header[10:12], *seq)
-	} else {
-		binary.BigEndian.PutUint16(header[10:12], 1)
+		n = *seq
 	}
+	header := packJT808Header(msgID, body, phone, n, v2019)
 	msg := append(header, body...)
 	msg = append(msg, bcc(msg))
 	return escape(msg)
@@ -319,7 +323,7 @@ func buildDownlinkFrame(phone string, seq *uint16, msgID uint16, body []byte) []
 
 func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry, sess *session, frame []byte) error {
 	raw := unescape(frame)
-	if len(raw) < 13 {
+	if len(raw) < 13 { // 2011 min; 2019 needs ≥18 — parseMessageHeader enforces
 		return nil
 	}
 	bodyWithBcc := raw
@@ -327,39 +331,29 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 	if bcc(msg) != bodyWithBcc[len(bodyWithBcc)-1] {
 		return nil
 	}
-	msgID := binary.BigEndian.Uint16(msg[0:2])
-	bodyProps := binary.BigEndian.Uint16(msg[2:4])
-	bodyLen := int(bodyProps & 0x3ff)
-	phone := bcdPhone(msg[4:10])
-	seq := binary.BigEndian.Uint16(msg[10:12])
-	off := 12
-	var totalPkgs, pkgIndex int
-	subpackaged := bodyProps&0x2000 != 0
-	if subpackaged {
-		if len(msg) < 16 {
-			return nil
-		}
-		totalPkgs = int(binary.BigEndian.Uint16(msg[12:14]))
-		pkgIndex = int(binary.BigEndian.Uint16(msg[14:16]))
-		off = 16
+	hdr, ok := parseMessageHeader(msg)
+	if !ok {
+		return nil
 	}
-	body := msg[off:]
-	if bodyLen > len(body) {
-		bodyLen = len(body)
-	}
-	body = body[:bodyLen]
+	msgID := hdr.MsgID
+	phone := hdr.Phone
+	seq := hdr.Seq
+	body := hdr.Body(msg)
 	sess.phone = phone
 	sess.seq = seq
+	if hdr.Version2019 {
+		sess.version2019 = true
+	}
 	protoHint := sess.label
 	if protoHint == "" {
 		protoHint = "jt808"
 	}
 
-	if subpackaged {
+	if hdr.Subpackaged {
 		if sess.subpkgs == nil {
 			sess.subpkgs = newSubpkgTracker()
 		}
-		full, done := sess.subpkgs.feed(phone, msgID, totalPkgs, pkgIndex, body)
+		full, done := sess.subpkgs.feed(phone, msgID, hdr.TotalPkgs, hdr.PkgIndex, body)
 		if !done {
 			// ACK fragment; wait for remaining packages before processing body.
 			return replyGeneral(conn, sess, msgID, seq, 0)
@@ -374,16 +368,17 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 		remote := conn.RemoteAddr().String()
 		sess.device = deviceauth.FindByIMEI(ctx, st, phone, remote, protoHint)
 		if sess.device == nil {
-			sess.device = deviceauth.FindByIMEI(ctx, st, bcdPhone(msg[4:10]), remote, protoHint)
+			sess.device = deviceauth.FindByIMEI(ctx, st, phone, remote, protoHint)
 		}
 		bindSession(sessions, sess, conn)
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0001: // terminal general response (command ack)
 		if sess.device != nil && len(body) >= 5 {
+			ackSeq := binary.BigEndian.Uint16(body[0:2])
 			result := body[4]
 			respMsg := binary.BigEndian.Uint16(body[2:4])
 			ok := result == 0
-			_ = st.AckLatestSent(ctx, sess.device.ID, ok,
+			_ = st.AckCommand(ctx, sess.device.ID, fmt.Sprintf("%d", ackSeq), ok,
 				fmt.Sprintf("jt808_0001 msg=0x%04x result=%d", respMsg, result))
 		}
 		return nil // no reply to a reply
@@ -442,27 +437,54 @@ func replyGeneral(conn net.Conn, sess *session, ackMsgID uint16, seq uint16, res
 
 func reply(conn net.Conn, sess *session, msgID uint16, body []byte) error {
 	sess.seq++
-	header := make([]byte, 12)
-	binary.BigEndian.PutUint16(header[0:2], msgID)
-	binary.BigEndian.PutUint16(header[2:4], uint16(len(body)&0x3ff))
-	// phone BCD — pack from sess.phone digits
-	phoneDigits := sess.phone
-	for len(phoneDigits) < 12 {
-		phoneDigits = "0" + phoneDigits
-	}
-	if len(phoneDigits) > 12 {
-		phoneDigits = phoneDigits[len(phoneDigits)-12:]
-	}
-	for i := 0; i < 6; i++ {
-		hi := phoneDigits[i*2] - '0'
-		lo := phoneDigits[i*2+1] - '0'
-		header[4+i] = (hi << 4) | lo
-	}
-	binary.BigEndian.PutUint16(header[10:12], sess.seq)
+	header := packJT808Header(msgID, body, sess.phone, sess.seq, sess.version2019)
 	msg := append(header, body...)
 	msg = append(msg, bcc(msg))
 	_, err := conn.Write(escape(msg))
 	return err
+}
+
+// packJT808Header builds 2011 (12B) or 2019 (17B) header without subpackage.
+func packJT808Header(msgID uint16, body []byte, phone string, seq uint16, v2019 bool) []byte {
+	props := uint16(len(body) & 0x3ff)
+	if v2019 {
+		props |= 0x4000
+		header := make([]byte, 17)
+		binary.BigEndian.PutUint16(header[0:2], msgID)
+		binary.BigEndian.PutUint16(header[2:4], props)
+		header[4] = 1 // protocol version
+		digits := phone
+		for len(digits) < 20 {
+			digits = "0" + digits
+		}
+		if len(digits) > 20 {
+			digits = digits[len(digits)-20:]
+		}
+		for i := 0; i < 10; i++ {
+			hi := digits[i*2] - '0'
+			lo := digits[i*2+1] - '0'
+			header[5+i] = (hi << 4) | lo
+		}
+		binary.BigEndian.PutUint16(header[15:17], seq)
+		return header
+	}
+	header := make([]byte, 12)
+	binary.BigEndian.PutUint16(header[0:2], msgID)
+	binary.BigEndian.PutUint16(header[2:4], props)
+	digits := phone
+	for len(digits) < 12 {
+		digits = "0" + digits
+	}
+	if len(digits) > 12 {
+		digits = digits[len(digits)-12:]
+	}
+	for i := 0; i < 6; i++ {
+		hi := digits[i*2] - '0'
+		lo := digits[i*2+1] - '0'
+		header[4+i] = (hi << 4) | lo
+	}
+	binary.BigEndian.PutUint16(header[10:12], seq)
+	return header
 }
 
 func ingestLocation(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry, sess *session, body []byte, protoHint string) {

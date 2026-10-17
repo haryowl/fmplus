@@ -22,6 +22,11 @@ func (Adapter) Serve(ctx context.Context, addr string, deps protocol.Deps) error
 
 // EncodeDownlink builds GT06 0x80 server command frame (ASCII SMS-style GPRS command).
 func (Adapter) EncodeDownlink(cmd store.Command) ([]byte, error) {
+	return Adapter{}.EncodeDownlinkSerial(cmd, 1)
+}
+
+// EncodeDownlinkSerial uses an explicit serial for session-scoped command correlation.
+func (Adapter) EncodeDownlinkSerial(cmd store.Command, serial uint16) ([]byte, error) {
 	text := cmd.PayloadText
 	if text == "" {
 		text = string(cmd.PayloadBytes())
@@ -33,12 +38,29 @@ func (Adapter) EncodeDownlink(cmd store.Command) ([]byte, error) {
 	if len(body) > 240 {
 		return nil, fmt.Errorf("concox: command too long")
 	}
+	if serial == 0 {
+		serial = 1
+	}
 	// info = cmd_len | ascii | language(2)
 	info := make([]byte, 0, 1+len(body)+2)
 	info = append(info, byte(len(body)))
 	info = append(info, body...)
 	info = append(info, 0x00, 0x01) // language English (common default)
-	return buildFrame(0x80, 1, info), nil
+	return buildFrame(0x80, serial, info), nil
+}
+
+// DownlinkCorrID extracts the serial from a GT06 0x78 frame.
+func DownlinkCorrID(framed []byte) string {
+	if len(framed) < 10 || framed[0] != 0x78 || framed[1] != 0x78 {
+		return ""
+	}
+	plen := int(framed[2])
+	if 3+plen > len(framed) || plen < 5 {
+		return ""
+	}
+	content := framed[3 : 3+plen]
+	ser := binary.BigEndian.Uint16(content[len(content)-4 : len(content)-2])
+	return fmt.Sprintf("%d", ser)
 }
 
 func buildFrame(proto byte, serial uint16, extra []byte) []byte {

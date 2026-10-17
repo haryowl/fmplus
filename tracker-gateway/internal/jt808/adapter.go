@@ -21,13 +21,36 @@ func (Adapter) Serve(ctx context.Context, addr string, deps protocol.Deps) error
 
 // EncodeDownlink builds a JT808 frame using session phone from Meta (dispatch path).
 func (Adapter) EncodeDownlink(cmd store.Command, phone string) ([]byte, error) {
+	var seq uint16
+	return Adapter{}.EncodeDownlinkSeq(cmd, phone, &seq, false)
+}
+
+// EncodeDownlinkSeq uses the session sequence counter and optional 2019 header.
+func (Adapter) EncodeDownlinkSeq(cmd store.Command, phone string, seq *uint16, v2019 bool) ([]byte, error) {
 	if phone == "" {
 		return nil, fmt.Errorf("jt808: phone required for downlink")
 	}
-	var seq uint16
-	out := encodeJT808Downlink(phone, &seq, &cmd)
+	if seq == nil {
+		var n uint16
+		seq = &n
+	}
+	out := encodeJT808DownlinkVer(phone, seq, &cmd, v2019)
 	if len(out) == 0 {
 		return nil, fmt.Errorf("jt808: empty downlink")
 	}
 	return out, nil
+}
+
+// DownlinkCorrID extracts the message serial from an encoded JT808 frame.
+func DownlinkCorrID(framed []byte) string {
+	raw := unescape(framed)
+	if len(raw) < 13 {
+		return ""
+	}
+	msg := raw[:len(raw)-1]
+	h, ok := parseMessageHeader(msg)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%d", h.Seq)
 }

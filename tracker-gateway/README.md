@@ -8,7 +8,7 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 |---------|----------|---------|--------|--------|----------|-------|
 | HTTP/JSON | `TRACKER_HTTP_ADDR` | `:5080` | **partial** | fix + heartbeat + alarm safety | — | nested attrs flatten; `alarm.*` → safety |
 | Teltonika Codec 8/8E | `TRACKER_TELTONIKA_ADDR` | `:5027` | **partial** | IO + CRC | Codec12 | event IO → safety for known alarms |
-| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/batch/subpkg | 0x8300/8103/8500 | bit13 reassembly; alarm dword + Su Biao TLVs → safety |
+| JT/T 808 | `TRACKER_JT808_ADDR` | `:7611` | **partial** | location/TLV/batch/subpkg/2019 | 0x8300/8103/8500 | bit13+2019 header; ack corr by seq; alarm/Su Biao → safety |
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
 | JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/heartbeat | — | platform link only |
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling | — | A/V hooks only |
@@ -42,7 +42,7 @@ Adapters stay **partial** until exercised against real devices/firmware; wiki/PD
 | `galileosky_text` | galileosky | 0x01 + CRC-16 Modbus text |
 | `raw` | any | hex payload as-is |
 
-Stale commands: **pending** > 24h or **sent** > 30m → `expired`. Encode/write errors → `failed`. Admin can **cancel** pending commands (not already sent). Remap rules support transforms: `identity`, `scale`, `offset`, `bit_mask`, `invert_bool`, `enum_map`.
+Stale commands: **pending** > 24h or **sent** > 30m → `expired`. Encode/write errors → `failed`. Admin can **cancel** pending commands (not already sent). Sent commands store `corr_id` (JT808 seq / Concox serial); terminal `0x0001` acks match by corr before falling back to latest-sent. Remap rules support transforms: `identity`, `scale`, `offset`, `bit_mask`, `invert_bool`, `enum_map`.
 
 JT808 location fixes flatten `alarm.*` bits and `status.acc` onto `raw_attrs` for Device Manager remap (same keys as safety events).
 
@@ -69,6 +69,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   057_galileosky_command_type.sql
 #   058_teltonika_avl_concox_alarms.sql
 #   059_json_alarm_params.sql
+#   060_tracker_command_corr.sql
 npm run db:migrate
 
 cd tracker-gateway

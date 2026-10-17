@@ -84,9 +84,17 @@ func (s *Store) ListPendingCommands(ctx context.Context, limit int) ([]Command, 
 }
 
 func (s *Store) MarkCommandSent(ctx context.Context, commandID string) error {
+	return s.MarkCommandSentCorr(ctx, commandID, "")
+}
+
+// MarkCommandSentCorr marks pending→sent and optionally stores a protocol correlation id
+// (e.g. JT808 downlink sequence) for precise terminal acks.
+func (s *Store) MarkCommandSentCorr(ctx context.Context, commandID, corrID string) error {
 	_, err := s.pool.Exec(ctx, `
-		UPDATE tracker_commands SET status = 'sent', sent_at = now()
-		WHERE id = $1::uuid AND status = 'pending'`, commandID)
+		UPDATE tracker_commands
+		SET status = 'sent', sent_at = now(),
+		    corr_id = CASE WHEN $2 <> '' THEN $2 ELSE corr_id END
+		WHERE id = $1::uuid AND status = 'pending'`, commandID, corrID)
 	return err
 }
 
@@ -140,9 +148,31 @@ func (s *Store) ExpireStaleCommands(ctx context.Context, pendingMaxAge, sentMaxA
 
 // AckLatestSent marks the most recent sent (or pending) command for a device as acked/failed.
 func (s *Store) AckLatestSent(ctx context.Context, deviceID string, ok bool, response string) error {
+	return s.AckCommand(ctx, deviceID, "", ok, response)
+}
+
+// AckCommand prefers matching corr_id on a sent command; falls back to latest sent/pending.
+func (s *Store) AckCommand(ctx context.Context, deviceID, corrID string, ok bool, response string) error {
 	status := "acked"
 	if !ok {
 		status = "failed"
+	}
+	if corrID != "" {
+		tag, err := s.pool.Exec(ctx, `
+			UPDATE tracker_commands
+			SET status = $3, response_text = $4, completed_at = now()
+			WHERE id = (
+				SELECT id FROM tracker_commands
+				WHERE device_id = $1::uuid AND status = 'sent' AND corr_id = $2
+				ORDER BY COALESCE(sent_at, created_at) DESC
+				LIMIT 1
+			)`, deviceID, corrID, status, response)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() > 0 {
+			return nil
+		}
 	}
 	_, err := s.pool.Exec(ctx, `
 		UPDATE tracker_commands

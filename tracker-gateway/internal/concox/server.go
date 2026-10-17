@@ -55,6 +55,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 	}()
 	var device *store.Device
 	var imei string
+	var downSerial uint16 = 1
 	buf := make([]byte, 0, 2048)
 	tmp := make([]byte, 1024)
 	for {
@@ -86,6 +87,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				}
 				bound = &protocol.ConnSession{
 					DeviceID: device.ID, IMEI: device.IMEI, Protocol: "concox", Conn: conn,
+					Meta: map[string]string{"seq": fmt.Sprintf("%d", downSerial)},
 				}
 				if sessions != nil {
 					sessions.Bind(bound)
@@ -95,7 +97,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				if device != nil {
 					patch, ign := parseHeartbeat(info)
 					_ = st.PatchLastStatus(ctx, device, patch, ign)
-					flushPending(ctx, conn, st, device.ID)
+					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
 				_ = writeReply(conn, 0x13, serial, nil)
 			case 0x12, 0x22, 0x17: // GPS location / offline GPS re-upload
@@ -109,13 +111,13 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 							log.Printf("[concox] ingest %s: %v", imei, err)
 						}
 					}
-					flushPending(ctx, conn, st, device.ID)
+					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
 				_ = writeReply(conn, proto, serial, nil)
 			case 0x18: // LBS-only (no GPS fix — patch cell attrs)
 				if device != nil {
 					_ = st.PatchLastStatus(ctx, device, parseLBS(info), nil)
-					flushPending(ctx, conn, st, device.ID)
+					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
 				_ = writeReply(conn, 0x18, serial, nil)
 			case 0x15: // string / command response from terminal
@@ -130,7 +132,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					}
 					_ = st.AckLatestSent(ctx, device.ID, true, resp)
 					_ = st.TouchSeen(ctx, device)
-					flushPending(ctx, conn, st, device.ID)
+					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
 				_ = writeReply(conn, 0x15, serial, nil)
 			case 0x8a: // time calibration request (GT06 family)
@@ -150,7 +152,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			case 0x94: // general info transmission
 				if device != nil {
 					_ = st.PatchLastStatus(ctx, device, decodeInfo94(info), nil)
-					flushPending(ctx, conn, st, device.ID)
+					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
 				_ = writeReply(conn, 0x94, serial, nil)
 			case 0x16: // alarm (often includes GPS)
@@ -165,7 +167,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					} else if ev := safetyFromAlarm(info, store.Fix{RecordedAt: time.Now().UTC()}); ev != nil {
 						_ = st.InsertSafetyEvent(ctx, device, *ev)
 					}
-					flushPending(ctx, conn, st, device.ID)
+					flushPending(ctx, conn, st, device.ID, &downSerial, bound)
 				}
 				_ = writeReply(conn, 0x16, serial, nil)
 			default:
@@ -234,21 +236,35 @@ func decodeFrame(frame []byte) (proto byte, info []byte, serial uint16, err erro
 	return proto, info, serial, nil
 }
 
-func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID string) {
+func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID string, serial *uint16, bound *protocol.ConnSession) {
 	enc := Adapter{}
 	for i := 0; i < 4; i++ {
 		cmd, err := st.NextPendingCommand(ctx, deviceID)
 		if err != nil || cmd == nil {
 			return
 		}
-		payload, err := enc.EncodeDownlink(*cmd)
+		var ser uint16 = 1
+		if serial != nil {
+			if *serial == 0 {
+				*serial = 1
+			}
+			ser = *serial
+			*serial++
+		}
+		payload, err := enc.EncodeDownlinkSerial(*cmd, ser)
 		if err != nil || len(payload) == 0 {
 			return
 		}
 		if _, err := conn.Write(payload); err != nil {
 			return
 		}
-		_ = st.MarkCommandSent(ctx, cmd.ID)
+		_ = st.MarkCommandSentCorr(ctx, cmd.ID, fmt.Sprintf("%d", ser))
+		if bound != nil {
+			if bound.Meta == nil {
+				bound.Meta = map[string]string{}
+			}
+			bound.Meta["seq"] = fmt.Sprintf("%d", ser)
+		}
 	}
 }
 

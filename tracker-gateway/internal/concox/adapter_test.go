@@ -26,3 +26,13 @@ func TestEncodeDownlink_0x80(t *testing.T) {
 		t.Fatalf("proto=%x want 0x80", out[3])
 	}
 }
+
+func TestEncodeDownlink_SerialCorr(t *testing.T) {
+	out, err := (Adapter{}).EncodeDownlinkSerial(store.Command{PayloadText: "DYD#"}, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if DownlinkCorrID(out) != "42" {
+		t.Fatalf("corr=%s", DownlinkCorrID(out))
+	}
+}

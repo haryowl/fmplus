@@ -3,6 +3,7 @@ package dispatch
 import (
 	"context"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/concox"
@@ -13,6 +14,21 @@ import (
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/teltonika"
 )
+
+func downlinkCorr(protocol, commandType string, payload []byte, sess *protocol.ConnSession) string {
+	switch {
+	case protocol == "jt808" || protocol == "subiao" ||
+		commandType == "jt808" || commandType == "jt808_8103" || commandType == "jt808_8500":
+		return jt808.DownlinkCorrID(payload)
+	case protocol == "concox" || commandType == "concox_gprs":
+		return concox.DownlinkCorrID(payload)
+	default:
+		if sess != nil && sess.Meta != nil && sess.Meta["seq"] != "" {
+			return sess.Meta["seq"]
+		}
+		return ""
+	}
+}
 
 // FlushPending sends queued tracker_commands to online sessions.
 func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Registry) {
@@ -36,19 +52,31 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 		case cmd.Protocol == "teltonika" || cmd.CommandType == "teltonika_codec12":
 			payload, encErr = tel.EncodeDownlink(cmd)
 		case cmd.Protocol == "concox" || cmd.CommandType == "concox_gprs":
-			payload, encErr = cx.EncodeDownlink(cmd)
+			var ser uint16 = 1
+			if sess.Meta != nil {
+				if n, err := strconv.ParseUint(sess.Meta["seq"], 10, 16); err == nil && n > 0 {
+					ser = uint16(n) + 1
+				}
+			}
+			payload, encErr = cx.EncodeDownlinkSerial(cmd, ser)
 		case cmd.Protocol == "ruptela" || cmd.CommandType == "ruptela_sms":
 			payload, encErr = rup.EncodeDownlink(cmd)
 		case cmd.Protocol == "jt808" || cmd.Protocol == "subiao" ||
 			cmd.CommandType == "jt808" || cmd.CommandType == "jt808_8103" || cmd.CommandType == "jt808_8500":
 			phone := ""
+			var seq uint16
+			v2019 := false
 			if sess.Meta != nil {
 				phone = sess.Meta["phone"]
+				if n, err := strconv.ParseUint(sess.Meta["seq"], 10, 16); err == nil {
+					seq = uint16(n)
+				}
+				v2019 = sess.Meta["jt808_ver"] == "2019"
 			}
 			if phone == "" {
 				continue // wait for uplink flush with known phone
 			}
-			payload, encErr = jt.EncodeDownlink(cmd, phone)
+			payload, encErr = jt.EncodeDownlinkSeq(cmd, phone, &seq, v2019)
 		case cmd.Protocol == "galileosky" || cmd.CommandType == "galileosky_text":
 			payload, encErr = gs.EncodeDownlink(cmd)
 		default:
@@ -72,8 +100,12 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 			sessions.Unbind(sess)
 			continue
 		}
-		_ = st.MarkCommandSent(ctx, cmd.ID)
-		log.Printf("[dispatch] sent command %s to device %s", cmd.ID, cmd.DeviceID)
+		corr := downlinkCorr(cmd.Protocol, cmd.CommandType, payload, sess)
+		_ = st.MarkCommandSentCorr(ctx, cmd.ID, corr)
+		if corr != "" && sess.Meta != nil {
+			sess.Meta["seq"] = corr
+		}
+		log.Printf("[dispatch] sent command %s to device %s corr=%s", cmd.ID, cmd.DeviceID, corr)
 	}
 }
 
