@@ -1440,6 +1440,8 @@ func hoistTerminalParam(id uint32, decoded any, raw []byte, out map[string]any) 
 		out["rollover.angle"] = decoded
 	case 0x005a:
 		out["parking.max_sec"] = decoded
+	case 0x005b:
+		out["overspeed.warn_delta"] = decoded
 	case 0x005c:
 		out["fatigue.warn_delta"] = decoded
 	case 0x0080:

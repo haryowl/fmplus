@@ -201,9 +201,13 @@ func TestHoistTerminalParam_DistanceIntervalSiblings(t *testing.T) {
 func TestHoistTerminalParam_ParkingFatigue(t *testing.T) {
 	out := map[string]any{}
 	hoistTerminalParam(0x005a, 1800, nil, out)
+	hoistTerminalParam(0x005b, 50, nil, out)
 	hoistTerminalParam(0x005c, 300, nil, out)
 	if out["parking.max_sec"] != 1800 || out["fatigue.warn_delta"] != 300 {
 		t.Fatalf("%v", out)
+	}
+	if out["overspeed.warn_delta"] != 50 {
+		t.Fatalf("overspeed=%v", out["overspeed.warn_delta"])
 	}
 }
 
