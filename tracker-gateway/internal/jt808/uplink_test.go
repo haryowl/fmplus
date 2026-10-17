@@ -84,6 +84,16 @@ func TestParseMultimediaData(t *testing.T) {
 	if m["media_id"] != uint32(99) || m["media_channel"] != 2 {
 		t.Fatalf("%v", m)
 	}
+	long := make([]byte, 36)
+	binary.BigEndian.PutUint32(long[0:4], 7)
+	long[4], long[5], long[6], long[7] = 0, 1, 2, 3
+	m2 := parseMultimediaData(long)
+	if m2["media_has_location"] != true {
+		t.Fatalf("%v", m2)
+	}
+	if loc := multimediaLocationBody(long); len(loc) != 28 {
+		t.Fatalf("loc=%d", len(loc))
+	}
 }
 
 func TestBcdNowUTC6(t *testing.T) {
@@ -158,6 +168,9 @@ func TestParseCameraShootResp(t *testing.T) {
 	m := parseCameraShootResp(body)
 	if m["reply_seq"] != 42 || m["shoot_result"] != 0 || m["media_id_count"] != 2 {
 		t.Fatalf("%v", m)
+	}
+	if m["shoot_ok"] != true || m["media_id"] != 10 {
+		t.Fatalf("ok/id=%v", m)
 	}
 	ids, _ := m["media_ids"].([]uint32)
 	if len(ids) != 2 || ids[0] != 10 || ids[1] != 11 {

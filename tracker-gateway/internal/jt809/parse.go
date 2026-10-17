@@ -186,6 +186,31 @@ func tryWarnGNSS(rest []byte, off int) (lat, lon float64, ok bool) {
 	return lat, lon, true
 }
 
+// parseVehicleOnline extracts plate/color/online flag from 0x1205/0x1206.
+func parseVehicleOnline(msgID uint16, rest []byte) (plate string, patch map[string]any, ok bool) {
+	online := msgID == 0x1205
+	patch = map[string]any{
+		"proto_msg":      fmt.Sprintf("0x%04x", msgID),
+		"body_len":       len(rest),
+		"vehicle_online": online,
+	}
+	if len(rest) < 21 {
+		return "", patch, false
+	}
+	plate = strings.TrimRight(string(rest[0:21]), "\x00 ")
+	patch["vehicle_plate"] = plate
+	if len(rest) >= 22 {
+		patch["vehicle_color"] = int(rest[21])
+	}
+	if len(rest) >= 28 {
+		patch["online_time_bcd"] = fmt.Sprintf("%x", rest[22:28])
+		if ts, hit := parseWarnBcdTime(rest[22:28]); hit {
+			patch["online_time"] = ts.Format(time.RFC3339)
+		}
+	}
+	return plate, patch, plate != ""
+}
+
 // parseVehicleList1500 extracts plate/color from 0x1500 vehicle-list notifies.
 func parseVehicleList1500(rest []byte) (plate string, patch map[string]any, ok bool) {
 	patch = map[string]any{"proto_msg": "0x1500", "body_len": len(rest), "vehicle_list": true}

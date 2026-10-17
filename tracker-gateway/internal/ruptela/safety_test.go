@@ -140,3 +140,11 @@ func TestPromoteRuptelaScalars_DinDout(t *testing.T) {
 		t.Fatalf("%v", raw)
 	}
 }
+
+func TestPromoteRuptelaScalars_IButton(t *testing.T) {
+	raw := map[string]any{}
+	promoteRuptelaScalars(raw, map[string]any{"78": "deadbeef"})
+	if raw["ibutton.id"] != "deadbeef" {
+		t.Fatalf("%v", raw)
+	}
+}

@@ -201,6 +201,24 @@ func TestParseMediaAttach1210_File(t *testing.T) {
 	}
 }
 
+func TestParseVehicleOnline(t *testing.T) {
+	rest := make([]byte, 28)
+	copy(rest[0:21], []byte("B1111ON"))
+	rest[21] = 1
+	copy(rest[22:28], []byte{0x26, 0x10, 0x17, 0x08, 0x00, 0x00})
+	plate, patch, ok := parseVehicleOnline(0x1205, rest)
+	if !ok || plate != "B1111ON" || patch["vehicle_online"] != true {
+		t.Fatalf("%v", patch)
+	}
+	if patch["online_time_bcd"] == nil {
+		t.Fatalf("time missing: %v", patch)
+	}
+	_, patchOff, ok2 := parseVehicleOnline(0x1206, rest)
+	if !ok2 || patchOff["vehicle_online"] != false {
+		t.Fatalf("%v", patchOff)
+	}
+}
+
 func TestParseVehicleList1500(t *testing.T) {
 	rest := make([]byte, 23)
 	copy(rest[0:21], []byte("B3333LST"))

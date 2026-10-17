@@ -223,9 +223,12 @@ func TestPromoteTeltonikaScalars_GSMOperator(t *testing.T) {
 
 func TestPromoteTeltonikaScalars_IButton(t *testing.T) {
 	raw := map[string]any{}
-	promoteTeltonikaScalars(raw, map[string]any{"78": "a1b2c3d4"})
+	promoteTeltonikaScalars(raw, map[string]any{"78": "a1b2c3d4", "250": 12.5, "255": 80})
 	if raw["ibutton.id"] != "a1b2c3d4" {
 		t.Fatalf("%v", raw)
+	}
+	if raw["trip.distance"] != 12.5 || raw["overspeed.threshold"] != 80.0 {
+		t.Fatalf("trip/ov=%v", raw)
 	}
 }
 

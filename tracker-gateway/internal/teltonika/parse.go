@@ -169,6 +169,12 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["78"]; ok {
 		raw["ibutton.id"] = fmt.Sprintf("%v", v)
 	}
+	if v, ok := io["250"]; ok {
+		raw["trip.distance"] = asIOFloat(v)
+	}
+	if v, ok := io["255"]; ok {
+		raw["overspeed.threshold"] = asIOFloat(v)
+	}
 	if v, ok := io["24"]; ok {
 		raw["speed.io"] = asIOFloat(v)
 	}

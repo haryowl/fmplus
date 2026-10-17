@@ -1050,9 +1050,12 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			_ = st.PatchLastStatus(ctx, sess.device, parseWaybill(body), nil)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
-	case 0x0800: // multimedia data packet (metadata only — no media body storage)
+	case 0x0800: // multimedia data packet (metadata + optional embedded location; no media storage)
 		if sess.device != nil {
 			_ = st.PatchLastStatus(ctx, sess.device, parseMultimediaData(body), nil)
+			if loc := multimediaLocationBody(body); len(loc) >= 28 {
+				ingestLocation(ctx, conn, st, sessions, sess, loc, protoHint)
+			}
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0801: // multimedia event / metadata (+ optional embedded location)
@@ -2660,7 +2663,9 @@ func parseCameraShootResp(body []byte) map[string]any {
 		out["reply_seq"] = int(binary.BigEndian.Uint16(body[0:2]))
 	}
 	if len(body) >= 3 {
-		out["shoot_result"] = int(body[2]) // 0=ok
+		r := int(body[2]) // 0=ok
+		out["shoot_result"] = r
+		out["shoot_ok"] = r == 0
 	}
 	if len(body) >= 4 {
 		n := int(body[3])
@@ -2673,6 +2678,7 @@ func parseCameraShootResp(body []byte) map[string]any {
 		}
 		if len(ids) > 0 {
 			out["media_ids"] = ids
+			out["media_id"] = int(ids[0])
 		}
 	}
 	return out
@@ -2695,6 +2701,9 @@ func parseMultimediaData(body []byte) map[string]any {
 	}
 	if len(body) >= 8 {
 		out["media_event"] = int(body[7])
+	}
+	if len(body) >= 36 {
+		out["media_has_location"] = true
 	}
 	if len(body) > 8 {
 		snip := body[8:]
