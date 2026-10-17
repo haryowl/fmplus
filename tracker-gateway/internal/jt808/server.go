@@ -2777,10 +2777,8 @@ func ingestLocation(ctx context.Context, conn net.Conn, st *store.Store, session
 		fix.RawAttrs["add"] = add
 		for k, v := range add {
 			fix.RawAttrs["add."+k] = v
-			if isRemappableSafetyKey(k) {
-				fix.RawAttrs[k] = v
-			}
 		}
+		hoistLocationTLV(add, fix.RawAttrs)
 		if v, ok := add["0x01"].(float64); ok {
 			fix.Odometer = &v
 		}

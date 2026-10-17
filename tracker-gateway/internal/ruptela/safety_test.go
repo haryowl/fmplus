@@ -101,12 +101,15 @@ func TestSafetyFromIO_Overspeed(t *testing.T) {
 func TestPromoteRuptelaScalars(t *testing.T) {
 	raw := map[string]any{}
 	promoteRuptelaScalars(raw, map[string]any{
-		"17": 10, "18": -5, "19": 980, "253": 2, "25": 215,
+		"17": 10, "18": -5, "19": 980, "253": 2, "25": 215, "27": 180, "28": 190,
 	})
 	if raw["accel.x"] != 10.0 || raw["accel.y"] != -5.0 || raw["accel.z"] != 980.0 {
 		t.Fatalf("accel %v", raw)
 	}
 	if raw["green_driving.value"] != 2.0 || raw["ble.temp1"] != 21.5 {
 		t.Fatalf("green/ble %v", raw)
+	}
+	if raw["ble.temp3"] != 18.0 || raw["ble.temp4"] != 19.0 {
+		t.Fatalf("ble34 %v", raw)
 	}
 }

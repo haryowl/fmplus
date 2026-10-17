@@ -136,6 +136,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   087_teltonika_ruptela_jt809_depth.sql
 #   088_jt808_video_galileosky_can.sql
 #   089_jt808_alarm_bits_jt1078_live.sql
+#   090_jt809_alarm_keys_tlv_hoist.sql
 npm run db:migrate
 
 cd tracker-gateway

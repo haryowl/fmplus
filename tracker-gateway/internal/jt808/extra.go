@@ -283,14 +283,29 @@ func decodeSubiaoBody(id byte, val []byte, add map[string]any) {
 }
 
 func isRemappableSafetyKey(k string) bool {
-	if k == "alarm_level" || k == "tpms.alarm" {
+	switch k {
+	case "alarm_level", "tpms.alarm", "gsm_signal", "gnss_sats",
+		"overspeed_loc_type", "overspeed_region_id", "area_loc_type", "area_id", "area_direction":
 		return true
 	}
 	return strings.HasPrefix(k, "adas.") ||
 		strings.HasPrefix(k, "dsm.") ||
 		strings.HasPrefix(k, "bsd.") ||
-		strings.HasPrefix(k, "alarm.video") ||
+		strings.HasPrefix(k, "alarm.") ||
+		strings.HasPrefix(k, "status.") ||
 		strings.HasPrefix(k, "video.")
+}
+
+// hoistLocationTLV copies remappable location additional-info keys onto fix raw_attrs top-level.
+func hoistLocationTLV(add, dest map[string]any) {
+	if add == nil || dest == nil {
+		return
+	}
+	for k, v := range add {
+		if isRemappableSafetyKey(k) {
+			dest[k] = v
+		}
+	}
 }
 
 // decodeVideoAlarmWord maps 0x14 video-related alarm bits onto remappable keys (partial).

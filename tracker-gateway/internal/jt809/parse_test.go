@@ -76,6 +76,9 @@ func TestParseVehicleAlarm_RouteDeviation(t *testing.T) {
 	if !ok || ev == nil || ev.AlarmType != "route_deviation" {
 		t.Fatalf("%+v ok=%v", ev, ok)
 	}
+	if ev.RawAttrs["alarm.route_deviation"] != true {
+		t.Fatalf("raw=%v", ev.RawAttrs)
+	}
 }
 
 func TestParseVehicleAlarm_Collision(t *testing.T) {
@@ -86,6 +89,21 @@ func TestParseVehicleAlarm_Collision(t *testing.T) {
 	_, ev, ok := parseVehicleAlarm(0x1402, rest)
 	if !ok || ev == nil || ev.AlarmType != "collision" || ev.AlarmLevel != 2 {
 		t.Fatalf("%+v ok=%v", ev, ok)
+	}
+	if ev.RawAttrs["alarm.collision"] != true {
+		t.Fatalf("raw=%v", ev.RawAttrs)
+	}
+}
+
+func TestFlatten809InfoType_SOS(t *testing.T) {
+	raw := map[string]any{}
+	flatten809InfoType(1, raw)
+	if raw["alarm.sos"] != true || raw["alarm_level"] != 2 {
+		t.Fatalf("%v", raw)
+	}
+	flatten809InfoType(0, raw)
+	if raw["alarm.sos"] != true {
+		t.Fatal("zero should not clear")
 	}
 }
 

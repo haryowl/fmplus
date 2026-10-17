@@ -9,6 +9,54 @@ import (
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
+type infoTypeAlarm struct {
+	name  string
+	level int
+	key   string
+}
+
+// knownInfoTypes maps JT/T 809 vehicle alarm info_type WORD → remappable alarm.* (partial).
+var knownInfoTypes = map[int]infoTypeAlarm{
+	1:  {"sos", 2, "alarm.sos"},
+	2:  {"overspeed", 1, "alarm.overspeed"},
+	3:  {"fatigue", 2, "alarm.fatigue"},
+	4:  {"danger", 2, "alarm.danger"},
+	5:  {"gnss_fault", 1, "alarm.gnss_fault"},
+	6:  {"antenna_cut", 2, "alarm.gnss_antenna_cut"},
+	7:  {"undervoltage", 1, "alarm.low_power"},
+	8:  {"power_cut", 2, "alarm.power_cut"},
+	9:  {"lcd_fault", 1, "alarm.lcd_fault"},
+	10: {"tts_fault", 1, "alarm.tts_fault"},
+	11: {"camera_fault", 1, "alarm.camera_fault"},
+	12: {"road_trans_timeout", 1, "alarm.road_trans_timeout"},
+	13: {"overspeed_warn", 1, "alarm.overspeed_warn"},
+	14: {"fatigue_warn", 1, "alarm.fatigue_warn"},
+	18: {"day_drive_timeout", 1, "alarm.day_drive_timeout"},
+	19: {"parking_timeout", 1, "alarm.parking_timeout"},
+	20: {"area_inout", 1, "alarm.area_in_out"},
+	21: {"route_inout", 1, "alarm.route_inout"},
+	22: {"route_deviation", 1, "alarm.route_deviation"},
+	23: {"vss_fault", 1, "alarm.vss_fault"},
+	24: {"fuel_abnormal", 2, "alarm.fuel_abnormal"},
+	25: {"theft", 2, "alarm.theft"},
+	26: {"illegal_ignition", 2, "alarm.illegal_ignition"},
+	27: {"illegal_move", 2, "alarm.illegal_move"},
+	28: {"collision", 2, "alarm.collision"},
+}
+
+// flatten809InfoType writes remappable alarm.* onto dest for known info_type values.
+func flatten809InfoType(infoType int, dest map[string]any) {
+	if dest == nil || infoType == 0 {
+		return
+	}
+	k, ok := knownInfoTypes[infoType]
+	if !ok {
+		return
+	}
+	dest[k.key] = true
+	dest["alarm_level"] = k.level
+}
+
 // parseVehicleAlarm extracts plate + best-effort alarm type from 0x1400-family bodies.
 // Layouts vary by interconnect; plate(21)+color(1) prefix is the common form.
 func parseVehicleAlarm(msgID uint16, rest []byte) (plate string, ev *store.SafetyEvent, ok bool) {
@@ -23,69 +71,23 @@ func parseVehicleAlarm(msgID uint16, rest []byte) (plate string, ev *store.Safet
 	}
 	alarmType := "vehicle_alarm"
 	level := 1
-	switch infoType {
-	case 1:
-		alarmType, level = "sos", 2
-	case 2:
-		alarmType, level = "overspeed", 1
-	case 3:
-		alarmType, level = "fatigue", 2
-	case 4:
-		alarmType, level = "danger", 2
-	case 5:
-		alarmType, level = "gnss_fault", 1
-	case 6:
-		alarmType, level = "antenna_cut", 2
-	case 7:
-		alarmType, level = "undervoltage", 1
-	case 8:
-		alarmType, level = "power_cut", 2
-	case 9:
-		alarmType, level = "lcd_fault", 1
-	case 10:
-		alarmType, level = "tts_fault", 1
-	case 11:
-		alarmType, level = "camera_fault", 1
-	case 12:
-		alarmType, level = "road_trans_timeout", 1
-	case 13:
-		alarmType, level = "overspeed_warn", 1
-	case 14:
-		alarmType, level = "fatigue_warn", 1
-	case 18:
-		alarmType, level = "day_drive_timeout", 1
-	case 19:
-		alarmType, level = "parking_timeout", 1
-	case 20:
-		alarmType, level = "area_inout", 1
-	case 21:
-		alarmType, level = "route_inout", 1
-	case 22:
-		alarmType, level = "route_deviation", 1
-	case 23:
-		alarmType, level = "vss_fault", 1
-	case 24:
-		alarmType, level = "fuel_abnormal", 2
-	case 25:
-		alarmType, level = "theft", 2
-	case 26:
-		alarmType, level = "illegal_ignition", 2
-	case 27:
-		alarmType, level = "illegal_move", 2
-	case 28:
-		alarmType, level = "collision", 2
+	if k, hit := knownInfoTypes[infoType]; hit {
+		alarmType, level = k.name, k.level
 	}
+	raw := map[string]any{
+		"proto_msg":     fmt.Sprintf("0x%04x", msgID),
+		"vehicle_plate": plate,
+		"vehicle_color": color,
+		"info_type":     infoType,
+		"body_len":      len(rest),
+		"alarm_level":   level,
+	}
+	flatten809InfoType(infoType, raw)
 	ev = &store.SafetyEvent{
-		RecordedAt: time.Now().UTC(),
-		AlarmType:  alarmType,
-		AlarmLevel: level,
-		RawAttrs: map[string]any{
-			"proto_msg":     fmt.Sprintf("0x%04x", msgID),
-			"vehicle_plate": plate,
-			"vehicle_color": color,
-			"info_type":     infoType,
-			"body_len":      len(rest),
-		},
+		RecordedAt:     time.Now().UTC(),
+		AlarmType:      alarmType,
+		AlarmLevel:     level,
+		RawAttrs:       raw,
 		SourceProtocol: "jt809",
 	}
 	return plate, ev, plate != "" || infoType != 0

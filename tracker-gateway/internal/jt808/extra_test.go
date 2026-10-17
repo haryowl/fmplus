@@ -25,6 +25,11 @@ func TestParseAdditionalInfo_AreaAndSignal(t *testing.T) {
 	if add["gsm_signal"] != 20 || add["gnss_sats"] != 12 {
 		t.Fatalf("signal/sats: %v", add)
 	}
+	dest := map[string]any{}
+	hoistLocationTLV(add, dest)
+	if dest["gsm_signal"] != 20 || dest["alarm.fence_in"] != true || dest["status.acc"] != true {
+		t.Fatalf("hoist=%v", dest)
+	}
 }
 
 func TestParseAdditionalInfo_MileageFuel(t *testing.T) {
