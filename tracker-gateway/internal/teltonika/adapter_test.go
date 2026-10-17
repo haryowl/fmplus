@@ -32,6 +32,29 @@ func TestEncodeDownlink_Codec12_Getio(t *testing.T) {
 	}
 }
 
+func TestEncodeDownlink_Codec14_IMEI(t *testing.T) {
+	out, err := EncodeGPRS(store.Command{CommandType: "teltonika_codec14", PayloadText: "getinfo"}, "352093081452251")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// preamble + len + 0x0E ...
+	if out[8] != 0x0e {
+		t.Fatalf("codec=%02x", out[8])
+	}
+	imei, err := imeiToCodec14("352093081452251")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []byte{0x03, 0x52, 0x09, 0x30, 0x81, 0x45, 0x22, 0x51}
+	if string(imei) != string(want) {
+		t.Fatalf("imei=%x want=%x", imei, want)
+	}
+	_, err = EncodeGPRS(store.Command{CommandType: "teltonika_codec14", PayloadText: "x"}, "")
+	if err == nil {
+		t.Fatal("expected IMEI required")
+	}
+}
+
 func TestCRC16IBM_Codec12Payload(t *testing.T) {
 	// AVL array only (no preamble/len/crc): 0C 01 05 00 00 00 07 getinfo 01
 	avl, _ := hex.DecodeString("0c010500000007676574696e666f01")

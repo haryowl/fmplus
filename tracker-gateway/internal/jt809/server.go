@@ -157,6 +157,16 @@ func handleMessage(ctx context.Context, conn net.Conn, st *store.Store, sessions
 		binary.BigEndian.PutUint16(respBody[8:10], 0x1004) // logout ack
 		_, _ = conn.Write(wrapFrame809(respBody))
 		log.Printf("[jt809] platform logout key=%s", *platformKey)
+	case 0x1007: // main-link disconnect notify from subordinate
+		if sessions != nil && *bound != nil {
+			sessions.Unbind(*bound)
+			*bound = nil
+		}
+		respBody := make([]byte, 22)
+		binary.BigEndian.PutUint32(respBody[0:4], 22)
+		binary.BigEndian.PutUint16(respBody[8:10], 0x1008) // disconnect ack
+		_, _ = conn.Write(wrapFrame809(respBody))
+		log.Printf("[jt809] platform disconnect key=%s", *platformKey)
 	case 0x1200, 0x1202:
 		fix, plate, ok := parseVehicleUplink(msgID, rest)
 		if !ok {

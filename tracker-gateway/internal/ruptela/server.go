@@ -297,6 +297,12 @@ func parseRecordPayload(data []byte, extended bool) []store.Fix {
 		if v, ok := ioMap["67"]; ok {
 			raw["voltage.batt"] = asFloat64(v) / 1000.0
 		}
+		if v, ok := ioMap["89"]; ok {
+			raw["fuel.level"] = asFloat64(v)
+		}
+		if v, ok := ioMap["72"]; ok {
+			raw["temp.1"] = asFloat64(v)
+		}
 		flattenEventAlarm(raw)
 		fix := store.Fix{
 			Lat:            lat,

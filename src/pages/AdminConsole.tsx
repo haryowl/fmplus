@@ -211,6 +211,12 @@ const COMMAND_TYPE_OPTIONS: Array<{ value: string; label: string; protocols?: st
     protocols: ["jt808", "subiao"],
   },
   { value: "teltonika_codec12", label: "Teltonika Codec12", protocols: ["teltonika"] },
+  { value: "teltonika_codec14", label: "Teltonika Codec14 (IMEI)", protocols: ["teltonika"] },
+  {
+    value: "jt808_8601",
+    label: "JT808 delete circle area (0x8601)",
+    protocols: ["jt808", "subiao"],
+  },
   { value: "concox_gprs", label: "Concox GPRS (0x80)", protocols: ["concox"] },
   { value: "ruptela_sms", label: "Ruptela SMS via GPRS (108)", protocols: ["ruptela"] },
   { value: "ruptela_105", label: "Ruptela config (105)", protocols: ["ruptela"] },
@@ -246,6 +252,10 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
     case "jt808_8702":
     case "jt808_8204":
       return { text: "(empty body)", hex: "" };
+    case "jt808_8601":
+      return { text: "all or 1,2,3", hex: "count + DWORD ids" };
+    case "teltonika_codec14":
+      return { text: "getinfo (IMEI from session)", hex: "" };
     case "jt808_8103":
       return { text: "", hex: "TLV bytes (count auto-wrapped)" };
     case "raw":

@@ -22,10 +22,11 @@ func isJT808Command(protocol, commandType string) bool {
 	}
 	switch commandType {
 	case "jt808", "jt808_8103", "jt808_8104", "jt808_8105", "jt808_8107",
-		"jt808_8201", "jt808_8202", "jt808_8204", "jt808_8500", "jt808_8801",
+		"jt808_8201", "jt808_8202", "jt808_8204", "jt808_8500", "jt808_8601", "jt808_8801",
 		"jt808_8700", "jt808_8702", "terminal_control",
 		"param", "control", "vehicle_control", "query_params", "query_attrs",
-		"query_location", "camera", "track", "driver_query", "driving_record", "link_detect":
+		"query_location", "camera", "track", "driver_query", "driving_record", "link_detect",
+		"geofence_del":
 		return true
 	}
 	return false
@@ -43,8 +44,9 @@ func downlinkCorr(cmd store.Command, payload []byte, sess *protocol.ConnSession)
 	case cmd.Protocol == "galileosky" || cmd.CommandType == "galileosky_text":
 		// No wire serial — soft text corr; AckSoftOrLatest on E0–E6 replies.
 		return store.SoftTextCorr(cmd.PayloadText)
-	case cmd.Protocol == "teltonika" || cmd.CommandType == "teltonika_codec12":
-		// Codec12 has no stable id — soft text corr when payload echoes.
+	case cmd.Protocol == "teltonika" || cmd.CommandType == "teltonika_codec12" ||
+		cmd.CommandType == "teltonika_codec14":
+		// Codec12/14 have no stable echo id — soft text corr when payload echoes.
 		return store.SoftTextCorr(cmd.PayloadText)
 	default:
 		if sess != nil && sess.Meta != nil && sess.Meta["seq"] != "" {
@@ -69,7 +71,6 @@ func sessionReady(cmd store.Command, sess *protocol.ConnSession) bool {
 // FlushPending peeks pending commands and only claims those with a ready session,
 // so offline devices never flip to sent until they can be written.
 func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Registry) {
-	tel := teltonika.Adapter{}
 	cx := concox.Adapter{}
 	rup := ruptela.Adapter{}
 	jt := jt808.Adapter{}
@@ -91,8 +92,9 @@ func FlushPending(ctx context.Context, st *store.Store, sessions *protocol.Regis
 		var payload []byte
 		encErr := error(nil)
 		switch {
-		case cmd.Protocol == "teltonika" || cmd.CommandType == "teltonika_codec12":
-			payload, encErr = tel.EncodeDownlink(cmd)
+		case cmd.Protocol == "teltonika" || cmd.CommandType == "teltonika_codec12" ||
+			cmd.CommandType == "teltonika_codec14":
+			payload, encErr = teltonika.EncodeGPRS(cmd, sess.IMEI)
 		case cmd.Protocol == "concox" || cmd.CommandType == "concox_gprs":
 			var ser uint16 = 1
 			if sess.Meta != nil {

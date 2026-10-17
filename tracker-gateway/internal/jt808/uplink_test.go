@@ -89,6 +89,31 @@ func TestParseDrivingRecord(t *testing.T) {
 	}
 }
 
+func TestParseRegister(t *testing.T) {
+	body := make([]byte, 4+5+20+7+1+6)
+	binary.BigEndian.PutUint16(body[0:2], 11)
+	binary.BigEndian.PutUint16(body[2:4], 101)
+	copy(body[4:9], []byte("MFR01"))
+	copy(body[9:29], []byte("MODEL-X"))
+	copy(body[29:36], []byte("TID0001"))
+	body[36] = 2
+	copy(body[37:], []byte("B12345"))
+	m := parseRegister(body)
+	if m["province_id"] != 11 || m["manufacturer"] != "MFR01" || m["vehicle_plate"] != "B12345" {
+		t.Fatalf("%v", m)
+	}
+}
+
+func TestWrap8601Body(t *testing.T) {
+	if len(wrap8601Body("all")) != 1 || wrap8601Body("all")[0] != 0 {
+		t.Fatal("all")
+	}
+	b := wrap8601Body("1,2")
+	if b[0] != 2 || binary.BigEndian.Uint32(b[1:5]) != 1 || binary.BigEndian.Uint32(b[5:9]) != 2 {
+		t.Fatalf("%x", b)
+	}
+}
+
 func TestParseCameraShootResp(t *testing.T) {
 	body := make([]byte, 4+8)
 	binary.BigEndian.PutUint16(body[0:2], 42)

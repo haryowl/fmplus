@@ -123,15 +123,15 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			}
 			continue
 		}
-		// Codec 12/13 GPRS command response (not AVL records).
-		if len(payload) > 0 && (payload[0] == 0x0c || payload[0] == 0x0d) {
+		// Codec 12/13/14 GPRS command response (not AVL records).
+		if len(payload) > 0 && (payload[0] == 0x0c || payload[0] == 0x0d || payload[0] == 0x0e) {
 			resp, ok := parseCodec12Response(payload)
 			_ = st.AckSoftOrLatest(ctx, device.ID, ok, resp)
 			ack := make([]byte, 4)
 			if _, err := conn.Write(ack); err != nil {
 				return
 			}
-			flushPending(ctx, conn, st, device.ID)
+			flushPending(ctx, conn, st, device.ID, imei)
 			continue
 		}
 		count, fixes := parseAVL(payload)
@@ -149,20 +149,23 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		if _, err := conn.Write(ack); err != nil {
 			return
 		}
-		flushPending(ctx, conn, st, device.ID)
+		flushPending(ctx, conn, st, device.ID, imei)
 	}
 }
 
-func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID string) {
-	enc := Adapter{}
+func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID, imei string) {
 	for i := 0; i < 4; i++ {
 		cmd, err := st.NextPendingCommand(ctx, deviceID)
 		if err != nil || cmd == nil {
 			return
 		}
-		payload, err := enc.EncodeDownlink(*cmd)
+		payload, err := EncodeGPRS(*cmd, imei)
 		if err != nil || len(payload) == 0 {
-			_ = st.MarkCommandFailed(ctx, cmd.ID, "teltonika encode failed")
+			msg := "teltonika encode failed"
+			if err != nil {
+				msg = err.Error()
+			}
+			_ = st.MarkCommandFailed(ctx, cmd.ID, msg)
 			continue
 		}
 		if _, err := conn.Write(payload); err != nil {

@@ -453,6 +453,16 @@ func encodeJT808DownlinkVer(phone string, seq *uint16, cmd *store.Command, v2019
 		// 2019 link detection — empty body.
 		msgID = 0x8204
 		body = nil
+	case "jt808_8601", "geofence_del":
+		// Delete circular area(s): count=0 → all; else DWORD area ids (hex or csv).
+		msgID = 0x8601
+		if cmd.PayloadHex != "" {
+			if raw := cmd.PayloadBytes(); len(raw) > 0 {
+				body = raw
+				break
+			}
+		}
+		body = wrap8601Body(text)
 	default:
 		// 0x8300: flag(1)+text. Hex-only Admin payloads skip UTF-8 mangling.
 		if cmd.PayloadHex != "" {
@@ -560,6 +570,9 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 		remote := conn.RemoteAddr().String()
 		sess.device = deviceauth.FindByIMEI(ctx, st, phone, remote, protoHint)
 		bindSession(sessions, sess, conn)
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, parseRegister(body), nil)
+		}
 		return reply(conn, sess, 0x8100, buildRegisterAck(seq, 0, "FM1"))
 	case 0x0102: // auth
 		remote := conn.RemoteAddr().String()
@@ -739,6 +752,12 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 			_ = st.PatchLastStatus(ctx, sess.device, parseDrivingRecord(body), nil)
 		}
 		return replyGeneral(conn, sess, msgID, seq, 0)
+	case 0x0608: // query area/route data response (2019) — status patch only
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, parseAreaQueryResp(body), nil)
+			_ = st.AckLatestSent(ctx, sess.device.ID, true, fmt.Sprintf("jt808_0608 len=%d", len(body)))
+		}
+		return replyGeneral(conn, sess, msgID, seq, 0)
 	case 0x0200: // location
 		ingestLocation(ctx, conn, st, sessions, sess, body, protoHint)
 		return replyGeneral(conn, sess, msgID, seq, 0)
@@ -861,6 +880,92 @@ func parseMultimediaMeta(body []byte) map[string]any {
 	if len(body) >= 7 {
 		out["media_id"] = binary.BigEndian.Uint32(body[3:7])
 	}
+	return out
+}
+
+// parseRegister maps 0x0100 terminal register body (province/city/mfr/model/id/plate).
+func parseRegister(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0100", "reg_len": len(body)}
+	if len(body) >= 2 {
+		out["province_id"] = int(binary.BigEndian.Uint16(body[0:2]))
+	}
+	if len(body) >= 4 {
+		out["city_id"] = int(binary.BigEndian.Uint16(body[2:4]))
+	}
+	off := 4
+	if len(body) >= off+5 {
+		out["manufacturer"] = strings.TrimRight(string(body[off:off+5]), "\x00 ")
+		off += 5
+	}
+	if len(body) >= off+20 {
+		out["terminal_model"] = strings.TrimRight(string(body[off:off+20]), "\x00 ")
+		off += 20
+	}
+	if len(body) >= off+7 {
+		out["terminal_id"] = strings.TrimRight(string(body[off:off+7]), "\x00 ")
+		off += 7
+	}
+	if len(body) > off {
+		out["plate_color"] = int(body[off])
+		off++
+	}
+	if off < len(body) {
+		plate := strings.TrimRight(string(body[off:]), "\x00 ")
+		if plate != "" {
+			out["vehicle_plate"] = plate
+		}
+	}
+	return out
+}
+
+// wrap8601Body builds 0x8601 delete circular area: 0=all, else count + DWORD ids.
+func wrap8601Body(text string) []byte {
+	t := strings.TrimSpace(strings.ToLower(text))
+	if t == "" || t == "all" || t == "0" {
+		return []byte{0}
+	}
+	parts := strings.FieldsFunc(t, func(r rune) bool {
+		return r == ',' || r == ' ' || r == ';'
+	})
+	ids := make([]uint32, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimPrefix(p, "0x")
+		n, err := strconv.ParseUint(p, 10, 32)
+		if err != nil {
+			n, err = strconv.ParseUint(p, 16, 32)
+		}
+		if err == nil {
+			ids = append(ids, uint32(n))
+		}
+	}
+	if len(ids) == 0 {
+		return []byte{0}
+	}
+	if len(ids) > 255 {
+		ids = ids[:255]
+	}
+	body := make([]byte, 1+4*len(ids))
+	body[0] = byte(len(ids))
+	for i, id := range ids {
+		binary.BigEndian.PutUint32(body[1+i*4:], id)
+	}
+	return body
+}
+
+// parseAreaQueryResp maps 0x0608 area/route query response (type + count snippet).
+func parseAreaQueryResp(body []byte) map[string]any {
+	out := map[string]any{"proto_msg": "0x0608", "area_resp_len": len(body)}
+	if len(body) >= 1 {
+		out["area_query_type"] = int(body[0])
+	}
+	if len(body) >= 5 {
+		out["area_count"] = int(binary.BigEndian.Uint32(body[1:5]))
+	}
+	snip := body
+	if len(snip) > 48 {
+		snip = snip[:48]
+	}
+	out["area_head_hex"] = fmt.Sprintf("%x", snip)
 	return out
 }
 
