@@ -261,10 +261,13 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		hdg := float64(binary.LittleEndian.Uint16(sc[2:4])) / 10.0
 		fix.Speed = &spd
 		fix.Heading = &hdg
+		fix.RawAttrs["speed.gps"] = spd
+		fix.RawAttrs["heading.gps"] = hdg
 	}
 	if h, ok := tags[0x34]; ok && len(h) >= 2 {
 		alt := float64(int16(binary.LittleEndian.Uint16(h[0:2])))
 		fix.Altitude = &alt
+		fix.RawAttrs["gnss.altitude"] = alt
 	}
 	if hd, ok := tags[0x35]; ok && len(hd) >= 1 {
 		h := float64(hd[0]) / 10.0

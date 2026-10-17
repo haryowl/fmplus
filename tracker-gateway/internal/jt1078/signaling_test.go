@@ -70,4 +70,12 @@ func TestParseSignalingHeader(t *testing.T) {
 	if m["av_data_kind"] != "video_i" {
 		t.Fatalf("kind=%v", m["av_data_kind"])
 	}
+	if m["av_pack_mark"] != "atomic" {
+		t.Fatalf("pack=%v", m["av_pack_mark"])
+	}
+	hdr[4] = 0x10 // first + video_i
+	m2 := parseSignalingHeader(hdr)
+	if m2["av_pack_mark"] != "first" {
+		t.Fatalf("first=%v", m2["av_pack_mark"])
+	}
 }

@@ -96,3 +96,22 @@ func TestSafetyFromIO_Overspeed(t *testing.T) {
 		t.Fatalf("%+v", ev)
 	}
 }
+
+func TestSafetyFromIO_IdlingAndGeofence(t *testing.T) {
+	fix := store.Fix{
+		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{
+			"event_io": 0,
+			"io":       map[string]any{"251": 1},
+		},
+	}
+	ev := safetyFromIO(fix)
+	if ev == nil || ev.AlarmType != "idling" {
+		t.Fatalf("idling=%+v", ev)
+	}
+	fix.RawAttrs["io"] = map[string]any{"175": 1}
+	ev2 := safetyFromIO(fix)
+	if ev2 == nil || ev2.AlarmType != "geofence" {
+		t.Fatalf("geofence=%+v", ev2)
+	}
+}

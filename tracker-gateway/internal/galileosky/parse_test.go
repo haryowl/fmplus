@@ -89,6 +89,9 @@ func TestSpeedCourse_0x33(t *testing.T) {
 	if fix.Heading == nil || *fix.Heading < 211 || *fix.Heading > 213 {
 		t.Fatalf("heading=%v", fix.Heading)
 	}
+	if fix.RawAttrs["speed.gps"] == nil || fix.RawAttrs["heading.gps"] == nil {
+		t.Fatalf("remap=%v", fix.RawAttrs)
+	}
 }
 
 func TestAltitudeHDOPVoltage(t *testing.T) {
@@ -104,6 +107,9 @@ func TestAltitudeHDOPVoltage(t *testing.T) {
 	fix, ok := fixFromTags(tags)
 	if !ok || fix.Altitude == nil || *fix.Altitude != 120 {
 		t.Fatalf("alt ok=%v fix=%+v", ok, fix)
+	}
+	if fix.RawAttrs["gnss.altitude"] != 120.0 {
+		t.Fatalf("alt raw=%v", fix.RawAttrs["gnss.altitude"])
 	}
 	if fix.RawAttrs["hdop"] != 2.5 || fix.RawAttrs["gnss.hdop"] != 2.5 {
 		t.Fatalf("hdop=%v", fix.RawAttrs)

@@ -530,6 +530,7 @@ func parseVehicleUplink(msgID uint16, rest []byte) (store.Fix, string, bool) {
 		st := binary.BigEndian.Uint32(gnss[off : off+4])
 		out.RawAttrs["vehicle_state"] = int(st)
 		out.RawAttrs["status.acc"] = st&0x01 != 0
+		jt808.HoistLocationStatusBits(st, out.RawAttrs)
 		off += 4
 	}
 	if off+4 <= len(gnss) {

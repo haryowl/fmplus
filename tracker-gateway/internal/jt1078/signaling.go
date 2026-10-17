@@ -23,7 +23,23 @@ func parseSignalingHeader(hdr []byte) map[string]any {
 		out["av_live"] = true
 	}
 	out["av_data_kind"] = avDataKind(kind)
+	out["av_pack_mark"] = avPackMark(hdr[4] >> 4)
 	return out
+}
+
+func avPackMark(nibble byte) string {
+	switch nibble & 0x0f {
+	case 0:
+		return "atomic"
+	case 1:
+		return "first"
+	case 2:
+		return "last"
+	case 3:
+		return "middle"
+	default:
+		return fmt.Sprintf("mark_%d", nibble&0x0f)
+	}
 }
 
 // parseSignalingPayload extracts experimental status hints from the post-header payload.

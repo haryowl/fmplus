@@ -40,7 +40,7 @@ var knownEventIO = map[int]knownEvent{
 }
 
 // highSignalIO raises safety from IO values when event_io is unset (periodic records).
-var highSignalIO = []int{247, 246, 249, 252, 255, 253, 248, 1, 9}
+var highSignalIO = []int{247, 246, 249, 252, 255, 253, 248, 175, 251, 240, 1, 9}
 
 // flattenEventAlarm writes remappable alarm.* onto fix raw_attrs when event_io is known.
 func flattenEventAlarm(raw map[string]any) {

@@ -57,7 +57,7 @@ func flattenEventAlarm(raw map[string]any) {
 
 // highSignalIO is the subset of AVL IDs that raise safety when present as IO values
 // even when event_io is 0 (periodic records).
-var highSignalIO = []int{247, 246, 249, 252, 255, 253, 248, 1, 9} // crash, towing, jamming, unplug, overspeed, green, autogeofence, sos
+var highSignalIO = []int{247, 246, 249, 252, 255, 253, 248, 175, 251, 240, 1, 9} // crash, towing, jamming, unplug, overspeed, green, autogeofence, geofence, idling, movement, sos
 
 // flattenIOAlarms promotes known high-signal IO element values onto alarm.* keys.
 func flattenIOAlarms(raw map[string]any, io map[string]any) {

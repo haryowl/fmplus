@@ -84,6 +84,20 @@ func TestSafetyFromIO_SkipsWhenEventSet(t *testing.T) {
 	}
 }
 
+func TestSafetyFromIO_Idling(t *testing.T) {
+	fix := store.Fix{
+		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{
+			"event_io": 0,
+			"io":       map[string]any{"251": 1},
+		},
+	}
+	ev := safetyFromIO(fix)
+	if ev == nil || ev.AlarmType != "idling" {
+		t.Fatalf("%+v", ev)
+	}
+}
+
 func TestSafetyFromIO_Overspeed(t *testing.T) {
 	fix := store.Fix{
 		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),

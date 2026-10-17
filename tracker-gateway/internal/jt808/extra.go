@@ -206,7 +206,9 @@ func parseAdditionalInfo(body []byte) map[string]any {
 			}
 		case 0x30: // wireless network signal strength
 			if l >= 1 {
-				add["gsm_signal"] = int(val[0])
+				n := int(val[0])
+				add["gsm_signal"] = n
+				add["gsm.signal"] = n
 			}
 		case 0x31: // GNSS satellite count
 			if l >= 1 {
@@ -439,6 +441,11 @@ func flattenManualAlarmID(id int, add map[string]any) {
 	}
 }
 
+// HoistLocationStatusBits exports location status DWORD remaps for other adapters (e.g. JT809).
+func HoistLocationStatusBits(status uint32, dest map[string]any) {
+	hoistLocationStatusBits(status, dest)
+}
+
 // hoistLocationStatusBits maps JT/T 808 location status DWORD bits onto remappable status.* keys.
 func hoistLocationStatusBits(status uint32, raw map[string]any) {
 	if raw == nil {
@@ -446,6 +453,19 @@ func hoistLocationStatusBits(status uint32, raw map[string]any) {
 	}
 	if status&0x10 != 0 {
 		raw["status.out_of_service"] = true
+	}
+	// Bits 8–9: load (00 empty, 01 half, 10 reserved, 11 full).
+	switch (status >> 8) & 0x03 {
+	case 0:
+		raw["vehicle.load"] = "empty"
+	case 1:
+		raw["vehicle.load"] = "half"
+		raw["status.load_half"] = true
+	case 2:
+		raw["vehicle.load"] = "reserved"
+	case 3:
+		raw["vehicle.load"] = "full"
+		raw["status.load_full"] = true
 	}
 	if status&0x0400 != 0 {
 		raw["status.oil_cut"] = true
@@ -490,10 +510,10 @@ func hoistLocationStatusBits(status uint32, raw map[string]any) {
 
 func isRemappableSafetyKey(k string) bool {
 	switch k {
-	case "alarm_level", "tpms.alarm", "gsm_signal", "gnss_sats", "gnss.sats",
+	case "alarm_level", "tpms.alarm", "gsm_signal", "gsm.signal", "gnss_sats", "gnss.sats",
 		"overspeed_loc_type", "overspeed_region_id", "area_loc_type", "area_id", "area_direction",
 		"mileage", "fuel.level", "speed.extra", "speed.pulse", "io.status", "io.status32", "manual_alarm_id",
-		"oil.quantity", "temp.cargo", "analog.ad", "analog.ad2",
+		"oil.quantity", "temp.cargo", "analog.ad", "analog.ad2", "vehicle.load",
 		"route_id", "route_time_loc_type", "route_time_result", "route_drive_time",
 		"driver.ic_status", "driver.ic_card", "driver.ic_name", "driver.ic_result", "driver.ic_time_bcd":
 		return true
@@ -505,7 +525,8 @@ func isRemappableSafetyKey(k string) bool {
 		strings.HasPrefix(k, "status.") ||
 		strings.HasPrefix(k, "video.") ||
 		strings.HasPrefix(k, "driver.") ||
-		strings.HasPrefix(k, "gnss.")
+		strings.HasPrefix(k, "gnss.") ||
+		strings.HasPrefix(k, "vehicle.")
 }
 
 // FlattenAlarmBits exports location/GNSS alarm dword remaps for other adapters (e.g. JT809).
