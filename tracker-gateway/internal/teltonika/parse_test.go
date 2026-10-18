@@ -161,7 +161,8 @@ func TestExtractIO8E_NXScalarAndASCII(t *testing.T) {
 
 func TestPromoteTeltonikaScalars(t *testing.T) {
 	raw := map[string]any{}
-	io := map[string]any{"66": 12000, "67": 3800, "21": 4, "10": 2500}
+	// FMB wiki: AVL 6 = AIN2, AVL 10 = SD status
+	io := map[string]any{"66": 12000, "67": 3800, "21": 4, "6": 2500, "10": 1}
 	promoteTeltonikaScalars(raw, io)
 	if raw["voltage.ext"] != 12.0 || raw["voltage.batt"] != 3.8 || raw["gsm.signal"] != 4.0 {
 		t.Fatalf("%v", raw)
@@ -169,15 +170,19 @@ func TestPromoteTeltonikaScalars(t *testing.T) {
 	if raw["voltage.ain2"] != 2.5 {
 		t.Fatalf("ain2=%v", raw)
 	}
+	if raw["sd.status"] != 1.0 {
+		t.Fatalf("sd=%v", raw["sd.status"])
+	}
 }
 
 func TestPromoteTeltonikaScalars_BLE(t *testing.T) {
 	raw := map[string]any{}
-	promoteTeltonikaScalars(raw, map[string]any{"25": 215, "29": 55, "86": 90})
+	// Wiki: 25 temp ×0.01, 29 battery %, 86 humidity ×0.1
+	promoteTeltonikaScalars(raw, map[string]any{"25": 2150, "29": 90, "86": 550})
 	if raw["ble.temp1"] != 21.5 || raw["ble.humidity"] != 55.0 || raw["ble.battery"] != 90.0 {
 		t.Fatalf("%v", raw)
 	}
-	promoteTeltonikaScalars(raw, map[string]any{"27": 180, "28": 190})
+	promoteTeltonikaScalars(raw, map[string]any{"27": 1800, "28": 1900})
 	if raw["ble.temp3"] != 18.0 || raw["ble.temp4"] != 19.0 {
 		t.Fatalf("temp34=%v", raw)
 	}
@@ -185,7 +190,8 @@ func TestPromoteTeltonikaScalars_BLE(t *testing.T) {
 
 func TestPromoteTeltonikaScalars_DallasTemp(t *testing.T) {
 	raw := map[string]any{}
-	promoteTeltonikaScalars(raw, map[string]any{"72": 25.5, "73": 26.0, "74": 24.0, "75": 23.0})
+	// Wiki: AVL 72–75 signed ×0.1 °C
+	promoteTeltonikaScalars(raw, map[string]any{"72": 255, "73": 260, "74": 240, "75": 230})
 	if raw["temp.1"] != 25.5 || raw["temp.2"] != 26.0 || raw["temp.3"] != 24.0 || raw["temp.4"] != 23.0 {
 		t.Fatalf("%v", raw)
 	}
@@ -245,12 +251,16 @@ func TestPromoteTeltonikaScalars_GNSSVDOP(t *testing.T) {
 
 func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 	raw := map[string]any{}
-	promoteTeltonikaScalars(raw, map[string]any{"89": 75, "239": 1, "16": 12345, "12": 10, "13": 2.5, "48": 1000})
+	// Wiki: 12 ×0.001 L, 13 ×0.01 l/100km; AVL 48 not remapped (OBD fuel %)
+	promoteTeltonikaScalars(raw, map[string]any{"89": 75, "239": 1, "16": 12345, "12": 10000, "13": 250, "48": 55})
 	if raw["fuel.level"] != 75.0 || raw["status.ignition"] != true || raw["odometer"] != 12345.0 {
 		t.Fatalf("%v", raw)
 	}
-	if raw["fuel.used"] != 10.0 || raw["fuel.rate"] != 2.5 || raw["fuel.used_total"] != 1000.0 {
+	if raw["fuel.used"] != 10.0 || raw["fuel.rate"] != 2.5 {
 		t.Fatalf("fuel avl=%v", raw)
+	}
+	if _, ok := raw["fuel.used_total"]; ok {
+		t.Fatalf("AVL 48 must not map to fuel.used_total: %v", raw)
 	}
 	raw2 := map[string]any{}
 	promoteTeltonikaScalars(raw2, map[string]any{"84": 45.5, "36": 1800, "32": 85, "31": 40})
@@ -277,7 +287,8 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 		t.Fatalf("maf=%v", raw4["engine.maf"])
 	}
 	raw5 := map[string]any{}
-	promoteTeltonikaScalars(raw5, map[string]any{"70": 255, "30": 3, "53": 22, "50": 101, "51": 12500})
+	// Wiki: PCB temp AVL 13201 ×0.1; AVL 70 is geofence zone 11
+	promoteTeltonikaScalars(raw5, map[string]any{"13201": 255, "30": 3, "53": 22, "50": 101, "51": 12500})
 	if raw5["pcb.temp"] != 25.5 {
 		t.Fatalf("pcb=%v", raw5["pcb.temp"])
 	}
@@ -370,11 +381,12 @@ func TestPromoteTeltonikaScalars_GSMOperator(t *testing.T) {
 
 func TestPromoteTeltonikaScalars_IButton(t *testing.T) {
 	raw := map[string]any{}
-	promoteTeltonikaScalars(raw, map[string]any{"78": "a1b2c3d4", "250": 12.5, "255": 80})
+	// Wiki: 250 = trip event, 255 = overspeed speed km/h
+	promoteTeltonikaScalars(raw, map[string]any{"78": "a1b2c3d4", "250": 1, "255": 80})
 	if raw["ibutton.id"] != "a1b2c3d4" {
 		t.Fatalf("%v", raw)
 	}
-	if raw["trip.distance"] != 12.5 || raw["overspeed.threshold"] != 80.0 {
+	if raw["trip.event"] != 1.0 || raw["overspeed.speed"] != 80.0 {
 		t.Fatalf("trip/ov=%v", raw)
 	}
 }
@@ -427,7 +439,7 @@ func TestPromoteTeltonikaScalars_BLEEnvFuelFreq(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{
 		"274": 380, "275": 19, "277": 390, "278": 65530, "280": 400, // temp4=-6
-		"104": 41, "106": 42, "108": 43,
+		"104": 410, "106": 420, "108": 430, // ×0.1 %RH
 		"20": 81, "22": 82, "23": 83,
 		"306": 100, "307": 101, "308": 102, "309": 103,
 	})
@@ -501,10 +513,11 @@ func TestPromoteTeltonikaScalars_GeofenceZones1to9(t *testing.T) {
 
 func TestPromoteTeltonikaScalars_Geofence12to20AutoTempID(t *testing.T) {
 	raw := map[string]any{}
+	// FMB wiki: AVL 70 = zone 11; PCB temp = AVL 13201
 	promoteTeltonikaScalars(raw, map[string]any{
 		"88": 1, "91": 2, "98": 3, "175": 1,
 		"76": "aa", "77": "bb", "79": "cc",
-		"70": 301, // still pcb.temp, not zone11
+		"70": 1, "13201": 301,
 	})
 	if raw["geofence.zone12"] != 1.0 || raw["geofence.zone20"] != 3.0 || raw["geofence.auto"] != 1.0 {
 		t.Fatalf("geofence=%v", raw)
@@ -512,11 +525,11 @@ func TestPromoteTeltonikaScalars_Geofence12to20AutoTempID(t *testing.T) {
 	if raw["temp.id1"] != "aa" || raw["temp.id3"] != "cc" {
 		t.Fatalf("temp id=%v", raw)
 	}
-	if raw["pcb.temp"] != 30.1 {
-		t.Fatalf("pcb.temp must keep AVL 70: %v", raw["pcb.temp"])
+	if raw["geofence.zone11"] != 1.0 {
+		t.Fatalf("zone11=%v", raw["geofence.zone11"])
 	}
-	if _, ok := raw["geofence.zone11"]; ok {
-		t.Fatalf("must not remap AVL 70 to zone11: %v", raw)
+	if raw["pcb.temp"] != 30.1 {
+		t.Fatalf("pcb.temp from AVL 13201: %v", raw["pcb.temp"])
 	}
 }
 

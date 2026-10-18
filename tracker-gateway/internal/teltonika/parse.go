@@ -156,10 +156,14 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 		raw["voltage.batt"] = asIOFloat(v) / 1000.0
 	}
 	if v, ok := io["9"]; ok {
-		raw["voltage.ain1"] = asIOFloat(v) / 1000.0
+		raw["voltage.ain1"] = asIOFloat(v) / 1000.0 // AVL 9 Analog Input 1, ×0.001 V
+	}
+	// AVL 6 = Analog Input 2 (FMB140/125/150 wiki). AVL 10 = SD Status — not AIN2.
+	if v, ok := io["6"]; ok {
+		raw["voltage.ain2"] = asIOFloat(v) / 1000.0
 	}
 	if v, ok := io["10"]; ok {
-		raw["voltage.ain2"] = asIOFloat(v) / 1000.0
+		raw["sd.status"] = asIOFloat(v)
 	}
 	if v, ok := io["21"]; ok {
 		raw["gsm.signal"] = asIOFloat(v)
@@ -260,7 +264,10 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["65"]; ok {
 		raw["geofence.zone10"] = asIOFloat(v) // FMB geofence zone 10 event (not odometer)
 	}
-	// Zone 11 is AVL 70 on FMB, but 70 is already pcb.temp on PRO/FT — do not remap.
+	// AVL 70 = Geofence zone 11 on FMB140/125/150 wiki (PCB temp is AVL 13201).
+	if v, ok := io["70"]; ok {
+		raw["geofence.zone11"] = asIOFloat(v)
+	}
 	if v, ok := io["88"]; ok {
 		raw["geofence.zone12"] = asIOFloat(v)
 	}
@@ -459,11 +466,13 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["387"]; ok {
 		raw["gnss.iso6709"] = fmt.Sprintf("%v", v)
 	}
+	// AVL 250 = Trip event (0 stop / 1 start), not distance. Distance = AVL 199 trip.odometer.
 	if v, ok := io["250"]; ok {
-		raw["trip.distance"] = asIOFloat(v)
+		raw["trip.event"] = asIOFloat(v)
 	}
+	// AVL 255 = overspeed event speed (km/h), not a configured threshold.
 	if v, ok := io["255"]; ok {
-		raw["overspeed.threshold"] = asIOFloat(v)
+		raw["overspeed.speed"] = asIOFloat(v)
 	}
 	if v, ok := io["269"]; ok {
 		raw["ble.fuel_temp1"] = float64(int16(uint16(asIOFloat(v)))) // Escort LLS °C signed
@@ -710,18 +719,14 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["42"]; ok {
 		raw["engine.runtime"] = asIOFloat(v)
 	}
+	// AVL 12 Fuel Used GPS ×0.001 L; AVL 13 Fuel Rate GPS ×0.01 l/100km (FMB wiki).
 	if v, ok := io["12"]; ok {
-		raw["fuel.used"] = asIOFloat(v)
+		raw["fuel.used"] = asIOFloat(v) / 1000.0
 	}
 	if v, ok := io["13"]; ok {
-		raw["fuel.rate"] = asIOFloat(v)
+		raw["fuel.rate"] = asIOFloat(v) / 100.0
 	}
-	if v, ok := io["48"]; ok {
-		raw["fuel.used_total"] = asIOFloat(v)
-		if _, has := raw["fuel.used"]; !has {
-			raw["fuel.used"] = asIOFloat(v)
-		}
-	}
+	// AVL 48 = OBD Fuel Level (%) on FMB wiki — do not remap (hoist/constraint).
 	if v, ok := io["239"]; ok {
 		raw["status.ignition"] = asIOBool(v)
 	} else if v, ok := io["1"]; ok {
@@ -752,45 +757,47 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 		raw["idling"] = asIOBool(v)
 		raw["status.idling"] = asIOBool(v)
 	}
-	// Common FMB BLE/temp sensors (wiki AVL IDs — model configs vary).
+	// Dallas Temperature 1–4: AVL 72–75, signed, ×0.1 °C (FMB140/125/150 wiki).
 	if v, ok := io["72"]; ok {
-		raw["temp.1"] = asIOFloat(v)
+		raw["temp.1"] = asIOInt32(v) / 10.0
 	}
 	if v, ok := io["73"]; ok {
-		raw["temp.2"] = asIOFloat(v)
+		raw["temp.2"] = asIOInt32(v) / 10.0
 	}
 	if v, ok := io["74"]; ok {
-		raw["temp.3"] = asIOFloat(v)
+		raw["temp.3"] = asIOInt32(v) / 10.0
 	}
 	if v, ok := io["75"]; ok {
-		raw["temp.4"] = asIOFloat(v)
+		raw["temp.4"] = asIOInt32(v) / 10.0
 	}
+	// BLE Temperature #1–4: AVL 25–28, signed, ×0.01 °C.
 	if v, ok := io["25"]; ok {
-		raw["ble.temp1"] = asIOFloat(v) / 10.0 // °C ×10
+		raw["ble.temp1"] = asIOInt16(v) / 100.0
 	}
 	if v, ok := io["26"]; ok {
-		raw["ble.temp2"] = asIOFloat(v) / 10.0
+		raw["ble.temp2"] = asIOInt16(v) / 100.0
 	}
 	if v, ok := io["27"]; ok {
-		raw["ble.temp3"] = asIOFloat(v) / 10.0
+		raw["ble.temp3"] = asIOInt16(v) / 100.0
 	}
 	if v, ok := io["28"]; ok {
-		raw["ble.temp4"] = asIOFloat(v) / 10.0
+		raw["ble.temp4"] = asIOInt16(v) / 100.0
 	}
+	// BLE Battery #1 = AVL 29 (%); Humidity #1 = AVL 86 (×0.1 %RH) — do not swap.
 	if v, ok := io["29"]; ok {
-		raw["ble.humidity"] = asIOFloat(v)
-	}
-	if v, ok := io["104"]; ok {
-		raw["ble.humidity2"] = asIOFloat(v)
-	}
-	if v, ok := io["106"]; ok {
-		raw["ble.humidity3"] = asIOFloat(v)
-	}
-	if v, ok := io["108"]; ok {
-		raw["ble.humidity4"] = asIOFloat(v)
+		raw["ble.battery"] = asIOFloat(v)
 	}
 	if v, ok := io["86"]; ok {
-		raw["ble.battery"] = asIOFloat(v)
+		raw["ble.humidity"] = asIOFloat(v) / 10.0
+	}
+	if v, ok := io["104"]; ok {
+		raw["ble.humidity2"] = asIOFloat(v) / 10.0
+	}
+	if v, ok := io["106"]; ok {
+		raw["ble.humidity3"] = asIOFloat(v) / 10.0
+	}
+	if v, ok := io["108"]; ok {
+		raw["ble.humidity4"] = asIOFloat(v) / 10.0
 	}
 	if v, ok := io["20"]; ok {
 		raw["ble.battery2"] = asIOFloat(v)
@@ -817,15 +824,15 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["15"]; ok {
 		raw["eco.score"] = asIOFloat(v)
 	}
-	// Axis acceleration (common FMB AVL 17/18/19 — milli-g or device units).
+	// Axis X/Y/Z: AVL 17/18/19, signed mG (FMB wiki).
 	if v, ok := io["17"]; ok {
-		raw["accel.x"] = asIOFloat(v)
+		raw["accel.x"] = asIOInt16(v)
 	}
 	if v, ok := io["18"]; ok {
-		raw["accel.y"] = asIOFloat(v)
+		raw["accel.y"] = asIOInt16(v)
 	}
 	if v, ok := io["19"]; ok {
-		raw["accel.z"] = asIOFloat(v)
+		raw["accel.z"] = asIOInt16(v)
 	}
 	if v, ok := io["181"]; ok {
 		raw["gnss.pdop"] = asIOFloat(v) / 10.0
@@ -839,8 +846,10 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["69"]; ok {
 		raw["gnss.status"] = asIOFloat(v)
 	}
-	if v, ok := io["70"]; ok {
-		raw["pcb.temp"] = asIOFloat(v) / 10.0 // °C ×10 (PRO/FT/FMX)
+	// PCB Temperature: AVL 13201 on FMB140/125/150 wiki (signed ×0.1 °C).
+	// Older PRO/FT docs used AVL 70; on FMB wiki AVL 70 is geofence zone 11.
+	if v, ok := io["13201"]; ok {
+		raw["pcb.temp"] = asIOInt16(v) / 10.0
 	}
 	if v, ok := io["246"]; ok {
 		raw["status.towing"] = asIOBool(v)
@@ -1077,4 +1086,22 @@ func asIOFloat(v any) float64 {
 	default:
 		return 0
 	}
+}
+
+// asIOInt16 reinterprets an IO numeric as signed int16 (Teltonika signed 2-byte elements).
+func asIOInt16(v any) float64 {
+	f := asIOFloat(v)
+	if f < 0 {
+		return f
+	}
+	return float64(int16(uint16(f)))
+}
+
+// asIOInt32 reinterprets an IO numeric as signed int32 (Teltonika signed 4-byte elements).
+func asIOInt32(v any) float64 {
+	f := asIOFloat(v)
+	if f < 0 {
+		return f
+	}
+	return float64(int32(uint32(f)))
 }
