@@ -64,11 +64,19 @@ func TestParseTagRecords_MultiCoords(t *testing.T) {
 }
 
 func TestTagSize_Official(t *testing.T) {
-	if tagSize(0x01) != 1 || tagSize(0x04) != 2 || tagSize(0x33) != 4 || tagSize(0x46) != 2 {
-		t.Fatalf("sizes hw=%d id=%d spd=%d in=%d", tagSize(0x01), tagSize(0x04), tagSize(0x33), tagSize(0x46))
+	cases := map[byte]int{
+		0x01: 1, 0x03: 15, 0x04: 2, 0x10: 2, 0x20: 4, 0x30: 9, 0x33: 4, 0x34: 2, 0x35: 1,
+		0x40: 2, 0x41: 2, 0x42: 2, 0x43: 1, 0x44: 4, 0x45: 2, 0x46: 2, 0x47: 4,
+		0x50: 2, 0x5a: 4, 0x60: 2, 0x63: 3, 0x70: 2, 0x80: 3, 0x90: 4,
+		0xa0: 1, 0xb0: 2, 0xc0: 4, 0xc4: 1, 0xd4: 4, 0xd5: 1, 0xd6: 2, 0xdb: 4, 0xf0: 4,
 	}
-	if tagSize(0xd4) != 4 {
-		t.Fatalf("0xd4 size=%d", tagSize(0xd4))
+	for tag, want := range cases {
+		if got := tagSize(tag); got != want {
+			t.Fatalf("tag 0x%02x size=%d want=%d", tag, got, want)
+		}
+	}
+	if tagSize(0xe0) != -3 {
+		t.Fatalf("cmd reply size=%d", tagSize(0xe0))
 	}
 }
 
@@ -183,7 +191,7 @@ func TestIgnitionFromInputStatus(t *testing.T) {
 	tags := map[byte][]byte{
 		0x30: append([]byte{0x07}, append(make([]byte, 4), make([]byte, 4)...)...),
 		0x46: {0x01, 0x00},
-		0x47: {0x05},
+		0x45: {0x05, 0x00}, // outputs (official 0x45)
 	}
 	fix, ok := fixFromTags(tags)
 	if !ok || fix.Ignition == nil || !*fix.Ignition {
@@ -201,7 +209,7 @@ func TestDigitalIO_Din8AndInputs(t *testing.T) {
 	tags := map[byte][]byte{
 		0x30: append([]byte{0x07}, append(make([]byte, 4), make([]byte, 4)...)...),
 		0x46: {0x02, 0x01}, // din1 + din8
-		0x47: {0x02},       // dout1
+		0x45: {0x02, 0x00}, // dout1
 	}
 	fix, ok := fixFromTags(tags)
 	if !ok {
@@ -219,15 +227,15 @@ func TestDigitalIO_Din8AndInputs(t *testing.T) {
 	if fix.RawAttrs["status.dout1"] != true || fix.RawAttrs["status.outputs"] != 2 {
 		t.Fatalf("dout=%v", fix.RawAttrs)
 	}
-	if fix.RawAttrs["tag.0x47"] != 2 || fix.RawAttrs["status.tag.0x47"] != 2 {
-		t.Fatalf("tag.0x47=%v", fix.RawAttrs["tag.0x47"])
+	if fix.RawAttrs["tag.0x45"] != 2 {
+		t.Fatalf("tag.0x45=%v", fix.RawAttrs["tag.0x45"])
 	}
 }
 
 func TestDigitalIO_Dout8AndOutputsHi(t *testing.T) {
 	tags := map[byte][]byte{
 		0x30: append([]byte{0x07}, append(make([]byte, 4), make([]byte, 4)...)...),
-		0x47: {0x02, 0x01}, // dout1 + dout8
+		0x45: {0x02, 0x01}, // dout1 + dout8
 	}
 	fix, ok := fixFromTags(tags)
 	if !ok {
@@ -239,12 +247,12 @@ func TestDigitalIO_Dout8AndOutputsHi(t *testing.T) {
 	if fix.RawAttrs["status.outputs"] != 2 || fix.RawAttrs["status.outputs_hi"] != 1 {
 		t.Fatalf("outputs=%v", fix.RawAttrs)
 	}
-	if fix.RawAttrs["tag.0x47"] != (2|(1<<8)) || fix.RawAttrs["status.tag.0x47"] != (2|(1<<8)) {
-		t.Fatalf("tag.0x47 hi=%v", fix.RawAttrs["tag.0x47"])
+	if fix.RawAttrs["tag.0x45"] != (2|(1<<8)) {
+		t.Fatalf("tag.0x45 hi=%v", fix.RawAttrs["tag.0x45"])
 	}
 	tags2 := map[byte][]byte{
 		0x30: append([]byte{0x07}, append(make([]byte, 4), make([]byte, 4)...)...),
-		0x47: {0x00, 0x80}, // dout15
+		0x45: {0x00, 0x80}, // dout15
 	}
 	fix2, ok2 := fixFromTags(tags2)
 	if !ok2 || fix2.RawAttrs["status.dout15"] != true {

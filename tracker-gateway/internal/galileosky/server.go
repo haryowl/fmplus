@@ -343,10 +343,11 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 			}
 		}
 	}
-	if out, ok := tags[0x47]; ok && len(out) >= 1 {
+	// Official outputs are tag 0x45 (not 0x47 EcoDrive). applyStatusTags also fills dout*.
+	if out, ok := tags[0x45]; ok && len(out) >= 1 {
 		fix.RawAttrs["status.outputs"] = int(out[0])
-		fix.RawAttrs["tag.0x47"] = int(out[0])
-		fix.RawAttrs["status.tag.0x47"] = int(out[0])
+		fix.RawAttrs["tag.0x45"] = int(out[0])
+		fix.RawAttrs["status.tag.0x45"] = int(out[0])
 		fix.RawAttrs["output.0"] = out[0]&0x01 != 0
 		for i := 0; i < 8; i++ {
 			fix.RawAttrs[fmt.Sprintf("status.dout%d", i)] = out[0]&(1<<uint(i)) != 0
@@ -354,8 +355,8 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		if len(out) >= 2 {
 			fix.RawAttrs["status.outputs_hi"] = int(out[1])
 			comp := int(out[0]) | (int(out[1]) << 8)
-			fix.RawAttrs["tag.0x47"] = comp
-			fix.RawAttrs["status.tag.0x47"] = comp
+			fix.RawAttrs["tag.0x45"] = comp
+			fix.RawAttrs["status.tag.0x45"] = comp
 			for i := 0; i < 8; i++ {
 				fix.RawAttrs[fmt.Sprintf("status.dout%d", i+8)] = out[1]&(1<<uint(i)) != 0
 			}
@@ -365,13 +366,22 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		f := float64(binary.LittleEndian.Uint32(odo)) / 1000.0
 		fix.Odometer = &f
 	}
-	// Analog 0x50 often external voltage (mV) on Easy firmwares; 0x51 often backup battery.
-	if v, ok := tags[0x50]; ok && len(v) >= 2 {
+	// Prefer official 0x41/0x42 supply/battery mV; fall back to analog inputs 0x50/0x51.
+	if v, ok := tags[0x41]; ok && len(v) >= 2 {
+		mv := float64(binary.LittleEndian.Uint16(v[0:2]))
+		fix.RawAttrs["voltage.supply"] = mv / 1000.0
+		fix.RawAttrs["voltage.ext"] = mv / 1000.0
+		fix.RawAttrs["tag.0x41"] = mv
+	} else if v, ok := tags[0x50]; ok && len(v) >= 2 {
 		mv := float64(binary.LittleEndian.Uint16(v[0:2]))
 		fix.RawAttrs["voltage.ext"] = mv / 1000.0
 		fix.RawAttrs["tag.0x50"] = mv
 	}
-	if v, ok := tags[0x51]; ok && len(v) >= 2 {
+	if v, ok := tags[0x42]; ok && len(v) >= 2 {
+		mv := float64(binary.LittleEndian.Uint16(v[0:2]))
+		fix.RawAttrs["voltage.batt"] = mv / 1000.0
+		fix.RawAttrs["tag.0x42"] = mv
+	} else if v, ok := tags[0x51]; ok && len(v) >= 2 {
 		mv := float64(binary.LittleEndian.Uint16(v[0:2]))
 		fix.RawAttrs["voltage.batt"] = mv / 1000.0
 		fix.RawAttrs["tag.0x51"] = mv
@@ -429,139 +439,94 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("analog.%d", i+2)] = mv / 1000.0
 		raw[fmt.Sprintf("tag.0x%02x", id)] = mv
 	}
-	// 0x60–0x63: frequent LLS / fuel sensor payloads (uint32, units model-dependent).
-	fuelKeys := []string{"fuel.level", "fuel.level2", "fuel.temp", "fuel.freq"}
-	for i, id := range []byte{0x60, 0x61, 0x62, 0x63} {
-		v, ok := tags[id]
-		if !ok || len(v) < 4 {
-			continue
-		}
-		n := binary.LittleEndian.Uint32(v[0:4])
-		raw[fuelKeys[i]] = float64(n)
-		raw[fmt.Sprintf("tag.0x%02x", id)] = n
-	}
-	// 0x11–0x19: 1-byte user/CAN status nibbles.
-	for i, id := range []byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19} {
-		v, ok := tags[id]
-		if !ok || len(v) < 1 {
-			continue
-		}
-		raw[fmt.Sprintf("user.%d", i)] = int(v[0])
-	}
-	// 0x21–0x2F: extended 4-byte user/data channels.
-	for i := 0; i < 15; i++ {
-		id := byte(0x21 + i)
-		v, ok := tags[id]
-		if !ok || len(v) < 4 {
-			continue
-		}
-		n := binary.LittleEndian.Uint32(v[0:4])
-		raw[fmt.Sprintf("user.%d", i+9)] = float64(n)
-		raw[fmt.Sprintf("tag.0x%02x", id)] = n
-	}
-	// 0x31 / 0x32: GNSS auxiliary quality words (2-byte LE, units model-dependent).
-	if v, ok := tags[0x31]; ok && len(v) >= 2 {
-		n := binary.LittleEndian.Uint16(v[0:2])
-		raw["gnss.aux1"] = float64(n)
-		raw["tag.0x31"] = int(n)
-	}
-	if v, ok := tags[0x32]; ok && len(v) >= 2 {
-		n := binary.LittleEndian.Uint16(v[0:2])
-		raw["gnss.aux2"] = float64(n)
-		raw["tag.0x32"] = int(n)
-	}
-	// 0xd5–0xd7: additional counters (units model-dependent).
-	for i, id := range []byte{0xd5, 0xd6, 0xd7} {
-		v, ok := tags[id]
-		if !ok || len(v) < 4 {
-			continue
-		}
-		n := binary.LittleEndian.Uint32(v[0:4])
-		raw[fmt.Sprintf("counter.%d", i+1)] = float64(n)
-		raw[fmt.Sprintf("tag.0x%02x", id)] = n
-	}
-	// 0x70–0x73: frequent 1-Wire / temp sensor payloads (signed °C×10 on many firmwares).
-	for i, id := range []byte{0x70, 0x71, 0x72, 0x73} {
-		v, ok := tags[id]
-		if !ok || len(v) < 2 {
-			continue
-		}
-		t10 := int16(binary.LittleEndian.Uint16(v[0:2]))
-		raw[fmt.Sprintf("temp.%d", i+1)] = float64(t10) / 10.0
-		raw[fmt.Sprintf("tag.0x%02x", id)] = int(t10)
-	}
-	// 0x74–0x7b: additional 1-Wire / humidity-style payloads (model-dependent).
-	for i, id := range []byte{0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x7b} {
+	// 0x60–0x62: RS485 DUT level (uint16). 0x63–0x6F: fuel uint16 + temp int8.
+	for i, id := range []byte{0x60, 0x61, 0x62} {
 		v, ok := tags[id]
 		if !ok || len(v) < 2 {
 			continue
 		}
 		n := binary.LittleEndian.Uint16(v[0:2])
-		raw[fmt.Sprintf("sensor.%d", i+5)] = float64(n) / 10.0
+		raw[fmt.Sprintf("fuel.level%d", i)] = float64(n)
+		if i == 0 {
+			raw["fuel.level"] = float64(n)
+		}
 		raw[fmt.Sprintf("tag.0x%02x", id)] = int(n)
 	}
-	// 0x64–0x67: frequent CAN / RS485 numeric payloads.
-	for i, id := range []byte{0x64, 0x65, 0x66, 0x67} {
+	for i := 0; i < 13; i++ {
+		id := byte(0x63 + i)
 		v, ok := tags[id]
-		if !ok || len(v) < 4 {
+		if !ok || len(v) < 3 {
 			continue
 		}
-		n := binary.LittleEndian.Uint32(v[0:4])
-		raw[fmt.Sprintf("can.%d", i+1)] = float64(n)
-		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+		lvl := binary.LittleEndian.Uint16(v[0:2])
+		temp := int(int8(v[2]))
+		raw[fmt.Sprintf("rs485.%d.level", i+3)] = float64(lvl)
+		raw[fmt.Sprintf("rs485.%d.temp", i+3)] = float64(temp)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = int(lvl)
+		if i == 0 {
+			raw["fuel.temp"] = float64(temp)
+		}
 	}
-	// 0x68–0x6F: extended CAN / RS485 channels (4-byte LE).
-	for i := 0; i < 8; i++ {
-		id := byte(0x68 + i)
+	// 0xd5: iButton attached bitmask. 0xd6–0xda: 2-byte CAN16 / axle / OBD.
+	if v, ok := tags[0xd5]; ok && len(v) >= 1 {
+		raw["ibutton.mask"] = int(v[0])
+		raw["tag.0xd5"] = int(v[0])
+	}
+	for i, id := range []byte{0xd6, 0xd7, 0xd8, 0xd9, 0xda} {
 		v, ok := tags[id]
-		if !ok || len(v) < 4 {
+		if !ok || len(v) < 2 {
 			continue
 		}
-		n := binary.LittleEndian.Uint32(v[0:4])
-		raw[fmt.Sprintf("can.%d", i+9)] = float64(n)
-		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+		n := binary.LittleEndian.Uint16(v[0:2])
+		raw[fmt.Sprintf("counter.%d", i+1)] = float64(n)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = int(n)
 	}
-	// 0xC0–0xC3: additional CAN / RS485 channels (4-byte LE).
+	// 0x70–0x77: thermometer id (u8) + temp °C (int8) — official example 01 10 → 16°C.
+	for i, id := range []byte{0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77} {
+		v, ok := tags[id]
+		if !ok || len(v) < 2 {
+			continue
+		}
+		raw[fmt.Sprintf("temp.%d.id", i)] = int(v[0])
+		raw[fmt.Sprintf("temp.%d", i+1)] = float64(int8(v[1]))
+		raw[fmt.Sprintf("tag.0x%02x", id)] = int(int8(v[1]))
+	}
+	// 0xC0–0xC3: CAN_A0/A1/B0/B1 (4-byte).
 	for i, id := range []byte{0xc0, 0xc1, 0xc2, 0xc3} {
 		v, ok := tags[id]
 		if !ok || len(v) < 4 {
 			continue
 		}
 		n := binary.LittleEndian.Uint32(v[0:4])
-		raw[fmt.Sprintf("can.%d", i+5)] = float64(n)
+		raw[fmt.Sprintf("can.%d", i)] = float64(n)
 		raw[fmt.Sprintf("tag.0x%02x", id)] = n
 	}
-	// 0xC4–0xCF: further CAN / RS485 channels (4-byte LE).
+	// 0xC4–0xCF / 0xD0–0xD2 / 0xA0–0xAF: CAN8BITR (1-byte).
 	for i := 0; i < 12; i++ {
 		id := byte(0xc4 + i)
 		v, ok := tags[id]
-		if !ok || len(v) < 4 {
+		if !ok || len(v) < 1 {
 			continue
 		}
-		n := binary.LittleEndian.Uint32(v[0:4])
-		raw[fmt.Sprintf("can.%d", i+17)] = float64(n)
-		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+		raw[fmt.Sprintf("can8.%d", i)] = int(v[0])
+		raw[fmt.Sprintf("tag.0x%02x", id)] = int(v[0])
 	}
-	// 0xA0–0xA3: extended analog / sensor payloads (4-byte LE, units model-dependent).
-	for i, id := range []byte{0xa0, 0xa1, 0xa2, 0xa3} {
+	for i, id := range []byte{0xd0, 0xd1, 0xd2} {
 		v, ok := tags[id]
-		if !ok || len(v) < 4 {
+		if !ok || len(v) < 1 {
 			continue
 		}
-		n := binary.LittleEndian.Uint32(v[0:4])
-		raw[fmt.Sprintf("analog.%d", i+10)] = float64(n)
-		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+		raw[fmt.Sprintf("can8.%d", i+12)] = int(v[0])
+		raw[fmt.Sprintf("tag.0x%02x", id)] = int(v[0])
 	}
-	// 0xA4–0xAF: further analog / sensor payloads (4-byte LE).
-	for i := 0; i < 12; i++ {
-		id := byte(0xa4 + i)
+	for i := 0; i < 16; i++ {
+		id := byte(0xa0 + i)
 		v, ok := tags[id]
-		if !ok || len(v) < 4 {
+		if !ok || len(v) < 1 {
 			continue
 		}
-		n := binary.LittleEndian.Uint32(v[0:4])
-		raw[fmt.Sprintf("analog.%d", i+14)] = float64(n)
-		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+		raw[fmt.Sprintf("can8r.%d", i+15)] = int(v[0])
+		raw[fmt.Sprintf("tag.0x%02x", id)] = int(v[0])
 	}
 	// 0xE0–0xE6: command / text replies (length-prefixed ASCII).
 	for _, id := range []byte{0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6} {
@@ -578,29 +543,31 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("tag.0x%02x", id)] = s
 		break
 	}
-	// 0x48: iButton / Dallas key (8-byte id as hex).
-	if v, ok := tags[0x48]; ok && len(v) >= 8 {
-		raw["ibutton.id"] = fmt.Sprintf("%x", v[:8])
-		raw["tag.0x48"] = raw["ibutton.id"]
+	// 0x90 / 0xd3: iButton identifiers (4-byte).
+	if v, ok := tags[0x90]; ok && len(v) >= 4 {
+		raw["ibutton.id"] = fmt.Sprintf("%x", v[:4])
+		raw["tag.0x90"] = raw["ibutton.id"]
 	}
-	// 0x5a: accelerometer axes (signed milli-g or device units).
-	if v, ok := tags[0x5a]; ok && len(v) >= 6 {
-		raw["accel.x"] = float64(int16(binary.LittleEndian.Uint16(v[0:2])))
-		raw["accel.y"] = float64(int16(binary.LittleEndian.Uint16(v[2:4])))
-		raw["accel.z"] = float64(int16(binary.LittleEndian.Uint16(v[4:6])))
-		raw["tag.0x5a"] = true
+	if v, ok := tags[0xd3]; ok && len(v) >= 4 {
+		raw["ibutton.id2"] = fmt.Sprintf("%x", v[:4])
+		raw["tag.0xd3"] = raw["ibutton.id2"]
 	}
-	// 0x80–0x87: 8-byte Modbus / RS485 registers (low 4 bytes as uint32 when plausible).
+	// 0x5a: REP-500 energy counter (uint32).
+	if v, ok := tags[0x5a]; ok && len(v) >= 4 {
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw["energy.rep500"] = float64(n)
+		raw["tag.0x5a"] = n
+	}
+	// 0x80–0x87: DS1923 id + temp°C + humidity (×100/255).
 	for i, id := range []byte{0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87} {
 		v, ok := tags[id]
-		if !ok || len(v) < 4 {
+		if !ok || len(v) < 3 {
 			continue
 		}
-		n := binary.LittleEndian.Uint32(v[0:4])
-		raw[fmt.Sprintf("modbus.%d", i+1)] = float64(n)
-		raw[fmt.Sprintf("tag.0x%02x", id)] = n
-		if len(v) >= 8 {
-			raw[fmt.Sprintf("modbus.%d_hi", i+1)] = float64(binary.LittleEndian.Uint32(v[4:8]))
-		}
+		raw[fmt.Sprintf("ds1923.%d.id", i)] = int(v[0])
+		raw[fmt.Sprintf("ds1923.%d.temp", i)] = float64(int8(v[1]))
+		hum := float64(v[2]) * 100.0 / 255.0
+		raw[fmt.Sprintf("ds1923.%d.humidity", i)] = hum
+		raw[fmt.Sprintf("tag.0x%02x", id)] = int(int8(v[1]))
 	}
 }

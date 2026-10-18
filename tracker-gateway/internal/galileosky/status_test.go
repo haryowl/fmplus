@@ -1,88 +1,76 @@
 package galileosky
 
-import "testing"
+import (
+	"encoding/binary"
+	"testing"
+)
 
-func TestApplyStatusTags_SOS(t *testing.T) {
+func TestApplyStatusTags_SOS_AndMoving(t *testing.T) {
 	raw := map[string]any{}
-	tags := map[byte][]byte{0x40: {0x01}, 0x41: {0x00}}
-	evs := applyStatusTags(tags, raw)
+	// bit0 movement + bit15 alarm (SOS)
+	st := make([]byte, 2)
+	binary.LittleEndian.PutUint16(st, 0x8001)
+	evs := applyStatusTags(map[byte][]byte{0x40: st}, raw)
+	if raw["status.moving"] != true || raw["alarm.sos"] != true {
+		t.Fatalf("raw=%v", raw)
+	}
 	if len(evs) != 1 || evs[0].AlarmType != "sos" {
 		t.Fatalf("evs=%+v", evs)
 	}
-	if raw["alarm.sos"] != true || raw["tag.0x40"] != 1 {
+}
+
+func TestApplyStatusTags_EngineAndPower(t *testing.T) {
+	raw := map[string]any{}
+	st := make([]byte, 2)
+	binary.LittleEndian.PutUint16(st, 0x0100|0x0200) // ext power + engine
+	evs := applyStatusTags(map[byte][]byte{0x40: st}, raw)
+	if raw["status.ignition"] != true || raw["alarm.power_ext"] != true {
 		t.Fatalf("raw=%v", raw)
 	}
-}
-
-func TestApplyStatusTags_Vibration(t *testing.T) {
-	raw := map[string]any{}
-	evs := applyStatusTags(map[byte][]byte{0x40: {0x02}}, raw)
-	if len(evs) != 1 || evs[0].AlarmType != "vibration" {
-		t.Fatalf("evs=%+v", evs)
-	}
-	if raw["tag.0x40"] != 2 || raw["alarm.vibration"] != true {
-		t.Fatalf("raw=%v", raw)
-	}
-}
-
-func TestApplyStatusTags_Ignition(t *testing.T) {
-	raw := map[string]any{}
-	if len(applyStatusTags(map[byte][]byte{0x41: {0x01}}, raw)) != 0 {
-		t.Fatal("no safety for ignition-only")
-	}
-	if raw["status.acc"] != true || raw["status.ignition"] != true {
-		t.Fatalf("raw=%v", raw)
-	}
-}
-
-func TestApplyStatusTags_OverspeedTowing(t *testing.T) {
-	raw := map[string]any{}
-	evs := applyStatusTags(map[byte][]byte{0x42: {0x01}, 0x43: {0x01}}, raw)
-	if len(evs) != 2 {
-		t.Fatalf("evs=%+v", evs)
-	}
-	types := map[string]bool{}
-	for _, e := range evs {
-		types[e.AlarmType] = true
-	}
-	if !types["overspeed"] || !types["towing"] {
-		t.Fatalf("types=%v", types)
-	}
-	if raw["tag.0x43"] != 1 || raw["status.tag.0x43"] != 1 {
-		t.Fatalf("tag43=%v", raw)
-	}
-}
-
-func TestApplyStatusTags_BatteryJamming(t *testing.T) {
-	raw := map[string]any{}
-	evs := applyStatusTags(map[byte][]byte{0x44: {0x02}, 0x45: {0x01}}, raw)
-	if len(evs) != 2 {
-		t.Fatalf("evs=%+v", evs)
-	}
-	if raw["alarm.battery_low"] != true || raw["alarm.gsm_jamming"] != true {
-		t.Fatalf("%v", raw)
-	}
-	if raw["status.ext44"] != 2 || raw["status.ext45"] != 1 {
-		t.Fatalf("ext=%v", raw)
-	}
-	if raw["tag.0x44"] != 2 || raw["status.tag.0x44"] != 2 {
-		t.Fatalf("tag44=%v", raw)
-	}
-	if raw["tag.0x45"] != 1 || raw["status.tag.0x45"] != 1 {
-		t.Fatalf("tag45=%v", raw)
-	}
-}
-
-func TestApplyStatusTags_PowerExt(t *testing.T) {
-	raw := map[string]any{}
-	evs := applyStatusTags(map[byte][]byte{0x44: {0x01}}, raw)
 	if len(evs) != 1 || evs[0].AlarmType != "power_ext" {
 		t.Fatalf("evs=%+v", evs)
 	}
-	if raw["alarm.power_ext"] != true {
-		t.Fatalf("%v", raw)
+}
+
+func TestApplyStatusTags_VoltagesTemp(t *testing.T) {
+	raw := map[string]any{}
+	sup := make([]byte, 2)
+	batt := make([]byte, 2)
+	binary.LittleEndian.PutUint16(sup, 12400)
+	binary.LittleEndian.PutUint16(batt, 3700)
+	_ = applyStatusTags(map[byte][]byte{
+		0x41: sup,
+		0x42: batt,
+		0x43: {0x16}, // 22°C
+	}, raw)
+	if raw["voltage.supply"] != 12.4 || raw["voltage.batt"] != 3.7 {
+		t.Fatalf("volt=%v", raw)
 	}
-	if raw["status.ext44"] != 1 {
-		t.Fatalf("ext44=%v", raw)
+	if raw["temp.device"] != float64(22) {
+		t.Fatalf("temp=%v", raw)
+	}
+}
+
+func TestApplyStatusTags_OutputsAndEcoDrive(t *testing.T) {
+	raw := map[string]any{}
+	_ = applyStatusTags(map[byte][]byte{
+		0x45: {0x05, 0x00},
+		0x47: {10, 20, 30, 40},
+	}, raw)
+	if raw["status.dout0"] != true || raw["status.dout2"] != true {
+		t.Fatalf("dout=%v", raw)
+	}
+	if raw["ecodrive.accel"] != 10 || raw["ecodrive.brake"] != 20 {
+		t.Fatalf("eco=%v", raw)
+	}
+}
+
+func TestApplyStatusTags_Impact(t *testing.T) {
+	raw := map[string]any{}
+	st := make([]byte, 2)
+	binary.LittleEndian.PutUint16(st, 0x0400)
+	evs := applyStatusTags(map[byte][]byte{0x40: st}, raw)
+	if len(evs) != 1 || evs[0].AlarmType != "impact" {
+		t.Fatalf("evs=%+v", evs)
 	}
 }

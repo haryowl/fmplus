@@ -1,11 +1,14 @@
 package galileosky
 
 import (
+	"encoding/binary"
+	"fmt"
+
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
-// applyStatusTags promotes 0x40–0x45 into remappable keys and returns safety events
-// for high-confidence alarm bits (firmware-heuristic; still partial).
+// applyStatusTags promotes official tags 0x40–0x47 into remappable keys and safety events.
+// Bit meanings for 0x40 follow Galileosky §8 device-status decode (Table 13).
 func applyStatusTags(tags map[byte][]byte, raw map[string]any) []*store.SafetyEvent {
 	if raw == nil {
 		return nil
@@ -19,66 +22,122 @@ func applyStatusTags(tags map[byte][]byte, raw map[string]any) []*store.SafetyEv
 			SourceProtocol: "galileosky",
 		})
 	}
-	for _, id := range []byte{0x40, 0x41, 0x42, 0x43, 0x44, 0x45} {
-		v, ok := tags[id]
-		if !ok || len(v) < 1 {
-			continue
+
+	if v, ok := tags[0x40]; ok && len(v) >= 2 {
+		st := binary.LittleEndian.Uint16(v[0:2])
+		raw["tag.0x40"] = int(st)
+		raw["status.tag.0x40"] = int(st)
+		raw["status.device"] = int(st)
+		// bit0: movement (AccSens), not SOS
+		moving := st&0x0001 != 0
+		raw["status.moving"] = moving
+		raw["movement"] = moving
+		if st&0x0002 != 0 {
+			raw["alarm.tilt"] = true
+			add("tilt", 1, map[string]any{"alarm.tilt": true, "tag.0x40": int(st)})
 		}
-		val := int(v[0])
-		key := "tag.0x" + hex2(id)
-		raw[key] = val
-		raw["status."+key] = val
-		switch id {
-		case 0x40:
-			if val&0x01 != 0 {
-				raw["alarm.sos"] = true
-				add("sos", 2, map[string]any{"alarm.sos": true, key: val})
-			}
-			if val&0x02 != 0 {
-				raw["alarm.vibration"] = true
-				add("vibration", 1, map[string]any{"alarm.vibration": true, key: val})
-			}
-		case 0x41:
-			// Common: bit0 ignition / DIN1 on many Easy firmwares.
-			on := val&0x01 != 0
-			raw["status.acc"] = on
-			raw["status.ignition"] = on
-			if on {
-				raw["ignition"] = true
-			}
-		case 0x42:
-			if val&0x01 != 0 {
-				raw["alarm.overspeed"] = true
-				add("overspeed", 1, map[string]any{"alarm.overspeed": true, key: val})
-			}
-		case 0x43:
-			if val&0x01 != 0 {
-				raw["alarm.towing"] = true
-				add("towing", 2, map[string]any{"alarm.towing": true, key: val})
-			}
-		case 0x44:
-			// Firmware-variant status; expose bits without forcing safety unless SOS-like.
-			raw["status.ext44"] = val
-			if val&0x01 != 0 {
-				raw["alarm.power_ext"] = true
-				add("power_ext", 2, map[string]any{"alarm.power_ext": true, key: val})
-			}
-			if val&0x02 != 0 {
-				raw["alarm.battery_low"] = true
-				add("battery_low", 1, map[string]any{"alarm.battery_low": true, key: val})
-			}
-		case 0x45:
-			raw["status.ext45"] = val
-			if val&0x01 != 0 {
-				raw["alarm.gsm_jamming"] = true
-				add("jamming", 2, map[string]any{"alarm.gsm_jamming": true, key: val})
+		if st&0x0004 != 0 {
+			raw["status.ibutton_trusted"] = true
+		}
+		if st&0x0008 != 0 {
+			raw["alarm.sim_missing"] = true
+			add("sim_missing", 1, map[string]any{"alarm.sim_missing": true, "tag.0x40": int(st)})
+		}
+		if st&0x0010 != 0 {
+			raw["status.geofence"] = true
+		}
+		if st&0x0020 != 0 {
+			raw["alarm.battery_low"] = true
+			add("battery_low", 1, map[string]any{"alarm.battery_low": true, "tag.0x40": int(st)})
+		}
+		if st&0x0040 != 0 {
+			raw["alarm.gnss_antenna"] = true
+			add("gnss_antenna", 1, map[string]any{"alarm.gnss_antenna": true, "tag.0x40": int(st)})
+		}
+		if st&0x0080 != 0 {
+			raw["alarm.bus_voltage"] = true
+			add("bus_voltage", 1, map[string]any{"alarm.bus_voltage": true, "tag.0x40": int(st)})
+		}
+		if st&0x0100 != 0 {
+			raw["alarm.power_ext"] = true
+			add("power_ext", 2, map[string]any{"alarm.power_ext": true, "tag.0x40": int(st)})
+		}
+		if st&0x0200 != 0 {
+			raw["status.acc"] = true
+			raw["status.ignition"] = true
+			raw["ignition"] = true
+		}
+		if st&0x0400 != 0 {
+			raw["alarm.impact"] = true
+			add("impact", 2, map[string]any{"alarm.impact": true, "tag.0x40": int(st)})
+		}
+		if st&0x0800 != 0 {
+			raw["gnss.glonass"] = true
+		}
+		raw["gsm.signal_q"] = int((st >> 12) & 0x03)
+		if st&0x4000 != 0 {
+			raw["status.alarm_mode"] = true
+		}
+		if st&0x8000 != 0 {
+			raw["alarm.sos"] = true
+			add("sos", 2, map[string]any{"alarm.sos": true, "tag.0x40": int(st)})
+		}
+	} else if v, ok := tags[0x40]; ok && len(v) >= 1 {
+		// Truncated / legacy 1-byte view — expose raw only.
+		raw["tag.0x40"] = int(v[0])
+		raw["status.tag.0x40"] = int(v[0])
+	}
+
+	if v, ok := tags[0x41]; ok && len(v) >= 2 {
+		mv := float64(binary.LittleEndian.Uint16(v[0:2]))
+		raw["tag.0x41"] = mv
+		raw["voltage.supply"] = mv / 1000.0
+		raw["voltage.ext"] = mv / 1000.0
+	}
+	if v, ok := tags[0x42]; ok && len(v) >= 2 {
+		mv := float64(binary.LittleEndian.Uint16(v[0:2]))
+		raw["tag.0x42"] = mv
+		raw["voltage.batt"] = mv / 1000.0
+	}
+	if v, ok := tags[0x43]; ok && len(v) >= 1 {
+		t := int(int8(v[0]))
+		raw["tag.0x43"] = t
+		raw["temp.device"] = float64(t)
+	}
+	if v, ok := tags[0x44]; ok && len(v) >= 4 {
+		u := binary.LittleEndian.Uint32(v[0:4])
+		raw["tag.0x44"] = int64(u)
+		// 10-bit axes; 512 = 0g; scale 1g = 186
+		ax := int(u & 0x3ff)
+		ay := int((u >> 10) & 0x3ff)
+		az := int((u >> 20) & 0x3ff)
+		raw["accel.x"] = float64(ax-512) / 186.0
+		raw["accel.y"] = float64(ay-512) / 186.0
+		raw["accel.z"] = float64(az-512) / 186.0
+	}
+	if v, ok := tags[0x45]; ok && len(v) >= 1 {
+		raw["tag.0x45"] = int(v[0])
+		raw["status.outputs"] = int(v[0])
+		raw["status.tag.0x45"] = int(v[0])
+		for i := 0; i < 8; i++ {
+			raw[fmt.Sprintf("status.dout%d", i)] = v[0]&(1<<uint(i)) != 0
+		}
+		if len(v) >= 2 {
+			comp := int(v[0]) | (int(v[1]) << 8)
+			raw["tag.0x45"] = comp
+			raw["status.tag.0x45"] = comp
+			raw["status.outputs_hi"] = int(v[1])
+			for i := 0; i < 8; i++ {
+				raw[fmt.Sprintf("status.dout%d", i+8)] = v[1]&(1<<uint(i)) != 0
 			}
 		}
 	}
+	if v, ok := tags[0x47]; ok && len(v) >= 4 {
+		raw["tag.0x47"] = int(binary.LittleEndian.Uint32(v[0:4]))
+		raw["ecodrive.accel"] = int(v[0])
+		raw["ecodrive.brake"] = int(v[1])
+		raw["ecodrive.turn"] = int(v[2])
+		raw["ecodrive.bump"] = int(v[3])
+	}
 	return events
-}
-
-func hex2(b byte) string {
-	const h = "0123456789abcdef"
-	return string([]byte{h[b>>4], h[b&0x0f]})
 }
