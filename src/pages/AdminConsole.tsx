@@ -3207,11 +3207,13 @@ export default function AdminConsole() {
                               <span className="muted">
                                 IMEI {d.imei}
                                 {d.videoChannelId ? ` · ch ${d.videoChannelId}` : ""}
-                                {d.lastFix
+                                {d.lastFix && !(d.lastFix.lat === 0 && d.lastFix.lon === 0)
                                   ? ` · last ${d.lastFix.lat.toFixed(5)}, ${d.lastFix.lon.toFixed(5)}${
                                       d.lastFix.speed != null ? ` · ${Math.round(d.lastFix.speed)} km/h` : ""
                                     }`
-                                  : " · no fix yet"}
+                                  : d.lastFix || d.lastSeenAt
+                                    ? " · online, awaiting GPS"
+                                    : " · no data yet"}
                                 {d.lastSeenAt
                                   ? ` · seen ${new Date(d.lastSeenAt).toLocaleString()}`
                                   : ""}

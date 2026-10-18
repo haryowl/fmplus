@@ -169,16 +169,24 @@ func acceptsDevices(source string) bool {
 	return source == "devices" || source == "both" || source == ""
 }
 
+// ValidCoords is false for missing / Null Island / out-of-range GPS.
+// Callers still ingest IO/status when this is false — only the map pin is preserved.
+func ValidCoords(lat, lon float64) bool {
+	if lat == 0 && lon == 0 {
+		return false
+	}
+	if lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		return false
+	}
+	return true
+}
+
 func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 	if device == nil {
 		return fmt.Errorf("device required")
 	}
 	if !acceptsDevices(device.TelematicsSource) {
 		return fmt.Errorf("tenant telematics_source does not accept devices")
-	}
-	// Heartbeats / opaque packets must use TouchSeen — never write Null Island.
-	if fix.Lat == 0 && fix.Lon == 0 {
-		return s.TouchSeen(ctx, device)
 	}
 	if fix.RecordedAt.IsZero() {
 		fix.RecordedAt = time.Now().UTC()
@@ -189,6 +197,8 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 	if fix.RawAttrs == nil {
 		fix.RawAttrs = map[string]any{}
 	}
+	gpsOK := ValidCoords(fix.Lat, fix.Lon)
+	fix.RawAttrs["gps.valid"] = gpsOK
 	// Device Manager remap: vendor raw → canonical mapped attrs + typed columns.
 	if rules, err := s.LoadRemapRules(ctx, device.ID, device.ProfileID); err == nil && len(rules) > 0 {
 		fix.MappedAttrs = ApplyRemap(fix.RawAttrs, rules)
@@ -197,9 +207,11 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 	if fix.MappedAttrs == nil {
 		fix.MappedAttrs = map[string]any{}
 	}
+	fix.MappedAttrs["gps.valid"] = gpsOK
 	raw, _ := json.Marshal(fix.RawAttrs)
 	mapped, _ := json.Marshal(fix.MappedAttrs)
 
+	// Always persist the packet (Terminal + remap), even when GPS is invalid.
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO vehicle_fixes (
 			tenant_id, device_id, recorded_at, lat, lon, speed, heading, ignition,
@@ -213,30 +225,55 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 		return err
 	}
 
-	_, err = s.pool.Exec(ctx, `
-		INSERT INTO vehicle_last_fix (
-			device_id, tenant_id, recorded_at, lat, lon, speed, heading, ignition,
-			odometer, altitude, satellites, raw_attrs, mapped_attrs, source_protocol, updated_at
-		) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14, now())
-		ON CONFLICT (device_id) DO UPDATE SET
-			recorded_at = EXCLUDED.recorded_at,
-			lat = EXCLUDED.lat,
-			lon = EXCLUDED.lon,
-			speed = EXCLUDED.speed,
-			heading = EXCLUDED.heading,
-			ignition = EXCLUDED.ignition,
-			odometer = EXCLUDED.odometer,
-			altitude = EXCLUDED.altitude,
-			satellites = EXCLUDED.satellites,
-			raw_attrs = EXCLUDED.raw_attrs,
-			mapped_attrs = EXCLUDED.mapped_attrs,
-			source_protocol = EXCLUDED.source_protocol,
-			updated_at = now()
-		WHERE vehicle_last_fix.recorded_at <= EXCLUDED.recorded_at`,
-		device.ID, device.TenantID, fix.RecordedAt, fix.Lat, fix.Lon,
-		fix.Speed, fix.Heading, fix.Ignition, fix.Odometer, fix.Altitude, fix.Satellites,
-		string(raw), string(mapped), fix.SourceProtocol,
-	)
+	if gpsOK {
+		_, err = s.pool.Exec(ctx, `
+			INSERT INTO vehicle_last_fix (
+				device_id, tenant_id, recorded_at, lat, lon, speed, heading, ignition,
+				odometer, altitude, satellites, raw_attrs, mapped_attrs, source_protocol, updated_at
+			) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14, now())
+			ON CONFLICT (device_id) DO UPDATE SET
+				recorded_at = EXCLUDED.recorded_at,
+				lat = EXCLUDED.lat,
+				lon = EXCLUDED.lon,
+				speed = EXCLUDED.speed,
+				heading = EXCLUDED.heading,
+				ignition = EXCLUDED.ignition,
+				odometer = EXCLUDED.odometer,
+				altitude = EXCLUDED.altitude,
+				satellites = EXCLUDED.satellites,
+				raw_attrs = EXCLUDED.raw_attrs,
+				mapped_attrs = EXCLUDED.mapped_attrs,
+				source_protocol = EXCLUDED.source_protocol,
+				updated_at = now()
+			WHERE vehicle_last_fix.recorded_at <= EXCLUDED.recorded_at`,
+			device.ID, device.TenantID, fix.RecordedAt, fix.Lat, fix.Lon,
+			fix.Speed, fix.Heading, fix.Ignition, fix.Odometer, fix.Altitude, fix.Satellites,
+			string(raw), string(mapped), fix.SourceProtocol,
+		)
+	} else {
+		// Keep previous map pin; still refresh attrs / typed status so data is not lost.
+		_, err = s.pool.Exec(ctx, `
+			INSERT INTO vehicle_last_fix (
+				device_id, tenant_id, recorded_at, lat, lon, speed, heading, ignition,
+				odometer, altitude, satellites, raw_attrs, mapped_attrs, source_protocol, updated_at
+			) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14, now())
+			ON CONFLICT (device_id) DO UPDATE SET
+				recorded_at = GREATEST(vehicle_last_fix.recorded_at, EXCLUDED.recorded_at),
+				speed = COALESCE(EXCLUDED.speed, vehicle_last_fix.speed),
+				heading = COALESCE(EXCLUDED.heading, vehicle_last_fix.heading),
+				ignition = COALESCE(EXCLUDED.ignition, vehicle_last_fix.ignition),
+				odometer = COALESCE(EXCLUDED.odometer, vehicle_last_fix.odometer),
+				altitude = COALESCE(EXCLUDED.altitude, vehicle_last_fix.altitude),
+				satellites = COALESCE(EXCLUDED.satellites, vehicle_last_fix.satellites),
+				raw_attrs = COALESCE(vehicle_last_fix.raw_attrs, '{}'::jsonb) || EXCLUDED.raw_attrs,
+				mapped_attrs = COALESCE(vehicle_last_fix.mapped_attrs, '{}'::jsonb) || EXCLUDED.mapped_attrs,
+				source_protocol = COALESCE(EXCLUDED.source_protocol, vehicle_last_fix.source_protocol),
+				updated_at = now()`,
+			device.ID, device.TenantID, fix.RecordedAt, fix.Lat, fix.Lon,
+			fix.Speed, fix.Heading, fix.Ignition, fix.Odometer, fix.Altitude, fix.Satellites,
+			string(raw), string(mapped), fix.SourceProtocol,
+		)
+	}
 	if err != nil {
 		return err
 	}

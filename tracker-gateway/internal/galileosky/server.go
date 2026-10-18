@@ -109,7 +109,6 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		if len(records) == 0 {
 			records = []map[byte][]byte{parseTags(tagsBytes)}
 		}
-		ingested := false
 		for _, tags := range records {
 			if v, ok := tags[0x03]; ok && len(v) >= 15 {
 				imei = string(v[:15])
@@ -131,7 +130,14 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					sessions.Bind(bound)
 				}
 			}
-			if hasFix && device != nil {
+			if device != nil && (hasFix || len(tags) > 0) {
+				if !hasFix {
+					fix = store.Fix{
+						RecordedAt:     time.Now().UTC(),
+						SourceProtocol: "galileosky",
+						RawAttrs:       map[string]any{"gps.valid": false},
+					}
+				}
 				fix.SourceProtocol = "galileosky"
 				if fix.RawAttrs == nil {
 					fix.RawAttrs = map[string]any{}
@@ -144,25 +150,15 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				}
 				for _, ev := range applyStatusTags(tags, fix.RawAttrs) {
 					ev.RecordedAt = fix.RecordedAt
-					lat, lon := fix.Lat, fix.Lon
-					ev.Lat, ev.Lon = &lat, &lon
+					if store.ValidCoords(fix.Lat, fix.Lon) {
+						lat, lon := fix.Lat, fix.Lon
+						ev.Lat, ev.Lon = &lat, &lon
+					}
 					_ = st.InsertSafetyEvent(ctx, device, *ev)
 				}
 				if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
 					log.Printf("[galileosky] ingest %s: %v", imei, err)
 				}
-				ingested = true
-			} else if device != nil && !hasFix && !ingested {
-				_ = st.TouchSeen(ctx, device)
-				raw := tagsToRaw(tags)
-				attrs := map[string]any{"tags": raw}
-				for k, v := range raw {
-					attrs["tag."+k] = v
-				}
-				for _, ev := range applyStatusTags(tags, attrs) {
-					_ = st.InsertSafetyEvent(ctx, device, *ev)
-				}
-				_ = st.PatchLastStatus(ctx, device, attrs, nil)
 			}
 			// Command replies often piggyback on a GPS record (tag 0x30 + E0–E6).
 			if device != nil && looksLikeCommandReply(tags) {
@@ -254,15 +250,16 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 	// Official: flags(1) + lat int32/1e6 + lon int32/1e6
 	flags := coords[0]
 	validNibble := (flags >> 4) & 0x0f
-	// 0 = GNSS OK, 2 = LBS OK; other = invalid
-	if validNibble != 0 && validNibble != 2 {
-		return store.Fix{}, false
-	}
+	// 0 = GNSS OK, 2 = LBS OK; other = invalid GPS — still return a fix so IO/status ingest.
+	gpsOK := validNibble == 0 || validNibble == 2
 	sats := int(flags & 0x0f)
 	latRaw := int32(binary.LittleEndian.Uint32(coords[1:5]))
 	lonRaw := int32(binary.LittleEndian.Uint32(coords[5:9]))
 	lat := float64(latRaw) / 1_000_000.0
 	lon := float64(lonRaw) / 1_000_000.0
+	if !gpsOK || !store.ValidCoords(lat, lon) {
+		lat, lon = 0, 0
+	}
 
 	var recorded time.Time
 	if dt, ok := tags[0x20]; ok && len(dt) >= 4 {
@@ -281,14 +278,18 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		Satellites:     &sats,
 		SourceProtocol: "galileosky",
 		RawAttrs: map[string]any{
-			"gnss.sats": sats,
-			"gnss_sats": sats,
+			"gnss.sats":      sats,
+			"gnss_sats":      sats,
+			"gnss.valid_nibble": validNibble,
+			"gps.valid":      gpsOK && store.ValidCoords(lat, lon),
 		},
 	}
 	if validNibble == 2 {
 		fix.RawAttrs["gnss.lbs"] = true
-	} else {
+	} else if gpsOK {
 		fix.RawAttrs["gnss.fix"] = true
+	} else {
+		fix.RawAttrs["gnss.invalid"] = true
 	}
 	if sc, ok := tags[0x33]; ok && len(sc) >= 4 {
 		spd := float64(binary.LittleEndian.Uint16(sc[0:2])) / 10.0
