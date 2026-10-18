@@ -565,6 +565,18 @@ func parseVehicleUplink(msgID uint16, rest []byte) (store.Fix, string, bool) {
 			out.RawAttrs["alarm.gnss"] = true
 			jt808.FlattenAlarmBits(al, out.RawAttrs)
 		}
+		off += 4
+	}
+	// Optional trailing JT808-style additional-info TLVs (0x25 signals, 0x2A IO, video, driver IC, …).
+	if off < len(gnss) {
+		add := jt808.ParseAdditionalTLVBytes(gnss[off:])
+		if len(add) > 0 {
+			out.RawAttrs["add"] = add
+			for k, v := range add {
+				out.RawAttrs["add."+k] = v
+			}
+			jt808.HoistLocationTLV(add, out.RawAttrs)
+		}
 	}
 	return out, plate, true
 }

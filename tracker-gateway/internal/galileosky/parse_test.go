@@ -216,6 +216,9 @@ func TestDigitalIO_Din8AndInputs(t *testing.T) {
 	if fix.RawAttrs["status.dout1"] != true || fix.RawAttrs["status.outputs"] != 2 {
 		t.Fatalf("dout=%v", fix.RawAttrs)
 	}
+	if fix.RawAttrs["tag.0x47"] != 2 {
+		t.Fatalf("tag.0x47=%v", fix.RawAttrs["tag.0x47"])
+	}
 }
 
 func TestDigitalIO_Dout8AndOutputsHi(t *testing.T) {
@@ -232,6 +235,9 @@ func TestDigitalIO_Dout8AndOutputsHi(t *testing.T) {
 	}
 	if fix.RawAttrs["status.outputs"] != 2 || fix.RawAttrs["status.outputs_hi"] != 1 {
 		t.Fatalf("outputs=%v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["tag.0x47"] != (2 | (1 << 8)) {
+		t.Fatalf("tag.0x47 hi=%v", fix.RawAttrs["tag.0x47"])
 	}
 	tags2 := map[byte][]byte{
 		0x30: append([]byte{0x07}, append(make([]byte, 4), make([]byte, 4)...)...),

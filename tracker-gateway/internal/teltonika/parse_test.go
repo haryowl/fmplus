@@ -58,6 +58,12 @@ func TestParseAVL_Codec8Golden(t *testing.T) {
 	if !f.RecordedAt.Equal(ts) {
 		t.Errorf("recordedAt=%v want %v", f.RecordedAt, ts)
 	}
+	if f.RawAttrs["record_index"] != 0 {
+		t.Errorf("record_index=%v", f.RawAttrs["record_index"])
+	}
+	if f.RawAttrs["codec"] != byte(0x08) && f.RawAttrs["codec"] != 0x08 {
+		t.Errorf("codec=%v", f.RawAttrs["codec"])
+	}
 }
 
 func TestParseAVL_Empty(t *testing.T) {

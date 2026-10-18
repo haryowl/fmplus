@@ -9,13 +9,18 @@ import (
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
-// parseAdditionalInfo walks JT/T 808 location additional-info TLVs (id u8, len u8, value).
+// parseAdditionalInfo walks JT/T 808 location additional-info TLVs after the 28-byte location core.
 func parseAdditionalInfo(body []byte) map[string]any {
-	add := map[string]any{}
 	if len(body) <= 28 {
-		return add
+		return map[string]any{}
 	}
-	off := 28
+	return ParseAdditionalTLVBytes(body[28:])
+}
+
+// ParseAdditionalTLVBytes walks JT/T 808 additional-info TLVs (id u8, len u8, value) with no location prefix.
+func ParseAdditionalTLVBytes(body []byte) map[string]any {
+	add := map[string]any{}
+	off := 0
 	for off+2 <= len(body) {
 		id := body[off]
 		l := int(body[off+1])
@@ -568,7 +573,11 @@ func SafetyFromAlarmWord(alarm uint32, fix store.Fix, protocol string) *store.Sa
 	return safetyFromAlarmWord(alarm, fix, protocol)
 }
 
-// hoistLocationTLV copies remappable location additional-info keys onto fix raw_attrs top-level.
+// HoistLocationTLV copies remappable location additional-info keys onto fix raw_attrs top-level.
+func HoistLocationTLV(add, dest map[string]any) {
+	hoistLocationTLV(add, dest)
+}
+
 func hoistLocationTLV(add, dest map[string]any) {
 	if add == nil || dest == nil {
 		return

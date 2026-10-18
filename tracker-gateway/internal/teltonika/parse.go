@@ -106,9 +106,10 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 		}
 
 		raw := map[string]any{
-			"codec":    codec,
-			"io":       io,
-			"event_io": eventID,
+			"codec":         codec,
+			"io":            io,
+			"event_io":      eventID,
+			"record_index":  i,
 		}
 		// Promote common AVL ids into typed hints when present
 		fix := store.Fix{

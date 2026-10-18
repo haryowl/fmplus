@@ -162,7 +162,7 @@ func TestParseCANBus(t *testing.T) {
 	if m2["can.1.data0"] != 9 || m2["can.1.data1"] != 8 {
 		t.Fatalf("can.1 bytes=%v", m2)
 	}
-	// 9 items → slots 0–8 (maxItems 16)
+	// 9 items → slots 0–8 (maxItems 24)
 	body9 := make([]byte, 2+5+12*9)
 	binary.BigEndian.PutUint16(body9[0:2], 9)
 	copy(body9[2:7], []byte{0x24, 0x06, 0x01, 0x10, 0x30})
@@ -179,6 +179,19 @@ func TestParseCANBus(t *testing.T) {
 	}
 	if m9["can.8.data"] != "5051525354555657" || m9["can.8.data0"] != 80 {
 		t.Fatalf("can.8 bytes=%v", m9)
+	}
+	// 17 items → slot 16 (maxItems 24)
+	body17 := make([]byte, 2+5+12*17)
+	binary.BigEndian.PutUint16(body17[0:2], 17)
+	copy(body17[2:7], []byte{0x24, 0x06, 0x01, 0x10, 0x30})
+	for i := 0; i < 17; i++ {
+		off := 7 + i*12
+		binary.BigEndian.PutUint32(body17[off:off+4], uint32(0x2000+i))
+		body17[off+4] = byte(i)
+	}
+	m17 := parseCANBus(body17)
+	if m17["can_parsed"] != 17 || m17["can.16.id"] != int(0x2010) || m17["can.16.data0"] != 16 {
+		t.Fatalf("slot16=%v", m17)
 	}
 }
 
