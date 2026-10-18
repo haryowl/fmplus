@@ -506,6 +506,23 @@ func TestParseVehicleAlarm_SOS(t *testing.T) {
 	if !ok || plate != "B9999SOS" || ev == nil || ev.AlarmType != "sos" {
 		t.Fatalf("plate=%q ev=%+v ok=%v", plate, ev, ok)
 	}
+	if ev.RawAttrs["info_type_unmapped"] != nil {
+		t.Fatalf("mapped SOS should not be unmapped: %v", ev.RawAttrs)
+	}
+}
+
+func TestParseVehicleAlarm_UnmappedInfoType(t *testing.T) {
+	rest := make([]byte, 24)
+	copy(rest[0:21], []byte("B0000UNK"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 15) // intentionally unmapped (no knownInfoTypes 15–17)
+	_, ev, ok := parseVehicleAlarm(0x1400, rest)
+	if !ok || ev == nil || ev.AlarmType != "vehicle_alarm" {
+		t.Fatalf("%+v ok=%v", ev, ok)
+	}
+	if ev.RawAttrs["info_type_unmapped"] != true || ev.RawAttrs["info_type"] != 15 {
+		t.Fatalf("unmapped=%v", ev.RawAttrs)
+	}
 }
 
 func TestParseVehicleAlarm_1401Attach(t *testing.T) {

@@ -95,6 +95,11 @@ func parseVehicleAlarm(msgID uint16, rest []byte) (plate string, ev *store.Safet
 		"alarm_level":   level,
 	}
 	flatten809InfoType(infoType, raw)
+	if infoType != 0 {
+		if _, hit := knownInfoTypes[infoType]; !hit {
+			raw["info_type_unmapped"] = true
+		}
+	}
 	recorded := time.Now().UTC()
 	// Common interconnect tail: warn_time BCD[6] + info_id DWORD + info_len DWORD + content.
 	if len(rest) >= 30 {
