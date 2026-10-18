@@ -291,7 +291,7 @@ button {
   align-items: center;
   gap: 2px;
   padding: 3px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--nav-text) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--nav-text) 14%, transparent);
 }
@@ -303,7 +303,7 @@ button {
   height: 28px;
   padding: 0 10px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--nav-muted);
   font: inherit;
@@ -450,7 +450,7 @@ button {
   background: var(--nav-chip);
   color: var(--nav-text);
   border: 1px solid var(--nav-chip-line);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   padding: 0 14px;
   font-size: 12px;
   font-weight: 600;
@@ -490,7 +490,7 @@ span.btn-ghost {
   align-items: center;
 }
 
-/* Modern: slightly tighter pill chips; active tinted with teal accent. */
+/* Modern: slightly tighter nav chips; active tinted with teal accent. */
 [data-theme="modern"] .view-nav {
   gap: 8px;
 }
@@ -501,7 +501,7 @@ span.btn-ghost {
   font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.02em;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
 }
 
 [data-theme="modern"] .view-nav .btn-ghost.active {
@@ -641,7 +641,7 @@ span.btn-ghost {
   border: 1px solid #2c2a27;
   background: #1c1b18;
   padding: 8px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
 }
 
 .shell {
@@ -2747,7 +2747,7 @@ html.onesheet-root body {
   gap: 8px;
   padding: 4px 10px 4px 4px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-size: 0.8rem;
   color: var(--admin-nav-muted);
 }
@@ -2872,7 +2872,7 @@ html.onesheet-root body {
   min-width: 20px;
   height: 20px;
   padding: 0 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: #e8eef1;
   color: var(--admin-ink-soft);
   font-size: 0.68rem;
@@ -3028,7 +3028,7 @@ html.onesheet-root body {
   margin: 0;
   padding: 4px 10px;
   border: 1px solid var(--admin-line);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
   font-size: 0.78rem;
   font-weight: 650;
@@ -3093,7 +3093,7 @@ html.onesheet-root body {
   display: inline-flex;
   align-items: center;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--admin-line);
   font-size: 0.7rem;
   font-weight: 650;
@@ -3548,7 +3548,7 @@ html.onesheet-root body {
   border: 1px solid var(--admin-line);
   background: var(--surface);
   color: var(--admin-ink-soft);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   padding: 6px 14px;
   font-size: 0.82rem;
   font-weight: 650;
@@ -3903,7 +3903,7 @@ html.onesheet-root body {
 .field-vehicle { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 
 .field-status, .field-pill {
-  display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px;
+  display: inline-flex; align-items: center; padding: 3px 9px; border-radius: var(--radius-sm);
   font-size: 0.72rem; font-weight: 650; border: 1px solid var(--line-strong); background: var(--surface);
 }
 .field-status-due { background: #f8ead8; border-color: #c49a5a; color: #7a4b12; }
@@ -3935,7 +3935,7 @@ html.onesheet-root body {
 .field-flow-steps li {
   padding: 4px 10px;
   border: 1px solid var(--line-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-size: 0.75rem;
   font-weight: 650;
   color: var(--ink-faint);
@@ -4045,7 +4045,7 @@ html.onesheet-root body {
   align-items: center;
   gap: 5px;
   padding: 4px 9px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line-strong);
   background: rgba(255, 255, 255, 0.9);
   font: inherit;
@@ -4062,7 +4062,7 @@ html.onesheet-root body {
 .field-filter-count {
   min-width: 1.1rem;
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
@@ -4473,7 +4473,7 @@ html.onesheet-root body {
   background: var(--nav);
   color: var(--nav-text);
   border-color: var(--nav);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   padding: 0 18px;
 }
 
@@ -5344,7 +5344,7 @@ html.onesheet-root body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 2px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--ink-soft);
@@ -5632,7 +5632,7 @@ button.dispatch-pin-chip {
 .dispatch-window-chip {
   height: 30px;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line-strong);
   background: var(--surface);
   color: var(--ink-soft);
@@ -6002,7 +6002,7 @@ button.dispatch-pin-chip {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: #e8eef8;
   color: #1e3a5c;
 }
@@ -6223,7 +6223,7 @@ button.dispatch-pin-chip {
   font-size: 0.72rem;
   font-weight: 600;
   padding: 5px 9px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
   color: var(--ink-soft);
   border: 1px solid var(--line);
@@ -6633,7 +6633,7 @@ button.dispatch-pin-chip {
   padding: 5px 10px;
   border: 1px solid var(--line);
   background: var(--surface);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font: inherit;
   font-size: 0.76rem;
   font-weight: 700;
@@ -6656,7 +6656,7 @@ button.dispatch-pin-chip {
 .dispatch-day-add {
   height: 28px;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-size: 0.72rem;
   font-weight: 700;
 }
@@ -6977,7 +6977,7 @@ button.dispatch-pin-chip {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid transparent;
   width: fit-content;
 }
@@ -7229,7 +7229,7 @@ button.dispatch-pin-chip {
   align-items: center;
   height: 22px;
   padding: 0 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line-strong);
   background: var(--surface);
   font-size: 0.68rem;
@@ -7299,7 +7299,7 @@ button.dispatch-pin-chip {
   height: 36px;
   min-width: 96px;
   padding: 0 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid transparent;
   display: inline-flex;
   align-items: center;
@@ -7599,7 +7599,7 @@ button.dispatch-pin-chip {
   min-width: 1.4rem;
   justify-content: center;
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--nav);
   color: var(--nav-text);
   font-size: 0.75rem;
@@ -7626,7 +7626,7 @@ button.dispatch-pin-chip {
   gap: 6px;
   padding: 4px 10px;
   border: 1px solid var(--line-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
   font: inherit;
   font-size: 0.78rem;
@@ -7731,7 +7731,7 @@ button.dispatch-pin-chip {
 .maint-kind {
   display: inline-flex;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-size: 0.72rem;
   font-weight: 650;
   border: 1px solid var(--line-strong);
@@ -8656,7 +8656,7 @@ button.dispatch-pin-chip {
 .catalog-v2-close {
   width: 32px;
   height: 32px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink-soft);
@@ -8701,7 +8701,7 @@ button.dispatch-pin-chip {
   width: auto;
   height: 36px;
   padding: 0 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
@@ -8717,7 +8717,7 @@ button.dispatch-pin-chip {
 .catalog-v2-view {
   display: inline-flex;
   padding: 3px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
   border: 1px solid var(--line);
 }
@@ -8742,7 +8742,7 @@ button.dispatch-pin-chip {
 .catalog-v2-search input {
   width: 100%;
   height: 36px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--surface);
   padding: 0 14px;
@@ -8757,7 +8757,7 @@ button.dispatch-pin-chip {
 .catalog-v2-tabs button {
   height: 34px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink-soft);
@@ -8772,7 +8772,7 @@ button.dispatch-pin-chip {
   min-width: 1.2rem;
   height: 1.2rem;
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
   font-size: 0.72rem;
   display: inline-grid;
@@ -8891,7 +8891,7 @@ button.dispatch-pin-chip {
 
 .catalog-v2-sku-pill,
 .catalog-v2-codes {
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
   font-size: 0.75rem;
   font-weight: 650;
@@ -9015,7 +9015,7 @@ button.dispatch-pin-chip {
   flex: 1 1 120px;
   min-width: 0;
   height: 36px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   padding: 0 12px;
   background: var(--surface);
@@ -9025,7 +9025,7 @@ button.dispatch-pin-chip {
   height: 36px;
   padding: 0 14px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--nav);
   color: #fff;
   font-weight: 700;
@@ -9342,7 +9342,7 @@ button.dispatch-pin-chip {
 .maintenance-page button.btn-primary {
   height: 40px;
   padding: 0 18px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-size: 0.88rem;
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -9353,7 +9353,7 @@ button.dispatch-pin-chip {
 .maintenance-page a.btn-secondary {
   height: 40px;
   padding: 0 16px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--surface) 90%, transparent);
   border-color: color-mix(in srgb, var(--line-strong) 90%, transparent);
 }
@@ -9405,7 +9405,7 @@ button.dispatch-pin-chip {
 
 .maintenance-list-search input {
   height: 40px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border-color: color-mix(in srgb, var(--line-strong) 90%, transparent);
   background: var(--surface);
   padding: 0 16px;
@@ -9452,7 +9452,7 @@ button.dispatch-pin-chip {
 .maint-badge {
   display: inline-flex;
   align-items: center;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   padding: 3px 10px;
   font-size: 0.72rem;
   font-weight: 700;
@@ -9488,7 +9488,7 @@ button.dispatch-pin-chip {
 
 .maintenance-page .btn-compact {
   height: 32px !important;
-  border-radius: 999px !important;
+  border-radius: var(--radius-sm) !important;
   padding: 0 12px !important;
 }
 
@@ -9498,7 +9498,7 @@ button.dispatch-pin-chip {
   justify-content: center;
   height: 40px;
   padding: 0 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid rgba(159, 42, 42, 0.28);
   background: var(--danger-soft);
   color: var(--danger);
@@ -10126,7 +10126,7 @@ button.dispatch-pin-chip {
 .auth-login-submit {
   margin-top: 6px;
   height: 46px !important;
-  border-radius: 999px !important;
+  border-radius: var(--radius-sm) !important;
   font-size: 0.95rem !important;
   font-weight: 700 !important;
   letter-spacing: 0.01em;
@@ -10392,7 +10392,7 @@ button.dispatch-pin-chip {
   letter-spacing: 0.02em;
   text-transform: uppercase;
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--ink) 8%, transparent);
   color: var(--ink-soft);
   white-space: nowrap;
@@ -10536,7 +10536,7 @@ button.dispatch-pin-chip {
 .dispatch-live-day-badge {
   align-self: start;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--surface-soft, var(--surface));
   font-family: var(--mono);
@@ -10856,7 +10856,7 @@ button.dispatch-pin-chip {
   top: 50%;
   height: 3px;
   transform: translateY(-50%);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--ink) 18%, transparent);
   z-index: 1;
   pointer-events: none;
@@ -11139,13 +11139,13 @@ button.dispatch-pin-chip {
 }
 
 .dispatch-live-page .dispatch-live-tabs {
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
   padding: 3px;
 }
 
 .dispatch-live-page .dispatch-live-tabs button {
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   padding: 7px 14px;
 }
 
@@ -11170,7 +11170,7 @@ button.dispatch-pin-chip {
 .dispatch-live-page .dispatch-live-refresh .btn-ghost,
 .dispatch-live-page .dispatch-date-nav .btn-secondary {
   height: 34px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
 }
 
@@ -11229,7 +11229,7 @@ button.dispatch-pin-chip {
 }
 
 .dispatch-live-page .fold-panel-toggle {
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
 }
 
 .dispatch-live-page .dispatch-live-sla-kpis {
@@ -11255,7 +11255,7 @@ button.dispatch-pin-chip {
   height: 28px;
   display: grid;
   place-items: center;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--accent-ink);
   font-weight: 700;
@@ -11275,7 +11275,7 @@ button.dispatch-pin-chip {
 
 .dispatch-live-page .dispatch-live-clear-chips span {
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
   font-size: 0.75rem;
   font-weight: 650;
@@ -11332,7 +11332,7 @@ button.dispatch-pin-chip {
 }
 
 .dispatch-live-page .dispatch-live-search input {
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   height: 34px;
 }
 
@@ -11525,7 +11525,7 @@ button.dispatch-pin-chip {
     font-style: normal;
     min-width: 1.05rem;
     padding: 0 4px;
-    border-radius: 999px;
+    border-radius: var(--radius-sm);
     background: #c4475a;
     color: #fff;
     font-size: 0.62rem;
@@ -12056,7 +12056,7 @@ button.dispatch-pin-chip {
   gap: 8px;
   height: 34px;
   padding: 0 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink-soft);
@@ -12082,7 +12082,7 @@ a.dispatch-master-nav-tab:hover {
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--nav-text) 18%, transparent);
   color: inherit;
   font-style: normal;
@@ -12431,7 +12431,7 @@ a.dispatch-master-nav-tab:hover {
 }
 
 .master-pill-input {
-  border-radius: 999px !important;
+  border-radius: var(--radius-sm) !important;
   background: var(--surface-2) !important;
   font-size: 11px !important;
   text-align: center;
@@ -12445,7 +12445,7 @@ a.dispatch-master-nav-tab:hover {
   width: fit-content;
   min-height: 26px;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
   color: var(--ink-soft);
   font-size: 11px;
@@ -13130,7 +13130,7 @@ a.dispatch-master-nav-tab:hover {
 .maintenance-page .filters .btn,
 .maintenance-page .filters .btn-ghost {
   height: 36px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
 }
 
 .maintenance-page .maintenance-schedule-dash {
@@ -13191,7 +13191,7 @@ a.dispatch-master-nav-tab:hover {
 .maintenance-page .maintenance-row-actions .btn,
 .maintenance-page .maintenance-row-actions .btn-ghost,
 .maintenance-page .maintenance-row-actions .btn-link {
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
 }
 
 .maintenance-page .maintenance-inbox-title {
@@ -13201,7 +13201,7 @@ a.dispatch-master-nav-tab:hover {
 }
 
 .maintenance-page .maint-count {
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
 }
 
 .maintenance-page .maintenance-inbox-table th {
@@ -13212,12 +13212,12 @@ a.dispatch-master-nav-tab:hover {
 
 .maintenance-page .maint-kind,
 .maintenance-page .maint-badge {
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
 }
 
 .maintenance-page .maintenance-list-search input {
   height: 36px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
   background: var(--surface);
   padding: 0 14px;
@@ -13258,7 +13258,7 @@ a.dispatch-master-nav-tab:hover {
 
 .maintenance-page .maint-mode-pill {
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: #d7efe6;
   color: #0f6b4c;
   font-size: 0.72rem;
@@ -13274,7 +13274,7 @@ a.dispatch-master-nav-tab:hover {
 .maintenance-page .maintenance-create .btn-primary {
   width: 100%;
   min-height: 42px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
 }
 
 .maintenance-page .filters .btn-ghost:not(:disabled) {
@@ -13553,7 +13553,7 @@ a.dispatch-master-nav-tab:hover {
     flex: 0 0 auto;
     border: 1px solid var(--line, #d8d4cb);
     background: var(--surface);
-    border-radius: 999px;
+    border-radius: var(--radius-sm);
     padding: 6px 12px;
     font: inherit;
     font-size: 0.82rem;
