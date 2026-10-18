@@ -592,10 +592,14 @@ export async function handleAdminRequest(req, res) {
           : { error: adaptersRes.status };
         json(res, 200, { ok: true, base, health, adapters });
       } catch (err) {
+        const msg = err instanceof Error ? err.message : "Gateway unreachable";
         json(res, 200, {
           ok: false,
           base,
-          error: err instanceof Error ? err.message : "Gateway unreachable",
+          error:
+            msg === "fetch failed" || msg.includes("ECONNREFUSED")
+              ? `${msg} — is tracker-gateway listening? (TRACKER_GATEWAY_URL / deploy/tracker-gateway.service)`
+              : msg,
         });
       }
       return true;

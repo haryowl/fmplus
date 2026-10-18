@@ -1,0 +1,16 @@
+[Unit]
+Description=FM Plus tracker gateway (TCP/HTTP ingest)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/fmplus/fmplus/tracker-gateway
+ExecStart=/root/fmplus/fmplus/tracker-gateway/bin/tracker-gateway
+Restart=always
+RestartSec=3
+# Same secrets as fmplus (.env.local). Requires DATABASE_URL.
+EnvironmentFile=-/root/fmplus/fmplus/.env.local
+Environment=TRACKER_HTTP_ADDR=:5080
+
+[Install]
+WantedBy=multi-user.target

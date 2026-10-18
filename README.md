@@ -50,6 +50,22 @@ journalctl -u fmplus -f
 
 If you copied the unit by hand before `git pull`, install it from this file after pulling. The app listens on port **4173**. If `ssl/server.key` and `ssl/server.crt` are present (do not commit them), `npm start` serves HTTPS.
 
+### Tracker gateway (Device Manager)
+
+Admin Device Manager calls the Node app, which proxies to `TRACKER_GATEWAY_URL` (default `http://127.0.0.1:5080`). If you see **Gateway offline … fetch failed**, the Go gateway is not running on that URL.
+
+```bash
+cd /root/fmplus/fmplus/tracker-gateway
+go build -o bin/tracker-gateway .
+cp ../deploy/tracker-gateway.service /etc/systemd/system/tracker-gateway.service
+systemctl daemon-reload
+systemctl enable --now tracker-gateway
+systemctl status tracker-gateway
+curl -sS http://127.0.0.1:5080/healthz
+```
+
+Ensure `.env.local` has `DATABASE_URL` (gateway loads it via the unit’s `EnvironmentFile`). Optional: set `TRACKER_GATEWAY_URL` in `.env.local` if the gateway is not on localhost, then `systemctl restart fmplus`.
+
 Open [http://localhost:5173/](http://localhost:5173/) (Admin). Embed dashboards live under `/full`, `/compact`, etc.
 
 | Page | URL |

@@ -1672,7 +1672,10 @@ export default function AdminConsole() {
       if (!data.ok) {
         setOnlineImeis(new Set());
         setGatewayDetail("");
-        setGatewayStatus(`Gateway offline (${data.base || "?"}): ${data.error || "unreachable"}`);
+        const why = data.error || "unreachable";
+        setGatewayStatus(
+          `Gateway offline (${data.base || "?"}): ${why}. Start tracker-gateway on that host (deploy/tracker-gateway.service) or set TRACKER_GATEWAY_URL.`,
+        );
         return;
       }
       const online = data.adapters?.onlineCount ?? data.health?.onlineCount ?? 0;
