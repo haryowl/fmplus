@@ -567,10 +567,8 @@ function ScanRoleMatrix({
   return (
     <fieldset className="admin-fieldset">
       <legend>Field scan by role</legend>
-      <p className="admin-section-hint muted">
-        One lookup, many actions. Cargo add, Part add, cargo/part serial, camera, type, and NFC read
-        are live on Field /m and Manager /mm. Serial and NFC stay off until you enable them here.
-        Columns marked later are stored for the wider scenario. Desk embed scan is not gated here.
+      <p className="admin-section-hint muted" title="Cargo/Part add, serial, camera, type, NFC on Field /m and Manager /mm. Later columns are stored for wider scenarios. Desk embed scan is not gated here.">
+        Live Field/Manager scan inputs; later columns are stored only.
       </p>
       <div className="admin-toggle-grid">
         {SCAN_INPUT_KEYS.map((key) => {
@@ -2275,8 +2273,11 @@ export default function AdminConsole() {
                       placeholder={selected?.hasWablasSecret ? "•••••••• (set)" : ""}
                     />
                   </label>
-                  <p className="span-2 admin-section-hint muted">
-                    Ops due/overdue only. Job assignment goes to the assigned field user’s phone/email.
+                  <p
+                    className="span-2 admin-section-hint muted"
+                    title="Ops due/overdue only. Job assignment goes to the assigned field user’s phone/email."
+                  >
+                    Ops due/overdue · assignment to field user phone/email
                   </p>
                 </div>
               </AdminFold>
@@ -2666,9 +2667,11 @@ export default function AdminConsole() {
                 <section className="admin-panel admin-device-manager">
                   <header className="admin-panel-head">
                     <h3>Device Manager</h3>
-                    <p className="muted">
-                      Remap vendor IO/tags/alarms → app params. Adapters are{" "}
-                      <strong>MVP/partial</strong> until certified — not full 2-way production yet.
+                    <p
+                      className="muted"
+                      title="Remap vendor IO/tags/alarms → app params. Adapters are MVP/partial until certified."
+                    >
+                      Vendor → app params · MVP adapters
                     </p>
                   </header>
                   <div className="admin-actions" style={{ marginBottom: 8 }}>
@@ -3412,10 +3415,11 @@ export default function AdminConsole() {
                 <section className="admin-panel admin-live-values">
                   <header className="admin-panel-head">
                     <h3>Live values</h3>
-                    <p className="muted">
-                      Latest values for every registered device (all protocols) from last uplink
-                      (poll ~3s). Shows typed fields, remapped app params, and optionally raw vendor
-                      keys.
+                    <p
+                      className="muted"
+                      title="Latest typed fields, remapped app params, and optional raw vendor keys from last uplink (poll ~3s)."
+                    >
+                      Last uplink · all protocols · poll ~3s
                     </p>
                   </header>
                   <div className="admin-form-grid">
@@ -3528,8 +3532,11 @@ export default function AdminConsole() {
                 <section className="admin-panel admin-terminal">
                   <header className="admin-panel-head">
                     <h3>Terminal</h3>
-                    <p className="muted">
-                      Inbound fixes plus unregistered IMEI connection attempts (poll ~3s).
+                    <p
+                      className="muted"
+                      title="Inbound fixes plus unregistered IMEI connection attempts (poll ~3s)."
+                    >
+                      Fixes + unregistered IMEI · poll ~3s
                     </p>
                   </header>
                   <div className="admin-form-grid">
