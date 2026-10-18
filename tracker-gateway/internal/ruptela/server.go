@@ -73,6 +73,15 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		if calc := crc16Kermit(data); calc != gotCRC {
 			metrics.DecodeErr()
 			log.Printf("[ruptela] bad CRC got=%04x want=%04x — NACK cmd 100", gotCRC, calc)
+			if bound != nil && bound.IMEI != "" {
+				if d := deviceauth.FindByIMEI(ctx, st, bound.IMEI, conn.RemoteAddr().String(), "ruptela"); d != nil {
+					_ = st.PatchLastStatus(ctx, d, map[string]any{
+						"crc_invalid": true,
+						"crc_got":     int(gotCRC),
+						"crc_want":    int(calc),
+					}, nil)
+				}
+			}
 			_ = writeRecordsAck(conn, false)
 			continue
 		}

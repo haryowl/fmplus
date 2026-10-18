@@ -115,7 +115,14 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 
 		if !verifyAVLCRC(payload, crcBuf) {
 			metrics.DecodeErr()
-			log.Printf("[teltonika] bad CRC for %s — zero-ack and drop", imei)
+			got := binary.BigEndian.Uint32(crcBuf)
+			want := uint32(crc16IBM(payload))
+			log.Printf("[teltonika] bad CRC for %s got=%08x want=%08x — zero-ack and drop", imei, got, want)
+			_ = st.PatchLastStatus(ctx, device, map[string]any{
+				"crc_invalid": true,
+				"crc_got":     int(got),
+				"crc_want":    int(want),
+			}, nil)
 			// Official: always reply record count so device does not stall.
 			ack := make([]byte, 4)
 			if _, err := conn.Write(ack); err != nil {

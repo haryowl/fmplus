@@ -236,6 +236,9 @@ func TestParseSubpkgRetransmit(t *testing.T) {
 	if m["retransmit_hex"] != "00050200060007" {
 		t.Fatalf("hex=%v", m["retransmit_hex"])
 	}
+	if m["retransmit_len"] != 7 {
+		t.Fatalf("len=%v", m["retransmit_len"])
+	}
 }
 
 func TestParseDrivingRecord(t *testing.T) {

@@ -82,6 +82,13 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		if calc != gotCRC {
 			metrics.DecodeErr()
 			log.Printf("[galileosky] bad CRC from %s got=%04x want=%04x — ack only, skip ingest", conn.RemoteAddr(), gotCRC, calc)
+			if device != nil {
+				_ = st.PatchLastStatus(ctx, device, map[string]any{
+					"crc_invalid": true,
+					"crc_got":     int(gotCRC),
+					"crc_want":    int(calc),
+				}, nil)
+			}
 			_ = writeAck(conn, gotCRC)
 			continue
 		}
