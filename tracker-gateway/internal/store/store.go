@@ -171,6 +171,43 @@ func acceptsDevices(source string) bool {
 
 // ValidCoords is false for missing / Null Island / out-of-range GPS.
 // Callers still ingest IO/status when this is false — only the map pin is preserved.
+// isCookedAppParamKey reports semantic vendor keys already scaled by protocol adapters
+// (e.g. voltage.supply in volts). Excludes opaque tag.0xNN dumps and nested blobs.
+func isCookedAppParamKey(k string) bool {
+	if k == "" || k == "tags" {
+		return false
+	}
+	if len(k) >= 4 && k[:4] == "tag." {
+		return false
+	}
+	if len(k) >= 2 && k[:2] == "0x" {
+		return false
+	}
+	// Require dotted semantic names (voltage.supply, can.rpm, time.ms, …).
+	for i := 0; i < len(k); i++ {
+		if k[i] == '.' {
+			return true
+		}
+	}
+	// Allow a few undotted cooked scalars used across protocols.
+	switch k {
+	case "odometer", "hdop", "pdop", "vdop", "movement", "ignition", "archive", "unix_time":
+		return true
+	}
+	return false
+}
+
+func isScalarAttr(v any) bool {
+	switch v.(type) {
+	case nil:
+		return false
+	case bool, string, float32, float64, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, json.Number:
+		return true
+	default:
+		return false
+	}
+}
+
 func ValidCoords(lat, lon float64) bool {
 	if lat == 0 && lon == 0 {
 		return false
@@ -206,6 +243,16 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 	}
 	if fix.MappedAttrs == nil {
 		fix.MappedAttrs = map[string]any{}
+	}
+	// Seed cooked semantic keys (already scaled per protocol tables) into mapped_attrs
+	// so Live values / app params see volts, km/h, °C, etc. — not only raw tag.0xNN.
+	for k, v := range fix.RawAttrs {
+		if !isCookedAppParamKey(k) || !isScalarAttr(v) {
+			continue
+		}
+		if _, exists := fix.MappedAttrs[k]; !exists {
+			fix.MappedAttrs[k] = v
+		}
 	}
 	fix.MappedAttrs["gps.valid"] = gpsOK
 	raw, _ := json.Marshal(fix.RawAttrs)

@@ -63,9 +63,78 @@ func TestParseTagRecords_MultiCoords(t *testing.T) {
 	}
 }
 
+func TestParseTags_LiveValuesPacket_0x21Ms(t *testing.T) {
+	// Production Live values blob after 0x20: unknown 0x21 previously swallowed
+	// the rest into tag.0xff. With official 0x21=2 (ms), the stream must expose
+	// 0x30…0xFE as separate cooked tags.
+	payload, err := hex.DecodeString(
+		"211500" + // 0x21 ms=21
+			"30100000000000000000" + // 0x30 invalid GPS (nibble=1), lat=0,lon=0
+			"3300000000" + // speed/course 0
+			"340000" + // altitude 0
+			"35e7" + // HDOP 23.1
+			"40480a" + // status
+			"413c5c" + // supply mV
+			"42420f" + // batt mV
+			"460000" + // inputs
+			"500000" + // ain0
+			"510000" + // ain1
+			"e200000000" +
+			"e300000000" +
+			"e400000000" +
+			"e500000000" +
+			"e600000000" +
+			"fe0600010000000000",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags := parseTags(payload)
+	if _, bad := tags[0xff]; bad {
+		t.Fatalf("0xff opaque dump must not appear: %v", tags)
+	}
+	if len(tags[0x21]) != 2 || binary.LittleEndian.Uint16(tags[0x21]) != 21 {
+		t.Fatalf("0x21 ms=%x", tags[0x21])
+	}
+	if len(tags[0x30]) != 9 {
+		t.Fatalf("0x30 len=%d", len(tags[0x30]))
+	}
+	if len(tags[0x41]) != 2 || len(tags[0x42]) != 2 {
+		t.Fatalf("volt tags missing: %v", tags)
+	}
+	if len(tags[0xfe]) != 6 {
+		t.Fatalf("fe len=%d", len(tags[0xfe]))
+	}
+	fix, ok := fixFromTags(tags)
+	if !ok {
+		t.Fatal("expected fix from 0x30")
+	}
+	if fix.RawAttrs["gps.valid"] != false {
+		t.Fatalf("gps.valid=%v", fix.RawAttrs["gps.valid"])
+	}
+	if fix.RawAttrs["time.ms"] != 21 {
+		t.Fatalf("time.ms=%v", fix.RawAttrs["time.ms"])
+	}
+	if fix.RawAttrs["gnss.hdop"] != 23.1 {
+		t.Fatalf("hdop=%v", fix.RawAttrs["gnss.hdop"])
+	}
+	// Cooked volts (not raw mV) on app-param keys.
+	supplyMV := float64(binary.LittleEndian.Uint16(tags[0x41]))
+	if fix.RawAttrs["voltage.supply"] != supplyMV/1000.0 {
+		t.Fatalf("voltage.supply=%v want %v", fix.RawAttrs["voltage.supply"], supplyMV/1000.0)
+	}
+	promoteSensorTags(fix.RawAttrs, tags)
+	if fix.RawAttrs["user.0"] != float64(0) {
+		t.Fatalf("user.0=%v", fix.RawAttrs["user.0"])
+	}
+	if fix.RawAttrs["modbus.0"] != float64(0) {
+		t.Fatalf("modbus=%v", fix.RawAttrs)
+	}
+}
+
 func TestTagSize_Official(t *testing.T) {
 	cases := map[byte]int{
-		0x01: 1, 0x03: 15, 0x04: 2, 0x10: 2, 0x20: 4, 0x30: 9, 0x33: 4, 0x34: 2, 0x35: 1,
+		0x01: 1, 0x03: 15, 0x04: 2, 0x10: 2, 0x20: 4, 0x21: 2, 0x30: 9, 0x33: 4, 0x34: 2, 0x35: 1,
 		0x40: 2, 0x41: 2, 0x42: 2, 0x43: 1, 0x44: 4, 0x45: 2, 0x46: 2, 0x47: 4,
 		0x50: 2, 0x5a: 4, 0x60: 2, 0x63: 3, 0x70: 2, 0x80: 3, 0x90: 4,
 		0xa0: 1, 0xb0: 2, 0xc0: 4, 0xc4: 1, 0xd4: 4, 0xd5: 1, 0xd6: 2, 0xdb: 4, 0xf0: 4,

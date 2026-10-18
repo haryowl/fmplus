@@ -479,7 +479,7 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
     params.push(deviceId);
     deviceClause = ` AND d.id = $${params.length}`;
   }
-  const [deviceRows, paramDefs] = await Promise.all([
+  const [deviceRows, paramDefs, protocolParamRows] = await Promise.all([
     dbQuery(
       `SELECT d.id::text AS device_id, d.imei, d.label, d.protocol, d.last_seen_at,
               lf.lat, lf.lon, lf.speed, lf.heading, lf.ignition, lf.recorded_at,
@@ -491,8 +491,16 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
       params,
     ),
     listParamDefs(tenantId),
+    dbQuery(`SELECT protocol, vendor_key, label FROM tracker_protocol_params`),
   ]);
   const defById = new Map(paramDefs.map((p) => [p.id, p]));
+  /** @type {Map<string, Map<string, string>>} */
+  const protocolVendors = new Map();
+  for (const r of protocolParamRows.rows) {
+    const proto = String(r.protocol || "");
+    if (!protocolVendors.has(proto)) protocolVendors.set(proto, new Map());
+    protocolVendors.get(proto).set(String(r.vendor_key), String(r.label || r.vendor_key));
+  }
   /** @type {Array<Record<string, unknown>>} */
   const rows = [];
 
@@ -508,6 +516,9 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
         : {};
     const raw =
       d.raw_attrs && typeof d.raw_attrs === "object" && !Array.isArray(d.raw_attrs) ? d.raw_attrs : {};
+    const protoKeys = protocolVendors.get(protocol) || new Map();
+    /** @type {Set<string>} */
+    const emitted = new Set();
 
     const typed = [
       ["lat", d.lat != null ? Number(d.lat) : null],
@@ -519,6 +530,7 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
     for (const [paramId, value] of typed) {
       if (value === null) continue;
       const def = defById.get(paramId);
+      emitted.add(paramId);
       rows.push({
         deviceId: deviceIdOut,
         imei,
@@ -537,14 +549,45 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
       if (value === null || value === undefined) continue;
       // Skip nested blobs / duplicate typed mirrors when already shown.
       if (paramId === "tags" || typeof value === "object") continue;
+      if (emitted.has(paramId)) continue;
       const def = defById.get(paramId);
+      emitted.add(paramId);
       rows.push({
         deviceId: deviceIdOut,
         imei,
         label,
         protocol,
         paramId,
-        paramLabel: def?.label || paramId,
+        paramLabel: def?.label || protoKeys.get(paramId) || paramId,
+        category: def?.category || "mapped",
+        value: formatParamValue(value),
+        source: def ? "mapped" : "mapped_extra",
+        updatedAt,
+      });
+    }
+
+    // Cooked / protocol-catalogued vendor keys from raw_attrs → mapped_extra
+    // (not "raw"), so Live values shows official semantics without Device Manager remaps.
+    for (const [vendorKey, value] of Object.entries(raw)) {
+      if (value === null || value === undefined) continue;
+      if (vendorKey === "tags" || typeof value === "object") continue;
+      if (emitted.has(vendorKey)) continue;
+      const def = defById.get(vendorKey);
+      const protoLabel = protoKeys.get(vendorKey);
+      const isCooked =
+        Boolean(def) ||
+        protoLabel != null ||
+        // Prefer semantic keys the gateway already promotes (voltage.*, status.*, etc.).
+        (!vendorKey.startsWith("tag.") && !vendorKey.startsWith("0x") && vendorKey.includes("."));
+      if (!isCooked) continue;
+      emitted.add(vendorKey);
+      rows.push({
+        deviceId: deviceIdOut,
+        imei,
+        label,
+        protocol,
+        paramId: vendorKey,
+        paramLabel: def?.label || protoLabel || vendorKey,
         category: def?.category || "mapped",
         value: formatParamValue(value),
         source: def ? "mapped" : "mapped_extra",
@@ -556,7 +599,7 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
       for (const [vendorKey, value] of Object.entries(raw)) {
         if (value === null || value === undefined) continue;
         if (vendorKey === "tags" || typeof value === "object") continue;
-        if (Object.prototype.hasOwnProperty.call(mapped, vendorKey)) continue;
+        if (emitted.has(vendorKey)) continue;
         rows.push({
           deviceId: deviceIdOut,
           imei,

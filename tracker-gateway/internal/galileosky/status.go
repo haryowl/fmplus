@@ -134,10 +134,15 @@ func applyStatusTags(tags map[byte][]byte, raw map[string]any) []*store.SafetyEv
 	}
 	if v, ok := tags[0x47]; ok && len(v) >= 4 {
 		raw["tag.0x47"] = int(binary.LittleEndian.Uint32(v[0:4]))
-		raw["ecodrive.accel"] = int(v[0])
-		raw["ecodrive.brake"] = int(v[1])
-		raw["ecodrive.turn"] = int(v[2])
-		raw["ecodrive.bump"] = int(v[3])
+		// Official: units where 100 = 1g = 9.8 m/s².
+		raw["ecodrive.accel"] = float64(v[0]) / 100.0
+		raw["ecodrive.brake"] = float64(v[1]) / 100.0
+		raw["ecodrive.turn"] = float64(v[2]) / 100.0
+		raw["ecodrive.bump"] = float64(v[3]) / 100.0
+		raw["ecodrive.accel_raw"] = int(v[0])
+		raw["ecodrive.brake_raw"] = int(v[1])
+		raw["ecodrive.turn_raw"] = int(v[2])
+		raw["ecodrive.bump_raw"] = int(v[3])
 	}
 	return events
 }

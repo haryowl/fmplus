@@ -134,6 +134,19 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 						SourceProtocol: "galileosky",
 						RawAttrs:       map[string]any{"gps.valid": false},
 					}
+					// Still cook time from 0x20/0x21 when the packet has no 0x30.
+					if dt, ok := tags[0x20]; ok && len(dt) >= 4 {
+						sec := binary.LittleEndian.Uint32(dt[0:4])
+						if sec > 1_000_000_000 && sec < 4_000_000_000 {
+							fix.RecordedAt = time.Unix(int64(sec), 0).UTC()
+						}
+					}
+					if ms, ok := tags[0x21]; ok && len(ms) >= 2 {
+						msec := binary.LittleEndian.Uint16(ms[0:2])
+						if msec < 1000 {
+							fix.RecordedAt = fix.RecordedAt.Add(time.Duration(msec) * time.Millisecond)
+						}
+					}
 				}
 				fix.SourceProtocol = "galileosky"
 				if fix.RawAttrs == nil {
@@ -145,6 +158,8 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				for k, v := range tagRaw {
 					fix.RawAttrs["tag."+k] = v
 				}
+				// Always promote official tags → cooked remappable keys (not only tag.0xNN).
+				promoteSensorTags(fix.RawAttrs, tags)
 				for _, ev := range applyStatusTags(tags, fix.RawAttrs) {
 					ev.RecordedAt = fix.RecordedAt
 					if store.ValidCoords(fix.Lat, fix.Lon) {
@@ -268,6 +283,14 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 	if recorded.IsZero() {
 		recorded = time.Now().UTC()
 	}
+	var timeMs int
+	if ms, ok := tags[0x21]; ok && len(ms) >= 2 {
+		msec := binary.LittleEndian.Uint16(ms[0:2])
+		timeMs = int(msec)
+		if msec < 1000 {
+			recorded = recorded.Add(time.Duration(msec) * time.Millisecond)
+		}
+	}
 	fix := store.Fix{
 		Lat:            lat,
 		Lon:            lon,
@@ -275,11 +298,15 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		Satellites:     &sats,
 		SourceProtocol: "galileosky",
 		RawAttrs: map[string]any{
-			"gnss.sats":      sats,
-			"gnss_sats":      sats,
+			"gnss.sats":         sats,
+			"gnss_sats":         sats,
 			"gnss.valid_nibble": validNibble,
-			"gps.valid":      gpsOK && store.ValidCoords(lat, lon),
+			"gps.valid":         gpsOK && store.ValidCoords(lat, lon),
 		},
+	}
+	if timeMs > 0 || tags[0x21] != nil {
+		fix.RawAttrs["time.ms"] = timeMs
+		fix.RawAttrs["tag.0x21"] = timeMs
 	}
 	if validNibble == 2 {
 		fix.RawAttrs["gnss.lbs"] = true
@@ -295,7 +322,6 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		fix.Heading = &hdg
 		fix.RawAttrs["speed.gps"] = spd
 		fix.RawAttrs["heading.gps"] = hdg
-		fix.RawAttrs["tag.0x33"] = true
 	}
 	if h, ok := tags[0x34]; ok && len(h) >= 2 {
 		alt := float64(int16(binary.LittleEndian.Uint16(h[0:2])))
@@ -434,6 +460,59 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw["unix_time"] = int64(binary.LittleEndian.Uint32(v[0:4]))
 		raw["tag.0x20"] = raw["unix_time"]
 	}
+	// 0x21: milliseconds of the unix second (official newer tag; 2 bytes, 0–999).
+	if v, ok := tags[0x21]; ok && len(v) >= 2 {
+		ms := int(binary.LittleEndian.Uint16(v[0:2]))
+		raw["time.ms"] = ms
+		raw["tag.0x21"] = ms
+	}
+	// 0x33–0x35: speed/course, height, HDOP (official §8) — cook even without 0x30.
+	if v, ok := tags[0x33]; ok && len(v) >= 4 {
+		spd := float64(binary.LittleEndian.Uint16(v[0:2])) / 10.0
+		hdg := float64(binary.LittleEndian.Uint16(v[2:4])) / 10.0
+		raw["speed.gps"] = spd
+		raw["heading.gps"] = hdg
+	}
+	if v, ok := tags[0x34]; ok && len(v) >= 2 {
+		alt := float64(int16(binary.LittleEndian.Uint16(v[0:2])))
+		raw["gnss.altitude"] = alt
+		raw["tag.0x34"] = alt
+	}
+	if v, ok := tags[0x35]; ok && len(v) >= 1 {
+		h := float64(v[0]) / 10.0
+		raw["hdop"] = h
+		raw["gnss.hdop"] = h
+		raw["tag.0x35"] = h
+	}
+	// 0x41 / 0x42: supply / battery mV → V (official).
+	if v, ok := tags[0x41]; ok && len(v) >= 2 {
+		mv := float64(binary.LittleEndian.Uint16(v[0:2]))
+		raw["voltage.supply"] = mv / 1000.0
+		raw["voltage.ext"] = mv / 1000.0
+		raw["tag.0x41"] = mv
+	}
+	if v, ok := tags[0x42]; ok && len(v) >= 2 {
+		mv := float64(binary.LittleEndian.Uint16(v[0:2]))
+		raw["voltage.batt"] = mv / 1000.0
+		raw["tag.0x42"] = mv
+	}
+	if v, ok := tags[0x48]; ok && len(v) >= 2 {
+		st := int(binary.LittleEndian.Uint16(v[0:2]))
+		raw["status.extended"] = st
+		raw["tag.0x48"] = st
+	}
+	// 0x50–0x51: analog inputs 0/1 (mV → V) when not already taken as supply/batt.
+	for i, id := range []byte{0x50, 0x51} {
+		v, ok := tags[id]
+		if !ok || len(v) < 2 {
+			continue
+		}
+		mv := float64(binary.LittleEndian.Uint16(v[0:2]))
+		raw[fmt.Sprintf("analog.%d", i)] = mv / 1000.0
+		if _, has := raw[fmt.Sprintf("tag.0x%02x", id)]; !has {
+			raw[fmt.Sprintf("tag.0x%02x", id)] = mv
+		}
+	}
 	// 0x52–0x57: additional analog channels (mV → V when plausible).
 	for i, id := range []byte{0x52, 0x53, 0x54, 0x55, 0x56, 0x57} {
 		v, ok := tags[id]
@@ -483,8 +562,32 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 			continue
 		}
 		n := binary.LittleEndian.Uint16(v[0:2])
-		raw[fmt.Sprintf("counter.%d", i+1)] = float64(n)
+		raw[fmt.Sprintf("can16.%d", i)] = float64(n)
+		// Official axle-load option: value ÷ 2 → kg.
+		raw[fmt.Sprintf("axle.load%d", i+1)] = float64(n) / 2.0
 		raw[fmt.Sprintf("tag.0x%02x", id)] = int(n)
+	}
+	// 0xDB–0xDF: CAN32 / engine hours (/100) / fuel L (/10).
+	if v, ok := tags[0xdb]; ok && len(v) >= 4 {
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw["can32.0"] = float64(n)
+		raw["engine.hours"] = float64(n) / 100.0
+		raw["tag.0xdb"] = n
+	}
+	if v, ok := tags[0xdc]; ok && len(v) >= 4 {
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw["can32.1"] = float64(n)
+		raw["can.fuel_l"] = float64(n) / 10.0
+		raw["tag.0xdc"] = n
+	}
+	for i, id := range []byte{0xdd, 0xde, 0xdf} {
+		v, ok := tags[id]
+		if !ok || len(v) < 4 {
+			continue
+		}
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw[fmt.Sprintf("can32.%d", i+2)] = float64(n)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = n
 	}
 	// 0x70–0x77: thermometer id (u8) + temp °C (int8) — official example 01 10 → 16°C.
 	for i, id := range []byte{0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77} {
@@ -496,15 +599,50 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("temp.%d", i+1)] = float64(int8(v[1]))
 		raw[fmt.Sprintf("tag.0x%02x", id)] = int(int8(v[1]))
 	}
-	// 0xC0–0xC3: CAN_A0/A1/B0/B1 (4-byte).
-	for i, id := range []byte{0xc0, 0xc1, 0xc2, 0xc3} {
+	// 0xC0–0xC3: CAN_A0/A1/B0/B1 — cook per official §8 formulas.
+	if v, ok := tags[0xc0]; ok && len(v) >= 4 {
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw["tag.0xc0"] = n
+		raw["can.0"] = float64(n)
+		raw["can.fuel_used"] = float64(n) / 2.0 // litres
+	}
+	if v, ok := tags[0xc1]; ok && len(v) >= 4 {
+		// Official example FA 72 50 25 → fuel 100%, coolant 74°C, RPM 1194.
+		raw["tag.0xc1"] = binary.LittleEndian.Uint32(v[0:4])
+		raw["can.1"] = float64(binary.LittleEndian.Uint32(v[0:4]))
+		raw["can.fuel_level"] = float64(v[0]) * 0.4
+		raw["can.coolant_temp"] = float64(v[1]) - 40.0
+		raw["can.rpm"] = float64(binary.LittleEndian.Uint16(v[2:4])) * 0.125
+	}
+	if v, ok := tags[0xc2]; ok && len(v) >= 4 {
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw["tag.0xc2"] = n
+		raw["can.2"] = float64(n)
+		raw["can.mileage"] = float64(n) * 5.0 // metres
+	}
+	if v, ok := tags[0xc3]; ok && len(v) >= 4 {
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw["can.3"] = float64(n)
+		raw["tag.0xc3"] = n
+	}
+	// 0x58/0x59 RS232; 0x88–0x8C signed DUT temp / weight.
+	for i, id := range []byte{0x58, 0x59} {
 		v, ok := tags[id]
-		if !ok || len(v) < 4 {
+		if !ok || len(v) < 2 {
 			continue
 		}
-		n := binary.LittleEndian.Uint32(v[0:4])
-		raw[fmt.Sprintf("can.%d", i)] = float64(n)
+		n := int(binary.LittleEndian.Uint16(v[0:2]))
+		raw[fmt.Sprintf("rs232.%d", i)] = n
 		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+	}
+	for i, id := range []byte{0x88, 0x89, 0x8a, 0x8b, 0x8c} {
+		v, ok := tags[id]
+		if !ok || len(v) < 1 {
+			continue
+		}
+		t := float64(int8(v[0]))
+		raw[fmt.Sprintf("dut.temp%d", i)] = t
+		raw[fmt.Sprintf("tag.0x%02x", id)] = int(int8(v[0]))
 	}
 	// 0xC4–0xCF / 0xD0–0xD2 / 0xA0–0xAF: CAN8BITR (1-byte).
 	for i := 0; i < 12; i++ {

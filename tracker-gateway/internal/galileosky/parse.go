@@ -130,13 +130,21 @@ func tagsToRaw(tags map[byte][]byte) map[string]any {
 			m[key] = string(v[:15])
 			continue
 		}
+		if k == 0x20 && len(v) >= 4 {
+			m[key] = int64(binary.LittleEndian.Uint32(v[0:4]))
+			continue
+		}
+		if k == 0x21 && len(v) >= 2 {
+			m[key] = int(binary.LittleEndian.Uint16(v[0:2]))
+			continue
+		}
 		if k == 0x30 && len(v) >= 9 {
 			flags := v[0]
 			m[key] = map[string]any{
 				"sats":  int(flags & 0x0f),
 				"valid": int(flags >> 4),
-				"lat":   int32(binary.LittleEndian.Uint32(v[1:5])),
-				"lon":   int32(binary.LittleEndian.Uint32(v[5:9])),
+				"lat":   float64(int32(binary.LittleEndian.Uint32(v[1:5]))) / 1_000_000.0,
+				"lon":   float64(int32(binary.LittleEndian.Uint32(v[5:9]))) / 1_000_000.0,
 			}
 			continue
 		}
@@ -145,6 +153,14 @@ func tagsToRaw(tags map[byte][]byte) map[string]any {
 				"speed":   float64(binary.LittleEndian.Uint16(v[0:2])) / 10.0,
 				"heading": float64(binary.LittleEndian.Uint16(v[2:4])) / 10.0,
 			}
+			continue
+		}
+		if k == 0x34 && len(v) >= 2 {
+			m[key] = float64(int16(binary.LittleEndian.Uint16(v[0:2])))
+			continue
+		}
+		if k == 0x35 && len(v) >= 1 {
+			m[key] = float64(v[0]) / 10.0
 			continue
 		}
 		if k == 0xe1 || k == 0xeb {
@@ -190,8 +206,10 @@ func tagSize(tag byte) int {
 		return 15
 	case 0x04, 0x10: // device id / archive record number
 		return 2
-	case 0x20: // unix time
+	case 0x20: // unix time (seconds since 1970-01-01 UTC)
 		return 4
+	case 0x21: // milliseconds of the second (0–999); flespi/Galileosky changelog
+		return 2
 	case 0x30: // coords: flags(1)+lat(4)+lon(4)
 		return 9
 	case 0x33: // speed + course (uint16/10 each)

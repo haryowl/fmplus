@@ -60,8 +60,12 @@ func TestApplyStatusTags_OutputsAndEcoDrive(t *testing.T) {
 	if raw["status.dout0"] != true || raw["status.dout2"] != true {
 		t.Fatalf("dout=%v", raw)
 	}
-	if raw["ecodrive.accel"] != 10 || raw["ecodrive.brake"] != 20 {
+	// Official: 100 = 1g → 10/100 = 0.1g
+	if raw["ecodrive.accel"] != 0.1 || raw["ecodrive.brake"] != 0.2 {
 		t.Fatalf("eco=%v", raw)
+	}
+	if raw["ecodrive.accel_raw"] != 10 || raw["ecodrive.brake_raw"] != 20 {
+		t.Fatalf("eco raw=%v", raw)
 	}
 }
 

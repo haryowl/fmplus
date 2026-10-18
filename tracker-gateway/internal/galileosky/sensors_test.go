@@ -25,7 +25,7 @@ func TestPromoteSensorTags_Counters(t *testing.T) {
 	c := make([]byte, 2)
 	binary.LittleEndian.PutUint16(c, 42)
 	promoteSensorTags(raw, map[byte][]byte{0xd6: c})
-	if raw["counter.1"] != float64(42) {
+	if raw["can16.0"] != float64(42) || raw["axle.load1"] != float64(21) {
 		t.Fatalf("%v", raw)
 	}
 	promoteSensorTags(raw, map[byte][]byte{0xd5: {0x05}})
@@ -101,8 +101,26 @@ func TestPromoteSensorTags_CanC0AndCan8(t *testing.T) {
 	reg := make([]byte, 4)
 	binary.LittleEndian.PutUint32(reg, 77)
 	promoteSensorTags(raw, map[byte][]byte{0xc0: reg, 0xc4: {0x09}, 0xa0: {0x0a}})
-	if raw["can.0"] != float64(77) || raw["can8.0"] != 9 || raw["can8r.15"] != 10 {
+	if raw["can.0"] != float64(77) || raw["can.fuel_used"] != 38.5 {
+		t.Fatalf("c0 cooked=%v", raw)
+	}
+	if raw["can8.0"] != 9 || raw["can8r.15"] != 10 {
 		t.Fatalf("%v", raw)
+	}
+}
+
+func TestPromoteSensorTags_CanC1OfficialExample(t *testing.T) {
+	// Official PDF: FA 72 50 25 → fuel 100%, coolant 74°C, RPM 1194
+	raw := map[string]any{}
+	promoteSensorTags(raw, map[byte][]byte{0xc1: {0xfa, 0x72, 0x50, 0x25}})
+	if raw["can.fuel_level"] != 100.0 {
+		t.Fatalf("fuel=%v", raw["can.fuel_level"])
+	}
+	if raw["can.coolant_temp"] != 74.0 {
+		t.Fatalf("coolant=%v", raw["can.coolant_temp"])
+	}
+	if raw["can.rpm"] != 1194.0 {
+		t.Fatalf("rpm=%v", raw["can.rpm"])
 	}
 }
 
