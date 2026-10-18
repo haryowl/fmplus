@@ -111,25 +111,22 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		}
 		for _, tags := range records {
 			if v, ok := tags[0x03]; ok && len(v) >= 15 {
-				imei = string(v[:15])
+				imei = strings.TrimSpace(string(v[:15]))
+			}
+			// Re-resolve every record once IMEI is known so Admin register mid-session works,
+			// and so we never keep a deleted/stale device id after re-claim.
+			if imei != "" {
 				device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "galileosky")
-				if device != nil && sessions != nil && bound == nil {
-					bound = &protocol.ConnSession{
-						DeviceID: device.ID, IMEI: device.IMEI, Protocol: "galileosky", Conn: conn,
+				if device != nil && sessions != nil {
+					if bound == nil || bound.DeviceID != device.ID {
+						bound = &protocol.ConnSession{
+							DeviceID: device.ID, IMEI: device.IMEI, Protocol: "galileosky", Conn: conn,
+						}
+						sessions.Bind(bound)
 					}
-					sessions.Bind(bound)
 				}
 			}
 			fix, hasFix := fixFromTags(tags)
-			if hasFix && device == nil && imei != "" {
-				device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "galileosky")
-				if device != nil && sessions != nil && bound == nil {
-					bound = &protocol.ConnSession{
-						DeviceID: device.ID, IMEI: device.IMEI, Protocol: "galileosky", Conn: conn,
-					}
-					sessions.Bind(bound)
-				}
-			}
 			if device != nil && (hasFix || len(tags) > 0) {
 				if !hasFix {
 					fix = store.Fix{

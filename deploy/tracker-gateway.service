@@ -1,11 +1,14 @@
 [Unit]
 Description=FM Plus tracker gateway (TCP/HTTP ingest)
-After=network.target
+After=network.target docker.service
+Wants=docker.service
 
 [Service]
 Type=simple
 # Parent dir so config can load ../.env.local; binary still under tracker-gateway/bin.
 WorkingDirectory=/root/fmplus/fmplus/tracker-gateway
+# Postgres via docker compose may lag after reboot — retry connect via Restart=.
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do (echo >/dev/tcp/127.0.0.1/5433) >/dev/null 2>&1 && exit 0; sleep 2; done; echo "Postgres :5433 not ready" >&2; exit 1'
 ExecStart=/root/fmplus/fmplus/tracker-gateway/bin/tracker-gateway
 Restart=always
 RestartSec=3
