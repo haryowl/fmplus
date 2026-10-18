@@ -76,6 +76,15 @@ type TrackerDeviceRow = {
   } | null;
 };
 
+type TrackerDeviceGroupRow = {
+  id: string;
+  name: string;
+  description?: string;
+  sortOrder?: number;
+  memberCount?: number;
+  deviceIds?: string[];
+};
+
 type UnassignedTrackerRow = {
   imei: string;
   protocol: string;
@@ -739,6 +748,11 @@ export default function AdminConsole() {
   const [fuEdits, setFuEdits] = useState<Record<string, FieldUserEdit>>({});
   const [fuEditingId, setFuEditingId] = useState<string | null>(null);
   const [trackerDevices, setTrackerDevices] = useState<TrackerDeviceRow[]>([]);
+  const [deviceGroups, setDeviceGroups] = useState<TrackerDeviceGroupRow[]>([]);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupDesc, setNewGroupDesc] = useState("");
+  const [editGroupId, setEditGroupId] = useState("");
+  const [editGroupMembers, setEditGroupMembers] = useState<string[]>([]);
   const [unassignedTrackers, setUnassignedTrackers] = useState<UnassignedTrackerRow[]>([]);
   const [trackerProfiles, setTrackerProfiles] = useState<TrackerProfileRow[]>([]);
   const [paramDefs, setParamDefs] = useState<TrackerParamDef[]>([]);
@@ -867,6 +881,17 @@ export default function AdminConsole() {
     setTrackerDevices(data.devices);
   }, []);
 
+  const loadDeviceGroups = useCallback(async (tenantId: string) => {
+    const data = await api<{ groups: TrackerDeviceGroupRow[] }>(
+      `/api/admin/tenants/${tenantId}/tracker-device-groups?members=1`,
+    );
+    setDeviceGroups(data.groups || []);
+    setEditGroupId((cur) => {
+      if (cur && data.groups?.some((g) => g.id === cur)) return cur;
+      return data.groups?.[0]?.id || "";
+    });
+  }, []);
+
   const loadUnassignedTrackers = useCallback(async () => {
     const data = await api<{ unassigned: UnassignedTrackerRow[] }>(
       `/api/admin/tracker-unassigned?limit=100`,
@@ -969,11 +994,15 @@ export default function AdminConsole() {
       setFuEdits({});
       setFuEditingId(null);
       setTrackerDevices([]);
+      setDeviceGroups([]);
+      setEditGroupId("");
+      setEditGroupMembers([]);
       setLastDeviceToken("");
       return;
     }
     void loadFieldUsers(selectedId).catch((err: Error) => setError(err.message));
     void loadTrackerDevices(selectedId).catch((err: Error) => setError(err.message));
+    void loadDeviceGroups(selectedId).catch((err: Error) => setError(err.message));
     void loadUnassignedTrackers().catch((err: Error) => setError(err.message));
     void loadDeviceManager(selectedId).catch((err: Error) => setError(err.message));
     void loadGatewayStatus();
@@ -994,7 +1023,19 @@ export default function AdminConsole() {
         setSafetyEvents([]);
       }
     })();
-  }, [selectedId, loadFieldUsers, loadTrackerDevices, loadUnassignedTrackers, loadDeviceManager]);
+  }, [
+    selectedId,
+    loadFieldUsers,
+    loadTrackerDevices,
+    loadDeviceGroups,
+    loadUnassignedTrackers,
+    loadDeviceManager,
+  ]);
+
+  useEffect(() => {
+    const g = deviceGroups.find((x) => x.id === editGroupId);
+    setEditGroupMembers(g?.deviceIds ? [...g.deviceIds] : []);
+  }, [editGroupId, deviceGroups]);
 
   useEffect(() => {
     if (!selectedId || selectedId === "new") return;
@@ -1361,6 +1402,67 @@ export default function AdminConsole() {
       await loadTrackerDevices(selectedId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Rotate failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createDeviceGroup(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedId || selectedId === "new" || !newGroupName.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      const created = await api<{ group: TrackerDeviceGroupRow }>(
+        `/api/admin/tenants/${selectedId}/tracker-device-groups`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: newGroupName.trim(),
+            description: newGroupDesc.trim(),
+          }),
+        },
+      );
+      setNewGroupName("");
+      setNewGroupDesc("");
+      setEditGroupId(created.group.id);
+      await loadDeviceGroups(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveGroupMembers() {
+    if (!selectedId || selectedId === "new" || !editGroupId) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/admin/tenants/${selectedId}/tracker-device-groups/${editGroupId}/members`, {
+        method: "PUT",
+        body: JSON.stringify({ deviceIds: editGroupMembers }),
+      });
+      await loadDeviceGroups(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeDeviceGroup(groupId: string, name: string) {
+    if (!selectedId || selectedId === "new") return;
+    if (!window.confirm(`Delete group “${name}”? Devices are kept.`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/admin/tenants/${selectedId}/tracker-device-groups/${groupId}`, {
+        method: "DELETE",
+      });
+      await loadDeviceGroups(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -3174,6 +3276,119 @@ export default function AdminConsole() {
                     </ul>
                   ) : (
                     <p className="muted">No safety / alarm events yet (Su Biao, Concox, JT808, …).</p>
+                  )}
+                </section>
+
+                <section className="admin-panel">
+                  <header className="admin-panel-head">
+                    <h3>
+                      Fleet groups{" "}
+                      <span className="admin-count-badge">{deviceGroups.length}</span>
+                    </h3>
+                    <p className="muted">
+                      Device buckets for Fleet Live / Dispatch / Maintenance · M2M membership
+                    </p>
+                  </header>
+                  <form className="admin-form-grid" onSubmit={(e) => void createDeviceGroup(e)}>
+                    <label>
+                      New group name
+                      <input
+                        value={newGroupName}
+                        onChange={(e) => setNewGroupName(e.target.value)}
+                        placeholder="Jakarta north"
+                        required
+                      />
+                    </label>
+                    <label>
+                      Description
+                      <input
+                        value={newGroupDesc}
+                        onChange={(e) => setNewGroupDesc(e.target.value)}
+                        placeholder="Optional"
+                      />
+                    </label>
+                    <div className="span-2 admin-actions">
+                      <button
+                        type="submit"
+                        className="btn btn-secondary"
+                        disabled={busy || !newGroupName.trim()}
+                      >
+                        Create group
+                      </button>
+                    </div>
+                  </form>
+                  {deviceGroups.length > 0 ? (
+                    <div className="admin-form-grid" style={{ marginTop: 8 }}>
+                      <label>
+                        Edit group
+                        <select
+                          value={editGroupId}
+                          onChange={(e) => setEditGroupId(e.target.value)}
+                        >
+                          {deviceGroups.map((g) => (
+                            <option key={g.id} value={g.id}>
+                              {g.name}
+                              {g.memberCount != null ? ` (${g.memberCount})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="span-2">
+                        <p className="muted" style={{ marginBottom: 4 }}>
+                          Members (multi-select)
+                        </p>
+                        <div className="admin-remap-grid" style={{ maxHeight: 160, overflow: "auto" }}>
+                          {trackerDevices.map((d) => {
+                            const checked = editGroupMembers.includes(d.id);
+                            return (
+                              <label key={d.id} className="admin-check-row">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    setEditGroupMembers((prev) =>
+                                      e.target.checked
+                                        ? [...prev, d.id]
+                                        : prev.filter((id) => id !== d.id),
+                                    );
+                                  }}
+                                />
+                                <span>
+                                  {d.label || d.imei}{" "}
+                                  <span className="muted">· {d.imei}</span>
+                                </span>
+                              </label>
+                            );
+                          })}
+                          {trackerDevices.length === 0 ? (
+                            <p className="muted">Add tracker devices first.</p>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="span-2 admin-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          disabled={busy || !editGroupId}
+                          onClick={() => void saveGroupMembers()}
+                        >
+                          Save members
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={busy || !editGroupId}
+                          onClick={() => {
+                            const g = deviceGroups.find((x) => x.id === editGroupId);
+                            if (g) void removeDeviceGroup(g.id, g.name);
+                          }}
+                        >
+                          Delete group
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="muted">No groups yet — create one to scope Fleet Live.</p>
                   )}
                 </section>
 

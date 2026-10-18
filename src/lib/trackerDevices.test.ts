@@ -18,6 +18,10 @@ const fix = (partial: Partial<TrackerLastFix> & Pick<TrackerLastFix, "deviceId" 
   heading: partial.heading ?? null,
   ignition: partial.ignition ?? true,
   sourceProtocol: partial.sourceProtocol || "json",
+  odometerKm: partial.odometerKm ?? null,
+  fuelLevel: partial.fuelLevel ?? null,
+  fuelLiters: partial.fuelLiters ?? null,
+  groups: partial.groups,
   deviceId: partial.deviceId,
   imei: partial.imei,
 });
@@ -58,12 +62,24 @@ describe("mergeArmadaRowsWithDeviceFixes", () => {
   it("overlays a fresher device fix onto the Armada row", () => {
     const merged = mergeArmadaRowsWithDeviceFixes(
       armada,
-      [fix({ deviceId: "d1", imei: "3520", armadaUserId: 99, lat: -6.25, lon: 106.85 })],
+      [
+        fix({
+          deviceId: "d1",
+          imei: "3520",
+          armadaUserId: 99,
+          lat: -6.25,
+          lon: 106.85,
+          odometerKm: 12345,
+          fuelLevel: 55,
+        }),
+      ],
       "both",
     );
     expect(merged).toHaveLength(1);
     expect(merged[0].lat).toBeCloseTo(-6.25);
     expect(merged[0].lon).toBeCloseTo(106.85);
+    expect(merged[0].odometerKm).toBe(12345);
+    expect(merged[0].fuelLevel).toBe(55);
   });
 
   it("appends orphan devices", () => {

@@ -37,6 +37,15 @@ import {
   updateTrackerDevice,
 } from "./tracker-devices.mjs";
 import {
+  addGroupMember,
+  createDeviceGroup,
+  deleteDeviceGroup,
+  listDeviceGroups,
+  removeGroupMember,
+  setGroupMembers,
+  updateDeviceGroup,
+} from "./tracker-device-groups.mjs";
+import {
   cancelCommand,
   cloneProfile,
   createParamDef,
@@ -741,6 +750,122 @@ export async function handleAdminRequest(req, res) {
           imei: device.imei,
         });
         json(res, 201, { device });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const groupMemberMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-device-groups\/([0-9a-f-]{36})\/members\/([0-9a-f-]{36})$/i.exec(
+        path,
+      );
+    if (groupMemberMatch) {
+      const tenantId = groupMemberMatch[1];
+      const groupId = groupMemberMatch[2];
+      const deviceId = groupMemberMatch[3];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "PUT") {
+        const group = await addGroupMember(tenantId, groupId, deviceId);
+        await writeAudit(admin.id, "tracker_device_group.member_add", {
+          tenantId,
+          groupId,
+          deviceId,
+        });
+        json(res, 200, { group });
+        return true;
+      }
+      if (req.method === "DELETE") {
+        const group = await removeGroupMember(tenantId, groupId, deviceId);
+        await writeAudit(admin.id, "tracker_device_group.member_remove", {
+          tenantId,
+          groupId,
+          deviceId,
+        });
+        json(res, 200, { group });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const groupMembersMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-device-groups\/([0-9a-f-]{36})\/members$/i.exec(
+        path,
+      );
+    if (groupMembersMatch) {
+      const tenantId = groupMembersMatch[1];
+      const groupId = groupMembersMatch[2];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "PUT") {
+        const body = await readJson(req);
+        const group = await setGroupMembers(tenantId, groupId, body.deviceIds ?? body.device_ids ?? []);
+        await writeAudit(admin.id, "tracker_device_group.members_set", {
+          tenantId,
+          groupId,
+          count: group.memberCount,
+        });
+        json(res, 200, { group });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const groupOneMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-device-groups\/([0-9a-f-]{36})$/i.exec(path);
+    if (groupOneMatch) {
+      const tenantId = groupOneMatch[1];
+      const groupId = groupOneMatch[2];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "PATCH") {
+        const body = await readJson(req);
+        const group = await updateDeviceGroup(tenantId, groupId, body);
+        await writeAudit(admin.id, "tracker_device_group.update", { tenantId, groupId });
+        json(res, 200, { group });
+        return true;
+      }
+      if (req.method === "DELETE") {
+        await deleteDeviceGroup(tenantId, groupId);
+        await writeAudit(admin.id, "tracker_device_group.delete", { tenantId, groupId });
+        json(res, 200, { ok: true });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const groupsListMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-device-groups$/i.exec(path);
+    if (groupsListMatch) {
+      const tenantId = groupsListMatch[1];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      const tenantOk = await dbQuery(`SELECT id FROM tenants WHERE id = $1`, [tenantId]);
+      if (!tenantOk.rows[0]) {
+        json(res, 404, { error: "Tenant not found" });
+        return true;
+      }
+      if (req.method === "GET") {
+        const includeMembers =
+          url.searchParams.get("members") === "1" || url.searchParams.get("includeMembers") === "1";
+        json(res, 200, {
+          groups: await listDeviceGroups(tenantId, { includeMembers }),
+        });
+        return true;
+      }
+      if (req.method === "POST") {
+        const body = await readJson(req);
+        const group = await createDeviceGroup(tenantId, body);
+        await writeAudit(admin.id, "tracker_device_group.create", {
+          tenantId,
+          groupId: group.id,
+          name: group.name,
+        });
+        json(res, 201, { group });
         return true;
       }
       json(res, 405, { error: "Method not allowed" });

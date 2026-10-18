@@ -1,6 +1,8 @@
 import type { LastStatusRow } from "./lastStatus";
 import { tenantHeaders } from "./tenant";
 
+export type TrackerDeviceGroupRef = { id: string; name: string };
+
 export type TrackerLastFix = {
   deviceId: string;
   imei: string;
@@ -15,6 +17,19 @@ export type TrackerLastFix = {
   heading: number | null;
   ignition: boolean | null;
   sourceProtocol: string;
+  odometerKm?: number | null;
+  fuelLevel?: number | null;
+  fuelLiters?: number | null;
+  groups?: TrackerDeviceGroupRef[];
+};
+
+export type TrackerDeviceGroup = {
+  id: string;
+  name: string;
+  description?: string;
+  sortOrder?: number;
+  memberCount?: number;
+  deviceIds?: string[];
 };
 
 export type TelematicsSource = "armada" | "devices" | "both";
@@ -43,8 +58,8 @@ export function trackerFixToStatusRow(fix: TrackerLastFix): LastStatusRow {
     heading: fix.heading,
     speedKmh: fix.speed,
     ignition: fix.ignition,
-    fuelLevel: null,
-    odometerKm: null,
+    fuelLevel: fix.fuelLevel ?? null,
+    odometerKm: fix.odometerKm ?? null,
   };
 }
 
@@ -88,6 +103,8 @@ export function mergeArmadaRowsWithDeviceFixes(
           speedKmh: deviceRow.speedKmh ?? existing.speedKmh,
           heading: deviceRow.heading ?? existing.heading,
           ignition: deviceRow.ignition ?? existing.ignition,
+          fuelLevel: deviceRow.fuelLevel ?? existing.fuelLevel,
+          odometerKm: deviceRow.odometerKm ?? existing.odometerKm,
         });
       }
     } else {
@@ -97,11 +114,19 @@ export function mergeArmadaRowsWithDeviceFixes(
   return [...byId.values()];
 }
 
-export async function fetchTrackerLastStatus(signal?: AbortSignal): Promise<{
+export async function fetchTrackerLastStatus(
+  signal?: AbortSignal,
+  opts?: { groupIds?: string[] },
+): Promise<{
   fixes: TrackerLastFix[];
   telematicsSource: TelematicsSource;
 }> {
-  const res = await fetch("/api/tracker/last-status", {
+  const q = new URLSearchParams();
+  for (const id of opts?.groupIds || []) {
+    if (id) q.append("groupId", id);
+  }
+  const qs = q.toString();
+  const res = await fetch(`/api/tracker/last-status${qs ? `?${qs}` : ""}`, {
     credentials: "include",
     headers: { accept: "application/json", ...tenantHeaders() },
     signal,
@@ -116,4 +141,18 @@ export async function fetchTrackerLastStatus(signal?: AbortSignal): Promise<{
     fixes: data.fixes || [],
     telematicsSource: data.telematicsSource || "both",
   };
+}
+
+export async function fetchTrackerDeviceGroups(signal?: AbortSignal): Promise<TrackerDeviceGroup[]> {
+  const res = await fetch("/api/tracker/device-groups", {
+    credentials: "include",
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    groups?: TrackerDeviceGroup[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Tracker groups ${res.status}`);
+  return data.groups || [];
 }

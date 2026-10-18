@@ -88,8 +88,32 @@ export async function handleTrackerIngestRequest(req, res) {
         json(res, 200, { fixes: [], telematicsSource: source });
         return true;
       }
-      const fixes = await listTenantLastFixes(dbTenant.id);
+      const groupIds = [
+        ...url.searchParams.getAll("groupId"),
+        ...String(url.searchParams.get("groupIds") || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ];
+      const fixes = await listTenantLastFixes(dbTenant.id, { groupIds });
       json(res, 200, { fixes, telematicsSource: source });
+      return true;
+    } catch (err) {
+      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
+  if (url.pathname === "/api/tracker/device-groups" && req.method === "GET") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      const { listDeviceGroups } = await import("./tracker-device-groups.mjs");
+      const groups = await listDeviceGroups(dbTenant.id);
+      json(res, 200, { groups });
       return true;
     } catch (err) {
       json(res, 500, { error: err instanceof Error ? err.message : String(err) });

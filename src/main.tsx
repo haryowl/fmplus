@@ -7,6 +7,7 @@ import FleetCompact from "./pages/FleetCompact";
 import FleetDashboard from "./pages/FleetDashboard";
 import LastStatus from "./pages/LastStatus";
 import LiveOps from "./pages/LiveOps";
+import FleetLive from "./pages/FleetLive";
 import ExceptionsInbox from "./pages/ExceptionsInbox";
 import PlacesAnalytics from "./pages/PlacesAnalytics";
 import RoutePlanPage from "./pages/RoutePlan";
@@ -46,6 +47,7 @@ function pageFor(view: AppView) {
   if (view === "manager") return ManagerMaintenance;
   if (view === "field") return FieldLogin;
   if (view === "live") return LiveOps;
+  if (view === "fleetLive") return FleetLive;
   if (view === "exceptions") return ExceptionsInbox;
   if (view === "places") return PlacesAnalytics;
   if (view === "routePlan") return RoutePlanPage;

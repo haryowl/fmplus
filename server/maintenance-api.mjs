@@ -18,6 +18,12 @@ import {
 import { slimAsync } from "./slim-pool.mjs";
 import { eachDateYmd, sumIgnitionOnHours } from "./ignition-hours.mjs";
 import { evaluateKmInterval, findOdometerKmInStatus } from "./odometer-status.mjs";
+import {
+  deviceOdometerKmForArmadaUser,
+  telematicsUsesArmada,
+  telematicsUsesDevices,
+  tenantTelematicsSource,
+} from "./tracker-devices.mjs";
 import { canTransition, serviceDurationMinutes, nextScheduleDueAt } from "./maintenance-lifecycle.mjs";
 import {
   createCatalogItem,
@@ -849,7 +855,7 @@ async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionO
     completed.armadaUserId
   ) {
     try {
-      const km = await computeKmAccrued(completed, vaultTenant);
+      const km = await computeKmAccrued(completed, vaultTenant, { tenantId });
       if (km.currentOdoKm != null) nextBaseline = km.currentOdoKm;
     } catch {
       /* ignore */
@@ -1068,11 +1074,13 @@ export async function computeHoursAccrued(eventRow, vaultTenant) {
 }
 
 /**
- * Live km interval check from Armada /usersstatus odometerAcc.
+ * Live km interval check from shared fleet (device last-fix) and/or Armada /usersstatus.
+ * Prefers device odometer when telematics_source includes devices and a linked fix exists.
  * @param {ReturnType<typeof publicEvent>} event
  * @param {{ appId: number, token: string }} vaultTenant
+ * @param {{ tenantId?: string }} [opts]
  */
-export async function computeKmAccrued(event, vaultTenant) {
+export async function computeKmAccrued(event, vaultTenant, opts = {}) {
   const userId = Number(event.armadaUserId);
   const intervalKm = event.remindIntervalKm;
   let baselineKm = event.remindBaselineOdometerKm;
@@ -1083,6 +1091,39 @@ export async function computeKmAccrued(event, vaultTenant) {
   }
   if (intervalKm == null || !(intervalKm > 0)) {
     return evaluateKmInterval({ currentOdoKm: null, baselineKm, intervalKm: null });
+  }
+
+  const tenantId = opts.tenantId || event.tenantId || null;
+  let telematicsSource = "both";
+  if (tenantId) {
+    try {
+      telematicsSource = await tenantTelematicsSource(tenantId);
+    } catch {
+      telematicsSource = "both";
+    }
+  }
+
+  let deviceOdo = null;
+  if (tenantId && telematicsUsesDevices(telematicsSource)) {
+    try {
+      deviceOdo = await deviceOdometerKmForArmadaUser(tenantId, userId);
+    } catch {
+      deviceOdo = null;
+    }
+  }
+
+  if (deviceOdo != null && Number.isFinite(deviceOdo)) {
+    return {
+      ...evaluateKmInterval({ currentOdoKm: deviceOdo, baselineKm, intervalKm }),
+      source: "device",
+    };
+  }
+
+  if (!telematicsUsesArmada(telematicsSource) || !vaultTenant?.token) {
+    return {
+      ...evaluateKmInterval({ currentOdoKm: null, baselineKm, intervalKm }),
+      reason: deviceOdo == null ? "no_device_odometer" : "no_armada",
+    };
   }
 
   const url = `https://armada.id/lt/api/v.1/applications/${vaultTenant.appId}/usersstatus`;
@@ -1103,7 +1144,10 @@ export async function computeKmAccrued(event, vaultTenant) {
     }
     const raw = await res.json();
     const currentOdoKm = findOdometerKmInStatus(raw, userId);
-    return evaluateKmInterval({ currentOdoKm, baselineKm, intervalKm });
+    return {
+      ...evaluateKmInterval({ currentOdoKm, baselineKm, intervalKm }),
+      source: "armada",
+    };
   } catch (err) {
     return {
       ...evaluateKmInterval({ currentOdoKm: null, baselineKm, intervalKm }),
@@ -2660,11 +2704,8 @@ export async function handleMaintenanceRequest(req, res) {
         return true;
       }
       const vaultTenant = tenantFromRequest(req);
-      if (!vaultTenant?.token) {
-        json(res, 503, { error: "No Armada token for this tenant" });
-        return true;
-      }
-      const result = await computeKmAccrued(publicEvent(found.rows[0]), vaultTenant);
+      const event = publicEvent(found.rows[0]);
+      const result = await computeKmAccrued(event, vaultTenant || {}, { tenantId: dbTenant.id });
       json(res, 200, result);
       return true;
     }

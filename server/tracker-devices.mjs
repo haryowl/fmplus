@@ -5,6 +5,10 @@
 import crypto from "node:crypto";
 import { dbQuery } from "./db.mjs";
 import { applyDeviceRemap } from "./device-manager.mjs";
+import {
+  deviceIdsInGroups,
+  groupSummariesByDeviceIds,
+} from "./tracker-device-groups.mjs";
 
 export const TRACKER_PROTOCOLS = [
   "json",
@@ -595,9 +599,29 @@ export async function ingestVehicleFix(deviceRow, fix) {
   };
 }
 
+/** Pull odometer km + fuel from last-fix columns / mapped_attrs. */
+export function enrichFixTelemetry(row) {
+  const mapped =
+    row.mapped_attrs && typeof row.mapped_attrs === "object" && !Array.isArray(row.mapped_attrs)
+      ? row.mapped_attrs
+      : {};
+  let odometerKm = row.odometer == null ? null : Number(row.odometer);
+  if (!Number.isFinite(odometerKm)) {
+    const fromMapped = Number(mapped.odometer_km);
+    odometerKm = Number.isFinite(fromMapped) ? fromMapped : null;
+  }
+  let fuelLevel = null;
+  const fl = Number(mapped.fuel_level);
+  if (Number.isFinite(fl)) fuelLevel = fl;
+  let fuelLiters = null;
+  const liters = Number(mapped.fuel_liters ?? mapped["can.fuel_l"]);
+  if (Number.isFinite(liters)) fuelLiters = liters;
+  return { odometerKm, fuelLevel, fuelLiters };
+}
+
 /**
- * Latest device fixes keyed by armada_user_id for Dispatch Live merge.
- * @returns {Promise<Map<number, { lat: number, lon: number, recordedAt: string, ageSec: number|null, speed: number|null, deviceId: string, imei: string }>>}
+ * Latest device fixes keyed by armada_user_id for Dispatch Live / Maintenance merge.
+ * @returns {Promise<Map<number, object>>}
  */
 export async function lastFixesByArmadaUserIds(tenantId, armadaUserIds) {
   const ids = [...new Set((armadaUserIds || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
@@ -606,7 +630,8 @@ export async function lastFixesByArmadaUserIds(tenantId, armadaUserIds) {
   if (!ids.length) return map;
   const rows = await dbQuery(
     `SELECT d.armada_user_id, d.id AS device_id, d.imei, d.label,
-            lf.lat, lf.lon, lf.recorded_at, lf.speed, lf.source_protocol
+            lf.lat, lf.lon, lf.recorded_at, lf.speed, lf.heading, lf.ignition,
+            lf.odometer, lf.mapped_attrs, lf.source_protocol
      FROM tracker_devices d
      JOIN vehicle_last_fix lf ON lf.device_id = d.id
      WHERE d.tenant_id = $1
@@ -615,6 +640,8 @@ export async function lastFixesByArmadaUserIds(tenantId, armadaUserIds) {
     [tenantId, ids],
   );
   const now = Date.now();
+  const deviceIds = rows.rows.map((r) => r.device_id);
+  const groupsByDevice = await groupSummariesByDeviceIds(tenantId, deviceIds).catch(() => new Map());
   for (const r of rows.rows) {
     const uid = Number(r.armada_user_id);
     const recordedAt = r.recorded_at ? new Date(r.recorded_at).toISOString() : null;
@@ -624,39 +651,75 @@ export async function lastFixesByArmadaUserIds(tenantId, armadaUserIds) {
         : null;
     const prev = map.get(uid);
     if (prev && prev.ageSec != null && ageSec != null && prev.ageSec <= ageSec) continue;
+    const tel = enrichFixTelemetry(r);
     map.set(uid, {
       lat: Number(r.lat),
       lon: Number(r.lon),
       recordedAt,
       ageSec,
       speed: r.speed == null ? null : Number(r.speed),
+      heading: r.heading == null ? null : Number(r.heading),
+      ignition: r.ignition,
       deviceId: r.device_id,
       imei: r.imei,
       label: r.label || r.imei,
       sourceProtocol: r.source_protocol,
+      odometerKm: tel.odometerKm,
+      fuelLevel: tel.fuelLevel,
+      fuelLiters: tel.fuelLiters,
+      groups: groupsByDevice.get(r.device_id) || [],
     });
   }
   return map;
 }
 
-/** All last fixes for a tenant (Live Ops overlay / device-only fleet). */
-export async function listTenantLastFixes(tenantId) {
+/**
+ * Odometer km for one Armada user from the linked tracker device (freshest enabled).
+ * @returns {Promise<number|null>}
+ */
+export async function deviceOdometerKmForArmadaUser(tenantId, armadaUserId) {
+  const uid = Number(armadaUserId);
+  if (!Number.isInteger(uid) || uid < 1) return null;
+  const map = await lastFixesByArmadaUserIds(tenantId, [uid]);
+  const fix = map.get(uid);
+  return fix?.odometerKm != null && Number.isFinite(fix.odometerKm) ? fix.odometerKm : null;
+}
+
+/**
+ * All last fixes for a tenant (Fleet Live / Live Ops overlay / device-only fleet).
+ * @param {string} tenantId
+ * @param {{ groupIds?: string[] }} [opts]
+ */
+export async function listTenantLastFixes(tenantId, opts = {}) {
+  const groupIds = Array.isArray(opts.groupIds) ? opts.groupIds.filter(Boolean) : [];
+  let deviceFilter = null;
+  if (groupIds.length) {
+    deviceFilter = await deviceIdsInGroups(tenantId, groupIds);
+    if (!deviceFilter.length) return [];
+  }
   const rows = await dbQuery(
     `SELECT d.id AS device_id, d.imei, d.label, d.armada_user_id, d.protocol,
-            lf.lat, lf.lon, lf.recorded_at, lf.speed, lf.heading, lf.ignition, lf.source_protocol
+            lf.lat, lf.lon, lf.recorded_at, lf.speed, lf.heading, lf.ignition,
+            lf.odometer, lf.mapped_attrs, lf.source_protocol
      FROM tracker_devices d
      JOIN vehicle_last_fix lf ON lf.device_id = d.id
      WHERE d.tenant_id = $1 AND d.enabled = true
+       AND ($2::uuid[] IS NULL OR d.id = ANY($2::uuid[]))
      ORDER BY lf.recorded_at DESC`,
-    [tenantId],
+    [tenantId, deviceFilter],
   );
   const now = Date.now();
+  const groupsByDevice = await groupSummariesByDeviceIds(
+    tenantId,
+    rows.rows.map((r) => r.device_id),
+  ).catch(() => new Map());
   return rows.rows.map((r) => {
     const recordedAt = r.recorded_at ? new Date(r.recorded_at).toISOString() : null;
     const ageSec =
       recordedAt && !Number.isNaN(Date.parse(recordedAt))
         ? Math.max(0, Math.round((now - Date.parse(recordedAt)) / 1000))
         : null;
+    const tel = enrichFixTelemetry(r);
     return {
       deviceId: r.device_id,
       imei: r.imei,
@@ -671,6 +734,10 @@ export async function listTenantLastFixes(tenantId) {
       heading: r.heading == null ? null : Number(r.heading),
       ignition: r.ignition,
       sourceProtocol: r.source_protocol,
+      odometerKm: tel.odometerKm,
+      fuelLevel: tel.fuelLevel,
+      fuelLiters: tel.fuelLiters,
+      groups: groupsByDevice.get(r.device_id) || [],
     };
   });
 }
