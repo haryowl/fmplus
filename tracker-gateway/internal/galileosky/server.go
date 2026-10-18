@@ -74,6 +74,12 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		archive := lenRaw&0x8000 != 0
 		tagLen := int(lenRaw & 0x7fff)
 		if tagLen < 1 || tagLen > 1000 {
+			if device != nil {
+				_ = st.PatchLastStatus(ctx, device, map[string]any{
+					"tag_len_invalid": true,
+					"tag_len":         tagLen,
+				}, nil)
+			}
 			return
 		}
 		// tags + 2-byte CRC

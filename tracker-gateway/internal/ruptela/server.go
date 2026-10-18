@@ -90,6 +90,12 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		switch cmd {
 		case 1, 68: // classic + extended records
 			if imei == "" {
+				if d := boundDevice(bound); d != nil && d.ID != "" {
+					_ = st.PatchLastStatus(ctx, d, map[string]any{
+						"imei_missing": true,
+						"cmd":          int(cmd),
+					}, nil)
+				}
 				_ = writeRecordsAck(conn, false)
 				continue
 			}
