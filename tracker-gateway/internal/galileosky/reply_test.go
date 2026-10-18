@@ -1,6 +1,10 @@
 package galileosky
 
-import "testing"
+import (
+	"encoding/binary"
+	"strings"
+	"testing"
+)
 
 func TestFormatCommandReply_Text(t *testing.T) {
 	tags := map[byte][]byte{0xe1: []byte("Soft=1.2")}
@@ -11,10 +15,20 @@ func TestFormatCommandReply_Text(t *testing.T) {
 }
 
 func TestFormatCommandReply_Error(t *testing.T) {
-	tags := map[byte][]byte{0xe6: []byte("ERROR: unknown")}
+	tags := map[byte][]byte{0xe1: []byte("ERROR: unknown")}
 	text, ok := formatCommandReply(tags)
 	if ok || text != "ERROR: unknown" {
 		t.Fatalf("%q ok=%v", text, ok)
+	}
+}
+
+func TestFormatCommandReply_IgnoresUserData(t *testing.T) {
+	u := make([]byte, 4)
+	binary.LittleEndian.PutUint32(u, 99)
+	tags := map[byte][]byte{0xe6: u}
+	text, ok := formatCommandReply(tags)
+	if !ok || strings.Contains(text, "ERROR") {
+		t.Fatalf("user tag must not be cmd text: %q ok=%v", text, ok)
 	}
 }
 

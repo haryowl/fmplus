@@ -1,23 +1,30 @@
 package galileosky
 
 import (
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"unicode"
 )
 
-// formatCommandReply builds a human-readable ack string from E0–E6 / opaque tags.
+// formatCommandReply builds a human-readable ack from official 0xE1 text / 0xEB binary.
 func formatCommandReply(tags map[byte][]byte) (text string, ok bool) {
-	for _, id := range []byte{0xe6, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe0} {
-		v, exists := tags[id]
-		if !exists || len(v) == 0 {
-			continue
-		}
+	if v, exists := tags[0xe1]; exists && len(v) > 0 {
 		s := strings.TrimSpace(string(v))
 		if isMostlyPrintable(s) {
 			return s, !commandReplyFailed(s)
 		}
-		return fmt.Sprintf("tag.0x%02x=%x", id, v), true
+		return fmt.Sprintf("tag.0xe1=%x", v), true
+	}
+	if v, exists := tags[0xeb]; exists && len(v) > 0 {
+		s := strings.TrimSpace(string(v))
+		if isMostlyPrintable(s) {
+			return s, !commandReplyFailed(s)
+		}
+		return fmt.Sprintf("tag.0xeb=%x", v), true
+	}
+	if v, exists := tags[0xe0]; exists && len(v) >= 4 {
+		return fmt.Sprintf("cmd.id=%d", binary.LittleEndian.Uint32(v[:4])), true
 	}
 	if v, ok := tags[0xff]; ok && len(v) > 0 {
 		s := strings.TrimSpace(string(v))

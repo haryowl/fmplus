@@ -41,12 +41,26 @@ func parseTagRecords(payload []byte) []map[byte][]byte {
 		off++
 		size := tagSize(tag)
 		if size == -3 {
-			// 1-byte length + payload (command reply tags 0xE0–0xE6).
+			// 1-byte length + payload (0xE1 cmd text, 0xEA user array, 0xEB binary reply).
 			if off >= len(payload) {
 				break
 			}
 			n := int(payload[off])
 			off++
+			if n < 0 || off+n > len(payload) {
+				break
+			}
+			flat = append(flat, tv{tag, append([]byte(nil), payload[off:off+n]...)})
+			off += n
+			continue
+		}
+		if size == -2 {
+			// 2-byte LE length + payload (0xFE extended tags container).
+			if off+2 > len(payload) {
+				break
+			}
+			n := int(binary.LittleEndian.Uint16(payload[off : off+2]))
+			off += 2
 			if n < 0 || off+n > len(payload) {
 				break
 			}
@@ -133,12 +147,20 @@ func tagsToRaw(tags map[byte][]byte) map[string]any {
 			}
 			continue
 		}
-		if k >= 0xe0 && k <= 0xe6 {
+		if k == 0xe1 || k == 0xeb {
 			s := strings.TrimSpace(string(v))
 			if s != "" {
 				m[key] = s
 				continue
 			}
+		}
+		if k >= 0xe2 && k <= 0xe9 && len(v) >= 4 {
+			m[key] = binary.LittleEndian.Uint32(v[0:4])
+			continue
+		}
+		if k == 0xe0 && len(v) >= 4 {
+			m[key] = binary.LittleEndian.Uint32(v[0:4])
+			continue
 		}
 		switch len(v) {
 		case 1:
@@ -157,8 +179,9 @@ func tagsToRaw(tags map[byte][]byte) map[string]any {
 }
 
 // tagSize returns value length for known Galileosky tags per official protocol table
-// ("Описание протокола обмена с сервером", §8). Unknown → -1 (opaque remainder under 0xff).
-// Command-channel replies 0xE0–0xE6 use 1-byte length prefix (−3).
+// ("Описание протокола обмена с сервером", §8) plus Traccar/flespi FE/user confirmations.
+// Unknown → -1 (opaque remainder under 0xff).
+// Length-prefixed: 0xE1/0xEA/0xEB = −3 (1-byte len); 0xFE = −2 (2-byte LE len).
 func tagSize(tag byte) int {
 	switch tag {
 	case 0x01, 0x02: // hardware / firmware version
@@ -176,6 +199,8 @@ func tagSize(tag byte) int {
 	case 0x34: // height (int16)
 		return 2
 	case 0x35: // HDOP (/10) or LBS error (×10)
+		return 1
+	case 0x36, 0x37: // PDOP / VDOP (/10) on firmwares that emit them
 		return 1
 	case 0x40: // device status bitfield
 		return 2
@@ -195,8 +220,12 @@ func tagSize(tag byte) int {
 		return 2
 	case 0x58, 0x59: // RS232 0/1
 		return 2
+	case 0x48: // extended status (newer firmwares)
+		return 2
 	case 0x5a: // REP-500 energy counter
 		return 4
+	case 0x5c: // PressurePro TPMS (34×2)
+		return 68
 	case 0x5d: // DBG-S11D dosimeter
 		return 3
 	case 0x60, 0x61, 0x62: // RS485 DUT 0–2
@@ -208,7 +237,7 @@ func tagSize(tag byte) int {
 		return 2
 	case 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87: // DS1923 id+temp+humidity
 		return 3
-	case 0x88, 0x8a, 0x8b, 0x8c: // DUT temp / weight (int8)
+	case 0x88, 0x89, 0x8a, 0x8b, 0x8c: // DUT temp / weight (int8)
 		return 1
 	case 0x90, 0xd3: // iButton id 0 / 1
 		return 4
@@ -230,12 +259,64 @@ func tagSize(tag byte) int {
 		return 2
 	case 0xdb, 0xdc, 0xdd, 0xde, 0xdf: // CAN32BITR / engine hours / fuel L
 		return 4
-	case 0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6:
-		// Length-prefixed command/text reply (1-byte len + ASCII/data).
+	case 0xe0: // command number (server↔device), uint32
+		return 4
+	case 0xe1: // command / reply text: 1-byte len + ASCII (CP1251)
 		return -3
+	case 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9: // user data 0–7 (uint32)
+		return 4
+	case 0xea: // user data array: 1-byte len + bytes
+		return -3
+	case 0xeb: // command binary reply: 1-byte len + data
+		return -3
+	case 0xfa:
+		return 3
+	case 0xfd: // extended iButton / related (8 bytes)
+		return 8
+	case 0xfe: // extended tags container: 2-byte LE len + nested (id u16 + value i32)*
+		return -2
 	case 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9:
 		return 4 // CAN32BITR5–14
 	default:
 		return -1
 	}
+}
+
+// parseExtendedFE walks 0xFE payload as repeating (uint16 LE tag, int32 LE value).
+// Modbus: ext 0x01–0x20 → slots 0–31; ext 0x61–0x80 → slots 32–63.
+// Bluetooth: ext 0x21–0x60 → slots 0–63.
+func parseExtendedFE(payload []byte) map[string]any {
+	out := map[string]any{}
+	if len(payload) == 0 {
+		return out
+	}
+	off := 0
+	for off+6 <= len(payload) {
+		id := binary.LittleEndian.Uint16(payload[off : off+2])
+		val := int32(binary.LittleEndian.Uint32(payload[off+2 : off+6]))
+		off += 6
+		out[fmt.Sprintf("ext.0x%04x", id)] = val
+		switch {
+		case id >= 0x01 && id <= 0x20:
+			out[fmt.Sprintf("modbus.%d", id-0x01)] = float64(val)
+		case id >= 0x61 && id <= 0x80:
+			out[fmt.Sprintf("modbus.%d", 32+(id-0x61))] = float64(val)
+		case id >= 0x21 && id <= 0x60:
+			out[fmt.Sprintf("ble.%d", id-0x21)] = float64(val)
+		case id == 0x81:
+			out["gsm.cellid"] = int(val)
+		case id == 0x82:
+			out["gsm.lac"] = int(val)
+		case id == 0x83:
+			out["gsm.mcc"] = int(val)
+		case id == 0x84:
+			out["gsm.mnc"] = int(val)
+		case id == 0x85:
+			out["gsm.signal_dbm"] = int(val)
+		}
+	}
+	if rem := len(payload) - off; rem > 0 {
+		out["ext.tail_hex"] = fmt.Sprintf("%x", payload[off:])
+	}
+	return out
 }

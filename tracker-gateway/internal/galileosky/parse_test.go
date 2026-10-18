@@ -75,8 +75,53 @@ func TestTagSize_Official(t *testing.T) {
 			t.Fatalf("tag 0x%02x size=%d want=%d", tag, got, want)
 		}
 	}
-	if tagSize(0xe0) != -3 {
-		t.Fatalf("cmd reply size=%d", tagSize(0xe0))
+	if tagSize(0xe0) != 4 {
+		t.Fatalf("cmd id size=%d", tagSize(0xe0))
+	}
+	if tagSize(0xe1) != -3 || tagSize(0xea) != -3 || tagSize(0xeb) != -3 {
+		t.Fatalf("len-prefixed sizes e1=%d ea=%d eb=%d", tagSize(0xe1), tagSize(0xea), tagSize(0xeb))
+	}
+	if tagSize(0xe2) != 4 || tagSize(0xe9) != 4 {
+		t.Fatalf("user data sizes e2=%d e9=%d", tagSize(0xe2), tagSize(0xe9))
+	}
+	if tagSize(0xfe) != -2 {
+		t.Fatalf("FE size=%d", tagSize(0xfe))
+	}
+}
+
+func TestParseTags_UserDataAndFE(t *testing.T) {
+	// 0xE2 user.0 = 42; 0xFE len=12 with modbus0 (ext 0x01) = 100, ble0 (ext 0x21) = -5
+	u := make([]byte, 4)
+	binary.LittleEndian.PutUint32(u, 42)
+	payload := []byte{0xe2}
+	payload = append(payload, u...)
+	payload = append(payload, 0xfe, 0x0c, 0x00)
+	payload = append(payload, 0x01, 0x00, 0x64, 0x00, 0x00, 0x00) // ext 0x01 → modbus.0=100
+	payload = append(payload, 0x21, 0x00, 0xfb, 0xff, 0xff, 0xff) // ext 0x21 → ble.0=-5
+	tags := parseTags(payload)
+	if len(tags[0xe2]) != 4 || binary.LittleEndian.Uint32(tags[0xe2]) != 42 {
+		t.Fatalf("user e2=%x", tags[0xe2])
+	}
+	if len(tags[0xfe]) != 12 {
+		t.Fatalf("fe len=%d", len(tags[0xfe]))
+	}
+	ext := parseExtendedFE(tags[0xfe])
+	if ext["modbus.0"] != float64(100) {
+		t.Fatalf("modbus=%v", ext)
+	}
+	if ext["ble.0"] != float64(-5) {
+		t.Fatalf("ble=%v", ext)
+	}
+}
+
+func TestLooksLikeCommandReply_UserDataNotReply(t *testing.T) {
+	u := make([]byte, 4)
+	binary.LittleEndian.PutUint32(u, 7)
+	if looksLikeCommandReply(map[byte][]byte{0xe2: u}) {
+		t.Fatal("user data alone must not look like command reply")
+	}
+	if !looksLikeCommandReply(map[byte][]byte{0xe1: []byte("OK")}) {
+		t.Fatal("0xe1 should look like reply")
 	}
 }
 

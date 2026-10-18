@@ -195,16 +195,23 @@ func looksLikeCommandReply(tags map[byte][]byte) bool {
 	if len(tags) == 0 {
 		return false
 	}
-	// E0–E6 / 0xFF are command-reply tags even when piggybacked with coords.
-	for _, t := range []byte{0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xff} {
-		if _, ok := tags[t]; ok {
+	// Official command reply uses 0xE0 (cmd id) + 0xE1 (text); optional 0xEB binary.
+	// 0xE2–0xE9 are telemetry user-data tags — not command replies.
+	if _, ok := tags[0xe1]; ok {
+		return true
+	}
+	if _, ok := tags[0xeb]; ok {
+		return true
+	}
+	if _, ok := tags[0xe0]; ok {
+		if _, hasUser := tags[0xe2]; !hasUser {
 			return true
 		}
 	}
 	if _, onlyIMEI := tags[0x03]; onlyIMEI && len(tags) == 1 {
 		return false
 	}
-	return len(tags) > 0 && !hasCoordTag(tags)
+	return false
 }
 
 func hasCoordTag(tags map[byte][]byte) bool {
@@ -528,20 +535,50 @@ func promoteSensorTags(raw map[string]any, tags map[byte][]byte) {
 		raw[fmt.Sprintf("can8r.%d", i+15)] = int(v[0])
 		raw[fmt.Sprintf("tag.0x%02x", id)] = int(v[0])
 	}
-	// 0xE0–0xE6: command / text replies (length-prefixed ASCII).
-	for _, id := range []byte{0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6} {
+	// 0xE2–0xE9: official user data (4-byte LE uint32 each).
+	for i := 0; i < 8; i++ {
+		id := byte(0xe2 + i)
 		v, ok := tags[id]
-		if !ok || len(v) == 0 {
+		if !ok || len(v) < 4 {
 			continue
 		}
+		n := binary.LittleEndian.Uint32(v[0:4])
+		raw[fmt.Sprintf("user.%d", i)] = float64(n)
+		raw[fmt.Sprintf("tag.0x%02x", id)] = n
+	}
+	if v, ok := tags[0xea]; ok && len(v) > 0 {
+		raw["user.array_hex"] = fmt.Sprintf("%x", v)
+		raw["tag.0xea"] = raw["user.array_hex"]
+	}
+	// 0xE0 / 0xE1: command channel (not user data).
+	if v, ok := tags[0xe0]; ok && len(v) >= 4 {
+		raw["cmd.id"] = int(binary.LittleEndian.Uint32(v[0:4]))
+		raw["tag.0xe0"] = raw["cmd.id"]
+	}
+	if v, ok := tags[0xe1]; ok && len(v) > 0 {
 		s := strings.TrimSpace(string(v))
-		if s == "" {
-			continue
+		if s != "" {
+			raw["cmd.reply"] = s
+			raw["cmd.reply_tag"] = "0xe1"
+			raw["tag.0xe1"] = s
 		}
-		raw["cmd.reply"] = s
-		raw["cmd.reply_tag"] = fmt.Sprintf("0x%02x", id)
-		raw[fmt.Sprintf("tag.0x%02x", id)] = s
-		break
+	}
+	if _, hasE1 := raw["cmd.reply"]; !hasE1 {
+		if v, ok := tags[0xeb]; ok && len(v) > 0 {
+			s := strings.TrimSpace(string(v))
+			if s != "" && isMostlyPrintable(s) {
+				raw["cmd.reply"] = s
+				raw["cmd.reply_tag"] = "0xeb"
+			}
+			raw["tag.0xeb"] = fmt.Sprintf("%x", v)
+		}
+	}
+	// 0xFE: extended tags (Modbus / Bluetooth / GSM cell).
+	if v, ok := tags[0xfe]; ok && len(v) > 0 {
+		raw["tag.0xfe"] = true
+		for k, val := range parseExtendedFE(v) {
+			raw[k] = val
+		}
 	}
 	// 0x90 / 0xd3: iButton identifiers (4-byte).
 	if v, ok := tags[0x90]; ok && len(v) >= 4 {

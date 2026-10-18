@@ -114,6 +114,50 @@ func TestPromoteSensorTags_CmdReply(t *testing.T) {
 	}
 }
 
+func TestPromoteSensorTags_UserDataAndModbus(t *testing.T) {
+	raw := map[string]any{}
+	u0 := make([]byte, 4)
+	binary.LittleEndian.PutUint32(u0, 111)
+	u7 := make([]byte, 4)
+	binary.LittleEndian.PutUint32(u7, 222)
+	cmd := make([]byte, 4)
+	binary.LittleEndian.PutUint32(cmd, 9)
+	// FE: modbus slot0 (ext 0x01)=55, modbus slot32 (ext 0x61)=66, gsm.cellid (0x81)=12345
+	fe := []byte{
+		0x01, 0x00, 0x37, 0x00, 0x00, 0x00,
+		0x61, 0x00, 0x42, 0x00, 0x00, 0x00,
+		0x81, 0x00, 0x39, 0x30, 0x00, 0x00,
+	}
+	promoteSensorTags(raw, map[byte][]byte{
+		0xe0: cmd,
+		0xe2: u0,
+		0xe9: u7,
+		0xea: {0xaa, 0xbb},
+		0xfe: fe,
+	})
+	if raw["user.0"] != float64(111) || raw["user.7"] != float64(222) {
+		t.Fatalf("user=%v", raw)
+	}
+	if raw["cmd.id"] != 9 {
+		t.Fatalf("cmd.id=%v", raw["cmd.id"])
+	}
+	if raw["user.array_hex"] != "aabb" {
+		t.Fatalf("array=%v", raw["user.array_hex"])
+	}
+	if raw["modbus.0"] != float64(55) || raw["modbus.32"] != float64(66) {
+		t.Fatalf("modbus=%v", raw)
+	}
+	if raw["gsm.cellid"] != 12345 {
+		t.Fatalf("gsm=%v", raw["gsm.cellid"])
+	}
+	// 0x80 is DS1923, not Modbus
+	raw2 := map[string]any{}
+	promoteSensorTags(raw2, map[byte][]byte{0x80: {0x01, 0x10, 20}})
+	if raw2["modbus.1"] != nil || raw2["modbus.0"] != nil {
+		t.Fatalf("DS1923 must not promote modbus: %v", raw2)
+	}
+}
+
 func TestPromoteSensorTags_OdometerAndArchive(t *testing.T) {
 	raw := map[string]any{}
 	odo := make([]byte, 4)
@@ -144,7 +188,10 @@ func TestPromoteSensorTags_IButtonAndEnergy(t *testing.T) {
 }
 
 func TestTagSize_UnknownOpaque(t *testing.T) {
-	if tagSize(0x48) != -1 || tagSize(0x78) != -1 {
-		t.Fatalf("unknown should be -1")
+	if tagSize(0x48) != 2 {
+		t.Fatalf("0x48 extended status size=%d", tagSize(0x48))
+	}
+	if tagSize(0x78) != -1 || tagSize(0x5b) != -1 {
+		t.Fatalf("unknown/opaque expected -1: 0x78=%d 0x5b=%d", tagSize(0x78), tagSize(0x5b))
 	}
 }
