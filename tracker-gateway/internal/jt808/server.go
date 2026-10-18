@@ -915,6 +915,13 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 	}
 	if bcc(msg) != bodyWithBcc[len(bodyWithBcc)-1] {
 		metrics.DecodeErr()
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, map[string]any{
+				"bcc_invalid": true,
+				"msg_id":      int(msgID),
+				"seq":         int(seq),
+			}, nil)
+		}
 		// Result=1 (failure) so terminal does not hang waiting for platform ack.
 		return replyGeneral(conn, sess, msgID, seq, 1)
 	}
