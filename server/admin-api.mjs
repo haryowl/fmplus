@@ -593,13 +593,20 @@ export async function handleAdminRequest(req, res) {
         json(res, 200, { ok: true, base, health, adapters });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Gateway unreachable";
+        const cause =
+          err instanceof Error && err.cause instanceof Error
+            ? err.cause.message
+            : err instanceof Error && err.cause
+              ? String(err.cause)
+              : "";
+        const detail = cause ? `${msg} (${cause})` : msg;
         json(res, 200, {
           ok: false,
           base,
           error:
-            msg === "fetch failed" || msg.includes("ECONNREFUSED")
-              ? `${msg} — is tracker-gateway listening? (TRACKER_GATEWAY_URL / deploy/tracker-gateway.service)`
-              : msg,
+            /fetch failed|ECONNREFUSED|ECONNRESET|abort/i.test(detail)
+              ? `${detail} — check: systemctl status tracker-gateway; curl -sS ${base}/healthz; journalctl -u tracker-gateway -n 50`
+              : detail,
         });
       }
       return true;

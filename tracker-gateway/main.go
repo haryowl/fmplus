@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"strings"
+
 	"github.com/haryowl/fmplus/tracker-gateway/internal/config"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/concox"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/dispatch"
@@ -28,6 +30,9 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	if strings.TrimSpace(cfg.DatabaseURL) == "" {
+		log.Fatalf("[tracker-gateway] DATABASE_URL is empty — set it in ../.env.local or the systemd EnvironmentFile")
+	}
 	st, err := store.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("[tracker-gateway] db: %v", err)
@@ -100,7 +105,10 @@ func main() {
 
 func serve(name, addr string, cancel context.CancelFunc, fn func() error) {
 	if err := fn(); err != nil {
+		// Keep other adapters (esp. HTTP /healthz) up if one TCP port fails to bind.
 		log.Printf("[%s] stopped (%s): %v", name, addr, err)
-		cancel()
+		if name == "json" {
+			cancel()
+		}
 	}
 }

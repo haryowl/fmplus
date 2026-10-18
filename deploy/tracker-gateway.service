@@ -4,11 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
+# Parent dir so config can load ../.env.local; binary still under tracker-gateway/bin.
 WorkingDirectory=/root/fmplus/fmplus/tracker-gateway
 ExecStart=/root/fmplus/fmplus/tracker-gateway/bin/tracker-gateway
 Restart=always
 RestartSec=3
-# Same secrets as fmplus (.env.local). Requires DATABASE_URL.
+# Prefer EnvironmentFile; binary also loads ../.env.local itself.
 EnvironmentFile=-/root/fmplus/fmplus/.env.local
 Environment=TRACKER_HTTP_ADDR=:5080
 
