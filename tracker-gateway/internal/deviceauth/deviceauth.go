@@ -34,6 +34,7 @@ func FindByIMEI(ctx context.Context, st *store.Store, imei, remote string, proto
 	if err != nil || d == nil {
 		metrics.UnknownIMEI()
 		host := hostOf(remote)
+		// Always refresh quarantine row so Admin can claim.
 		st.TouchUnassigned(ctx, imei, proto, host)
 		key := imei + "|" + host
 		if !guard.AllowUnknown(key) {
@@ -41,6 +42,10 @@ func FindByIMEI(ctx context.Context, st *store.Store, imei, remote string, proto
 			log.Printf("[auth] drop unknown IMEI %s from %s (rate limit)", imei, remote)
 			return nil
 		}
+		// Rate-limited Terminal lines so spam IMEIs do not flood the feed.
+		st.RecordGatewayEvent(ctx, "unknown_imei", imei, proto, host, map[string]any{
+			"registered": false,
+		})
 		log.Printf("[auth] unknown IMEI %s from %s (quarantined)", imei, remote)
 		return nil
 	}

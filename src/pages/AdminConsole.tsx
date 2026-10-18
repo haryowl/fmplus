@@ -797,7 +797,9 @@ export default function AdminConsole() {
   const [newProfileProtocol, setNewProfileProtocol] = useState("teltonika");
   const [terminalEvents, setTerminalEvents] = useState<
     Array<{
-      deviceId: string;
+      kind?: string;
+      eventId?: string;
+      deviceId: string | null;
       imei: string;
       label: string;
       protocol: string;
@@ -806,6 +808,7 @@ export default function AdminConsole() {
       lon: number | null;
       speed: number | null;
       ignition: boolean | null;
+      remote?: string | null;
       rawAttrs: Record<string, unknown>;
       mappedAttrs: Record<string, unknown>;
     }>
@@ -3355,7 +3358,7 @@ export default function AdminConsole() {
                   <header className="admin-panel-head">
                     <h3>Terminal</h3>
                     <p className="muted">
-                      Inbound device traffic from <code>vehicle_fixes</code> (poll ~3s).
+                      Inbound fixes plus unregistered IMEI connection attempts (poll ~3s).
                     </p>
                   </header>
                   <div className="admin-form-grid">
@@ -3405,7 +3408,8 @@ export default function AdminConsole() {
                   </div>
                   <ul className="admin-terminal-list">
                     {terminalEvents.map((ev, idx) => {
-                      const key = `${ev.deviceId}-${ev.recordedAt}-${idx}`;
+                      const unreg = ev.kind === "unregistered";
+                      const key = `${ev.kind || "fix"}-${ev.eventId || ev.deviceId}-${ev.recordedAt}-${idx}`;
                       const open = terminalExpanded === key;
                       return (
                         <li key={key}>
@@ -3415,27 +3419,62 @@ export default function AdminConsole() {
                             onClick={() => setTerminalExpanded(open ? null : key)}
                           >
                             <span className="admin-terminal-meta">
-                              <strong>{ev.imei}</strong>
+                              <strong>{ev.imei || "(no imei)"}</strong>
+                              {unreg ? (
+                                <span className="admin-pill is-off">unregistered</span>
+                              ) : null}
                               <span className="admin-pill is-muted">{ev.protocol || "?"}</span>
                               <span className="muted">
                                 {ev.recordedAt ? new Date(ev.recordedAt).toLocaleString() : "—"}
                               </span>
                             </span>
                             <span className="admin-terminal-fix">
-                              {ev.lat != null && ev.lon != null
-                                ? `${ev.lat.toFixed(5)}, ${ev.lon.toFixed(5)}`
-                                : "no fix"}
-                              {ev.speed != null ? ` · ${ev.speed} km/h` : ""}
-                              {ev.ignition != null ? (ev.ignition ? " · IGN" : " · off") : ""}
-                              {Object.keys(ev.mappedAttrs || {}).length
+                              {unreg
+                                ? `connection attempt${ev.remote ? ` · from ${ev.remote}` : ""}`
+                                : ev.lat != null && ev.lon != null
+                                  ? `${ev.lat.toFixed(5)}, ${ev.lon.toFixed(5)}`
+                                  : "no fix"}
+                              {!unreg && ev.speed != null ? ` · ${ev.speed} km/h` : ""}
+                              {!unreg && ev.ignition != null
+                                ? ev.ignition
+                                  ? " · IGN"
+                                  : " · off"
+                                : ""}
+                              {!unreg && Object.keys(ev.mappedAttrs || {}).length
                                 ? ` · ${Object.keys(ev.mappedAttrs).length} mapped`
                                 : ""}
                             </span>
                           </button>
+                          {unreg && selectedId && selectedId !== "new" ? (
+                            <div className="admin-actions" style={{ marginTop: 6 }}>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                disabled={busy || !ev.imei}
+                                onClick={() =>
+                                  void claimUnassignedTracker({
+                                    imei: ev.imei,
+                                    protocol: ev.protocol || "other",
+                                    hitCount: 1,
+                                    lastRemote: ev.remote || "",
+                                    firstSeenAt: ev.recordedAt,
+                                    lastSeenAt: ev.recordedAt,
+                                  })
+                                }
+                              >
+                                Claim into this tenant
+                              </button>
+                            </div>
+                          ) : null}
                           {open ? (
                             <pre className="admin-terminal-json">
                               {JSON.stringify(
-                                { rawAttrs: ev.rawAttrs, mappedAttrs: ev.mappedAttrs },
+                                {
+                                  kind: ev.kind || "fix",
+                                  remote: ev.remote,
+                                  rawAttrs: ev.rawAttrs,
+                                  mappedAttrs: ev.mappedAttrs,
+                                },
                                 null,
                                 2,
                               )}
@@ -3446,7 +3485,7 @@ export default function AdminConsole() {
                     })}
                     {terminalEvents.length === 0 ? (
                       <li className="muted admin-empty">
-                        No recent fixes yet — wait for gateway uplink or register a device.
+                        No recent traffic — wait for gateway uplink (registered or unregistered IMEI).
                       </li>
                     ) : null}
                   </ul>

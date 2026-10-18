@@ -115,6 +115,34 @@ func (s *Store) TouchUnassigned(ctx context.Context, imei, protocol, remote stri
 	)
 }
 
+// RecordGatewayEvent appends a Terminal-visible connection/auth line (best-effort).
+func (s *Store) RecordGatewayEvent(ctx context.Context, kind, imei, protocol, remote string, detail map[string]any) {
+	if kind == "" {
+		return
+	}
+	if protocol == "" {
+		protocol = "other"
+	}
+	if detail == nil {
+		detail = map[string]any{}
+	}
+	raw, err := json.Marshal(detail)
+	if err != nil {
+		raw = []byte("{}")
+	}
+	_, _ = s.pool.Exec(ctx, `
+		INSERT INTO tracker_gateway_events (kind, imei, protocol, remote, detail)
+		VALUES ($1, NULLIF($2, ''), $3, NULLIF($4, ''), $5::jsonb)`,
+		kind, imei, protocol, remote, string(raw),
+	)
+	// Keep table bounded (best-effort; ignore errors).
+	_, _ = s.pool.Exec(ctx, `
+		DELETE FROM tracker_gateway_events
+		WHERE id < (
+			SELECT COALESCE(MAX(id), 0) - 5000 FROM tracker_gateway_events
+		)`)
+}
+
 func (s *Store) FindByTokenHash(ctx context.Context, tokenHash string) (*Device, error) {
 	row := s.pool.QueryRow(ctx, `
 		SELECT d.id::text, d.tenant_id::text, d.imei, d.protocol, d.profile_id::text,

@@ -349,10 +349,12 @@ export async function listTerminalEvents(tenantId, { deviceId, limit = 40 } = {}
     deviceClause = ` AND vf.device_id = $${params.length}`;
   }
   params.push(lim);
-  const rows = await dbQuery(
-    `SELECT vf.device_id, vf.recorded_at, vf.lat, vf.lon, vf.speed, vf.heading,
+  // Registered uplink fixes for this tenant…
+  const fixRows = await dbQuery(
+    `SELECT vf.device_id::text AS device_id, vf.recorded_at, vf.lat, vf.lon, vf.speed, vf.heading,
             vf.ignition, vf.source_protocol, vf.raw_attrs, vf.mapped_attrs,
-            d.imei, d.label, d.protocol AS device_protocol
+            d.imei, d.label, d.protocol AS device_protocol,
+            'fix'::text AS kind, NULL::text AS remote
      FROM vehicle_fixes vf
      JOIN tracker_devices d ON d.id = vf.device_id
      WHERE vf.tenant_id = $1${deviceClause}
@@ -360,7 +362,9 @@ export async function listTerminalEvents(tenantId, { deviceId, limit = 40 } = {}
      LIMIT $${params.length}`,
     params,
   );
-  return rows.rows.map((r) => ({
+  /** @type {Array<Record<string, unknown>>} */
+  let merged = fixRows.rows.map((r) => ({
+    kind: "fix",
     deviceId: r.device_id,
     imei: r.imei,
     label: r.label || "",
@@ -371,9 +375,87 @@ export async function listTerminalEvents(tenantId, { deviceId, limit = 40 } = {}
     speed: r.speed != null ? Number(r.speed) : null,
     heading: r.heading != null ? Number(r.heading) : null,
     ignition: r.ignition,
+    remote: null,
     rawAttrs: r.raw_attrs || {},
     mappedAttrs: r.mapped_attrs || {},
   }));
+
+  // …plus unregistered gateway connection attempts (global quarantine log).
+  // Skip when filtering to a registered device id.
+  if (!deviceId) {
+    try {
+      const evRows = await dbQuery(
+        `SELECT id::text AS event_id, kind, imei, protocol, remote, detail, created_at
+         FROM tracker_gateway_events
+         WHERE kind IN ('unknown_imei', 'unknown_imei_rate_limited')
+         ORDER BY created_at DESC
+         LIMIT $1`,
+        [lim],
+      );
+      for (const r of evRows.rows) {
+        merged.push({
+          kind: "unregistered",
+          eventId: r.event_id,
+          deviceId: null,
+          imei: r.imei || "",
+          label: "",
+          protocol: r.protocol || "",
+          recordedAt: r.created_at,
+          lat: null,
+          lon: null,
+          speed: null,
+          heading: null,
+          ignition: null,
+          remote: r.remote || null,
+          rawAttrs: r.detail || {},
+          mappedAttrs: {},
+        });
+      }
+    } catch {
+      // Migration 184 not applied yet — fall through to quarantine snapshot.
+    }
+    // Also surface current quarantine rows (covers hits before event logging existed).
+    const qRows = await dbQuery(
+      `SELECT imei, protocol, last_remote, hit_count, last_seen_at
+       FROM tracker_unassigned
+       ORDER BY last_seen_at DESC
+       LIMIT $1`,
+      [lim],
+    );
+    const seenImei = new Set(
+      merged.filter((e) => e.kind === "unregistered" && e.imei).map((e) => String(e.imei)),
+    );
+    for (const r of qRows.rows) {
+      const imei = String(r.imei || "");
+      if (!imei || seenImei.has(imei)) continue;
+      seenImei.add(imei);
+      merged.push({
+        kind: "unregistered",
+        eventId: `unassigned:${imei}`,
+        deviceId: null,
+        imei,
+        label: "",
+        protocol: r.protocol || "",
+        recordedAt: r.last_seen_at,
+        lat: null,
+        lon: null,
+        speed: null,
+        heading: null,
+        ignition: null,
+        remote: r.last_remote || null,
+        rawAttrs: { hitCount: r.hit_count, source: "tracker_unassigned" },
+        mappedAttrs: {},
+      });
+    }
+    merged.sort((a, b) => {
+      const ta = a.recordedAt ? new Date(a.recordedAt).getTime() : 0;
+      const tb = b.recordedAt ? new Date(b.recordedAt).getTime() : 0;
+      return tb - ta;
+    });
+    merged = merged.slice(0, lim);
+  }
+
+  return merged;
 }
 
 export async function listProtocolParams(protocol) {
