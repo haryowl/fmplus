@@ -139,6 +139,9 @@ type Draft = {
   telematicsSource: "armada" | "devices" | "both";
 };
 
+/** Collapsed remap-rule cards shown before “Show more” (≈2 rows of 4). */
+const MAP_RULES_COLLAPSED = 8;
+
 const TRACKER_PROTOCOL_OPTIONS = [
   { value: "json", label: "JSON / HTTP (:5080) · partial" },
   { value: "teltonika", label: "Teltonika (:5027) · partial" },
@@ -740,6 +743,7 @@ export default function AdminConsole() {
   const [trackerProfiles, setTrackerProfiles] = useState<TrackerProfileRow[]>([]);
   const [paramDefs, setParamDefs] = useState<TrackerParamDef[]>([]);
   const [mapRules, setMapRules] = useState<TrackerMapRule[]>([]);
+  const [mapRulesExpanded, setMapRulesExpanded] = useState(false);
   const [dmProfileId, setDmProfileId] = useState("");
   const [dmVendorKey, setDmVendorKey] = useState("io.239");
   const [dmAppParam, setDmAppParam] = useState("ignition");
@@ -995,6 +999,7 @@ export default function AdminConsole() {
   useEffect(() => {
     if (!selectedId || selectedId === "new") return;
     if (!dmMapDeviceId && !dmProfileId) return;
+    setMapRulesExpanded(false);
     void loadMapRules(selectedId, dmProfileId, dmMapDeviceId).catch((err: Error) => setError(err.message));
     if (dmProfileId) void loadProtocolParamsForProfile(dmProfileId);
   }, [selectedId, dmProfileId, dmMapDeviceId, loadMapRules, loadProtocolParamsForProfile]);
@@ -2881,7 +2886,10 @@ export default function AdminConsole() {
                     </ul>
                   </details>
                   <ul className="admin-remap-grid">
-                    {mapRules.map((r) => (
+                    {(mapRulesExpanded
+                      ? mapRules
+                      : mapRules.slice(0, MAP_RULES_COLLAPSED)
+                    ).map((r) => (
                       <li key={r.id}>
                         <span className="admin-remap-rule">
                           <code>{r.vendorKey}</code>
@@ -2908,6 +2916,17 @@ export default function AdminConsole() {
                       </li>
                     ) : null}
                   </ul>
+                  {mapRules.length > MAP_RULES_COLLAPSED ? (
+                    <button
+                      type="button"
+                      className="admin-show-more"
+                      onClick={() => setMapRulesExpanded((v) => !v)}
+                    >
+                      {mapRulesExpanded
+                        ? "Show less"
+                        : `Show more (${mapRules.length - MAP_RULES_COLLAPSED} more)`}
+                    </button>
+                  ) : null}
                   <form className="admin-form-grid" onSubmit={(e) => void addMapRule(e)}>
                     <label>
                       Vendor key

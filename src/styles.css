@@ -3673,6 +3673,27 @@ html.onesheet-root body {
   background: transparent;
 }
 
+.admin-show-more {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  margin: 2px 0 4px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--admin-accent);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.admin-show-more:hover {
+  color: var(--admin-nav);
+}
+
 @media (max-width: 1100px) {
   .admin-remap-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
