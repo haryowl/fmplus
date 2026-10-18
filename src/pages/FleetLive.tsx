@@ -5,23 +5,63 @@ import { ageLabel, type LastStatusRow } from "../lib/lastStatus";
 import {
   classifyLiveRow,
   countLiveByClass,
-  defaultLiveFilters,
-  filterLiveRows,
   LIVE_OPS_CLASSES,
   LIVE_OPS_COLORS,
   LIVE_OPS_LABELS,
+  type LiveOpsClass,
 } from "../lib/liveOps";
-import { fullHref, liveHref, maintenanceHref, tripsHref, writeLocationSearch } from "../lib/routing";
+import {
+  fullHref,
+  liveHref,
+  maintenanceHref,
+  tripsHref,
+  writeLocationSearch,
+} from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
+import { tenantHeaders } from "../lib/tenant";
 import {
   fetchTrackerDeviceGroups,
   fetchTrackerLastStatus,
   trackerFixToStatusRow,
   type TrackerDeviceGroup,
+  type TrackerLastFix,
 } from "../lib/trackerDevices";
 import { BrandMark } from "../components/BrandMark";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
+
+type ListTab = "all" | LiveOpsClass | "alert" | "maintenance";
+
+type SafetyEvent = {
+  id: string;
+  deviceId: string;
+  deviceLabel?: string;
+  imei?: string;
+  alarmType: string;
+  alarmLevel: number;
+  recordedAt: string;
+  sourceProtocol?: string;
+};
+
+type FixMeta = {
+  deviceId: string;
+  imei: string;
+  odometerKm: number | null;
+  fuelLevel: number | null;
+  fuelLiters: number | null;
+  groups: string;
+  protocol: string;
+};
+
+const LIST_TABS: { id: ListTab; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "moving", label: "Moving" },
+  { id: "idle", label: "Idle" },
+  { id: "off", label: "Off" },
+  { id: "stale", label: "Stale" },
+  { id: "alert", label: "Alert" },
+  { id: "maintenance", label: "Maint" },
+];
 
 function vehicleSearch(userId: number): string {
   const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
@@ -40,8 +80,66 @@ function maintenanceOpenHref(userId: number): string {
   return maintenanceHref(q ? `?${q}` : "?open=1");
 }
 
+async function fetchSafetyEvents(signal?: AbortSignal): Promise<SafetyEvent[]> {
+  const res = await fetch("/api/tracker/safety-events?limit=40", {
+    credentials: "include",
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as { events?: SafetyEvent[]; error?: string };
+  if (!res.ok) throw new Error(data.error || `Safety ${res.status}`);
+  return data.events || [];
+}
+
+async function fetchOpenMaintenanceUserIds(signal?: AbortSignal): Promise<Set<number>> {
+  const params = new URLSearchParams({ status: "open", limit: "200" });
+  const res = await fetch(`/api/maintenance/events?${params}`, {
+    credentials: "include",
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  if (!res.ok) return new Set();
+  const data = (await res.json().catch(() => ({}))) as {
+    events?: Array<{ armadaUserId?: number | null }>;
+  };
+  const set = new Set<number>();
+  for (const e of data.events || []) {
+    const id = Number(e.armadaUserId);
+    if (Number.isInteger(id) && id > 0) set.add(id);
+  }
+  return set;
+}
+
+function alarmLabel(type: string): string {
+  return String(type || "alert")
+    .replace(/[._]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function clockLabel(tz: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone:
+        tz === "+07:00"
+          ? "Asia/Jakarta"
+          : tz === "+08:00"
+            ? "Asia/Makassar"
+            : tz === "+09:00"
+              ? "Asia/Jayapura"
+              : "UTC",
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date());
+  } catch {
+    return new Date().toLocaleString();
+  }
+}
+
 /**
- * Device-native fleet live map (tracker last-fix). Separate from Armada `/live`.
+ * Device-native command center (sample-guided). Separate from Armada `/live`.
  */
 export default function FleetLive() {
   const { query, ready, error: tenantError } = useEmbedTenant();
@@ -53,16 +151,17 @@ export default function FleetLive() {
   const [timezone, setTimezone] = useState(query.tz);
   const [bootError, setBootError] = useState("");
   const [rows, setRows] = useState<LastStatusRow[]>([]);
-  const [fixMeta, setFixMeta] = useState<
-    Record<number, { imei: string; odometerKm: number | null; groups: string }>
-  >({});
+  const [fixMeta, setFixMeta] = useState<Record<number, FixMeta>>({});
+  const [alerts, setAlerts] = useState<SafetyEvent[]>([]);
+  const [maintUserIds, setMaintUserIds] = useState<Set<number>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
   const [reload, setReload] = useState(0);
   const [now, setNow] = useState(() => Date.now());
-  const [filters, setFilters] = useState(defaultLiveFilters);
+  const [listTab, setListTab] = useState<ListTab>("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [queryText, setQueryText] = useState("");
+  const [alertsOpen, setAlertsOpen] = useState(true);
 
   const selectedGroup = deviceGroups.find((g) => g.id === groupId);
 
@@ -90,8 +189,7 @@ export default function FleetLive() {
         setBootError("");
       })
       .catch((err: Error) => {
-        if (err.name === "AbortError") return;
-        setDeviceGroups([]);
+        if (err.name !== "AbortError") setDeviceGroups([]);
       });
     return () => ac.abort();
   }, [ready, reload]);
@@ -100,23 +198,31 @@ export default function FleetLive() {
     (signal?: AbortSignal) => {
       setLoading(true);
       setFetchError("");
-      return fetchTrackerLastStatus(signal, {
-        groupIds: groupId ? [groupId] : undefined,
-      })
-        .then((deviceStatus) => {
-          const nextRows = deviceStatus.fixes.map(trackerFixToStatusRow);
-          const meta: Record<number, { imei: string; odometerKm: number | null; groups: string }> =
-            {};
-          for (const fix of deviceStatus.fixes) {
+      return Promise.all([
+        fetchTrackerLastStatus(signal, { groupIds: groupId ? [groupId] : undefined }),
+        fetchSafetyEvents(signal).catch(() => [] as SafetyEvent[]),
+        fetchOpenMaintenanceUserIds(signal).catch(() => new Set<number>()),
+      ])
+        .then(([deviceStatus, safety, maintIds]) => {
+          const nextRows: LastStatusRow[] = [];
+          const meta: Record<number, FixMeta> = {};
+          for (const fix of deviceStatus.fixes as TrackerLastFix[]) {
             const row = trackerFixToStatusRow(fix);
+            nextRows.push(row);
             meta[row.id] = {
+              deviceId: fix.deviceId,
               imei: fix.imei,
               odometerKm: fix.odometerKm ?? null,
+              fuelLevel: fix.fuelLevel ?? null,
+              fuelLiters: fix.fuelLiters ?? null,
               groups: (fix.groups || []).map((g) => g.name).join(", "),
+              protocol: fix.protocol || fix.sourceProtocol || "",
             };
           }
           setRows(nextRows);
           setFixMeta(meta);
+          setAlerts(safety);
+          setMaintUserIds(maintIds);
           setNow(Date.now());
           if (deviceStatus.telematicsSource === "armada") {
             setFetchError("Tenant telematics_source is Armada-only — enable devices or both.");
@@ -141,20 +247,78 @@ export default function FleetLive() {
 
   useEffect(() => {
     if (!ready) return;
-    const id = window.setInterval(() => {
-      void loadStatus();
-    }, 30_000);
+    const id = window.setInterval(() => void loadStatus(), 30_000);
     return () => window.clearInterval(id);
   }, [ready, loadStatus]);
 
+  const alertDeviceIds = useMemo(() => {
+    const recent = Date.now() - 24 * 60 * 60 * 1000;
+    const set = new Set<string>();
+    for (const a of alerts) {
+      const t = Date.parse(a.recordedAt);
+      if (Number.isFinite(t) && t >= recent) set.add(a.deviceId);
+    }
+    return set;
+  }, [alerts]);
+
   const counts = useMemo(() => countLiveByClass(rows, now), [rows, now]);
 
-  const filtered = useMemo(() => {
-    const byClass = filterLiveRows(rows, filters, now);
-    const q = queryText.trim().toLowerCase();
-    if (!q) return byClass;
-    return byClass.filter((row) => {
+  const kpi = useMemo(() => {
+    let fuelSum = 0;
+    let fuelN = 0;
+    let alertUnits = 0;
+    let maintUnits = 0;
+    for (const row of rows) {
       const meta = fixMeta[row.id];
+      if (meta?.fuelLevel != null && Number.isFinite(meta.fuelLevel)) {
+        fuelSum += meta.fuelLevel;
+        fuelN += 1;
+      }
+      if (meta && alertDeviceIds.has(meta.deviceId)) alertUnits += 1;
+      if (row.id > 0 && maintUserIds.has(row.id)) maintUnits += 1;
+    }
+    return {
+      total: rows.length,
+      moving: counts.moving,
+      idle: counts.idle,
+      off: counts.off,
+      stale: counts.stale + counts.noFix,
+      alerts: alertUnits,
+      maintenance: maintUnits,
+      avgFuel: fuelN ? Math.round(fuelSum / fuelN) : null,
+    };
+  }, [rows, counts, fixMeta, alertDeviceIds, maintUserIds]);
+
+  const tabCounts = useMemo(() => {
+    let alert = 0;
+    let maintenance = 0;
+    for (const row of rows) {
+      const meta = fixMeta[row.id];
+      if (meta && alertDeviceIds.has(meta.deviceId)) alert += 1;
+      if (row.id > 0 && maintUserIds.has(row.id)) maintenance += 1;
+    }
+    return { ...counts, alert, maintenance, all: rows.length };
+  }, [rows, counts, fixMeta, alertDeviceIds, maintUserIds]);
+
+  const filtered = useMemo(() => {
+    const q = queryText.trim().toLowerCase();
+    return rows.filter((row) => {
+      const meta = fixMeta[row.id];
+      const cls = classifyLiveRow(row, now);
+      if (
+        listTab === "moving" ||
+        listTab === "idle" ||
+        listTab === "off" ||
+        listTab === "stale" ||
+        listTab === "noFix"
+      ) {
+        if (cls !== listTab) return false;
+      } else if (listTab === "alert") {
+        if (!meta || !alertDeviceIds.has(meta.deviceId)) return false;
+      } else if (listTab === "maintenance") {
+        if (!(row.id > 0 && maintUserIds.has(row.id))) return false;
+      }
+      if (!q) return true;
       return (
         row.name.toLowerCase().includes(q) ||
         row.username.toLowerCase().includes(q) ||
@@ -163,139 +327,140 @@ export default function FleetLive() {
         (meta?.groups && meta.groups.toLowerCase().includes(q))
       );
     });
-  }, [rows, filters, now, queryText, fixMeta]);
+  }, [rows, listTab, now, queryText, fixMeta, alertDeviceIds, maintUserIds]);
 
   const mapped = useMemo(
     () => filtered.filter((r) => r.lat !== null && r.lon !== null),
     [filtered],
   );
 
-  const fitKey = `${groupId}|${LIVE_OPS_CLASSES.map((c) => (filters[c] ? "1" : "0")).join("")}|${queryText}`;
+  const selected = rows.find((r) => r.id === selectedId) || null;
+  const selectedMeta = selected ? fixMeta[selected.id] : null;
+  const selectedCls = selected ? classifyLiveRow(selected, now) : null;
+
+  const fitKey = `${groupId}|${listTab}|${queryText}|${reload}`;
 
   const onSelect = useCallback((id: number | null) => setSelectedId(id), []);
 
-  function setAllClassFilters(on: boolean) {
-    setFilters({
-      moving: on,
-      idle: on,
-      off: on,
-      stale: on,
-      noFix: on,
-    });
-  }
+  const statusBreakdown = useMemo(
+    () =>
+      LIVE_OPS_CLASSES.map((cls) => ({
+        cls,
+        n: counts[cls],
+        pct: rows.length ? Math.round((counts[cls] / rows.length) * 100) : 0,
+      })),
+    [counts, rows.length],
+  );
 
   return (
-    <div className="app live-ops-page fleet-live-page">
-      <header className="topbar">
-        <div className="brand">
+    <div className="app fleet-cc">
+      <header className="fleet-cc-topbar">
+        <div className="fleet-cc-brand">
           <BrandMark />
           <div>
             <h1>Fleet Live</h1>
-            <p>Tracker devices · odometer / fuel · separate from Armada Live</p>
+            <p>
+              Command center · gateway devices
+              <span className="fleet-cc-live-pill">Live telemetry</span>
+            </p>
           </div>
         </div>
-        <div className="topbar-actions">
+        <div className="fleet-cc-top-actions">
           <ViewNav current="fleetLive" />
-          <div className="vehicle-chip">
-            {loading ? "Updating…" : `${filtered.length} shown`}
-            {selectedGroup ? ` · ${selectedGroup.name}` : " · All devices"}
-          </div>
+          <span className="fleet-cc-clock muted">{clockLabel(timezone)}</span>
+          <a className="btn-ghost btn-compact" href={liveHref(typeof window !== "undefined" ? window.location.search : "")}>
+            Armada Live
+          </a>
+          <button
+            type="button"
+            className="btn btn-compact"
+            disabled={loading}
+            onClick={() => setReload((n) => n + 1)}
+          >
+            {loading ? "Updating…" : "Refresh"}
+          </button>
         </div>
       </header>
 
-      <main className="shell">
-        <section className="filters">
-          <div className="field">
-            <label htmlFor="fleet-live-group">Device group</label>
-            <select
-              id="fleet-live-group"
-              value={groupId}
-              onChange={(e) => setGroupId(e.target.value)}
-            >
-              <option value="">
-                {deviceGroups.length ? "All devices" : "No groups yet"}
+      <div className="fleet-cc-toolbar">
+        <label className="fleet-cc-field">
+          <span>Device group</span>
+          <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+            <option value="">{deviceGroups.length ? "All devices" : "No groups yet"}</option>
+            {deviceGroups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+                {g.memberCount != null ? ` (${g.memberCount})` : ""}
               </option>
-              {deviceGroups.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                  {group.memberCount != null ? ` (${group.memberCount})` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="fleet-live-tz">Timezone</label>
-            <select
-              id="fleet-live-tz"
-              value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
-            >
-              {TIMEZONES.map((tz) => (
-                <option key={tz.value} value={tz.value}>
-                  {tz.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="fleet-live-q">Search</label>
-            <input
-              id="fleet-live-q"
-              type="search"
-              value={queryText}
-              onChange={(e) => setQueryText(e.target.value)}
-              placeholder="Label, IMEI, group"
-            />
-          </div>
-          <div className="field field-actions">
-            <label>&nbsp;</label>
-            <button
-              type="button"
-              className="btn"
-              disabled={loading}
-              onClick={() => setReload((n) => n + 1)}
-            >
-              Refresh
-            </button>
-          </div>
-          <div className="field field-actions">
-            <label>&nbsp;</label>
-            <a className="btn-ghost" href={liveHref(typeof window !== "undefined" ? window.location.search : "")}>
-              Armada Live
-            </a>
-          </div>
-        </section>
-
-        <div className="live-ops-filters" role="group" aria-label="Ops class filters">
-          <div className="live-ops-filter-tools">
-            <button type="button" className="btn-link" onClick={() => setAllClassFilters(true)}>
-              All classes
-            </button>
-            <button type="button" className="btn-link" onClick={() => setAllClassFilters(false)}>
-              Clear
-            </button>
-          </div>
-          {LIVE_OPS_CLASSES.map((cls) => (
-            <label key={cls} className="live-ops-filter">
-              <input
-                type="checkbox"
-                checked={filters[cls]}
-                onChange={(e) => setFilters((prev) => ({ ...prev, [cls]: e.target.checked }))}
-              />
-              <span className="live-ops-swatch" style={{ background: LIVE_OPS_COLORS[cls] }} />
-              <span>
-                {LIVE_OPS_LABELS[cls]} ({counts[cls]})
-              </span>
-            </label>
-          ))}
+            ))}
+          </select>
+        </label>
+        <label className="fleet-cc-field">
+          <span>Timezone</span>
+          <select value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+            {TIMEZONES.map((tz) => (
+              <option key={tz.value} value={tz.value}>
+                {tz.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="fleet-cc-field fleet-cc-search">
+          <span>Search</span>
+          <input
+            type="search"
+            value={queryText}
+            onChange={(e) => setQueryText(e.target.value)}
+            placeholder="Label, IMEI, group…"
+          />
+        </label>
+        <div className="fleet-cc-toolbar-meta muted">
+          {selectedGroup ? selectedGroup.name : "All devices"} · {filtered.length}/{rows.length}
         </div>
+      </div>
 
-        {(bootError || fetchError) && (
-          <div className="banner error">{bootError || fetchError}</div>
-        )}
+      {(bootError || fetchError) && (
+        <div className="banner error fleet-cc-banner">{bootError || fetchError}</div>
+      )}
 
-        <div className="live-ops-layout">
-          <div className="live-ops-map-wrap map-wrap">
+      <section className="fleet-cc-kpis" aria-label="Fleet KPIs">
+        <div className="fleet-cc-kpi">
+          <span className="fleet-cc-kpi-label">Total</span>
+          <strong>{kpi.total}</strong>
+        </div>
+        <div className="fleet-cc-kpi is-moving">
+          <span className="fleet-cc-kpi-label">Moving</span>
+          <strong>{kpi.moving}</strong>
+        </div>
+        <div className="fleet-cc-kpi is-idle">
+          <span className="fleet-cc-kpi-label">Idle</span>
+          <strong>{kpi.idle}</strong>
+        </div>
+        <div className="fleet-cc-kpi is-off">
+          <span className="fleet-cc-kpi-label">Off</span>
+          <strong>{kpi.off}</strong>
+        </div>
+        <div className="fleet-cc-kpi is-stale">
+          <span className="fleet-cc-kpi-label">Stale / no fix</span>
+          <strong>{kpi.stale}</strong>
+        </div>
+        <div className="fleet-cc-kpi is-alert">
+          <span className="fleet-cc-kpi-label">Alert (24h)</span>
+          <strong>{kpi.alerts}</strong>
+        </div>
+        <div className="fleet-cc-kpi is-maint">
+          <span className="fleet-cc-kpi-label">Maintenance</span>
+          <strong>{kpi.maintenance}</strong>
+        </div>
+        <div className="fleet-cc-kpi">
+          <span className="fleet-cc-kpi-label">Avg fuel</span>
+          <strong>{kpi.avgFuel != null ? `${kpi.avgFuel}%` : "—"}</strong>
+        </div>
+      </section>
+
+      <div className="fleet-cc-main">
+        <div className="fleet-cc-map-pane">
+          <div className="fleet-cc-map-wrap map-wrap">
             <LiveOpsMap
               rows={mapped}
               now={now}
@@ -303,57 +468,210 @@ export default function FleetLive() {
               selectedId={selectedId}
               onSelect={onSelect}
             />
+            <div className="fleet-cc-map-legend" aria-hidden>
+              {LIVE_OPS_CLASSES.map((cls) => (
+                <span key={cls}>
+                  <i style={{ background: LIVE_OPS_COLORS[cls] }} />
+                  {LIVE_OPS_LABELS[cls]}
+                </span>
+              ))}
+            </div>
+            {selected && selectedCls ? (
+              <aside className="fleet-cc-sel-card">
+                <header>
+                  <strong>{selected.name}</strong>
+                  <span
+                    className={`fleet-cc-badge is-${selectedCls}`}
+                    style={{ background: LIVE_OPS_COLORS[selectedCls] }}
+                  >
+                    {LIVE_OPS_LABELS[selectedCls]}
+                  </span>
+                </header>
+                <dl>
+                  <div>
+                    <dt>Speed</dt>
+                    <dd>
+                      {selected.speedKmh == null ? "—" : `${formatSpeed(selected.speedKmh)} km/h`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Fuel</dt>
+                    <dd>
+                      {selectedMeta?.fuelLevel != null
+                        ? `${Math.round(selectedMeta.fuelLevel)}%`
+                        : selectedMeta?.fuelLiters != null
+                          ? `${selectedMeta.fuelLiters.toFixed(1)} L`
+                          : "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Odometer</dt>
+                    <dd>
+                      {selectedMeta?.odometerKm != null
+                        ? `${formatKm(selectedMeta.odometerKm)} km`
+                        : "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Age</dt>
+                    <dd>{ageLabel(selected.lastMs, now)}</dd>
+                  </div>
+                  <div>
+                    <dt>IMEI</dt>
+                    <dd>{selectedMeta?.imei || selected.username || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Groups</dt>
+                    <dd>{selectedMeta?.groups || "—"}</dd>
+                  </div>
+                </dl>
+                {selected.id > 0 ? (
+                  <div className="fleet-cc-sel-links">
+                    <a href={tripsHref(vehicleSearch(selected.id))}>Trips</a>
+                    <a href={fullHref(vehicleSearch(selected.id))}>Full</a>
+                    <a href={maintenanceOpenHref(selected.id)}>Maintenance</a>
+                  </div>
+                ) : null}
+                <button type="button" className="btn-link" onClick={() => setSelectedId(null)}>
+                  Clear selection
+                </button>
+              </aside>
+            ) : null}
           </div>
-          <aside className="live-ops-list">
-            <h2>Devices</h2>
+        </div>
+
+        <aside className="fleet-cc-list-pane">
+          <header className="fleet-cc-list-head">
+            <h2>
+              Live vehicles <span className="muted">{filtered.length}/{rows.length}</span>
+            </h2>
+          </header>
+          <div className="fleet-cc-tabs" role="tablist">
+            {LIST_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={listTab === tab.id}
+                className={listTab === tab.id ? "active" : ""}
+                onClick={() => setListTab(tab.id)}
+              >
+                {tab.label}
+                <em>
+                  {tab.id === "all"
+                    ? tabCounts.all
+                    : tab.id === "alert"
+                      ? tabCounts.alert
+                      : tab.id === "maintenance"
+                        ? tabCounts.maintenance
+                        : tabCounts[tab.id] ?? 0}
+                </em>
+              </button>
+            ))}
+          </div>
+          <ul className="fleet-cc-vehicle-list">
             {filtered.length === 0 ? (
-              <p className="muted">{loading ? "Loading…" : "No devices match filters."}</p>
+              <li className="fleet-cc-empty muted">
+                {loading ? "Loading…" : "No vehicles match filters."}
+              </li>
+            ) : (
+              filtered.map((row) => {
+                const cls = classifyLiveRow(row, now);
+                const meta = fixMeta[row.id];
+                const inAlert = meta ? alertDeviceIds.has(meta.deviceId) : false;
+                const inMaint = row.id > 0 && maintUserIds.has(row.id);
+                const fuel = meta?.fuelLevel;
+                return (
+                  <li key={row.id} className={selectedId === row.id ? "is-selected" : ""}>
+                    <button type="button" onClick={() => setSelectedId(row.id)}>
+                      <span
+                        className="fleet-cc-dot"
+                        style={{ background: LIVE_OPS_COLORS[cls] }}
+                      />
+                      <span className="fleet-cc-vmain">
+                        <span className="fleet-cc-vtitle">
+                          <strong>{row.name}</strong>
+                          {inAlert ? <span className="fleet-cc-chip is-alert">Alert</span> : null}
+                          {inMaint ? <span className="fleet-cc-chip is-maint">Maint</span> : null}
+                        </span>
+                        <span className="muted">
+                          {LIVE_OPS_LABELS[cls]} · {ageLabel(row.lastMs, now)} ·{" "}
+                          {row.speedKmh == null ? "—" : `${formatSpeed(row.speedKmh)} km/h`}
+                          {meta?.odometerKm != null ? ` · ${formatKm(meta.odometerKm)} km` : ""}
+                        </span>
+                        {fuel != null ? (
+                          <span className="fleet-cc-fuelbar" title={`Fuel ${Math.round(fuel)}%`}>
+                            <span style={{ width: `${Math.max(0, Math.min(100, fuel))}%` }} />
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </aside>
+      </div>
+
+      <section className="fleet-cc-bottom">
+        <div className="fleet-cc-alerts">
+          <header>
+            <h3>
+              Alerts feed <span className="muted">{alerts.length}</span>
+            </h3>
+            <button type="button" className="btn-link" onClick={() => setAlertsOpen((v) => !v)}>
+              {alertsOpen ? "Hide" : "Show"}
+            </button>
+          </header>
+          {alertsOpen ? (
+            alerts.length === 0 ? (
+              <p className="muted">No recent safety events.</p>
             ) : (
               <ul>
-                {filtered.map((row) => {
-                  const cls = classifyLiveRow(row, now);
-                  const meta = fixMeta[row.id];
-                  return (
-                    <li key={row.id}>
-                      <button
-                        type="button"
-                        className={selectedId === row.id ? "active" : ""}
-                        onClick={() => setSelectedId(row.id)}
-                      >
-                        <span
-                          className="live-ops-swatch"
-                          style={{ background: LIVE_OPS_COLORS[cls] }}
-                        />
-                        <span className="live-ops-list-main">
-                          <strong>{row.name}</strong>
-                          <span className="muted">
-                            {LIVE_OPS_LABELS[cls]} · {ageLabel(row.lastMs, now)} ·{" "}
-                            {row.speedKmh === null ? "—" : `${formatSpeed(row.speedKmh)} km/h`}
-                            {meta?.odometerKm != null
-                              ? ` · ${formatKm(meta.odometerKm)} km`
-                              : ""}
-                            {row.fuelLevel != null ? ` · fuel ${Math.round(row.fuelLevel)}%` : ""}
-                          </span>
-                          {meta?.groups ? (
-                            <span className="muted">{meta.groups}</span>
-                          ) : null}
-                        </span>
-                      </button>
-                      {row.id > 0 ? (
-                        <div className="live-ops-list-links">
-                          <a href={tripsHref(vehicleSearch(row.id))}>Trips</a>
-                          <a href={fullHref(vehicleSearch(row.id))}>Full</a>
-                          <a href={maintenanceOpenHref(row.id)}>Maintenance</a>
-                        </div>
-                      ) : null}
-                    </li>
-                  );
-                })}
+                {(alertsOpen ? alerts : []).slice(0, 12).map((a) => (
+                  <li key={a.id}>
+                    <span
+                      className={`fleet-cc-alert-lvl is-l${Math.min(3, Math.max(0, a.alarmLevel || 0))}`}
+                    />
+                    <div>
+                      <strong>{alarmLabel(a.alarmType)}</strong>
+                      <span className="muted">
+                        {" "}
+                        · {a.deviceLabel || a.imei || a.deviceId.slice(0, 8)}
+                        {a.sourceProtocol ? ` · ${a.sourceProtocol}` : ""}
+                      </span>
+                      <div className="muted">
+                        {a.recordedAt ? new Date(a.recordedAt).toLocaleString() : "—"}
+                      </div>
+                    </div>
+                  </li>
+                ))}
               </ul>
-            )}
-          </aside>
+            )
+          ) : null}
         </div>
-      </main>
+
+        <div className="fleet-cc-breakdown">
+          <h3>Status breakdown</h3>
+          <ul>
+            {statusBreakdown.map(({ cls, n, pct }) => (
+              <li key={cls}>
+                <span className="fleet-cc-break-label">
+                  <i style={{ background: LIVE_OPS_COLORS[cls] }} />
+                  {LIVE_OPS_LABELS[cls]}
+                </span>
+                <span className="fleet-cc-break-bar">
+                  <span style={{ width: `${pct}%`, background: LIVE_OPS_COLORS[cls] }} />
+                </span>
+                <em>
+                  {n} · {pct}%
+                </em>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
     </div>
   );
 }

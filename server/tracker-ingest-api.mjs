@@ -121,6 +121,47 @@ export async function handleTrackerIngestRequest(req, res) {
     }
   }
 
+  if (url.pathname === "/api/tracker/safety-events" && req.method === "GET") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      const { listSafetyEvents } = await import("./device-manager.mjs");
+      const { dbQuery } = await import("./db.mjs");
+      const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 40));
+      const deviceId = String(url.searchParams.get("deviceId") || "").trim() || undefined;
+      const events = await listSafetyEvents(dbTenant.id, { deviceId, limit });
+      const ids = [...new Set(events.map((e) => e.deviceId).filter(Boolean))];
+      /** @type {Map<string, { label: string, imei: string }>} */
+      const byDevice = new Map();
+      if (ids.length) {
+        const rows = await dbQuery(
+          `SELECT id, label, imei FROM tracker_devices WHERE tenant_id = $1 AND id = ANY($2::uuid[])`,
+          [dbTenant.id, ids],
+        );
+        for (const r of rows.rows) {
+          byDevice.set(r.id, { label: r.label || r.imei, imei: r.imei });
+        }
+      }
+      json(res, 200, {
+        events: events.map((e) => {
+          const d = byDevice.get(e.deviceId);
+          return {
+            ...e,
+            deviceLabel: d?.label || "",
+            imei: d?.imei || "",
+          };
+        }),
+      });
+      return true;
+    } catch (err) {
+      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
   if (url.pathname === "/api/tracker/ingest/v1/fix" && req.method === "POST") {
     try {
       const token = bearerToken(req);
