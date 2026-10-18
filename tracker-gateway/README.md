@@ -215,6 +215,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   165_809_tlv_telt_meta_can16.sql
 #   166_809_tlv_video_dio_galileo_codec.sql
 #   167_809_tlv_io18_galileo_tags_can24.sql
+#   168_galileo_tags_809_fence_subiao_can_trunc.sql
 npm run db:migrate
 
 cd tracker-gateway

@@ -3000,6 +3000,10 @@ func parseCANBus(body []byte) map[string]any {
 		parsed++
 	}
 	out["can_parsed"] = parsed
+	out["can_max_items"] = 32
+	if count > 32 || (count > 0 && parsed < count) {
+		out["can_truncated"] = true
+	}
 	snip := body
 	if len(snip) > 48 {
 		snip = snip[:48]

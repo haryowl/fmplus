@@ -206,6 +206,21 @@ func TestParseCANBus(t *testing.T) {
 	if m25["can_parsed"] != 25 || m25["can.24.id"] != int(0x3018) || m25["can.24.data0"] != 24 {
 		t.Fatalf("slot24=%v", m25)
 	}
+	if m25["can_truncated"] != nil {
+		t.Fatalf("unexpected truncate for 25: %v", m25["can_truncated"])
+	}
+	// count claims 40 but only 32 slots parsed → truncated
+	body40 := make([]byte, 2+5+12*32)
+	binary.BigEndian.PutUint16(body40[0:2], 40)
+	copy(body40[2:7], []byte{0x24, 0x06, 0x01, 0x10, 0x30})
+	for i := 0; i < 32; i++ {
+		off := 7 + i*12
+		binary.BigEndian.PutUint32(body40[off:off+4], uint32(0x4000+i))
+	}
+	m40 := parseCANBus(body40)
+	if m40["can_parsed"] != 32 || m40["can_truncated"] != true || m40["can_max_items"] != 32 {
+		t.Fatalf("truncate=%v", m40)
+	}
 }
 
 func TestParseSubpkgRetransmit(t *testing.T) {

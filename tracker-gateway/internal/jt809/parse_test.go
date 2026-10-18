@@ -142,6 +142,42 @@ func TestParseVehicleUplink_TrailingTLV(t *testing.T) {
 	}
 }
 
+func TestParseVehicleUplink_TrailingFence(t *testing.T) {
+	// TLV 0x12: loc_type=1, area_id=7, direction=0 → fence_in
+	tlv := []byte{0x12, 0x06, 0x01, 0x00, 0x00, 0x00, 0x07, 0x00}
+	rest := make([]byte, 24+1+6+8+2+2+2+4+4+len(tlv))
+	copy(rest[0:21], []byte("B6666FEN"))
+	rest[21] = 1
+	binary.BigEndian.PutUint16(rest[22:24], 0x0200)
+	off := 24
+	rest[off] = 0
+	off++
+	off += 6
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(106.8*1e6))))
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], uint32(int32(math.Round(-6.2*1e6))))
+	off += 4
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint16(rest[off:], 0)
+	off += 2
+	binary.BigEndian.PutUint32(rest[off:], 0)
+	off += 4
+	binary.BigEndian.PutUint32(rest[off:], 0)
+	off += 4
+	copy(rest[off:], tlv)
+
+	fix, _, ok := parseVehicleUplink(0x1200, rest)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if fix.RawAttrs["alarm.fence_in"] != true {
+		t.Fatalf("fence_in=%v", fix.RawAttrs)
+	}
+}
+
 func TestParseVehicleUplink_TrailingMileage(t *testing.T) {
 	// TLV 0x01 mileage DWORD 1234 → 123.4 km
 	tlv := []byte{0x01, 0x04, 0x00, 0x00, 0x04, 0xd2}
