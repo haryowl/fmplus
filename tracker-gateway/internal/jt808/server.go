@@ -936,7 +936,13 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 		if sess.subpkgs == nil {
 			sess.subpkgs = newSubpkgTracker()
 		}
-		full, done := sess.subpkgs.feed(phone, msgID, hdr.TotalPkgs, hdr.PkgIndex, body)
+		full, done, expired := sess.subpkgs.feed(phone, msgID, hdr.TotalPkgs, hdr.PkgIndex, body)
+		if expired > 0 && sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, map[string]any{
+				"subpkg_expired":   true,
+				"subpkg_expired_n": expired,
+			}, nil)
+		}
 		if !done {
 			// ACK fragment; wait for remaining packages before processing body.
 			return replyGeneral(conn, sess, msgID, seq, 0)

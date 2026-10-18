@@ -3,16 +3,17 @@ package jt808
 import (
 	"encoding/binary"
 	"testing"
+	"time"
 )
 
 func TestSubpkgFeed_Reassembles(t *testing.T) {
 	tr := newSubpkgTracker()
 	a := []byte{0x01, 0x02}
 	b := []byte{0x03, 0x04, 0x05}
-	if _, ok := tr.feed("13800138000", 0x0200, 2, 1, a); ok {
+	if _, ok, _ := tr.feed("13800138000", 0x0200, 2, 1, a); ok {
 		t.Fatal("early complete")
 	}
-	full, ok := tr.feed("13800138000", 0x0200, 2, 2, b)
+	full, ok, _ := tr.feed("13800138000", 0x0200, 2, 2, b)
 	if !ok {
 		t.Fatal("expected complete")
 	}
@@ -23,9 +24,9 @@ func TestSubpkgFeed_Reassembles(t *testing.T) {
 
 func TestSubpkgFeed_OutOfOrder(t *testing.T) {
 	tr := newSubpkgTracker()
-	_, _ = tr.feed("1", 0x0704, 3, 3, []byte{0x33})
-	_, _ = tr.feed("1", 0x0704, 3, 1, []byte{0x11})
-	full, ok := tr.feed("1", 0x0704, 3, 2, []byte{0x22})
+	_, _, _ = tr.feed("1", 0x0704, 3, 3, []byte{0x33})
+	_, _, _ = tr.feed("1", 0x0704, 3, 1, []byte{0x11})
+	full, ok, _ := tr.feed("1", 0x0704, 3, 2, []byte{0x22})
 	if !ok || string(full) != "\x11\x22\x33" {
 		t.Fatalf("full=%x ok=%v", full, ok)
 	}
@@ -65,7 +66,7 @@ func TestHandleFrame_SubpackageBit(t *testing.T) {
 	bodyLen := int(bodyProps & 0x3ff)
 	body := m[16 : 16+bodyLen]
 	tr := newSubpkgTracker()
-	if _, ok := tr.feed(bcdPhone(m[4:10]), 0x0200, total, idx, body); ok {
+	if _, ok, _ := tr.feed(bcdPhone(m[4:10]), 0x0200, total, idx, body); ok {
 		t.Fatal("should wait for part 2")
 	}
 	header2 := append([]byte{}, header...)
@@ -76,8 +77,22 @@ func TestHandleFrame_SubpackageBit(t *testing.T) {
 	msg2 = append(msg2, bcc(msg2))
 	m2 := unescape(escape(msg2))
 	m2 = m2[:len(m2)-1]
-	full, ok := tr.feed(bcdPhone(m2[4:10]), 0x0200, 2, 2, m2[16:18])
+	full, ok, _ := tr.feed(bcdPhone(m2[4:10]), 0x0200, 2, 2, m2[16:18])
 	if !ok || string(full) != "\xaa\xbb\xcc\xdd" {
 		t.Fatalf("full=%x ok=%v", full, ok)
+	}
+}
+
+func TestSubpkgFeed_ExpiredGC(t *testing.T) {
+	tr := newSubpkgTracker()
+	_, _, _ = tr.feed("p", 0x0200, 2, 1, []byte{0x01})
+	tr.mu.Lock()
+	for _, a := range tr.bufs {
+		a.expiry = time.Now().Add(-time.Second)
+	}
+	tr.mu.Unlock()
+	_, ok, expired := tr.feed("q", 0x0200, 2, 1, []byte{0x02})
+	if ok || expired != 1 {
+		t.Fatalf("ok=%v expired=%d", ok, expired)
 	}
 }

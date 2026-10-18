@@ -91,6 +91,14 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			buf = rest
 			if len(payload) < 22 {
 				metrics.DecodeErr()
+				if st != nil && platformKey != "" {
+					if d := deviceauth.FindByIMEI(ctx, st, platformKey, conn.RemoteAddr().String(), "jt809"); d != nil {
+						_ = st.PatchLastStatus(ctx, d, map[string]any{
+							"frame_short": true,
+							"frame_len":   len(payload),
+						}, nil)
+					}
+				}
 				continue
 			}
 			handleMessage(ctx, conn, st, sessions, &bound, &platformKey, payload)

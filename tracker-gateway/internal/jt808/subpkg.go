@@ -28,13 +28,14 @@ func subpkgKey(phone string, msgID uint16, total int) string {
 }
 
 // feed stores one fragment (index is 1-based). Returns full body when all parts present.
-func (t *subpkgTracker) feed(phone string, msgID uint16, total, index int, frag []byte) ([]byte, bool) {
+// expired is how many incomplete assemblies GC dropped before this fragment.
+func (t *subpkgTracker) feed(phone string, msgID uint16, total, index int, frag []byte) (full []byte, done bool, expired int) {
 	if t == nil || total < 1 || total > 256 || index < 1 || index > total {
-		return nil, false
+		return nil, false, 0
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.gcLocked()
+	expired = t.gcLocked()
 	key := subpkgKey(phone, msgID, total)
 	a := t.bufs[key]
 	if a == nil {
@@ -51,27 +52,30 @@ func (t *subpkgTracker) feed(phone string, msgID uint16, total, index int, frag 
 	a.parts[index] = cp
 	a.expiry = time.Now().Add(2 * time.Minute)
 	if len(a.parts) < total {
-		return nil, false
+		return nil, false, expired
 	}
 	out := make([]byte, 0, total*64)
 	for i := 1; i <= total; i++ {
 		p, ok := a.parts[i]
 		if !ok {
-			return nil, false
+			return nil, false, expired
 		}
 		out = append(out, p...)
 	}
 	delete(t.bufs, key)
-	return out, true
+	return out, true, expired
 }
 
-func (t *subpkgTracker) gcLocked() {
+func (t *subpkgTracker) gcLocked() int {
 	now := time.Now()
+	n := 0
 	for k, a := range t.bufs {
 		if now.After(a.expiry) {
 			delete(t.bufs, k)
+			n++
 		}
 	}
+	return n
 }
 
 // outboundSubpkg holds escaped frames for one logical downlink (shared seq).
