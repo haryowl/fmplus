@@ -101,8 +101,8 @@ func TestParseVehicleUplink_AltitudeState(t *testing.T) {
 }
 
 func TestParseVehicleUplink_TrailingTLV(t *testing.T) {
-	// Core REAL_LOCATION + TLV 0x25 (left turn bit1) + TLV 0x2A (din5 bit4).
-	tlv := []byte{0x25, 0x04, 0x00, 0x00, 0x00, 0x02, 0x2a, 0x04, 0x00, 0x00, 0x00, 0x10}
+	// Core REAL_LOCATION + TLV 0x25 (Table 31 left turn bit3) + TLV 0x2A (Table 32 sleep bit1).
+	tlv := []byte{0x25, 0x04, 0x00, 0x00, 0x00, 0x08, 0x2a, 0x02, 0x00, 0x02}
 	rest := make([]byte, 24+1+6+8+2+2+2+4+4+len(tlv))
 	copy(rest[0:21], []byte("B7777TLV"))
 	rest[21] = 1
@@ -134,8 +134,8 @@ func TestParseVehicleUplink_TrailingTLV(t *testing.T) {
 	if fix.RawAttrs["status.left_turn"] != true {
 		t.Fatalf("left_turn=%v", fix.RawAttrs)
 	}
-	if fix.RawAttrs["status.din5"] != true {
-		t.Fatalf("din5=%v", fix.RawAttrs)
+	if fix.RawAttrs["status.sleep"] != true {
+		t.Fatalf("sleep=%v", fix.RawAttrs)
 	}
 	if fix.RawAttrs["add.0x25"] == nil || fix.RawAttrs["add.0x2a"] == nil {
 		t.Fatalf("add keys missing: %v", fix.RawAttrs)
@@ -482,7 +482,7 @@ func TestParseVehicleUplink_IllegalIgnitionAlarm(t *testing.T) {
 	off += 2
 	binary.BigEndian.PutUint32(rest[off:], 0)
 	off += 4
-	binary.BigEndian.PutUint32(rest[off:], 1<<28) // illegal_ignition
+	binary.BigEndian.PutUint32(rest[off:], 1<<27) // 808-2019 Table 25 illegal ignition
 
 	fix, _, ok := parseVehicleUplink(0x1200, rest)
 	if !ok || fix.RawAttrs["alarm.illegal_ignition"] != true {
@@ -501,7 +501,7 @@ func TestParseVehicleAlarm_SOS(t *testing.T) {
 	rest := make([]byte, 24)
 	copy(rest[0:21], []byte("B9999SOS"))
 	rest[21] = 2
-	binary.BigEndian.PutUint16(rest[22:24], 0x0001)
+	binary.BigEndian.PutUint16(rest[22:24], 0x0003) // Table 3: emergency
 	plate, ev, ok := parseVehicleAlarm(0x1400, rest)
 	if !ok || plate != "B9999SOS" || ev == nil || ev.AlarmType != "sos" {
 		t.Fatalf("plate=%q ev=%+v ok=%v", plate, ev, ok)
@@ -515,12 +515,12 @@ func TestParseVehicleAlarm_UnmappedInfoType(t *testing.T) {
 	rest := make([]byte, 24)
 	copy(rest[0:21], []byte("B0000UNK"))
 	rest[21] = 1
-	binary.BigEndian.PutUint16(rest[22:24], 15) // intentionally unmapped (no knownInfoTypes 15–17)
+	binary.BigEndian.PutUint16(rest[22:24], 0x0006) // Table 3 gap — intentionally unmapped
 	_, ev, ok := parseVehicleAlarm(0x1400, rest)
 	if !ok || ev == nil || ev.AlarmType != "vehicle_alarm" {
 		t.Fatalf("%+v ok=%v", ev, ok)
 	}
-	if ev.RawAttrs["info_type_unmapped"] != true || ev.RawAttrs["info_type"] != 15 {
+	if ev.RawAttrs["info_type_unmapped"] != true || ev.RawAttrs["info_type"] != 0x0006 {
 		t.Fatalf("unmapped=%v", ev.RawAttrs)
 	}
 }
@@ -529,7 +529,7 @@ func TestParseVehicleAlarm_1401Attach(t *testing.T) {
 	rest := make([]byte, 24)
 	copy(rest[0:21], []byte("B8888ATT"))
 	rest[21] = 1
-	binary.BigEndian.PutUint16(rest[22:24], 0x0002)
+	binary.BigEndian.PutUint16(rest[22:24], 0x0001) // Table 3: overspeed
 	plate, ev, ok := parseVehicleAlarm(0x1401, rest)
 	if !ok || plate != "B8888ATT" || ev == nil || ev.AlarmType != "overspeed" {
 		t.Fatalf("plate=%q ev=%+v ok=%v", plate, ev, ok)
@@ -543,7 +543,7 @@ func TestParseVehicleAlarm_RouteDeviation(t *testing.T) {
 	rest := make([]byte, 24)
 	copy(rest[0:21], []byte("B7777RTE"))
 	rest[21] = 1
-	binary.BigEndian.PutUint16(rest[22:24], 22)
+	binary.BigEndian.PutUint16(rest[22:24], 0x000B)
 	_, ev, ok := parseVehicleAlarm(0x1400, rest)
 	if !ok || ev == nil || ev.AlarmType != "route_deviation" {
 		t.Fatalf("%+v ok=%v", ev, ok)
@@ -557,7 +557,7 @@ func TestParseVehicleAlarm_Collision(t *testing.T) {
 	rest := make([]byte, 24)
 	copy(rest[0:21], []byte("B6666COL"))
 	rest[21] = 2
-	binary.BigEndian.PutUint16(rest[22:24], 28)
+	binary.BigEndian.PutUint16(rest[22:24], 0x0011) // Table 3: forward collision
 	_, ev, ok := parseVehicleAlarm(0x1402, rest)
 	if !ok || ev == nil || ev.AlarmType != "collision" || ev.AlarmLevel != 2 {
 		t.Fatalf("%+v ok=%v", ev, ok)
@@ -567,16 +567,16 @@ func TestParseVehicleAlarm_Collision(t *testing.T) {
 	}
 }
 
-func TestParseVehicleAlarm_CollisionRollover(t *testing.T) {
+func TestParseVehicleAlarm_ParkingTimeout(t *testing.T) {
 	rest := make([]byte, 24)
-	copy(rest[0:21], []byte("B6666ROL"))
+	copy(rest[0:21], []byte("B6666PRK"))
 	rest[21] = 2
-	binary.BigEndian.PutUint16(rest[22:24], 29)
+	binary.BigEndian.PutUint16(rest[22:24], 0xA001) // Table 4
 	_, ev, ok := parseVehicleAlarm(0x1402, rest)
-	if !ok || ev == nil || ev.AlarmType != "collision_rollover" || ev.AlarmLevel != 2 {
+	if !ok || ev == nil || ev.AlarmType != "parking_timeout" {
 		t.Fatalf("%+v ok=%v", ev, ok)
 	}
-	if ev.RawAttrs["alarm.collision_rollover"] != true {
+	if ev.RawAttrs["alarm.parking_timeout"] != true {
 		t.Fatalf("raw=%v", ev.RawAttrs)
 	}
 }
@@ -585,7 +585,7 @@ func TestParseVehicleAlarm_WarnBodyAndGNSS(t *testing.T) {
 	rest := make([]byte, 38+5+8)
 	copy(rest[0:21], []byte("B5555WRN"))
 	rest[21] = 1
-	binary.BigEndian.PutUint16(rest[22:24], 1) // SOS
+	binary.BigEndian.PutUint16(rest[22:24], 0x0003) // Table 3: emergency
 	// BCD 2026-10-17 12:30:00
 	copy(rest[24:30], []byte{0x26, 0x10, 0x17, 0x12, 0x30, 0x00})
 	binary.BigEndian.PutUint32(rest[30:34], 4242)
@@ -715,7 +715,7 @@ func TestParseMediaUpload160x(t *testing.T) {
 
 func TestFlatten809InfoType_SOS(t *testing.T) {
 	raw := map[string]any{}
-	flatten809InfoType(1, raw)
+	flatten809InfoType(0x0003, raw)
 	if raw["alarm.sos"] != true || raw["alarm_level"] != 2 {
 		t.Fatalf("%v", raw)
 	}

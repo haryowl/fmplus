@@ -26,34 +26,41 @@ type infoTypeAlarm struct {
 	key   string
 }
 
-// knownInfoTypes maps JT/T 809 vehicle alarm info_type WORD → remappable alarm.* (partial).
+// knownInfoTypes maps JT/T 809—2019 WARN_TYPE (Tables 3–4) → remappable alarm.*.
+// Gaps 0x0006/0x0007/0x000E/0x000F are intentionally unmapped (not defined in the standard).
 var knownInfoTypes = map[int]infoTypeAlarm{
-	1:  {"sos", 2, "alarm.sos"},
-	2:  {"overspeed", 1, "alarm.overspeed"},
-	3:  {"fatigue", 2, "alarm.fatigue"},
-	4:  {"danger", 2, "alarm.danger"},
-	5:  {"gnss_fault", 1, "alarm.gnss_fault"},
-	6:  {"antenna_cut", 2, "alarm.gnss_antenna_cut"},
-	7:  {"undervoltage", 1, "alarm.low_power"},
-	8:  {"power_cut", 2, "alarm.power_cut"},
-	9:  {"lcd_fault", 1, "alarm.lcd_fault"},
-	10: {"tts_fault", 1, "alarm.tts_fault"},
-	11: {"camera_fault", 1, "alarm.camera_fault"},
-	12: {"road_trans_timeout", 1, "alarm.road_trans_timeout"},
-	13: {"overspeed_warn", 1, "alarm.overspeed_warn"},
-	14: {"fatigue_warn", 1, "alarm.fatigue_warn"},
-	18: {"day_drive_timeout", 1, "alarm.day_drive_timeout"},
-	19: {"parking_timeout", 1, "alarm.parking_timeout"},
-	20: {"area_inout", 1, "alarm.area_in_out"},
-	21: {"route_inout", 1, "alarm.route_inout"},
-	22: {"route_deviation", 1, "alarm.route_deviation"},
-	23: {"vss_fault", 1, "alarm.vss_fault"},
-	24: {"fuel_abnormal", 2, "alarm.fuel_abnormal"},
-	25: {"theft", 2, "alarm.theft"},
-	26: {"illegal_ignition", 2, "alarm.illegal_ignition"},
-	27: {"illegal_move", 2, "alarm.illegal_move"},
-	28: {"collision", 2, "alarm.collision"},
-	29: {"collision_rollover", 2, "alarm.collision_rollover"},
+	// Table 3 — location-related
+	0x0001: {"overspeed", 1, "alarm.overspeed"},
+	0x0002: {"fatigue", 2, "alarm.fatigue"},
+	0x0003: {"sos", 2, "alarm.sos"},
+	0x0004: {"area_in", 1, "alarm.fence_in"},
+	0x0005: {"area_out", 1, "alarm.fence_out"},
+	0x0008: {"border_cross", 1, "alarm.border_cross"},
+	0x0009: {"theft", 2, "alarm.theft"},
+	0x000A: {"hijack", 2, "alarm.hijack"},
+	0x000B: {"route_deviation", 1, "alarm.route_deviation"},
+	0x000C: {"illegal_move", 2, "alarm.illegal_move"},
+	0x000D: {"day_drive_timeout", 1, "alarm.day_drive_timeout"},
+	0x0010: {"illegal_driving", 1, "alarm.illegal_driving"},
+	0x0011: {"collision", 2, "alarm.collision"},
+	0x0012: {"lane_departure", 1, "alarm.lane_departure"},
+	0x0013: {"tire_pressure", 1, "alarm.tire_pressure_warn"},
+	0x0014: {"dynamic_abnormal", 1, "alarm.dynamic_abnormal"},
+	0x00FF: {"other", 1, "alarm.other"},
+	// Table 4 — non-location-related (partial)
+	0xA001: {"parking_timeout", 1, "alarm.parking_timeout"},
+	0xA002: {"report_interval_abnormal", 1, "alarm.report_interval_abnormal"},
+	0xA003: {"report_distance_abnormal", 1, "alarm.report_distance_abnormal"},
+	0xA004: {"platform_disconnect", 2, "alarm.platform_disconnect"},
+	0xA005: {"platform_transfer_abnormal", 2, "alarm.platform_transfer_abnormal"},
+	0xA006: {"road_congestion", 1, "alarm.road_congestion"},
+	0xA007: {"dangerous_road", 1, "alarm.dangerous_road"},
+	0xA008: {"weather", 1, "alarm.weather"},
+	0xA009: {"driver_id_abnormal", 1, "alarm.driver_id_abnormal"},
+	0xA00A: {"terminal_abnormal", 1, "alarm.terminal_abnormal"},
+	0xA00B: {"platform_access_abnormal", 1, "alarm.platform_access_abnormal"},
+	0xA00C: {"core_data_abnormal", 1, "alarm.core_data_abnormal"},
+	0xA0FF: {"other", 1, "alarm.other"},
 }
 
 // flatten809InfoType writes remappable alarm.* onto dest for known info_type values.

@@ -60,8 +60,12 @@ func ParseAdditionalTLVBytes(body []byte) map[string]any {
 				add[key] = id
 				flattenManualAlarmID(id, add)
 			}
-		case 0x05: // oil / tire pressure related (DWORD — units vendor-dependent)
-			if l >= 4 {
+		case 0x05: // JT/T 808-2019 Table 27: tire pressure 30 bytes (Pa); short values = vendor oil fallback
+			if l >= 30 {
+				add[key] = fmt.Sprintf("%x", val)
+				add["tire.pressure_hex"] = fmt.Sprintf("%x", val[:30])
+				add["tire.pressure"] = true
+			} else if l >= 4 {
 				n := binary.BigEndian.Uint32(val)
 				add[key] = int(n)
 				add["oil.quantity"] = float64(n) / 10.0
@@ -70,11 +74,11 @@ func ParseAdditionalTLVBytes(body []byte) map[string]any {
 				add[key] = int(n)
 				add["oil.quantity"] = float64(n) / 10.0
 			}
-		case 0x06: // carriage / cargo temperature (°C×10, signed)
+		case 0x06: // JT/T 808-2019 Table 27: compartment temp °C (signed int16; MSB=1 → negative)
 			if l >= 2 {
-				t10 := int16(binary.BigEndian.Uint16(val[0:2]))
-				add[key] = int(t10)
-				add["temp.cargo"] = float64(t10) / 10.0
+				t := int16(binary.BigEndian.Uint16(val[0:2]))
+				add[key] = int(t)
+				add["temp.cargo"] = float64(t)
 			}
 		case 0x07: // pulse / recorder speed 1/10 km/h
 			if l >= 2 {
@@ -106,86 +110,44 @@ func ParseAdditionalTLVBytes(body []byte) map[string]any {
 					add["alarm.fence_out"] = true
 				}
 			}
-		case 0x13: // route driving time insufficient / too long
-			if l >= 1 {
-				add[key] = int(val[0])
-				add["route_time_loc_type"] = int(val[0])
-			}
-			if l >= 6 {
-				add["route_id"] = int(binary.BigEndian.Uint32(val[1:5]))
-				result := int(val[5])
+		case 0x13: // JT/T 808-2019 Table 30: segment_id DWORD + drive_time WORD + result BYTE
+			if l >= 7 {
+				add[key] = int(val[6])
+				add["route_id"] = int(binary.BigEndian.Uint32(val[0:4]))
+				add["route_drive_time"] = int(binary.BigEndian.Uint16(val[4:6]))
+				result := int(val[6])
 				add["route_time_result"] = result
 				if result == 0 {
 					add["alarm.route_time_short"] = true
 				} else {
 					add["alarm.route_time_long"] = true
 				}
-			}
-			if l >= 8 {
-				add["route_drive_time"] = int(binary.BigEndian.Uint16(val[6:8]))
-			}
-		case 0x18: // IO status bits (WORD — same low-16 layout as TLV 0x2A)
-			if l >= 2 {
-				io := binary.BigEndian.Uint16(val[0:2])
-				add[key] = int(io)
-				add["io.status"] = int(io)
-				add["status.din1"] = io&0x01 != 0
-				add["status.din2"] = io&0x02 != 0
-				add["status.din3"] = io&0x04 != 0
-				add["status.din4"] = io&0x08 != 0
-				add["status.din5"] = io&0x10 != 0
-				add["status.din6"] = io&0x20 != 0
-				add["status.din7"] = io&0x40 != 0
-				add["status.din8"] = io&0x80 != 0
-				add["status.dout1"] = io&0x0100 != 0
-				add["status.dout2"] = io&0x0200 != 0
-				add["status.dout3"] = io&0x0400 != 0
-				add["status.dout4"] = io&0x0800 != 0
-				add["status.dout5"] = io&0x1000 != 0
-				add["status.dout6"] = io&0x2000 != 0
-				add["status.dout7"] = io&0x4000 != 0
-				add["status.dout8"] = io&0x8000 != 0
 			} else if l >= 1 {
 				add[key] = int(val[0])
-				add["io.status"] = int(val[0])
 			}
-		case 0x19: // analog / AD (DWORD, often 0.01 units)
-			if l >= 4 {
-				ad := float64(binary.BigEndian.Uint32(val)) / 100.0
-				add[key] = ad
-				add["analog.ad"] = ad
-			} else if l >= 2 {
-				ad := float64(binary.BigEndian.Uint16(val)) / 100.0
-				add[key] = ad
-				add["analog.ad"] = ad
+		case 0x18, 0x19: // reserved in 808-2019 Table 27 (0x14–0x24); keep raw only
+			add[key] = readBE(val)
+		case 0x2a: // JT/T 808-2019 Table 32 IO status WORD (bit0 deep sleep, bit1 sleep)
+			var io uint16
+			if l >= 2 {
+				io = binary.BigEndian.Uint16(val[0:2])
+			} else if l >= 1 {
+				io = uint16(val[0])
 			}
-		case 0x2a: // IO status bits (DWORD — 2019 extended)
+			add[key] = int(io)
+			add["io.status"] = int(io)
+			add["status.deep_sleep"] = io&0x01 != 0
+			add["status.sleep"] = io&0x02 != 0
+		case 0x2b: // JT/T 808-2019 Table 27: bits0–15 AD0, bits16–31 AD1
 			if l >= 4 {
-				io := binary.BigEndian.Uint32(val)
-				add[key] = int(io)
-				add["io.status32"] = int(io)
-				add["status.din1"] = io&0x01 != 0
-				add["status.din2"] = io&0x02 != 0
-				add["status.din3"] = io&0x04 != 0
-				add["status.din4"] = io&0x08 != 0
-				add["status.din5"] = io&0x10 != 0
-				add["status.din6"] = io&0x20 != 0
-				add["status.din7"] = io&0x40 != 0
-				add["status.din8"] = io&0x80 != 0
-				add["status.dout1"] = io&0x0100 != 0
-				add["status.dout2"] = io&0x0200 != 0
-				add["status.dout3"] = io&0x0400 != 0
-				add["status.dout4"] = io&0x0800 != 0
-				add["status.dout5"] = io&0x1000 != 0
-				add["status.dout6"] = io&0x2000 != 0
-				add["status.dout7"] = io&0x4000 != 0
-				add["status.dout8"] = io&0x8000 != 0
-			}
-		case 0x2b: // analog AD2 (DWORD, often 0.01 units)
-			if l >= 4 {
-				ad := float64(binary.BigEndian.Uint32(val)) / 100.0
-				add[key] = ad
-				add["analog.ad2"] = ad
+				w := binary.BigEndian.Uint32(val)
+				add[key] = int(w)
+				ad0 := float64(w & 0xffff)
+				ad1 := float64(w >> 16)
+				add["analog.ad0"] = ad0
+				add["analog.ad1"] = ad1
+				add["analog.ad"] = ad0
+				add["analog.ad2"] = ad1
 			}
 		case 0x32: // IC card / driver identity status (partial)
 			if l >= 1 {
@@ -222,21 +184,25 @@ func ParseAdditionalTLVBytes(body []byte) map[string]any {
 					}
 				}
 			}
-		case 0x25: // extended vehicle signal status bits
+		case 0x25: // JT/T 808-2019 Table 31 extended vehicle signal status bits
 			if l >= 4 {
 				sig := binary.BigEndian.Uint32(val)
 				add[key] = sig
-				add["status.acc"] = sig&0x01 != 0
-				add["status.left_turn"] = sig&0x02 != 0
-				add["status.right_turn"] = sig&0x04 != 0
-				add["status.wiper"] = sig&0x08 != 0
-				add["status.brake"] = sig&0x10 != 0
-				add["status.card_reader"] = sig&0x20 != 0
-				add["status.door"] = sig&0x0400 != 0 || sig&0x1000 != 0
-				add["status.low_beam"] = sig&0x0100 != 0
-				add["status.high_beam"] = sig&0x0200 != 0
-				add["status.fog"] = sig&0x0400 != 0
-				add["status.position_lamp"] = sig&0x0800 != 0
+				add["status.low_beam"] = sig&0x01 != 0
+				add["status.high_beam"] = sig&(1<<1) != 0
+				add["status.right_turn"] = sig&(1<<2) != 0
+				add["status.left_turn"] = sig&(1<<3) != 0
+				add["status.brake"] = sig&(1<<4) != 0
+				add["status.reverse"] = sig&(1<<5) != 0
+				add["status.fog"] = sig&(1<<6) != 0
+				add["status.position_lamp"] = sig&(1<<7) != 0
+				add["status.horn"] = sig&(1<<8) != 0
+				add["status.ac"] = sig&(1<<9) != 0
+				add["status.neutral"] = sig&(1<<10) != 0
+				add["status.retarder"] = sig&(1<<11) != 0
+				add["status.abs"] = sig&(1<<12) != 0
+				add["status.heater"] = sig&(1<<13) != 0
+				add["status.clutch"] = sig&(1<<14) != 0
 			}
 		case 0x30: // wireless network signal strength
 			if l >= 1 {
@@ -252,7 +218,8 @@ func ParseAdditionalTLVBytes(body []byte) map[string]any {
 				add["gnss_sats"] = n
 				add["gnss.sats"] = n
 			}
-		case 0x14: // video-related alarm dword (JT/T 808-2019 / 1078 path)
+		// 0x14–0x17 reserved in 808-2019 Table 27; kept for JT/T 1078 / vendor video extensions.
+		case 0x14:
 			if l >= 4 {
 				w := binary.BigEndian.Uint32(val)
 				add[key] = w
@@ -260,7 +227,7 @@ func ParseAdditionalTLVBytes(body []byte) map[string]any {
 			} else {
 				add[key] = fmt.Sprintf("%x", val)
 			}
-		case 0x15: // video signal loss alarm status (channel bitmask)
+		case 0x15:
 			if l >= 4 {
 				w := binary.BigEndian.Uint32(val)
 				add[key] = w
@@ -271,7 +238,7 @@ func ParseAdditionalTLVBytes(body []byte) map[string]any {
 			} else {
 				add[key] = fmt.Sprintf("%x", val)
 			}
-		case 0x16: // video signal occlude / cover alarm
+		case 0x16:
 			if l >= 4 {
 				w := binary.BigEndian.Uint32(val)
 				add[key] = w
@@ -282,7 +249,7 @@ func ParseAdditionalTLVBytes(body []byte) map[string]any {
 			} else {
 				add[key] = fmt.Sprintf("%x", val)
 			}
-		case 0x17: // storage / memory fault alarm status
+		case 0x17:
 			if l >= 4 {
 				w := binary.BigEndian.Uint32(val)
 				add[key] = w
@@ -328,12 +295,13 @@ type alarmBit struct {
 	key   string
 }
 
+// jt808AlarmBits follows JT/T 808—2019 Table 25 (报警预警标志位定义). Bit 31 reserved.
 var jt808AlarmBits = []alarmBit{
 	{1 << 0, "sos", 2, "alarm.sos"},
 	{1 << 1, "overspeed", 1, "alarm.overspeed"},
 	{1 << 2, "fatigue", 2, "alarm.fatigue"},
-	{1 << 3, "fatigue_early", 1, "alarm.fatigue_early"},
-	{1 << 4, "gnss_antenna", 1, "alarm.gnss_antenna"},
+	{1 << 3, "danger_driving", 2, "alarm.danger_driving"},
+	{1 << 4, "gnss_module", 1, "alarm.gnss_module"},
 	{1 << 5, "gnss_antenna_cut", 2, "alarm.gnss_antenna_cut"},
 	{1 << 6, "gnss_short", 1, "alarm.gnss_short"},
 	{1 << 7, "low_power", 1, "alarm.low_power"},
@@ -344,22 +312,22 @@ var jt808AlarmBits = []alarmBit{
 	{1 << 12, "road_ic", 1, "alarm.road_ic"},
 	{1 << 13, "overspeed_warn", 1, "alarm.overspeed_warn"},
 	{1 << 14, "fatigue_warn", 1, "alarm.fatigue_warn"},
-	{1 << 16, "day_drive_timeout", 1, "alarm.day_drive_timeout"},
-	{1 << 17, "parking_timeout", 1, "alarm.parking_timeout"},
-	// Bits 18–30 keep historical remappable names (partial; vendor packs vary).
-	{1 << 18, "timeout_parking", 1, "alarm.timeout_parking"},
-	{1 << 19, "area_in_out", 1, "alarm.area_in_out"},
-	{1 << 20, "collision", 2, "alarm.collision"},
-	{1 << 21, "rollover", 2, "alarm.rollover"},
-	{1 << 22, "door_abnormal", 1, "alarm.door_abnormal"},
-	{1 << 23, "fuel_abnormal", 2, "alarm.fuel_abnormal"},
-	{1 << 24, "theft", 2, "alarm.theft"},
-	{1 << 25, "illegal_ignition_alt", 2, "alarm.illegal_ignition_alt"},
-	{1 << 26, "illegal_move_alt", 1, "alarm.illegal_move_alt"},
-	{1 << 27, "illegal_open_door", 2, "alarm.illegal_open_door"},
-	{1 << 28, "illegal_ignition", 2, "alarm.illegal_ignition"},
-	{1 << 29, "illegal_move", 1, "alarm.illegal_move"},
-	{1 << 30, "collision_rollover", 2, "alarm.collision_rollover"},
+	{1 << 15, "illegal_driving", 1, "alarm.illegal_driving"},
+	{1 << 16, "tire_pressure_warn", 1, "alarm.tire_pressure_warn"},
+	{1 << 17, "right_blind_zone", 1, "alarm.right_blind_zone"},
+	{1 << 18, "day_drive_timeout", 1, "alarm.day_drive_timeout"},
+	{1 << 19, "parking_timeout", 1, "alarm.parking_timeout"},
+	{1 << 20, "area_in_out", 1, "alarm.area_in_out"},
+	{1 << 21, "route_in_out", 1, "alarm.route_in_out"},
+	{1 << 22, "route_drive_time", 1, "alarm.route_drive_time"},
+	{1 << 23, "route_deviation", 1, "alarm.route_deviation"},
+	{1 << 24, "vss_fault", 1, "alarm.vss_fault"},
+	{1 << 25, "fuel_abnormal", 2, "alarm.fuel_abnormal"},
+	{1 << 26, "theft", 2, "alarm.theft"},
+	{1 << 27, "illegal_ignition", 2, "alarm.illegal_ignition"},
+	{1 << 28, "illegal_move", 1, "alarm.illegal_move"},
+	{1 << 29, "collision_rollover", 2, "alarm.collision_rollover"},
+	{1 << 30, "rollover_warn", 2, "alarm.rollover_warn"},
 }
 
 // flattenAlarmBits writes remappable alarm.* bool keys into dest (fix raw_attrs / safety).
@@ -482,7 +450,7 @@ func HoistLocationStatusBits(status uint32, dest map[string]any) {
 	hoistLocationStatusBits(status, dest)
 }
 
-// hoistLocationStatusBits maps JT/T 808 location status DWORD bits onto remappable status.* keys.
+// hoistLocationStatusBits maps JT/T 808—2019 Table 24 status DWORD bits onto remappable keys.
 func hoistLocationStatusBits(status uint32, raw map[string]any) {
 	if raw == nil {
 		return
@@ -498,6 +466,15 @@ func hoistLocationStatusBits(status uint32, raw map[string]any) {
 	}
 	if status&0x20 != 0 {
 		raw["status.encrypted"] = true
+	}
+	// Bits 6–7 (2019): forward collision / lane departure early-warning from braking system.
+	if status&(1<<6) != 0 {
+		raw["status.fcw"] = true
+		raw["adas.fcw"] = true
+	}
+	if status&(1<<7) != 0 {
+		raw["status.ldw"] = true
+		raw["adas.ldw"] = true
 	}
 	// Bits 8–9: load (00 empty, 01 half, 10 reserved, 11 full).
 	switch (status >> 8) & 0x03 {
@@ -552,15 +529,17 @@ func hoistLocationStatusBits(status uint32, raw map[string]any) {
 	if status&0x200000 != 0 {
 		raw["status.gnss_galileo"] = true
 	}
+	// Bit 22 (2019): 0 stopped / 1 moving.
+	raw["status.moving"] = status&(1<<22) != 0
 }
 
 func isRemappableSafetyKey(k string) bool {
 	switch k {
 	case "alarm_level", "tpms.alarm", "gsm_signal", "gsm.signal", "gnss_sats", "gnss.sats",
 		"overspeed_loc_type", "overspeed_region_id", "area_loc_type", "area_id", "area_direction",
-		"mileage", "fuel.level", "speed.extra", "speed.pulse", "io.status", "io.status32", "manual_alarm_id",
-		"oil.quantity", "temp.cargo", "analog.ad", "analog.ad2", "vehicle.load",
-		"route_id", "route_time_loc_type", "route_time_result", "route_drive_time",
+		"mileage", "fuel.level", "speed.extra", "speed.pulse", "io.status", "manual_alarm_id",
+		"oil.quantity", "temp.cargo", "analog.ad", "analog.ad0", "analog.ad1", "analog.ad2", "vehicle.load",
+		"route_id", "route_time_result", "route_drive_time", "tire.pressure", "tire.pressure_hex",
 		"driver.ic_status", "driver.ic_card", "driver.ic_name", "driver.ic_result", "driver.ic_time_bcd", "driver.ic_time":
 		return true
 	}
@@ -572,6 +551,7 @@ func isRemappableSafetyKey(k string) bool {
 		strings.HasPrefix(k, "video.") ||
 		strings.HasPrefix(k, "driver.") ||
 		strings.HasPrefix(k, "gnss.") ||
+		strings.HasPrefix(k, "tire.") ||
 		strings.HasPrefix(k, "vehicle.")
 }
 

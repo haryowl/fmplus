@@ -36,8 +36,8 @@ func buildSignalingPatch(channel byte, dataType byte, frames int, hdr, sig map[s
 	return patch
 }
 
-// parseSignalingHeader lifts common 16-byte JT1078-style header fields (experimental).
-// Layout after magic: datatype(1) channel(1) length(2) then often BCD SIM(6) + seq/ts variants.
+// parseSignalingHeader lifts common JT/T 1078—2016 Table 18 RTP-style header fields (experimental).
+// Full media/RTP bridge is out of scope; this only surfaces SIM/channel/datatype hints for Device Manager.
 func parseSignalingHeader(hdr []byte) map[string]any {
 	out := map[string]any{}
 	if len(hdr) < 16 {

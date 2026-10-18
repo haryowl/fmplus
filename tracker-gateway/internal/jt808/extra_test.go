@@ -10,10 +10,7 @@ import (
 
 func TestParseAdditionalInfo_AreaAndSignal(t *testing.T) {
 	base := make([]byte, 28)
-	// 0x12 in/out area: type, id u32, direction=0 (in)
-	// 0x25 signal dword with ACC bit0
-	// 0x30 gsm=20, 0x31 sats=12
-	// 0x12: type 00, area_id 00000001, dir 00 (in) — then 0x25/0x30/0x31
+	// 0x12 in/out area; 0x25 Table 31 bit0 = low beam; 0x30 gsm; 0x31 sats
 	tlv, _ := hex.DecodeString("120600000001000025040000000130011431010c")
 	add := parseAdditionalInfo(append(base, tlv...))
 	if add["alarm.fence_in"] != true {
@@ -22,15 +19,15 @@ func TestParseAdditionalInfo_AreaAndSignal(t *testing.T) {
 	if add["area_loc_type"] != 0 || add["area_id"] != 256 || add["area_direction"] != 0 {
 		t.Fatalf("area=%v", add)
 	}
-	if add["status.acc"] != true {
-		t.Fatalf("acc: %v", add)
+	if add["status.low_beam"] != true {
+		t.Fatalf("low_beam: %v", add)
 	}
 	if add["gsm_signal"] != 20 || add["gsm.signal"] != 20 || add["gnss_sats"] != 12 || add["gnss.sats"] != 12 {
 		t.Fatalf("signal/sats: %v", add)
 	}
 	dest := map[string]any{}
 	hoistLocationTLV(add, dest)
-	if dest["gsm_signal"] != 20 || dest["alarm.fence_in"] != true || dest["status.acc"] != true {
+	if dest["gsm_signal"] != 20 || dest["alarm.fence_in"] != true || dest["status.low_beam"] != true {
 		t.Fatalf("hoist=%v", dest)
 	}
 }
@@ -54,39 +51,39 @@ func TestParseAdditionalInfo_MileageFuel(t *testing.T) {
 
 func TestParseAdditionalInfo_IO32AndAD2(t *testing.T) {
 	base := make([]byte, 28)
-	// 0x2A DWORD 0x0105 (dout1 + din1 + din3); 0x2B DWORD 500 → 5.00
-	tlv, _ := hex.DecodeString("2a04000001052b04000001f4")
+	// 0x2A WORD 0x0003 (deep sleep + sleep); 0x2B AD0=500 AD1=1 → packed 0x000101f4
+	tlv, _ := hex.DecodeString("2a0200032b04000101f4")
 	add := parseAdditionalInfo(append(base, tlv...))
-	if add["status.din1"] != true || add["status.din3"] != true || add["status.dout1"] != true {
+	if add["status.deep_sleep"] != true || add["status.sleep"] != true {
 		t.Fatalf("io %v", add)
 	}
-	if add["analog.ad2"] != 5.0 {
-		t.Fatalf("ad2=%v", add["analog.ad2"])
+	if add["analog.ad0"] != 500.0 || add["analog.ad1"] != 1.0 {
+		t.Fatalf("ad=%v ad0=%v ad1=%v", add["analog.ad"], add["analog.ad0"], add["analog.ad1"])
 	}
 }
 
 func TestParseAdditionalInfo_PulseSpeedAndAD(t *testing.T) {
 	base := make([]byte, 28)
-	// 0x07 WORD 400 → 40.0; 0x19 DWORD 12345 → 123.45
-	tlv, _ := hex.DecodeString("07020190190400003039")
+	// 0x07 WORD 400 → 40.0; 0x2B AD0=12345
+	tlv, _ := hex.DecodeString("070201902b0400003039")
 	add := parseAdditionalInfo(append(base, tlv...))
 	if add["speed.pulse"] != 40.0 {
 		t.Fatalf("pulse=%v", add["speed.pulse"])
 	}
-	if add["analog.ad"] != 123.45 {
-		t.Fatalf("ad=%v", add["analog.ad"])
+	if add["analog.ad0"] != 12345.0 {
+		t.Fatalf("ad=%v", add["analog.ad0"])
 	}
 }
 
 func TestParseAdditionalInfo_OilAndCargoTemp(t *testing.T) {
 	base := make([]byte, 28)
-	// 0x05 DWORD 1234 → 123.4; 0x06 int16 255 → 25.5°C
-	tlv, _ := hex.DecodeString("0504000004d2060200ff")
+	// 0x05 short DWORD oil fallback 1234 → 123.4; 0x06 int16 25 °C (2019 unit is °C)
+	tlv, _ := hex.DecodeString("0504000004d206020019")
 	add := parseAdditionalInfo(append(base, tlv...))
 	if add["oil.quantity"] != 123.4 {
 		t.Fatalf("oil=%v", add["oil.quantity"])
 	}
-	if add["temp.cargo"] != 25.5 {
+	if add["temp.cargo"] != 25.0 {
 		t.Fatalf("temp=%v", add["temp.cargo"])
 	}
 }
@@ -128,60 +125,53 @@ func TestHoistLocationStatusBits_SouthWestEncrypted(t *testing.T) {
 
 func TestParseAdditionalInfo_Signal025Turns(t *testing.T) {
 	base := make([]byte, 28)
-	// ACC + left turn + brake + card_reader + low beam: bits 0,1,4,5,8 → 0x00000133
-	tlv, _ := hex.DecodeString("250400000133")
+	// Table 31: low_beam(0)+left_turn(3)+brake(4)+reverse(5)+horn(8) → 0x00000139
+	tlv, _ := hex.DecodeString("250400000139")
 	add := parseAdditionalInfo(append(base, tlv...))
-	if add["status.acc"] != true || add["status.left_turn"] != true || add["status.brake"] != true {
+	if add["status.low_beam"] != true || add["status.left_turn"] != true || add["status.brake"] != true {
 		t.Fatalf("%v", add)
 	}
-	if add["status.card_reader"] != true {
-		t.Fatalf("card_reader=%v", add)
+	if add["status.reverse"] != true || add["status.horn"] != true {
+		t.Fatalf("reverse/horn=%v", add)
 	}
-	if add["status.low_beam"] != true || add["status.right_turn"] != false {
+	if add["status.right_turn"] != false {
 		t.Fatalf("beams/turn=%v", add)
 	}
-	tlv2, _ := hex.DecodeString("250400000300") // high + low beam
+	tlv2, _ := hex.DecodeString("250400000003") // low + high beam
 	add2 := parseAdditionalInfo(append(base, tlv2...))
 	if add2["status.high_beam"] != true || add2["status.low_beam"] != true {
 		t.Fatalf("beams=%v", add2)
 	}
 }
 
-func TestParseAdditionalInfo_IO2A_Dout34(t *testing.T) {
+func TestParseAdditionalInfo_IO2A_Sleep(t *testing.T) {
 	base := make([]byte, 28)
-	tlv, _ := hex.DecodeString("2a0400000c00") // dout3+dout4
+	tlv, _ := hex.DecodeString("2a020001") // deep sleep only
 	add := parseAdditionalInfo(append(base, tlv...))
-	if add["status.dout3"] != true || add["status.dout4"] != true {
-		t.Fatalf("dout34=%v", add)
-	}
-	if add["status.dout1"] != false || add["status.dout2"] != false {
-		t.Fatalf("dout12 should be false: %v", add)
+	if add["status.deep_sleep"] != true || add["status.sleep"] != false {
+		t.Fatalf("sleep=%v", add)
 	}
 }
 
-func TestParseAdditionalInfo_IO2A_DinDout58(t *testing.T) {
+func TestParseAdditionalInfo_IO2A_BothSleep(t *testing.T) {
 	base := make([]byte, 28)
-	// din5 (bit4) + dout5 (bit12) → 0x00001010
-	tlv, _ := hex.DecodeString("2a0400001010")
+	tlv, _ := hex.DecodeString("2a020003")
 	add := parseAdditionalInfo(append(base, tlv...))
-	if add["status.din5"] != true || add["status.dout5"] != true {
-		t.Fatalf("din5/dout5=%v", add)
-	}
-	if add["status.din4"] != false || add["status.dout4"] != false {
-		t.Fatalf("din4/dout4 should be false: %v", add)
+	if add["status.deep_sleep"] != true || add["status.sleep"] != true {
+		t.Fatalf("sleep=%v", add)
 	}
 }
 
-func TestParseAdditionalInfo_IO18_FullWord(t *testing.T) {
+func TestParseAdditionalInfo_IO18_ReservedRaw(t *testing.T) {
 	base := make([]byte, 28)
-	// din5 (bit4) + dout1 (bit8) → 0x0110
+	// 0x18 reserved in 808-2019 — raw only, no din/dout invention
 	tlv, _ := hex.DecodeString("18020110")
 	add := parseAdditionalInfo(append(base, tlv...))
-	if add["status.din5"] != true || add["status.dout1"] != true {
-		t.Fatalf("din5/dout1=%v", add)
+	if add["0x18"] != 0x0110 {
+		t.Fatalf("raw=%v", add)
 	}
-	if add["status.din1"] != false || add["io.status"] != 0x0110 {
-		t.Fatalf("io=%v", add)
+	if add["status.din5"] != nil || add["io.status"] != nil {
+		t.Fatalf("should not invent din/io from reserved 0x18: %v", add)
 	}
 }
 
@@ -213,18 +203,14 @@ func TestParseAdditionalInfo_DriverIC32(t *testing.T) {
 
 func TestParseAdditionalInfo_RouteTimeAndIO(t *testing.T) {
 	base := make([]byte, 28)
-	// 0x13: loc=1, route_id=7, result=1 (too long), time=120
-	// 0x18: IO status 0x0005 (din1+din3)
-	tlv, _ := hex.DecodeString("1308010000000701007818020005")
+	// 0x13 Table 30: segment_id=7, time=120, result=1 (too long); 0x2A sleep bit1
+	tlv, _ := hex.DecodeString("1307000000070078012a020002")
 	add := parseAdditionalInfo(append(base, tlv...))
 	if add["alarm.route_time_long"] != true || add["route_id"] != 7 || add["route_drive_time"] != 120 {
 		t.Fatalf("route=%v", add)
 	}
-	if add["0x13"] != 1 || add["0x18"] != 5 {
+	if add["0x13"] != 1 || add["status.sleep"] != true {
 		t.Fatalf("raw tlv keys=%v", add)
-	}
-	if add["status.din1"] != true || add["status.din3"] != true || add["status.din2"] != false {
-		t.Fatalf("io=%v", add)
 	}
 }
 
@@ -382,7 +368,7 @@ func TestFlattenAlarmBits_OnFix(t *testing.T) {
 
 func TestFlattenAlarmBits_CameraAndDayDrive(t *testing.T) {
 	raw := map[string]any{}
-	flattenAlarmBits(1<<11|1<<16, raw)
+	flattenAlarmBits(1<<11|1<<18, raw) // camera + day drive (Table 25)
 	if raw["alarm.camera_fault"] != true || raw["alarm.day_drive_timeout"] != true {
 		t.Fatalf("%v", raw)
 	}
@@ -390,8 +376,8 @@ func TestFlattenAlarmBits_CameraAndDayDrive(t *testing.T) {
 
 func TestFlattenAlarmBits_Tier2(t *testing.T) {
 	raw := map[string]any{}
-	flattenAlarmBits(1<<3|1<<6|1<<28, raw)
-	if raw["alarm.fatigue_early"] != true || raw["alarm.gnss_short"] != true ||
+	flattenAlarmBits(1<<3|1<<6|1<<27, raw) // danger_driving + gnss_short + illegal_ignition
+	if raw["alarm.danger_driving"] != true || raw["alarm.gnss_short"] != true ||
 		raw["alarm.illegal_ignition"] != true {
 		t.Fatalf("%v", raw)
 	}

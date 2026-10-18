@@ -22,6 +22,9 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 
 | Vendor | Docs used |
 |--------|-----------|
+| JT/T 808 | **JT/T 808—2019** 道路运输车辆卫星定位系统终端通讯协议及数据格式 (Tables 24–25 status/alarm, 27/31/32 TLV `0x25`/`0x2A`) |
+| JT/T 809 | **JT/T 809—2019** 道路运输车辆卫星定位系统平台数据交换 (Tables 3–4 `WARN_TYPE`; CRC-16-CCITT; dual-link) |
+| JT/T 1078 | **JT/T 1078—2016** 道路运输车辆卫星定位系统视频通讯协议 (RTP Table 18/19; signaling experimental — no full RTP/media bridge) |
 | Teltonika | [Codec](https://wiki.teltonika-gps.com/view/Codec) (8 / 8E / 12), [Data Sending Protocols](https://wiki.teltonika-gps.com/view/Teltonika_Data_Sending_Protocols), [Parameter / AVL IDs](https://wiki.teltonika-gps.com/view/Parameter_list) (e.g. FMB `io.239` ignition, `246` towing, `247` crash, `255` overspeed) |
 | Galileosky | [Protocol](https://base.galileosky.com/articles/#!en-documentation/galileosky-protocol), [Command list](https://base.galileosky.com/articles/#!en-documentation/command-list/q/command/qp/1) (SPA — cross-checked with published server-exchange PDF: CRC-16 Modbus, ack `0x02`+CRC, tag table) |
 | Concox / CMS | [CMSV7 download center](https://www.cmsv7.com/downloadCenter/index.html?lang=en&pageNow=1&pageSize=12&class1=3&class2=) + GT06 family protocol (login `0x01`, GPS `0x12`/`0x22`, status `0x13`, alarm `0x16`, time `0x8a`, info `0x94`, server cmd `0x80`, CRC-ITU) |
