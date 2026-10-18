@@ -150,6 +150,17 @@ func TestPromoteSensorTags_UserDataAndModbus(t *testing.T) {
 	if raw["gsm.cellid"] != 12345 {
 		t.Fatalf("gsm=%v", raw["gsm.cellid"])
 	}
+	// Bluetooth FE 0x21–0x60
+	rawBle := map[string]any{}
+	promoteSensorTags(rawBle, map[byte][]byte{
+		0xfe: {
+			0x21, 0x00, 0x0a, 0x00, 0x00, 0x00, // ble.0 = 10
+			0x60, 0x00, 0x63, 0x00, 0x00, 0x00, // ble.63 = 99
+		},
+	})
+	if rawBle["ble.0"] != float64(10) || rawBle["ble.63"] != float64(99) {
+		t.Fatalf("ble=%v", rawBle)
+	}
 	// 0x80 is DS1923, not Modbus
 	raw2 := map[string]any{}
 	promoteSensorTags(raw2, map[byte][]byte{0x80: {0x01, 0x10, 20}})
