@@ -52,19 +52,29 @@ If you copied the unit by hand before `git pull`, install it from this file afte
 
 ### Tracker gateway (Device Manager)
 
-Admin Device Manager calls the Node app, which proxies to `TRACKER_GATEWAY_URL` (default `http://127.0.0.1:5080`). If you see **Gateway offline … fetch failed**, the Go gateway is not running on that URL.
+Admin Device Manager calls the Node app, which proxies to `TRACKER_GATEWAY_URL` (default `http://127.0.0.1:5080`). If you see **Gateway offline … fetch failed**, the Go gateway is not running on that URL (often: Go not installed, so the binary was never built).
+
+One-shot on the server (installs `golang-go` if needed):
 
 ```bash
+cd /root/fmplus/fmplus
+git pull
+sudo bash deploy/install-tracker-gateway.sh
+```
+
+Or manually:
+
+```bash
+sudo apt-get install -y golang-go   # required once
 cd /root/fmplus/fmplus/tracker-gateway
 go build -o bin/tracker-gateway .
-cp ../deploy/tracker-gateway.service /etc/systemd/system/tracker-gateway.service
-systemctl daemon-reload
-systemctl enable --now tracker-gateway
-systemctl status tracker-gateway
+sudo cp ../deploy/tracker-gateway.service /etc/systemd/system/tracker-gateway.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now tracker-gateway
 curl -sS http://127.0.0.1:5080/healthz
 ```
 
-Ensure `.env.local` has `DATABASE_URL` (gateway loads it via the unit’s `EnvironmentFile`). Optional: set `TRACKER_GATEWAY_URL` in `.env.local` if the gateway is not on localhost, then `systemctl restart fmplus`.
+Ensure `.env.local` has `DATABASE_URL` (gateway loads it via the unit’s `EnvironmentFile` and also reads `../.env.local`). Optional: set `TRACKER_GATEWAY_URL` in `.env.local` if the gateway is not on localhost, then `systemctl restart fmplus`.
 
 Open [http://localhost:5173/](http://localhost:5173/) (Admin). Embed dashboards live under `/full`, `/compact`, etc.
 
