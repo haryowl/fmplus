@@ -90,24 +90,35 @@ func TestTagSize_Official(t *testing.T) {
 }
 
 func TestParseTags_UserDataAndFE(t *testing.T) {
-	// 0xE2 user.0 = 42; 0xFE len=12 with modbus0 (ext 0x01) = 100, ble0 (ext 0x21) = -5
+	// 0xE2 user.0 = 42; 0xFE len=18 = 3×(u16+i32):
+	//   Modbus0 (ext 0x01)=100, Modbus63 (ext 0x80)=-1, ble0 (ext 0x21)=-5
 	u := make([]byte, 4)
 	binary.LittleEndian.PutUint32(u, 42)
 	payload := []byte{0xe2}
 	payload = append(payload, u...)
-	payload = append(payload, 0xfe, 0x0c, 0x00)
-	payload = append(payload, 0x01, 0x00, 0x64, 0x00, 0x00, 0x00) // ext 0x01 → modbus.0=100
-	payload = append(payload, 0x21, 0x00, 0xfb, 0xff, 0xff, 0xff) // ext 0x21 → ble.0=-5
+	payload = append(payload, 0xfe, 0x12, 0x00) // 18 bytes nested
+	payload = append(payload, 0x01, 0x00, 0x64, 0x00, 0x00, 0x00) // Modbus0
+	payload = append(payload, 0x80, 0x00, 0xff, 0xff, 0xff, 0xff) // Modbus63 = -1
+	payload = append(payload, 0x21, 0x00, 0xfb, 0xff, 0xff, 0xff) // Bluetooth0
 	tags := parseTags(payload)
 	if len(tags[0xe2]) != 4 || binary.LittleEndian.Uint32(tags[0xe2]) != 42 {
 		t.Fatalf("user e2=%x", tags[0xe2])
 	}
-	if len(tags[0xfe]) != 12 {
-		t.Fatalf("fe len=%d", len(tags[0xfe]))
+	if len(tags[0xfe]) != 18 {
+		t.Fatalf("fe len=%d want 18 (3×6)", len(tags[0xfe]))
+	}
+	if tagSize(0xfe) != -2 {
+		t.Fatalf("0xFE must be 2-byte length-prefixed, got %d", tagSize(0xfe))
+	}
+	if tagSize(0x80) != 3 {
+		t.Fatalf("main 0x80 is DS1923 3 bytes, not Modbus; got %d", tagSize(0x80))
 	}
 	ext := parseExtendedFE(tags[0xfe])
 	if ext["modbus.0"] != float64(100) {
-		t.Fatalf("modbus=%v", ext)
+		t.Fatalf("modbus.0=%v", ext)
+	}
+	if ext["modbus.63"] != float64(-1) {
+		t.Fatalf("modbus.63=%v", ext)
 	}
 	if ext["ble.0"] != float64(-5) {
 		t.Fatalf("ble=%v", ext)

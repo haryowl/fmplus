@@ -282,9 +282,19 @@ func tagSize(tag byte) int {
 	}
 }
 
-// parseExtendedFE walks 0xFE payload as repeating (uint16 LE tag, int32 LE value).
-// Modbus: ext 0x01–0x20 → slots 0–31; ext 0x61–0x80 → slots 32–63.
-// Bluetooth: ext 0x21–0x60 → slots 0–63.
+// parseExtendedFE walks the payload of outer tag 0xFE.
+// Official layout (after the 2-byte LE length already stripped by tagSize −2):
+//
+//	repeating 6-byte records: ext_id uint16 LE + value int32 LE (signed).
+//
+// Official extended-tag map (Galileosky 7x / flespi / manufacturer changelog):
+//
+//	Modbus0–31  → ext 0x01–0x20 → modbus.0–31
+//	Bluetooth0–63 → ext 0x21–0x60 → ble.0–63
+//	Modbus32–63 → ext 0x61–0x80 → modbus.32–63
+//	GSM cell    → ext 0x81–0x85
+//
+// Note: main-table tags 0x80–0x87 are DS1923 (3 bytes) — different namespace from FE ext 0x80 (Modbus63).
 func parseExtendedFE(payload []byte) map[string]any {
 	out := map[string]any{}
 	if len(payload) == 0 {
