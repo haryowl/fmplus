@@ -719,7 +719,9 @@ export default function AdminConsole() {
   const [loginPass, setLoginPass] = useState("");
   const [tenants, setTenants] = useState<AdminTenant[]>([]);
   const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
-  const [adminSection, setAdminSection] = useState<"settings" | "devices" | "terminal">("settings");
+  const [adminSection, setAdminSection] = useState<
+    "settings" | "devices" | "live" | "terminal"
+  >("settings");
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -816,6 +818,23 @@ export default function AdminConsole() {
   const [terminalDeviceId, setTerminalDeviceId] = useState("");
   const [terminalPaused, setTerminalPaused] = useState(false);
   const [terminalExpanded, setTerminalExpanded] = useState<string | null>(null);
+  const [liveParamRows, setLiveParamRows] = useState<
+    Array<{
+      deviceId: string;
+      imei: string;
+      label: string;
+      protocol: string;
+      paramId: string;
+      paramLabel: string;
+      category: string;
+      value: string | number | boolean | null;
+      source: string;
+      updatedAt: string | null;
+    }>
+  >([]);
+  const [liveDeviceId, setLiveDeviceId] = useState("");
+  const [liveShowRaw, setLiveShowRaw] = useState(false);
+  const [livePaused, setLivePaused] = useState(false);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -877,6 +896,20 @@ export default function AdminConsole() {
         `/api/admin/tenants/${tenantId}/tracker-terminal${q}`,
       );
       setTerminalEvents(data.events || []);
+    },
+    [],
+  );
+
+  const loadLiveParamValues = useCallback(
+    async (tenantId: string, deviceId = "", includeRaw = false) => {
+      const q = new URLSearchParams();
+      if (deviceId) q.set("deviceId", deviceId);
+      if (includeRaw) q.set("raw", "1");
+      const qs = q.toString();
+      const data = await api<{ rows: typeof liveParamRows }>(
+        `/api/admin/tenants/${tenantId}/tracker-param-values${qs ? `?${qs}` : ""}`,
+      );
+      setLiveParamRows(data.rows || []);
     },
     [],
   );
@@ -982,6 +1015,25 @@ export default function AdminConsole() {
     terminalPaused,
     terminalDeviceId,
     loadTerminalEvents,
+  ]);
+
+  useEffect(() => {
+    if (!selectedId || selectedId === "new" || adminSection !== "live" || livePaused) return;
+    const tick = () => {
+      void loadLiveParamValues(selectedId, liveDeviceId, liveShowRaw).catch((err: Error) =>
+        setError(err.message),
+      );
+    };
+    tick();
+    const id = window.setInterval(tick, 3000);
+    return () => window.clearInterval(id);
+  }, [
+    selectedId,
+    adminSection,
+    livePaused,
+    liveDeviceId,
+    liveShowRaw,
+    loadLiveParamValues,
   ]);
 
   const filteredTenants = useMemo(() => {
@@ -2015,6 +2067,7 @@ export default function AdminConsole() {
                     [
                       ["settings", "Settings"],
                       ["devices", "Device Manager"],
+                      ["live", "Live values"],
                       ["terminal", "Terminal"],
                     ] as const
                   ).map(([id, label]) => (
@@ -3353,6 +3406,122 @@ export default function AdminConsole() {
                   </details>
                 </section>
               </>
+              )}
+
+              {selectedId !== "new" && adminSection === "live" && (
+                <section className="admin-panel admin-live-values">
+                  <header className="admin-panel-head">
+                    <h3>Live values</h3>
+                    <p className="muted">
+                      Latest values for every registered device (all protocols) from last uplink
+                      (poll ~3s). Shows typed fields, remapped app params, and optionally raw vendor
+                      keys.
+                    </p>
+                  </header>
+                  <div className="admin-form-grid">
+                    <label>
+                      Device filter
+                      <select
+                        value={liveDeviceId}
+                        onChange={(e) => setLiveDeviceId(e.target.value)}
+                      >
+                        <option value="">All devices</option>
+                        {trackerDevices.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.label || d.imei} · {d.protocol}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={`admin-switch${liveShowRaw ? " is-on" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={liveShowRaw}
+                        onChange={(e) => setLiveShowRaw(e.target.checked)}
+                      />
+                      Include raw vendor keys
+                    </label>
+                    <div className="span-2 admin-actions">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => setLivePaused((p) => !p)}
+                      >
+                        {livePaused ? "Resume" : "Pause"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={busy}
+                        onClick={() => {
+                          if (selectedId && selectedId !== "new") {
+                            void loadLiveParamValues(selectedId, liveDeviceId, liveShowRaw);
+                          }
+                        }}
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                  </div>
+                  <div className="admin-scan-matrix-wrap">
+                    <table className="admin-scan-matrix admin-live-values-table">
+                      <thead>
+                        <tr>
+                          <th>Device</th>
+                          <th>IMEI</th>
+                          <th>Protocol</th>
+                          <th>App param</th>
+                          <th>Label</th>
+                          <th>Value</th>
+                          <th>Source</th>
+                          <th>Updated</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {liveParamRows.map((row, idx) => (
+                          <tr key={`${row.deviceId}-${row.source}-${row.paramId}-${idx}`}>
+                            <td>{row.label || "—"}</td>
+                            <td>
+                              <code>{row.imei}</code>
+                            </td>
+                            <td>{row.protocol || "—"}</td>
+                            <td>
+                              <code>{row.paramId}</code>
+                            </td>
+                            <td>{row.paramLabel}</td>
+                            <td>
+                              <strong>{String(row.value)}</strong>
+                            </td>
+                            <td>
+                              <span
+                                className={`admin-pill${
+                                  row.source === "raw"
+                                    ? " is-muted"
+                                    : row.source === "mapped_extra"
+                                      ? " is-off"
+                                      : " is-ok"
+                                }`}
+                              >
+                                {row.source}
+                              </span>
+                            </td>
+                            <td className="muted">
+                              {row.updatedAt ? new Date(row.updatedAt).toLocaleString() : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                        {liveParamRows.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="muted admin-empty">
+                              No values yet — wait for gateway uplink, or confirm remap rules map
+                              vendor keys to app params.
+                            </td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               )}
 
               {selectedId !== "new" && adminSection === "terminal" && (

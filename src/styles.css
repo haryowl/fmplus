@@ -3561,6 +3561,22 @@ html.onesheet-root body {
   color: #fff;
 }
 
+.admin-live-values-table {
+  text-align: left;
+}
+
+.admin-live-values-table th,
+.admin-live-values-table td {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.admin-live-values-table td:nth-child(6) {
+  white-space: normal;
+  word-break: break-word;
+  max-width: 18rem;
+}
+
 .admin-remap-grid {
   list-style: none;
   margin: 4px 0 0;

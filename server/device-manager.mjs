@@ -458,6 +458,124 @@ export async function listTerminalEvents(tenantId, { deviceId, limit = 40 } = {}
   return merged;
 }
 
+function formatParamValue(v) {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v;
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
+/**
+ * Flat table rows: one device × app-param (or raw vendor key) with latest value.
+ * Used by Admin "Live values" tab.
+ */
+export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = false } = {}) {
+  const params = [tenantId];
+  let deviceClause = "";
+  if (deviceId) {
+    params.push(deviceId);
+    deviceClause = ` AND d.id = $${params.length}`;
+  }
+  const [deviceRows, paramDefs] = await Promise.all([
+    dbQuery(
+      `SELECT d.id::text AS device_id, d.imei, d.label, d.protocol, d.last_seen_at,
+              lf.lat, lf.lon, lf.speed, lf.heading, lf.ignition, lf.recorded_at,
+              lf.raw_attrs, lf.mapped_attrs, lf.updated_at AS last_fix_updated_at
+       FROM tracker_devices d
+       LEFT JOIN vehicle_last_fix lf ON lf.device_id = d.id
+       WHERE d.tenant_id = $1${deviceClause}
+       ORDER BY lower(COALESCE(NULLIF(d.label, ''), d.imei)) ASC`,
+      params,
+    ),
+    listParamDefs(tenantId),
+  ]);
+  const defById = new Map(paramDefs.map((p) => [p.id, p]));
+  /** @type {Array<Record<string, unknown>>} */
+  const rows = [];
+
+  for (const d of deviceRows.rows) {
+    const deviceIdOut = d.device_id;
+    const imei = d.imei || "";
+    const label = d.label || "";
+    const protocol = d.protocol || "";
+    const updatedAt = d.last_fix_updated_at || d.recorded_at || d.last_seen_at || null;
+    const mapped =
+      d.mapped_attrs && typeof d.mapped_attrs === "object" && !Array.isArray(d.mapped_attrs)
+        ? d.mapped_attrs
+        : {};
+    const raw =
+      d.raw_attrs && typeof d.raw_attrs === "object" && !Array.isArray(d.raw_attrs) ? d.raw_attrs : {};
+
+    const typed = [
+      ["lat", d.lat != null ? Number(d.lat) : null],
+      ["lon", d.lon != null ? Number(d.lon) : null],
+      ["speed", d.speed != null ? Number(d.speed) : null],
+      ["heading", d.heading != null ? Number(d.heading) : null],
+      ["ignition", d.ignition == null ? null : Boolean(d.ignition)],
+    ];
+    for (const [paramId, value] of typed) {
+      if (value === null) continue;
+      const def = defById.get(paramId);
+      rows.push({
+        deviceId: deviceIdOut,
+        imei,
+        label,
+        protocol,
+        paramId,
+        paramLabel: def?.label || paramId,
+        category: def?.category || "position",
+        value: formatParamValue(value),
+        source: "typed",
+        updatedAt,
+      });
+    }
+
+    for (const [paramId, value] of Object.entries(mapped)) {
+      if (value === null || value === undefined) continue;
+      // Skip nested blobs / duplicate typed mirrors when already shown.
+      if (paramId === "tags" || typeof value === "object") continue;
+      const def = defById.get(paramId);
+      rows.push({
+        deviceId: deviceIdOut,
+        imei,
+        label,
+        protocol,
+        paramId,
+        paramLabel: def?.label || paramId,
+        category: def?.category || "mapped",
+        value: formatParamValue(value),
+        source: def ? "mapped" : "mapped_extra",
+        updatedAt,
+      });
+    }
+
+    if (includeRaw) {
+      for (const [vendorKey, value] of Object.entries(raw)) {
+        if (value === null || value === undefined) continue;
+        if (vendorKey === "tags" || typeof value === "object") continue;
+        if (Object.prototype.hasOwnProperty.call(mapped, vendorKey)) continue;
+        rows.push({
+          deviceId: deviceIdOut,
+          imei,
+          label,
+          protocol,
+          paramId: vendorKey,
+          paramLabel: vendorKey,
+          category: "raw",
+          value: formatParamValue(value),
+          source: "raw",
+          updatedAt,
+        });
+      }
+    }
+  }
+
+  return { params: paramDefs, rows };
+}
+
 export async function listProtocolParams(protocol) {
   const rows = protocol
     ? await dbQuery(

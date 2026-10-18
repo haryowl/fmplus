@@ -52,6 +52,7 @@ import {
   listProfiles,
   listProtocolParams,
   listSafetyEvents,
+  listDeviceParamValues,
   listTerminalEvents,
   previewRemap,
   updateParamDef,
@@ -499,6 +500,25 @@ export async function handleAdminRequest(req, res) {
           limit: Number(url.searchParams.get("limit") || 40),
         });
         json(res, 200, { events });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const paramValuesMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-param-values$/i.exec(path);
+    if (paramValuesMatch) {
+      const tenantId = paramValuesMatch[1];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "GET") {
+        const data = await listDeviceParamValues(tenantId, {
+          deviceId: url.searchParams.get("deviceId") || undefined,
+          includeRaw:
+            url.searchParams.get("raw") === "1" || url.searchParams.get("includeRaw") === "1",
+        });
+        json(res, 200, data);
         return true;
       }
       json(res, 405, { error: "Method not allowed" });
