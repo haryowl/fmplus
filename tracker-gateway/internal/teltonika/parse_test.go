@@ -338,12 +338,15 @@ func TestPromoteTeltonikaScalars_SleepIdling(t *testing.T) {
 
 func TestPromoteTeltonikaScalars_DinDout(t *testing.T) {
 	raw := map[string]any{}
-	promoteTeltonikaScalars(raw, map[string]any{"1": 1, "2": 0, "179": 1, "180": 0})
+	promoteTeltonikaScalars(raw, map[string]any{"1": 1, "2": 0, "179": 1, "180": 0, "380": 1, "447": 0})
 	if raw["status.din1"] != true || raw["status.din2"] != false {
 		t.Fatalf("din=%v", raw)
 	}
 	if raw["status.dout1"] != true || raw["status.dout2"] != false {
 		t.Fatalf("dout=%v", raw)
+	}
+	if raw["status.dout3"] != true || raw["status.dout4"] != false {
+		t.Fatalf("dout34=%v", raw)
 	}
 	promoteTeltonikaScalars(raw, map[string]any{"5": 1, "8": 1})
 	if raw["status.din5"] != true || raw["status.din8"] != true {

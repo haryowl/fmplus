@@ -737,6 +737,12 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["180"]; ok {
 		raw["status.dout2"] = asIOBool(v)
 	}
+	if v, ok := io["380"]; ok {
+		raw["status.dout3"] = asIOBool(v)
+	}
+	if v, ok := io["447"]; ok {
+		raw["status.dout4"] = asIOBool(v)
+	}
 	if v, ok := io["200"]; ok {
 		raw["sleep.mode"] = asIOFloat(v)
 		raw["status.sleeping"] = asIOFloat(v) != 0

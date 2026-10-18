@@ -48,6 +48,9 @@ func TestApplyStatusTags_OverspeedTowing(t *testing.T) {
 	if !types["overspeed"] || !types["towing"] {
 		t.Fatalf("types=%v", types)
 	}
+	if raw["tag.0x43"] != 1 || raw["status.tag.0x43"] != 1 {
+		t.Fatalf("tag43=%v", raw)
+	}
 }
 
 func TestApplyStatusTags_BatteryJamming(t *testing.T) {
@@ -61,6 +64,12 @@ func TestApplyStatusTags_BatteryJamming(t *testing.T) {
 	}
 	if raw["status.ext44"] != 2 || raw["status.ext45"] != 1 {
 		t.Fatalf("ext=%v", raw)
+	}
+	if raw["tag.0x44"] != 2 || raw["status.tag.0x44"] != 2 {
+		t.Fatalf("tag44=%v", raw)
+	}
+	if raw["tag.0x45"] != 1 || raw["status.tag.0x45"] != 1 {
+		t.Fatalf("tag45=%v", raw)
 	}
 }
 

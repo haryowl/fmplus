@@ -261,13 +261,19 @@ func TestPromoteRuptelaScalars_FuelAVL(t *testing.T) {
 
 func TestPromoteRuptelaScalars_DinDout(t *testing.T) {
 	raw := map[string]any{}
-	promoteRuptelaScalars(raw, map[string]any{"1": 1, "3": 1, "179": 1})
+	promoteRuptelaScalars(raw, map[string]any{"1": 1, "3": 1, "179": 1, "380": 1})
 	if raw["status.din1"] != true || raw["status.din3"] != true || raw["status.dout1"] != true {
 		t.Fatalf("%v", raw)
 	}
-	promoteRuptelaScalars(raw, map[string]any{"2": 1, "4": 1, "180": 1})
+	if raw["status.dout3"] != true {
+		t.Fatalf("dout3=%v", raw)
+	}
+	promoteRuptelaScalars(raw, map[string]any{"2": 1, "4": 1, "180": 1, "447": 1})
 	if raw["status.din2"] != true || raw["status.din4"] != true || raw["status.dout2"] != true {
 		t.Fatalf("din24/dout2=%v", raw)
+	}
+	if raw["status.dout4"] != true {
+		t.Fatalf("dout4=%v", raw)
 	}
 	promoteRuptelaScalars(raw, map[string]any{"5": 1, "8": 1})
 	if raw["status.din5"] != true || raw["status.din8"] != true {

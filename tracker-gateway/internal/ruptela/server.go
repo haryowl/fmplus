@@ -566,6 +566,12 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["180"]; ok {
 		raw["status.dout2"] = asTruthy(v)
 	}
+	if v, ok := io["380"]; ok {
+		raw["status.dout3"] = asTruthy(v)
+	}
+	if v, ok := io["447"]; ok {
+		raw["status.dout4"] = asTruthy(v)
+	}
 	if v, ok := io["72"]; ok {
 		raw["temp.1"] = asFloat64(v)
 	}

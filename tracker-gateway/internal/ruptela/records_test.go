@@ -61,6 +61,9 @@ func TestParseRecordPayload_ProtoMsgCmd1(t *testing.T) {
 	if fixes[0].RawAttrs["hdop"] != 1 || fixes[0].RawAttrs["gnss.hdop"] != 0.1 {
 		t.Fatalf("hdop=%v", fixes[0].RawAttrs)
 	}
+	if fixes[0].RawAttrs["record_index"] != 0 {
+		t.Fatalf("record_index=%v", fixes[0].RawAttrs["record_index"])
+	}
 }
 
 func TestParseRecordPayload_ProtoMsgCmd68(t *testing.T) {
