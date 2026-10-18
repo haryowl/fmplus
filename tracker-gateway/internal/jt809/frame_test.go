@@ -25,9 +25,9 @@ func TestTakeFrame809_RoundTrip(t *testing.T) {
 	binary.BigEndian.PutUint32(body[0:4], 22)
 	binary.BigEndian.PutUint16(body[8:10], 0x1005)
 	frame := wrapFrame809(body)
-	payload, rest, ok := takeFrame809(frame)
-	if !ok || len(rest) != 0 {
-		t.Fatalf("ok=%v rest=%d", ok, len(rest))
+	payload, rest, ok, crcFail := takeFrame809(frame)
+	if !ok || crcFail || len(rest) != 0 {
+		t.Fatalf("ok=%v crcFail=%v rest=%d", ok, crcFail, len(rest))
 	}
 	if binary.BigEndian.Uint16(payload[8:10]) != 0x1005 {
 		t.Fatalf("%x", payload)
@@ -41,8 +41,8 @@ func TestTakeFrame809_BadCRC(t *testing.T) {
 	if len(frame) > 4 {
 		frame[3] ^= 0xff
 	}
-	_, _, ok := takeFrame809(frame)
-	if ok {
-		t.Fatal("expected CRC fail")
+	_, _, ok, crcFail := takeFrame809(frame)
+	if ok || !crcFail {
+		t.Fatalf("expected CRC fail ok=%v crcFail=%v", ok, crcFail)
 	}
 }

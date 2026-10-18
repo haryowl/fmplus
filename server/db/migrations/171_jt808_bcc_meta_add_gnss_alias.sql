@@ -2,6 +2,8 @@
 INSERT INTO tracker_protocol_params (protocol, vendor_key, label, value_type, description) VALUES
   ('jt808', 'bcc_invalid', 'BCC invalid', 'bool', 'Frame BCC mismatch'),
   ('subiao', 'bcc_invalid', 'BCC invalid', 'bool', 'Inherited JT808 BCC'),
+  ('jt808', 'seq', 'Message sequence', 'number', 'Header seq on BCC fail'),
+  ('subiao', 'seq', 'Message sequence', 'number', 'Inherited JT808'),
   ('jt808', 'msg_id', 'Message ID', 'number', 'Unhandled or BCC-fail msg id'),
   ('subiao', 'msg_id', 'Message ID', 'number', 'Inherited JT808'),
   ('jt808', 'body_hex', 'Body hex', 'string', 'Unhandled msg body snip'),

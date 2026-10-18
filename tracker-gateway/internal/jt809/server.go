@@ -64,10 +64,20 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		}
 		buf = append(buf, tmp[:n]...)
 		for {
-			payload, rest, ok := takeFrame809(buf)
+			payload, rest, ok, crcFail := takeFrame809(buf)
 			if !ok {
 				if rest != nil {
 					buf = rest
+				}
+				if crcFail {
+					if st != nil && platformKey != "" {
+						if d := deviceauth.FindByIMEI(ctx, st, platformKey, conn.RemoteAddr().String(), "jt809"); d != nil {
+							_ = st.PatchLastStatus(ctx, d, map[string]any{"crc_invalid": true}, nil)
+						}
+					}
+					if rest != nil {
+						continue // frame consumed; keep parsing buffer
+					}
 				}
 				// Legacy fallback: raw length-prefixed header without 0x5B (lab tools).
 				if len(buf) >= 22 && buf[0] != 0x5b {

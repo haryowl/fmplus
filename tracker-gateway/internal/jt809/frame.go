@@ -58,8 +58,9 @@ func unescape809(esc []byte) []byte {
 }
 
 // takeFrame809 extracts one 0x5B … 0x5D frame from a stream buffer.
-// Returns unescaped header+body (CRC stripped), remaining buffer, and ok.
-func takeFrame809(buf []byte) (payload []byte, rest []byte, ok bool) {
+// Returns unescaped header+body (CRC stripped), remaining buffer, ok, and crcFail
+// (complete frame rejected for CRC — rest advances past it).
+func takeFrame809(buf []byte) (payload []byte, rest []byte, ok, crcFail bool) {
 	start := -1
 	for i, b := range buf {
 		if b == 0x5b {
@@ -68,7 +69,7 @@ func takeFrame809(buf []byte) (payload []byte, rest []byte, ok bool) {
 		}
 	}
 	if start < 0 {
-		return nil, nil, false
+		return nil, nil, false, false
 	}
 	if start > 0 {
 		buf = buf[start:]
@@ -82,21 +83,22 @@ func takeFrame809(buf []byte) (payload []byte, rest []byte, ok bool) {
 		}
 	}
 	if end < 0 {
-		return nil, buf, false
+		return nil, buf, false, false
 	}
 	inner := buf[1:end]
 	rest = buf[end+1:]
 	raw := unescape809(inner)
 	if len(raw) < 2 {
-		return nil, rest, false
+		return nil, rest, false, false
 	}
 	got := binary.BigEndian.Uint16(raw[len(raw)-2:])
 	body := raw[:len(raw)-2]
-	if crc16CCITTFalse(body) != got {
+	want := crc16CCITTFalse(body)
+	if want != got {
 		metrics.DecodeErr()
-		return nil, rest, false
+		return nil, rest, false, true
 	}
-	return body, rest, true
+	return body, rest, true, false
 }
 
 // wrapFrame809 builds 0x5B + escaped(body+CRC) + 0x5D for experimental replies.
