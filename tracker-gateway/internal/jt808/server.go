@@ -898,6 +898,12 @@ func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *
 	hdr, ok := parseMessageHeader(msg)
 	if !ok {
 		metrics.DecodeErr()
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, map[string]any{
+				"header_invalid": true,
+				"frame_len":      len(raw),
+			}, nil)
+		}
 		return nil
 	}
 	msgID := hdr.MsgID
@@ -3326,6 +3332,13 @@ func packJT808HeaderSub(msgID uint16, body []byte, phone string, seq uint16, v20
 func ingestLocation(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry, sess *session, body []byte, protoHint string) {
 	fix, ok := parseLocation(body)
 	if !ok {
+		metrics.DecodeErr()
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, map[string]any{
+				"location_invalid": true,
+				"body_len":         len(body),
+			}, nil)
+		}
 		return
 	}
 	if sess.device == nil {

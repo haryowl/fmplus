@@ -219,6 +219,7 @@ Adding a new GPS brand or HTTP API: implement `protocol.Adapter`, register in `m
 #   169_galileo_can_cc_809_manual_codec_honesty.sql
 #   170_tags_io_retransmit_crc_honesty.sql
 #   171_jt808_bcc_meta_add_gnss_alias.sql
+#   172_io_id_jt808_parse_honesty.sql
 npm run db:migrate
 
 cd tracker-gateway
