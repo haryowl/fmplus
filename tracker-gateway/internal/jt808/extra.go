@@ -124,7 +124,7 @@ func ParseAdditionalTLVBytes(body []byte) map[string]any {
 			if l >= 8 {
 				add["route_drive_time"] = int(binary.BigEndian.Uint16(val[6:8]))
 			}
-		case 0x18: // IO status bits (digital inputs / outs — layout vendor-dependent)
+		case 0x18: // IO status bits (WORD — same low-16 layout as TLV 0x2A)
 			if l >= 2 {
 				io := binary.BigEndian.Uint16(val[0:2])
 				add[key] = int(io)
@@ -133,6 +133,18 @@ func ParseAdditionalTLVBytes(body []byte) map[string]any {
 				add["status.din2"] = io&0x02 != 0
 				add["status.din3"] = io&0x04 != 0
 				add["status.din4"] = io&0x08 != 0
+				add["status.din5"] = io&0x10 != 0
+				add["status.din6"] = io&0x20 != 0
+				add["status.din7"] = io&0x40 != 0
+				add["status.din8"] = io&0x80 != 0
+				add["status.dout1"] = io&0x0100 != 0
+				add["status.dout2"] = io&0x0200 != 0
+				add["status.dout3"] = io&0x0400 != 0
+				add["status.dout4"] = io&0x0800 != 0
+				add["status.dout5"] = io&0x1000 != 0
+				add["status.dout6"] = io&0x2000 != 0
+				add["status.dout7"] = io&0x4000 != 0
+				add["status.dout8"] = io&0x8000 != 0
 			} else if l >= 1 {
 				add[key] = int(val[0])
 				add["io.status"] = int(val[0])

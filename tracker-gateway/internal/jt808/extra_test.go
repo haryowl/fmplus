@@ -172,6 +172,19 @@ func TestParseAdditionalInfo_IO2A_DinDout58(t *testing.T) {
 	}
 }
 
+func TestParseAdditionalInfo_IO18_FullWord(t *testing.T) {
+	base := make([]byte, 28)
+	// din5 (bit4) + dout1 (bit8) → 0x0110
+	tlv, _ := hex.DecodeString("18020110")
+	add := parseAdditionalInfo(append(base, tlv...))
+	if add["status.din5"] != true || add["status.dout1"] != true {
+		t.Fatalf("din5/dout1=%v", add)
+	}
+	if add["status.din1"] != false || add["io.status"] != 0x0110 {
+		t.Fatalf("io=%v", add)
+	}
+}
+
 func TestParseAdditionalInfo_DriverIC32(t *testing.T) {
 	base := make([]byte, 28)
 	// status=1 login, time BCD 6 bytes, result=0, nameLen=3 "Bob", card "IC99" (len=16)
