@@ -37,9 +37,13 @@ import {
   updateTrackerDevice,
 } from "./tracker-devices.mjs";
 import {
+  cancelCommand,
+  cloneProfile,
+  createParamDef,
   createProfile,
   deleteMapRule,
-  cancelCommand,
+  deleteParamDef,
+  deleteProfile,
   enqueueCommand,
   lastFixPreview,
   listCommands,
@@ -48,7 +52,10 @@ import {
   listProfiles,
   listProtocolParams,
   listSafetyEvents,
+  listTerminalEvents,
   previewRemap,
+  updateParamDef,
+  updateProfile,
   upsertMapRule,
 } from "./device-manager.mjs";
 
@@ -330,7 +337,8 @@ export async function handleAdminRequest(req, res) {
     if (path === "/api/admin/tracker-param-defs" && req.method === "GET") {
       const admin = await requireAdmin(req, res);
       if (!admin) return true;
-      json(res, 200, { params: await listParamDefs() });
+      const tenantId = url.searchParams.get("tenantId") || "";
+      json(res, 200, { params: await listParamDefs(tenantId || undefined) });
       return true;
     }
 
@@ -339,6 +347,63 @@ export async function handleAdminRequest(req, res) {
       if (!admin) return true;
       const protocol = url.searchParams.get("protocol") || "";
       json(res, 200, { params: await listProtocolParams(protocol || undefined) });
+      return true;
+    }
+
+    const tenantParamDefsMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-param-defs$/i.exec(path);
+    if (tenantParamDefsMatch) {
+      const tenantId = tenantParamDefsMatch[1];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "GET") {
+        json(res, 200, { params: await listParamDefs(tenantId) });
+        return true;
+      }
+      if (req.method === "POST") {
+        try {
+          const body = await readJson(req);
+          const param = await createParamDef(tenantId, body);
+          await writeAudit(admin.id, "tracker_param_def.create", { tenantId, paramId: param.id });
+          json(res, 201, { param });
+        } catch (err) {
+          json(res, err.status || 500, { error: err.message || "Create param failed" });
+        }
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const tenantParamOneMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-param-defs\/([^/]+)$/i.exec(path);
+    if (tenantParamOneMatch) {
+      const tenantId = tenantParamOneMatch[1];
+      const paramId = decodeURIComponent(tenantParamOneMatch[2]);
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "PATCH") {
+        try {
+          const body = await readJson(req);
+          const param = await updateParamDef(tenantId, paramId, body);
+          await writeAudit(admin.id, "tracker_param_def.update", { tenantId, paramId });
+          json(res, 200, { param });
+        } catch (err) {
+          json(res, err.status || 500, { error: err.message || "Update param failed" });
+        }
+        return true;
+      }
+      if (req.method === "DELETE") {
+        try {
+          await deleteParamDef(tenantId, paramId);
+          await writeAudit(admin.id, "tracker_param_def.delete", { tenantId, paramId });
+          json(res, 200, { ok: true });
+        } catch (err) {
+          json(res, err.status || 500, { error: err.message || "Delete param failed" });
+        }
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
       return true;
     }
 
@@ -356,6 +421,84 @@ export async function handleAdminRequest(req, res) {
         const profile = await createProfile(tenantId, body);
         await writeAudit(admin.id, "tracker_profile.create", { tenantId, profileId: profile.id });
         json(res, 201, { profile });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const profileOneMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-profiles\/([0-9a-f-]{36})$/i.exec(path);
+    if (profileOneMatch) {
+      const tenantId = profileOneMatch[1];
+      const profileId = profileOneMatch[2];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "PATCH") {
+        try {
+          const body = await readJson(req);
+          const profile = await updateProfile(tenantId, profileId, body);
+          await writeAudit(admin.id, "tracker_profile.update", { tenantId, profileId });
+          json(res, 200, { profile });
+        } catch (err) {
+          json(res, err.status || 500, { error: err.message || "Update profile failed" });
+        }
+        return true;
+      }
+      if (req.method === "DELETE") {
+        try {
+          await deleteProfile(tenantId, profileId);
+          await writeAudit(admin.id, "tracker_profile.delete", { tenantId, profileId });
+          json(res, 200, { ok: true });
+        } catch (err) {
+          json(res, err.status || 500, { error: err.message || "Delete profile failed" });
+        }
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const profileCloneMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-profiles\/([0-9a-f-]{36})\/clone$/i.exec(
+        path,
+      );
+    if (profileCloneMatch) {
+      const tenantId = profileCloneMatch[1];
+      const profileId = profileCloneMatch[2];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "POST") {
+        try {
+          const body = await readJson(req);
+          const profile = await cloneProfile(tenantId, profileId, body || {});
+          await writeAudit(admin.id, "tracker_profile.clone", {
+            tenantId,
+            sourceId: profileId,
+            profileId: profile.id,
+          });
+          json(res, 201, { profile });
+        } catch (err) {
+          json(res, err.status || 500, { error: err.message || "Clone profile failed" });
+        }
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const terminalMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-terminal$/i.exec(path);
+    if (terminalMatch) {
+      const tenantId = terminalMatch[1];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "GET") {
+        const events = await listTerminalEvents(tenantId, {
+          deviceId: url.searchParams.get("deviceId") || undefined,
+          limit: Number(url.searchParams.get("limit") || 40),
+        });
+        json(res, 200, { events });
         return true;
       }
       json(res, 405, { error: "Method not allowed" });

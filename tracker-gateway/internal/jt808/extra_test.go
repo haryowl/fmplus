@@ -383,6 +383,36 @@ func TestFlattenAlarmBits_Tier2(t *testing.T) {
 	}
 }
 
+func TestFlattenAlarmBits_Table25_2019Official(t *testing.T) {
+	// JT/T 808—2019 Table 25: bit18 day drive, bit19 parking, bit16 tire, bit17 blind, bit15 illegal driving
+	raw := map[string]any{}
+	flattenAlarmBits(1<<15|1<<16|1<<17|1<<18|1<<19, raw)
+	if raw["alarm.illegal_driving"] != true || raw["alarm.tire_pressure_warn"] != true ||
+		raw["alarm.right_blind_zone"] != true || raw["alarm.day_drive_timeout"] != true ||
+		raw["alarm.parking_timeout"] != true {
+		t.Fatalf("%v", raw)
+	}
+	// Bit 16 must NOT be day_drive (pre-align bug)
+	raw2 := map[string]any{}
+	flattenAlarmBits(1<<16, raw2)
+	if raw2["alarm.day_drive_timeout"] == true || raw2["alarm.tire_pressure_warn"] != true {
+		t.Fatalf("bit16 should be tire pressure: %v", raw2)
+	}
+}
+
+func TestParseAdditionalInfo_Table31_Signal025(t *testing.T) {
+	base := make([]byte, 28)
+	// low_beam + right_turn + brake = bits 0,2,4 → 0x15
+	tlv, _ := hex.DecodeString("250400000015")
+	add := parseAdditionalInfo(append(base, tlv...))
+	if add["status.low_beam"] != true || add["status.right_turn"] != true || add["status.brake"] != true {
+		t.Fatalf("%v", add)
+	}
+	if add["status.acc"] != nil || add["status.left_turn"] != false {
+		t.Fatalf("should not invent ACC from 0x25: %v", add)
+	}
+}
+
 func TestHoistLocationStatusBits(t *testing.T) {
 	raw := map[string]any{}
 	HoistLocationStatusBits(0x10|0x100|0x100000|0x200000, raw)

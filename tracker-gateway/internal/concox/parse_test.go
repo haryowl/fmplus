@@ -203,6 +203,26 @@ func TestDecodeInfo94_MileageFuelSats(t *testing.T) {
 	}
 }
 
+func TestDownlinkCorrID_AndLoginRoundTrip(t *testing.T) {
+	frame, err := (Adapter{}).EncodeDownlinkSerial(store.Command{PayloadText: "RESET#"}, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if DownlinkCorrID(frame) != "42" {
+		t.Fatalf("corr=%q", DownlinkCorrID(frame))
+	}
+	// Login-style reply frame with IMEI BCD in info
+	imeiBCD := mustHex(t, "0352094081234567")
+	login := buildFrame(0x01, 7, imeiBCD)
+	proto, info, ser, err := decodeFrame(login)
+	if err != nil || proto != 0x01 || ser != 7 {
+		t.Fatalf("proto=%x ser=%d err=%v", proto, ser, err)
+	}
+	if bcdIMEI(info) != "352094081234567" {
+		t.Fatalf("imei=%q info=%x", bcdIMEI(info), info)
+	}
+}
+
 func TestCRC16ITU_KnownVector(t *testing.T) {
 	// Empty → 0xFFFF init leaves 0xFFFF for empty input
 	if crc16ITU(nil) != 0xFFFF {

@@ -725,6 +725,33 @@ func TestFlatten809InfoType_SOS(t *testing.T) {
 	}
 }
 
+func TestKnownInfoTypes_Table3And4_2019(t *testing.T) {
+	// JT/T 809—2019 Table 3/4 — 0x0001 is overspeed (not SOS); 0xA001 parking
+	cases := []struct {
+		code int
+		key  string
+	}{
+		{0x0001, "alarm.overspeed"},
+		{0x0002, "alarm.fatigue"},
+		{0x0003, "alarm.sos"},
+		{0x000B, "alarm.route_deviation"},
+		{0x0011, "alarm.collision"},
+		{0xA001, "alarm.parking_timeout"},
+	}
+	for _, c := range cases {
+		raw := map[string]any{}
+		flatten809InfoType(c.code, raw)
+		if raw[c.key] != true {
+			t.Fatalf("code 0x%04X → %s missing: %v", c.code, c.key, raw)
+		}
+	}
+	raw := map[string]any{}
+	flatten809InfoType(0x0006, raw) // Table 3 gap
+	if len(raw) != 0 {
+		t.Fatalf("gap 0x0006 should stay unmapped: %v", raw)
+	}
+}
+
 func TestParseVehicleStatic_Register(t *testing.T) {
 	rest := make([]byte, 28+61)
 	copy(rest[0:21], []byte("B1234REG"))

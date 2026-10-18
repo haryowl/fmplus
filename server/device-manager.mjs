@@ -99,11 +99,13 @@ export function publicParamDef(row) {
   if (!row) return null;
   return {
     id: row.id,
+    tenantId: row.tenant_id || null,
     category: row.category,
     valueType: row.value_type,
     unit: row.unit || "",
     label: row.label || row.id,
     description: row.description || "",
+    system: !row.tenant_id,
   };
 }
 
@@ -136,11 +138,242 @@ export function publicMapRule(row) {
   };
 }
 
-export async function listParamDefs() {
-  const rows = await dbQuery(
-    `SELECT * FROM tracker_param_defs ORDER BY category, id`,
-  );
+export async function listParamDefs(tenantId) {
+  const rows = tenantId
+    ? await dbQuery(
+        `SELECT * FROM tracker_param_defs
+         WHERE tenant_id IS NULL OR tenant_id = $1
+         ORDER BY (tenant_id IS NOT NULL), category, id`,
+        [tenantId],
+      )
+    : await dbQuery(`SELECT * FROM tracker_param_defs ORDER BY category, id`);
   return rows.rows.map(publicParamDef);
+}
+
+const PARAM_CATEGORIES = ["avl", "safety", "video", "other"];
+const PARAM_VALUE_TYPES = ["bool", "number", "string"];
+
+export async function createParamDef(tenantId, body) {
+  const id = String(body.id || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]/g, "_")
+    .slice(0, 64);
+  if (!id || id.length < 2) {
+    const err = new Error("Param id required (min 2 chars, a-z 0-9 _ . -)");
+    err.status = 400;
+    throw err;
+  }
+  const category = PARAM_CATEGORIES.includes(body.category) ? body.category : "other";
+  const valueType = PARAM_VALUE_TYPES.includes(body.valueType) ? body.valueType : "number";
+  try {
+    const inserted = await dbQuery(
+      `INSERT INTO tracker_param_defs (id, tenant_id, category, value_type, unit, label, description)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [
+        id,
+        tenantId,
+        category,
+        valueType,
+        String(body.unit || "").trim().slice(0, 32),
+        String(body.label || id).trim().slice(0, 120),
+        String(body.description || "").trim().slice(0, 500),
+      ],
+    );
+    return publicParamDef(inserted.rows[0]);
+  } catch (e) {
+    if (e && (e.code === "23505" || /unique/i.test(String(e.message)))) {
+      const err = new Error(`Param id already exists: ${id}`);
+      err.status = 409;
+      throw err;
+    }
+    throw e;
+  }
+}
+
+export async function updateParamDef(tenantId, paramId, body) {
+  const existing = await dbQuery(
+    `SELECT * FROM tracker_param_defs WHERE id = $1`,
+    [paramId],
+  );
+  const row = existing.rows[0];
+  if (!row) {
+    const err = new Error("Param not found");
+    err.status = 404;
+    throw err;
+  }
+  if (!row.tenant_id || row.tenant_id !== tenantId) {
+    const err = new Error("Only tenant-owned params can be edited");
+    err.status = 403;
+    throw err;
+  }
+  const category = PARAM_CATEGORIES.includes(body.category) ? body.category : row.category;
+  const valueType = PARAM_VALUE_TYPES.includes(body.valueType) ? body.valueType : row.value_type;
+  const updated = await dbQuery(
+    `UPDATE tracker_param_defs
+     SET category = $2, value_type = $3, unit = $4, label = $5, description = $6
+     WHERE id = $1 AND tenant_id = $7
+     RETURNING *`,
+    [
+      paramId,
+      category,
+      valueType,
+      body.unit !== undefined ? String(body.unit).trim().slice(0, 32) : row.unit,
+      body.label !== undefined ? String(body.label).trim().slice(0, 120) : row.label,
+      body.description !== undefined
+        ? String(body.description).trim().slice(0, 500)
+        : row.description,
+      tenantId,
+    ],
+  );
+  return publicParamDef(updated.rows[0]);
+}
+
+export async function deleteParamDef(tenantId, paramId) {
+  const deleted = await dbQuery(
+    `DELETE FROM tracker_param_defs
+     WHERE id = $1 AND tenant_id = $2
+     RETURNING id`,
+    [paramId, tenantId],
+  );
+  if (!deleted.rows[0]) {
+    const err = new Error("Param not found or is a system seed (cannot delete)");
+    err.status = 404;
+    throw err;
+  }
+  await dbQuery(`DELETE FROM tracker_param_maps WHERE app_param_id = $1`, [paramId]);
+  return true;
+}
+
+export async function updateProfile(tenantId, profileId, body) {
+  const existing = await dbQuery(`SELECT * FROM tracker_device_profiles WHERE id = $1`, [
+    profileId,
+  ]);
+  const row = existing.rows[0];
+  if (!row) {
+    const err = new Error("Profile not found");
+    err.status = 404;
+    throw err;
+  }
+  if (!row.tenant_id || row.tenant_id !== tenantId) {
+    const err = new Error("Only tenant-owned profiles can be edited");
+    err.status = 403;
+    throw err;
+  }
+  const name =
+    body.name !== undefined ? String(body.name).trim().slice(0, 120) : row.name;
+  if (!name) {
+    const err = new Error("Profile name required");
+    err.status = 400;
+    throw err;
+  }
+  const updated = await dbQuery(
+    `UPDATE tracker_device_profiles
+     SET name = $2, model = $3, notes = $4, completeness = $5, updated_at = now()
+     WHERE id = $1 AND tenant_id = $6
+     RETURNING *`,
+    [
+      profileId,
+      name,
+      body.model !== undefined ? String(body.model).trim().slice(0, 80) : row.model,
+      body.notes !== undefined ? String(body.notes).trim().slice(0, 500) : row.notes,
+      ["mvp", "partial", "certified", "experimental"].includes(body.completeness)
+        ? body.completeness
+        : row.completeness,
+      tenantId,
+    ],
+  );
+  return publicProfile(updated.rows[0]);
+}
+
+export async function deleteProfile(tenantId, profileId) {
+  const deleted = await dbQuery(
+    `DELETE FROM tracker_device_profiles
+     WHERE id = $1 AND tenant_id = $2
+     RETURNING id`,
+    [profileId, tenantId],
+  );
+  if (!deleted.rows[0]) {
+    const err = new Error("Profile not found or is a system seed (cannot delete)");
+    err.status = 404;
+    throw err;
+  }
+  return true;
+}
+
+export async function cloneProfile(tenantId, sourceProfileId, body = {}) {
+  const src = await dbQuery(`SELECT * FROM tracker_device_profiles WHERE id = $1`, [
+    sourceProfileId,
+  ]);
+  const row = src.rows[0];
+  if (!row) {
+    const err = new Error("Source profile not found");
+    err.status = 404;
+    throw err;
+  }
+  if (row.tenant_id && row.tenant_id !== tenantId) {
+    const err = new Error("Cannot clone another tenant profile");
+    err.status = 403;
+    throw err;
+  }
+  const name =
+    String(body.name || `${row.name} (copy)`).trim().slice(0, 120) || `${row.name} (copy)`;
+  const inserted = await dbQuery(
+    `INSERT INTO tracker_device_profiles (tenant_id, name, protocol, model, completeness, notes)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [
+      tenantId,
+      name,
+      row.protocol,
+      body.model !== undefined ? String(body.model).trim().slice(0, 80) : row.model,
+      row.completeness || "mvp",
+      body.notes !== undefined ? String(body.notes).trim().slice(0, 500) : row.notes,
+    ],
+  );
+  const profile = publicProfile(inserted.rows[0]);
+  await dbQuery(
+    `INSERT INTO tracker_param_maps (profile_id, vendor_key, app_param_id, transform, transform_arg, enabled)
+     SELECT $1, vendor_key, app_param_id, transform, transform_arg, enabled
+     FROM tracker_param_maps WHERE profile_id = $2`,
+    [profile.id, sourceProfileId],
+  );
+  return profile;
+}
+
+export async function listTerminalEvents(tenantId, { deviceId, limit = 40 } = {}) {
+  const lim = Math.min(Math.max(Number(limit) || 40, 1), 200);
+  const params = [tenantId];
+  let deviceClause = "";
+  if (deviceId) {
+    params.push(deviceId);
+    deviceClause = ` AND vf.device_id = $${params.length}`;
+  }
+  params.push(lim);
+  const rows = await dbQuery(
+    `SELECT vf.device_id, vf.recorded_at, vf.lat, vf.lon, vf.speed, vf.heading,
+            vf.ignition, vf.source_protocol, vf.raw_attrs, vf.mapped_attrs,
+            d.imei, d.label, d.protocol AS device_protocol
+     FROM vehicle_fixes vf
+     JOIN tracker_devices d ON d.id = vf.device_id
+     WHERE vf.tenant_id = $1${deviceClause}
+     ORDER BY vf.recorded_at DESC
+     LIMIT $${params.length}`,
+    params,
+  );
+  return rows.rows.map((r) => ({
+    deviceId: r.device_id,
+    imei: r.imei,
+    label: r.label || "",
+    protocol: r.source_protocol || r.device_protocol || "",
+    recordedAt: r.recorded_at,
+    lat: r.lat != null ? Number(r.lat) : null,
+    lon: r.lon != null ? Number(r.lon) : null,
+    speed: r.speed != null ? Number(r.speed) : null,
+    heading: r.heading != null ? Number(r.heading) : null,
+    ignition: r.ignition,
+    rawAttrs: r.raw_attrs || {},
+    mappedAttrs: r.mapped_attrs || {},
+  }));
 }
 
 export async function listProtocolParams(protocol) {

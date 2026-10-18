@@ -12,7 +12,7 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | Su Biao overlay | `TRACKER_SUBIAO_ADDR` | `:7612` | **partial** | 808 + safety | same as 808 | ADAS/DSM/BSD TLVs → safety events |
 | JT/T 809 | `TRACKER_JT809_ADDR` | `:8090` | **experimental** | login/HB + 0x1200–06 + 0x1400 + 0x1500 + 0x1601–2 | — | 0x5B CRC; skip encrypted bodies |
 | JT/T 1078 | `TRACKER_JT1078_ADDR` | `:1078` | **experimental** | signaling + ACK + SIM + header/payload hints | — | no RTP / no 808 media bridge |
-| Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | GPS/HB/alarm/LBS | 0x80 GPRS | paused for depth — GT06 deferred |
+| Concox/GT06 | `TRACKER_CONCOX_ADDR` | `:5023` | **partial** | login/GPS/HB/alarm/LBS/0x94/0x8a | 0x80 GPRS + soft corr | CRC-ITU framing; not certified until live devices |
 | Ruptela | `TRACKER_RUPTELA_ADDR` | `:3047` | **partial** | cmd 1/68 records + cmd3 ident | 108/105/107 | voltage/fuel/temp/GSM IO; SOS/door; soft corr |
 | Galileosky | `TRACKER_GALILEOSKY_ADDR` | `:30175` | **partial** | tags + multi-record | 0x01 + CRC | hw/fw + fuel/user/analog; CRLF cmds; soft corr |
 
@@ -31,6 +31,17 @@ Pluggable GPS protocol adapters that terminate public ports, decode **raw vendor
 | Ruptela | FM protocol PDF (CRC-CCITT Kermit over payload; records cmd `1`/`68`; server ACK cmd `100`; SMS cmd `108`) |
 
 Adapters stay **partial** until exercised against real devices/firmware; wiki/PDF variance by model is expected.
+
+### Admin Device Manager (post-ingest)
+
+Armada Admin tenant tabs: **Settings** | **Device Manager** | **Terminal**.
+
+- Device Manager: full-width remap grid (3–4 cols), multi profiles (create/clone/delete tenant-owned), app parameter master (tenant custom params).
+- Terminal: poll recent `vehicle_fixes` (raw + mapped) for live-ish device listeners.
+
+### After Tracker Gateway (product track)
+
+Once gateway exit criteria are met (docs-aligned uplink, claimed downlink working, Admin params/profiles/terminal usable): Ops map on `mapped_attrs`, alerting on app params, reports/exports, field/mobile wiring, then per-protocol live-device **certified** checklists. Do not claim certified from PDF work alone.
 
 ### Command types (Admin → Device Manager)
 

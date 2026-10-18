@@ -3472,6 +3472,152 @@ html.onesheet-root body {
   border-top: 0;
 }
 
+.admin-dm-fold {
+  margin: 10px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.admin-dm-fold > summary {
+  cursor: pointer;
+  font-weight: 650;
+  font-size: 0.88rem;
+  margin-bottom: 8px;
+}
+
+.admin-terminal-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.admin-terminal-list li {
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  background: #f8fbfc;
+  overflow: hidden;
+}
+
+.admin-terminal-row {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.admin-terminal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.82rem;
+}
+
+.admin-terminal-fix {
+  font-size: 0.78rem;
+  color: var(--admin-ink-soft);
+}
+
+.admin-terminal-json {
+  margin: 0;
+  padding: 8px 12px 12px;
+  font-size: 0.72rem;
+  max-height: 220px;
+  overflow: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.admin-section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 4px;
+  padding: 0;
+}
+
+.admin-section-tabs button {
+  border: 1px solid var(--admin-line);
+  background: var(--surface);
+  color: var(--admin-ink-soft);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.admin-section-tabs button.active {
+  background: var(--admin-nav);
+  border-color: var(--admin-nav);
+  color: #fff;
+}
+
+.admin-remap-grid {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-remap-grid li {
+  border: 1px solid var(--admin-line);
+  background: #f8fbfc;
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.admin-remap-grid .admin-remap-rule {
+  display: block;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.admin-remap-grid .admin-remap-delete {
+  justify-self: start;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+}
+
+.admin-remap-grid .admin-remap-empty {
+  grid-column: 1 / -1;
+  border-style: dashed;
+  background: transparent;
+}
+
+@media (max-width: 1100px) {
+  .admin-remap-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 800px) {
+  .admin-remap-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .admin-remap-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .admin-field-list {
   list-style: none;
   margin: 4px 0 0;

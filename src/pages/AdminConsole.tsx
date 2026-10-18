@@ -438,6 +438,7 @@ function commandPayloadPlaceholder(cmdType: string): { text: string; hex: string
 
 type TrackerProfileRow = {
   id: string;
+  tenantId?: string | null;
   name: string;
   protocol: string;
   model: string;
@@ -447,9 +448,13 @@ type TrackerProfileRow = {
 
 type TrackerParamDef = {
   id: string;
+  tenantId?: string | null;
   category: string;
   label: string;
   valueType: string;
+  unit?: string;
+  description?: string;
+  system?: boolean;
 };
 
 type TrackerProtocolParam = {
@@ -714,6 +719,7 @@ export default function AdminConsole() {
   const [loginPass, setLoginPass] = useState("");
   const [tenants, setTenants] = useState<AdminTenant[]>([]);
   const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
+  const [adminSection, setAdminSection] = useState<"settings" | "devices" | "terminal">("settings");
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -782,6 +788,31 @@ export default function AdminConsole() {
   const [tdVideoChannelId, setTdVideoChannelId] = useState("");
   const [tdVideoRtspUrl, setTdVideoRtspUrl] = useState("");
   const [lastDeviceToken, setLastDeviceToken] = useState("");
+  const [newParamId, setNewParamId] = useState("");
+  const [newParamLabel, setNewParamLabel] = useState("");
+  const [newParamCategory, setNewParamCategory] = useState("other");
+  const [newParamValueType, setNewParamValueType] = useState("number");
+  const [newParamUnit, setNewParamUnit] = useState("");
+  const [newProfileName, setNewProfileName] = useState("");
+  const [newProfileProtocol, setNewProfileProtocol] = useState("teltonika");
+  const [terminalEvents, setTerminalEvents] = useState<
+    Array<{
+      deviceId: string;
+      imei: string;
+      label: string;
+      protocol: string;
+      recordedAt: string;
+      lat: number | null;
+      lon: number | null;
+      speed: number | null;
+      ignition: boolean | null;
+      rawAttrs: Record<string, unknown>;
+      mappedAttrs: Record<string, unknown>;
+    }>
+  >([]);
+  const [terminalDeviceId, setTerminalDeviceId] = useState("");
+  const [terminalPaused, setTerminalPaused] = useState(false);
+  const [terminalExpanded, setTerminalExpanded] = useState<string | null>(null);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -822,12 +853,30 @@ export default function AdminConsole() {
   const loadDeviceManager = useCallback(async (tenantId: string) => {
     const [profiles, params] = await Promise.all([
       api<{ profiles: TrackerProfileRow[] }>(`/api/admin/tenants/${tenantId}/tracker-profiles`),
-      api<{ params: TrackerParamDef[] }>("/api/admin/tracker-param-defs"),
+      api<{ params: TrackerParamDef[] }>(
+        `/api/admin/tenants/${tenantId}/tracker-param-defs`,
+      ),
     ]);
     setTrackerProfiles(profiles.profiles);
     setParamDefs(params.params);
     setDmProfileId((cur) => cur || profiles.profiles[0]?.id || "");
+    if (params.params[0]?.id) {
+      setDmAppParam((cur) =>
+        params.params.some((p) => p.id === cur) ? cur : params.params[0].id,
+      );
+    }
   }, []);
+
+  const loadTerminalEvents = useCallback(
+    async (tenantId: string, deviceId = "") => {
+      const q = deviceId ? `?deviceId=${encodeURIComponent(deviceId)}&limit=50` : "?limit=50";
+      const data = await api<{ events: typeof terminalEvents }>(
+        `/api/admin/tenants/${tenantId}/tracker-terminal${q}`,
+      );
+      setTerminalEvents(data.events || []);
+    },
+    [],
+  );
 
   const loadProtocolParamsForProfile = useCallback(async (profileId: string) => {
     const profile = trackerProfiles.find((p) => p.id === profileId);
@@ -916,6 +965,22 @@ export default function AdminConsole() {
     if (dmProfileId) void loadProtocolParamsForProfile(dmProfileId);
   }, [selectedId, dmProfileId, dmMapDeviceId, loadMapRules, loadProtocolParamsForProfile]);
 
+  useEffect(() => {
+    if (!selectedId || selectedId === "new" || adminSection !== "terminal" || terminalPaused) return;
+    const tick = () => {
+      void loadTerminalEvents(selectedId, terminalDeviceId).catch((err: Error) => setError(err.message));
+    };
+    tick();
+    const id = window.setInterval(tick, 3000);
+    return () => window.clearInterval(id);
+  }, [
+    selectedId,
+    adminSection,
+    terminalPaused,
+    terminalDeviceId,
+    loadTerminalEvents,
+  ]);
+
   const filteredTenants = useMemo(() => {
     const q = tenantQuery.trim().toLowerCase();
     if (!q) return tenants;
@@ -971,6 +1036,7 @@ export default function AdminConsole() {
 
   function selectNew() {
     setSelectedId("new");
+    setAdminSection("settings");
     setDraft(emptyDraft());
     setNotice("");
     setError("");
@@ -978,6 +1044,7 @@ export default function AdminConsole() {
 
   function selectTenant(t: AdminTenant) {
     setSelectedId(t.id);
+    setAdminSection("settings");
     setDraft(draftFromTenant(t));
     setNotice("");
     setError("");
@@ -1279,6 +1346,133 @@ export default function AdminConsole() {
       await Promise.all([loadTrackerDevices(selectedId), loadUnassignedTrackers()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Claim failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addAppParam(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedId || selectedId === "new") return;
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api<{ param: TrackerParamDef }>(
+        `/api/admin/tenants/${selectedId}/tracker-param-defs`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            id: newParamId.trim(),
+            label: newParamLabel.trim() || newParamId.trim(),
+            category: newParamCategory,
+            valueType: newParamValueType,
+            unit: newParamUnit.trim(),
+          }),
+        },
+      );
+      setNotice(`App param added: ${data.param.id}`);
+      setNewParamId("");
+      setNewParamLabel("");
+      setNewParamUnit("");
+      setDmAppParam(data.param.id);
+      await loadDeviceManager(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Add param failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeAppParam(paramId: string) {
+    if (!selectedId || selectedId === "new") return;
+    if (!window.confirm(`Delete custom param "${paramId}" and its remap rules?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(
+        `/api/admin/tenants/${selectedId}/tracker-param-defs/${encodeURIComponent(paramId)}`,
+        { method: "DELETE" },
+      );
+      setNotice(`Deleted param ${paramId}`);
+      await loadDeviceManager(selectedId);
+      await loadMapRules(selectedId, dmProfileId, dmMapDeviceId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete param failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addTrackerProfile(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedId || selectedId === "new") return;
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api<{ profile: TrackerProfileRow }>(
+        `/api/admin/tenants/${selectedId}/tracker-profiles`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: newProfileName.trim(),
+            protocol: newProfileProtocol,
+            completeness: "mvp",
+          }),
+        },
+      );
+      setNotice(`Profile created: ${data.profile.name}`);
+      setNewProfileName("");
+      setDmProfileId(data.profile.id);
+      await loadDeviceManager(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Create profile failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cloneTrackerProfile(sourceId: string) {
+    if (!selectedId || selectedId === "new") return;
+    setBusy(true);
+    setError("");
+    try {
+      const src = trackerProfiles.find((p) => p.id === sourceId);
+      const data = await api<{ profile: TrackerProfileRow }>(
+        `/api/admin/tenants/${selectedId}/tracker-profiles/${sourceId}/clone`,
+        {
+          method: "POST",
+          body: JSON.stringify({ name: src ? `${src.name} (copy)` : undefined }),
+        },
+      );
+      setNotice(`Cloned profile → ${data.profile.name}`);
+      setDmProfileId(data.profile.id);
+      await loadDeviceManager(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Clone profile failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeTrackerProfile(profileId: string) {
+    if (!selectedId || selectedId === "new") return;
+    const p = trackerProfiles.find((x) => x.id === profileId);
+    if (!p?.tenantId) {
+      setError("System profiles cannot be deleted");
+      return;
+    }
+    if (!window.confirm(`Delete profile "${p.name}" and its remap rules?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/admin/tenants/${selectedId}/tracker-profiles/${profileId}`, {
+        method: "DELETE",
+      });
+      setNotice(`Deleted profile ${p.name}`);
+      setDmProfileId("");
+      await loadDeviceManager(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete profile failed");
     } finally {
       setBusy(false);
     }
@@ -1809,6 +2003,29 @@ export default function AdminConsole() {
                 </div>
               </div>
 
+              {selectedId !== "new" ? (
+                <nav className="admin-section-tabs" aria-label="Tenant sections">
+                  {(
+                    [
+                      ["settings", "Settings"],
+                      ["devices", "Device Manager"],
+                      ["terminal", "Terminal"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={adminSection === id ? "active" : ""}
+                      onClick={() => setAdminSection(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+              ) : null}
+
+              {(selectedId === "new" || adminSection === "settings") && (
+              <>
               <div className="admin-main-cols">
               <div className="admin-col">
               <section className="admin-panel">
@@ -2382,9 +2599,12 @@ export default function AdminConsole() {
                   </details>
                 </section>
               )}
+              </>
+              )}
 
-              {selectedId !== "new" && (
-                <section className="admin-panel admin-field-users">
+              {selectedId !== "new" && adminSection === "devices" && (
+              <>
+                <section className="admin-panel admin-device-manager">
                   <header className="admin-panel-head">
                     <h3>Device Manager</h3>
                     <p className="muted">
@@ -2404,47 +2624,213 @@ export default function AdminConsole() {
                   </div>
                   {gatewayStatus ? <p className="admin-notice">{gatewayStatus}</p> : null}
                   {gatewayDetail ? <p className="muted">{gatewayDetail}</p> : null}
-                  <label>
-                    Profile
-                    <select
-                      value={dmProfileId}
-                      onChange={(e) => {
-                        setDmMapDeviceId("");
-                        setDmProfileId(e.target.value);
-                      }}
-                      disabled={!!dmMapDeviceId}
-                    >
-                      {trackerProfiles.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} ({p.protocol}/{p.completeness})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Or device override
-                    <select
-                      value={dmMapDeviceId}
-                      onChange={(e) => setDmMapDeviceId(e.target.value)}
-                    >
-                      <option value="">(use profile rules)</option>
-                      {trackerDevices.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.imei} · {d.protocol || "?"}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <ul className="admin-field-list">
+
+                  <details className="admin-dm-fold" open>
+                    <summary>Profiles (multi)</summary>
+                    <form className="admin-form-grid" onSubmit={(e) => void addTrackerProfile(e)}>
+                      <label>
+                        New profile name
+                        <input
+                          value={newProfileName}
+                          onChange={(e) => setNewProfileName(e.target.value)}
+                          placeholder="My Teltonika ops B"
+                          required
+                        />
+                      </label>
+                      <label>
+                        Protocol
+                        <select
+                          value={newProfileProtocol}
+                          onChange={(e) => setNewProfileProtocol(e.target.value)}
+                        >
+                          {[
+                            "teltonika",
+                            "jt808",
+                            "subiao",
+                            "concox",
+                            "ruptela",
+                            "galileosky",
+                            "jt809",
+                            "jt1078",
+                            "http",
+                          ].map((p) => (
+                            <option key={p} value={p}>
+                              {p}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="span-2 admin-actions">
+                        <button
+                          type="submit"
+                          className="btn btn-secondary"
+                          disabled={busy || !newProfileName.trim()}
+                        >
+                          Create profile
+                        </button>
+                      </div>
+                    </form>
+                    <div className="admin-form-grid">
+                      <label>
+                        Active profile
+                        <select
+                          value={dmProfileId}
+                          onChange={(e) => {
+                            setDmMapDeviceId("");
+                            setDmProfileId(e.target.value);
+                          }}
+                          disabled={!!dmMapDeviceId}
+                        >
+                          {trackerProfiles.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.protocol}/{p.completeness}
+                              {p.tenantId ? "" : " · system"})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Or device override
+                        <select
+                          value={dmMapDeviceId}
+                          onChange={(e) => setDmMapDeviceId(e.target.value)}
+                        >
+                          <option value="">(use profile rules)</option>
+                          {trackerDevices.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.imei} · {d.protocol || "?"}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="span-2 admin-actions">
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={busy || !dmProfileId}
+                          onClick={() => void cloneTrackerProfile(dmProfileId)}
+                        >
+                          Clone active profile
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={
+                            busy ||
+                            !dmProfileId ||
+                            !trackerProfiles.find((p) => p.id === dmProfileId)?.tenantId
+                          }
+                          onClick={() => void removeTrackerProfile(dmProfileId)}
+                        >
+                          Delete tenant profile
+                        </button>
+                      </div>
+                    </div>
+                  </details>
+
+                  <details className="admin-dm-fold">
+                    <summary>App parameter master</summary>
+                    <form className="admin-form-grid" onSubmit={(e) => void addAppParam(e)}>
+                      <label>
+                        Param id
+                        <input
+                          value={newParamId}
+                          onChange={(e) => setNewParamId(e.target.value)}
+                          placeholder="custom.fuel_aux"
+                          required
+                        />
+                      </label>
+                      <label>
+                        Label
+                        <input
+                          value={newParamLabel}
+                          onChange={(e) => setNewParamLabel(e.target.value)}
+                          placeholder="Aux fuel"
+                        />
+                      </label>
+                      <label>
+                        Category
+                        <select
+                          value={newParamCategory}
+                          onChange={(e) => setNewParamCategory(e.target.value)}
+                        >
+                          <option value="avl">avl</option>
+                          <option value="safety">safety</option>
+                          <option value="video">video</option>
+                          <option value="other">other</option>
+                        </select>
+                      </label>
+                      <label>
+                        Value type
+                        <select
+                          value={newParamValueType}
+                          onChange={(e) => setNewParamValueType(e.target.value)}
+                        >
+                          <option value="number">number</option>
+                          <option value="bool">bool</option>
+                          <option value="string">string</option>
+                        </select>
+                      </label>
+                      <label>
+                        Unit
+                        <input
+                          value={newParamUnit}
+                          onChange={(e) => setNewParamUnit(e.target.value)}
+                          placeholder="L / km/h / …"
+                        />
+                      </label>
+                      <div className="span-2 admin-actions">
+                        <button
+                          type="submit"
+                          className="btn btn-secondary"
+                          disabled={busy || !newParamId.trim()}
+                        >
+                          Add app param
+                        </button>
+                      </div>
+                    </form>
+                    <ul className="admin-remap-grid">
+                      {paramDefs
+                        .filter((p) => !!p.tenantId)
+                        .map((p) => (
+                          <li key={p.id}>
+                            <span className="admin-remap-rule">
+                              <strong>{p.id}</strong>
+                              <span className="muted">
+                                {" "}
+                                · {p.label} · {p.valueType}
+                              </span>
+                            </span>
+                            <button
+                              type="button"
+                              className="btn-ghost btn-compact admin-remap-delete"
+                              disabled={busy}
+                              onClick={() => void removeAppParam(p.id)}
+                            >
+                              Delete
+                            </button>
+                          </li>
+                        ))}
+                      {paramDefs.filter((p) => !!p.tenantId).length === 0 ? (
+                        <li className="muted admin-empty admin-remap-empty">
+                          No tenant custom params yet — system seeds still available in remap picker.
+                        </li>
+                      ) : null}
+                    </ul>
+                  </details>
+                  <ul className="admin-remap-grid">
                     {mapRules.map((r) => (
                       <li key={r.id}>
-                        <span>
-                          <code>{r.vendorKey}</code> → <strong>{r.appParamId}</strong> ({r.transform})
+                        <span className="admin-remap-rule">
+                          <code>{r.vendorKey}</code>
+                          <span className="muted"> → </span>
+                          <strong>{r.appParamId}</strong>
+                          <span className="muted"> ({r.transform})</span>
                           {r.deviceId ? <span className="muted"> · device</span> : null}
                         </span>
                         <button
                           type="button"
-                          className="btn-ghost"
+                          className="btn-ghost btn-compact admin-remap-delete"
                           disabled={busy}
                           onClick={() => void removeMapRule(r.id)}
                         >
@@ -2453,7 +2839,7 @@ export default function AdminConsole() {
                       </li>
                     ))}
                     {mapRules.length === 0 ? (
-                      <li className="muted admin-empty">
+                      <li className="muted admin-empty admin-remap-empty">
                         {dmMapDeviceId
                           ? "No device-level remap overrides yet."
                           : "No remap rules on this profile yet."}
@@ -2709,9 +3095,7 @@ export default function AdminConsole() {
                     <p className="muted">No safety / alarm events yet (Su Biao, Concox, JT808, …).</p>
                   )}
                 </section>
-              )}
 
-              {selectedId !== "new" && (
                 <section className="admin-panel admin-field-users">
                   <header className="admin-panel-head">
                     <h3>
@@ -2959,6 +3343,110 @@ export default function AdminConsole() {
                       </div>
                     </form>
                   </details>
+                </section>
+              </>
+              )}
+
+              {selectedId !== "new" && adminSection === "terminal" && (
+                <section className="admin-panel admin-terminal">
+                  <header className="admin-panel-head">
+                    <h3>Terminal</h3>
+                    <p className="muted">
+                      Inbound device traffic from <code>vehicle_fixes</code> (poll ~3s).
+                    </p>
+                  </header>
+                  <div className="admin-form-grid">
+                    <label>
+                      Device filter
+                      <select
+                        value={terminalDeviceId}
+                        onChange={(e) => setTerminalDeviceId(e.target.value)}
+                      >
+                        <option value="">All devices</option>
+                        {trackerDevices.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.label || d.imei} · {d.protocol}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="span-2 admin-actions">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => setTerminalPaused((p) => !p)}
+                      >
+                        {terminalPaused ? "Resume" : "Pause"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={busy}
+                        onClick={() => {
+                          setTerminalEvents([]);
+                          if (selectedId && selectedId !== "new") {
+                            void loadTerminalEvents(selectedId, terminalDeviceId);
+                          }
+                        }}
+                      >
+                        Refresh
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => setTerminalEvents([])}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <ul className="admin-terminal-list">
+                    {terminalEvents.map((ev, idx) => {
+                      const key = `${ev.deviceId}-${ev.recordedAt}-${idx}`;
+                      const open = terminalExpanded === key;
+                      return (
+                        <li key={key}>
+                          <button
+                            type="button"
+                            className="admin-terminal-row"
+                            onClick={() => setTerminalExpanded(open ? null : key)}
+                          >
+                            <span className="admin-terminal-meta">
+                              <strong>{ev.imei}</strong>
+                              <span className="admin-pill is-muted">{ev.protocol || "?"}</span>
+                              <span className="muted">
+                                {ev.recordedAt ? new Date(ev.recordedAt).toLocaleString() : "—"}
+                              </span>
+                            </span>
+                            <span className="admin-terminal-fix">
+                              {ev.lat != null && ev.lon != null
+                                ? `${ev.lat.toFixed(5)}, ${ev.lon.toFixed(5)}`
+                                : "no fix"}
+                              {ev.speed != null ? ` · ${ev.speed} km/h` : ""}
+                              {ev.ignition != null ? (ev.ignition ? " · IGN" : " · off") : ""}
+                              {Object.keys(ev.mappedAttrs || {}).length
+                                ? ` · ${Object.keys(ev.mappedAttrs).length} mapped`
+                                : ""}
+                            </span>
+                          </button>
+                          {open ? (
+                            <pre className="admin-terminal-json">
+                              {JSON.stringify(
+                                { rawAttrs: ev.rawAttrs, mappedAttrs: ev.mappedAttrs },
+                                null,
+                                2,
+                              )}
+                            </pre>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                    {terminalEvents.length === 0 ? (
+                      <li className="muted admin-empty">
+                        No recent fixes yet — wait for gateway uplink or register a device.
+                      </li>
+                    ) : null}
+                  </ul>
                 </section>
               )}
             </>
