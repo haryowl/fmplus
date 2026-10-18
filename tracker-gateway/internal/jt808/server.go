@@ -891,6 +891,13 @@ func buildDownlinkFrameVerOut(phone string, seq *uint16, msgID uint16, body []by
 func handleFrame(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry, sess *session, frame []byte) error {
 	raw := unescape(frame)
 	if len(raw) < 13 { // 2011 min; 2019 needs ≥18 — parseMessageHeader enforces
+		metrics.DecodeErr()
+		if sess.device != nil {
+			_ = st.PatchLastStatus(ctx, sess.device, map[string]any{
+				"frame_short": true,
+				"frame_len":   len(raw),
+			}, nil)
+		}
 		return nil
 	}
 	bodyWithBcc := raw

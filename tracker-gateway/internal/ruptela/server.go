@@ -160,6 +160,10 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			_ = writeRecordsAck(conn, true)
 		default:
 			if device := boundDevice(bound); device != nil {
+				_ = st.PatchLastStatus(ctx, device, map[string]any{
+					"cmd_unmapped": true,
+					"cmd":          int(cmd),
+				}, nil)
 				_ = st.TouchSeen(ctx, device)
 			}
 			_ = writeRecordsAck(conn, true)

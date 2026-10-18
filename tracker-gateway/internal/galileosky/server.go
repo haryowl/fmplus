@@ -62,6 +62,12 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			return
 		}
 		if hdr[0] != 0x01 {
+			if device != nil {
+				_ = st.PatchLastStatus(ctx, device, map[string]any{
+					"sync_skip": true,
+					"hdr0":      int(hdr[0]),
+				}, nil)
+			}
 			continue
 		}
 		lenRaw := binary.LittleEndian.Uint16(hdr[1:3])
