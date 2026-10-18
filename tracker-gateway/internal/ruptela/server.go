@@ -286,8 +286,10 @@ func parseRecordPayload(data []byte, extended bool) []store.Fix {
 		hdg := float64(angle) / 100.0
 		altF := float64(alt) / 10.0
 		protoMsg := "ruptela_cmd_1"
+		codec := 1
 		if extended {
 			protoMsg = "ruptela_cmd_68"
+			codec = 0x68
 		}
 		raw := map[string]any{
 			"io":            ioMap,
@@ -296,6 +298,7 @@ func parseRecordPayload(data []byte, extended bool) []store.Fix {
 			"record_index":  i,
 			"records_left":  recordsLeft,
 			"extended":      extended,
+			"codec":         codec,
 			"proto_msg":     protoMsg,
 		}
 		if hdop > 0 {

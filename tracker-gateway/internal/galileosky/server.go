@@ -309,11 +309,16 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		fix.Ignition = &b
 		fix.RawAttrs["status.ignition"] = b
 		fix.RawAttrs["status.inputs"] = int(st[0])
+		fix.RawAttrs["tag.0x46"] = int(st[0])
+		fix.RawAttrs["status.tag.0x46"] = int(st[0])
 		for i := 0; i < 8; i++ {
 			fix.RawAttrs[fmt.Sprintf("status.din%d", i)] = st[0]&(1<<uint(i)) != 0
 		}
 		if len(st) >= 2 {
 			fix.RawAttrs["status.inputs_hi"] = int(st[1])
+			comp := int(st[0]) | (int(st[1]) << 8)
+			fix.RawAttrs["tag.0x46"] = comp
+			fix.RawAttrs["status.tag.0x46"] = comp
 			for i := 0; i < 8; i++ {
 				fix.RawAttrs[fmt.Sprintf("status.din%d", i+8)] = st[1]&(1<<uint(i)) != 0
 			}
@@ -322,13 +327,16 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 	if out, ok := tags[0x47]; ok && len(out) >= 1 {
 		fix.RawAttrs["status.outputs"] = int(out[0])
 		fix.RawAttrs["tag.0x47"] = int(out[0])
+		fix.RawAttrs["status.tag.0x47"] = int(out[0])
 		fix.RawAttrs["output.0"] = out[0]&0x01 != 0
 		for i := 0; i < 8; i++ {
 			fix.RawAttrs[fmt.Sprintf("status.dout%d", i)] = out[0]&(1<<uint(i)) != 0
 		}
 		if len(out) >= 2 {
 			fix.RawAttrs["status.outputs_hi"] = int(out[1])
-			fix.RawAttrs["tag.0x47"] = int(out[0]) | (int(out[1]) << 8)
+			comp := int(out[0]) | (int(out[1]) << 8)
+			fix.RawAttrs["tag.0x47"] = comp
+			fix.RawAttrs["status.tag.0x47"] = comp
 			for i := 0; i < 8; i++ {
 				fix.RawAttrs[fmt.Sprintf("status.dout%d", i+8)] = out[1]&(1<<uint(i)) != 0
 			}
