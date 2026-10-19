@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TIMEZONES } from "../lib/config";
 import { formatKm, formatSpeed } from "../lib/format";
 import { ageLabel, type LastStatusRow } from "../lib/lastStatus";
@@ -269,16 +269,24 @@ export default function FleetLive() {
     return () => ac.abort();
   }, [ready, reload]);
 
+  const statusAbortRef = useRef<AbortController | null>(null);
+
   const loadStatus = useCallback(
-    (signal?: AbortSignal) => {
-      setLoading(true);
+    (opts?: { soft?: boolean }) => {
+      // Cancel in-flight poll so rapid group switches don't race / blank the map mid-update.
+      statusAbortRef.current?.abort();
+      const ac = new AbortController();
+      statusAbortRef.current = ac;
+      const soft = opts?.soft === true;
+      if (!soft) setLoading(true);
       setFetchError("");
       return Promise.all([
-        fetchTrackerLastStatus(signal, { groupIds: groupId ? [groupId] : undefined }),
-        fetchSafetyEvents(signal).catch(() => [] as SafetyEvent[]),
-        fetchOpenMaintenanceUserIds(signal).catch(() => new Set<number>()),
+        fetchTrackerLastStatus(ac.signal, { groupIds: groupId ? [groupId] : undefined }),
+        fetchSafetyEvents(ac.signal).catch(() => [] as SafetyEvent[]),
+        fetchOpenMaintenanceUserIds(ac.signal).catch(() => new Set<number>()),
       ])
         .then(([deviceStatus, safety, maintIds]) => {
+          if (ac.signal.aborted) return;
           const nextRows: LastStatusRow[] = [];
           const meta: Record<number, FixMeta> = {};
           for (const fix of deviceStatus.fixes as TrackerLastFix[]) {
@@ -299,6 +307,7 @@ export default function FleetLive() {
           setAlerts(safety);
           setMaintUserIds(maintIds);
           setNow(Date.now());
+          setSelectedId((prev) => (prev != null && meta[prev] ? prev : null));
           if (deviceStatus.telematicsSource === "armada") {
             setFetchError("Tenant telematics_source is Armada-only — enable devices or both.");
           }
@@ -307,7 +316,7 @@ export default function FleetLive() {
           if (err.name !== "AbortError") setFetchError(err.message || "Fleet live unavailable");
         })
         .finally(() => {
-          if (!signal?.aborted) setLoading(false);
+          if (!ac.signal.aborted) setLoading(false);
         });
     },
     [groupId],
@@ -315,14 +324,13 @@ export default function FleetLive() {
 
   useEffect(() => {
     if (!ready) return;
-    const ac = new AbortController();
-    void loadStatus(ac.signal);
-    return () => ac.abort();
+    void loadStatus();
+    return () => statusAbortRef.current?.abort();
   }, [ready, groupId, reload, loadStatus]);
 
   useEffect(() => {
     if (!ready) return;
-    const id = window.setInterval(() => void loadStatus(), 30_000);
+    const id = window.setInterval(() => void loadStatus({ soft: true }), 30_000);
     return () => window.clearInterval(id);
   }, [ready, loadStatus]);
 
@@ -434,7 +442,8 @@ export default function FleetLive() {
   const selectedMeta = selected ? fixMeta[selected.id] : null;
   const selectedCls = selected ? classifyLiveRow(selected, now) : null;
 
-  const fitKey = `${groupId}|${listTab}|${queryText}|${reload}`;
+  // Do not include search text — refitting on every keystroke blanks/jitters the map.
+  const fitKey = `${groupId}|${listTab}|${reload}`;
 
   const onSelect = useCallback((id: number | null) => setSelectedId(id), []);
 

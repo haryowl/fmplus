@@ -913,27 +913,39 @@ export async function buildTelematicsPosMap(tenantId, vaultTenant, opts = {}) {
  */
 export async function listTenantLastFixes(tenantId, opts = {}) {
   const groupIds = Array.isArray(opts.groupIds) ? opts.groupIds.filter(Boolean) : [];
-  let deviceFilter = null;
-  if (groupIds.length) {
-    deviceFilter = await deviceIdsInGroups(tenantId, groupIds);
-    if (!deviceFilter.length) return [];
-  }
+  const groupFilter = groupIds.length ? groupIds : null;
+
+  // Single round-trip: filter by group membership + aggregate group labels.
+  // Avoids deviceIdsInGroups + groupSummariesByDeviceIds (2 extra queries per poll).
   const rows = await dbQuery(
     `SELECT d.id AS device_id, d.imei, d.label, d.plate, d.vehicle_type, d.armada_user_id, d.protocol,
             lf.lat, lf.lon, lf.recorded_at, lf.speed, lf.heading, lf.ignition,
-            lf.odometer, lf.mapped_attrs, lf.source_protocol
+            lf.odometer, lf.mapped_attrs, lf.source_protocol,
+            COALESCE(gs.groups_json, '[]'::json) AS groups_json
      FROM tracker_devices d
      JOIN vehicle_last_fix lf ON lf.device_id = d.id
+     LEFT JOIN LATERAL (
+       SELECT json_agg(
+                json_build_object('id', g.id, 'name', g.name)
+                ORDER BY g.sort_order ASC, lower(g.name) ASC
+              ) AS groups_json
+       FROM tracker_device_group_members m
+       JOIN tracker_device_groups g ON g.id = m.group_id AND g.tenant_id = d.tenant_id
+       WHERE m.device_id = d.id
+     ) gs ON true
      WHERE d.tenant_id = $1 AND d.enabled = true
-       AND ($2::uuid[] IS NULL OR d.id = ANY($2::uuid[]))
-     ORDER BY lf.recorded_at DESC`,
-    [tenantId, deviceFilter],
+       AND (
+         $2::uuid[] IS NULL
+         OR EXISTS (
+           SELECT 1
+           FROM tracker_device_group_members m2
+           WHERE m2.device_id = d.id AND m2.group_id = ANY($2::uuid[])
+         )
+       )
+     ORDER BY lf.recorded_at DESC NULLS LAST`,
+    [tenantId, groupFilter],
   );
   const now = Date.now();
-  const groupsByDevice = await groupSummariesByDeviceIds(
-    tenantId,
-    rows.rows.map((r) => r.device_id),
-  ).catch(() => new Map());
   return rows.rows.map((r) => {
     const recordedAt = r.recorded_at ? new Date(r.recorded_at).toISOString() : null;
     const ageSec =
@@ -945,6 +957,13 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
       (r.label && String(r.label).trim()) ||
       (r.plate && String(r.plate).trim()) ||
       r.imei;
+    let groups = [];
+    const rawGroups = r.groups_json;
+    if (Array.isArray(rawGroups)) {
+      groups = rawGroups
+        .filter((g) => g && g.id && g.name)
+        .map((g) => ({ id: String(g.id), name: String(g.name) }));
+    }
     return {
       deviceId: r.device_id,
       imei: r.imei,
@@ -964,7 +983,7 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
       odometerKm: tel.odometerKm,
       fuelLevel: tel.fuelLevel,
       fuelLiters: tel.fuelLiters,
-      groups: groupsByDevice.get(r.device_id) || [],
+      groups,
     };
   });
 }
