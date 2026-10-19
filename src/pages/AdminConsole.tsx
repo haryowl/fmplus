@@ -811,13 +811,6 @@ export default function AdminConsole() {
       sourceProtocol?: string;
     }>
   >([]);
-  const [tdImei, setTdImei] = useState("");
-  const [tdLabel, setTdLabel] = useState("");
-  const [tdProtocol, setTdProtocol] = useState("teltonika");
-  const [tdProfileId, setTdProfileId] = useState("");
-  const [tdArmadaUserId, setTdArmadaUserId] = useState("");
-  const [tdVideoChannelId, setTdVideoChannelId] = useState("");
-  const [tdVideoRtspUrl, setTdVideoRtspUrl] = useState("");
   const [lastDeviceToken, setLastDeviceToken] = useState("");
   const [newParamId, setNewParamId] = useState("");
   const [newParamLabel, setNewParamLabel] = useState("");
