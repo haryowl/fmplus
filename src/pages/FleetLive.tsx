@@ -193,6 +193,16 @@ export default function FleetLive() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [queryText, setQueryText] = useState("");
   const [alertsOpen, setAlertsOpen] = useState(true);
+  const [sideNavOpen, setSideNavOpen] = useState(() => {
+    try {
+      const v = localStorage.getItem("fmplus.fleetLive.sideNav");
+      if (v === "0") return false;
+      if (v === "1") return true;
+    } catch {
+      /* ignore */
+    }
+    return true;
+  });
 
   const selectedGroup = deviceGroups.find((g) => g.id === groupId);
 
@@ -220,9 +230,18 @@ export default function FleetLive() {
     });
   }, [groupId, timezone, section]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem("fmplus.fleetLive.sideNav", sideNavOpen ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [sideNavOpen]);
+
   const fleetModuleOk = moduleAllowed("fleetLive");
   const canViewLive =
     !deskUser?.id || deskCanWrite(deskUser, deskPrivileges, "viewFleetLive");
+  const sectionLabel = FLEET_SECTIONS.find((s) => s.id === section)?.label || section;
 
   useEffect(() => {
     document.title = "Fleet Live · ARMADA M.1";
@@ -418,6 +437,16 @@ export default function FleetLive() {
           </div>
         </div>
         <div className="fleet-cc-top-actions">
+          <button
+            type="button"
+            className="btn btn-ghost btn-compact fleet-cc-nav-toggle"
+            aria-expanded={sideNavOpen}
+            aria-controls="fleet-cc-sidenav"
+            title={sideNavOpen ? "Hide menu" : "Show menu"}
+            onClick={() => setSideNavOpen((v) => !v)}
+          >
+            {sideNavOpen ? "Hide menu" : "Menu"}
+          </button>
           <ViewNav current="fleetLive" />
           <span className="fleet-cc-clock muted">{clockLabel(timezone)}</span>
           <a className="btn-ghost btn-compact" href={liveHref(typeof window !== "undefined" ? window.location.search : "")}>
@@ -434,6 +463,41 @@ export default function FleetLive() {
         </div>
       </header>
 
+      <div className={`fleet-cc-shell${sideNavOpen ? "" : " is-nav-collapsed"}`}>
+        <aside
+          id="fleet-cc-sidenav"
+          className="fleet-cc-sidenav"
+          aria-label="Fleet Live sections"
+          hidden={!sideNavOpen}
+        >
+          <div className="fleet-cc-sidenav-head">
+            <span>Sections</span>
+            <button
+              type="button"
+              className="btn-link"
+              onClick={() => setSideNavOpen(false)}
+              aria-label="Collapse side menu"
+            >
+              Hide
+            </button>
+          </div>
+          <nav className="fleet-cc-sidenav-nav">
+            {allowedSections.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={section === s.id ? "is-active" : ""}
+                onClick={() => setSection(s.id)}
+                disabled={!fleetModuleOk}
+                aria-current={section === s.id ? "page" : undefined}
+              >
+                {s.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="fleet-cc-content">
       {!fleetModuleOk ? (
         <div className="banner error fleet-cc-banner">
           Fleet Live is disabled for this tenant. Enable module “Fleet Live (devices)” in Admin.
@@ -445,21 +509,19 @@ export default function FleetLive() {
         </div>
       ) : null}
 
-      <nav className="fleet-cc-sections" aria-label="Fleet Live sections">
-        {allowedSections.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            className={section === s.id ? "is-active" : ""}
-            onClick={() => setSection(s.id)}
-            disabled={!fleetModuleOk}
-          >
-            {s.label}
-          </button>
-        ))}
-      </nav>
-
       <div className="fleet-cc-toolbar">
+        {!sideNavOpen ? (
+          <button
+            type="button"
+            className="btn btn-ghost btn-compact"
+            onClick={() => setSideNavOpen(true)}
+            title="Show section menu"
+          >
+            Menu · {sectionLabel}
+          </button>
+        ) : (
+          <span className="fleet-cc-toolbar-section muted">{sectionLabel}</span>
+        )}
         <label className="fleet-cc-field">
           <span>Device group</span>
           <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
@@ -502,7 +564,7 @@ export default function FleetLive() {
 
       {section !== "live" && fleetModuleOk ? (
         <div className="fleet-cc-section-soon">
-          <h2>{FLEET_SECTIONS.find((s) => s.id === section)?.label || section}</h2>
+          <h2>{sectionLabel}</h2>
           <p className="muted">
             This section is on the roadmap (P1b+). Privileges and entitlements already gate access —
             content ships next.
@@ -763,6 +825,8 @@ export default function FleetLive() {
       </section>
       </>
       ) : null}
+        </div>
+      </div>
     </div>
   );
 }
