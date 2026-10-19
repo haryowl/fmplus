@@ -3811,6 +3811,40 @@ html.onesheet-root body {
   margin-bottom: 4px;
 }
 
+/* Replace native pill buttons with modern rectangular controls */
+.app.fleet-cc .btn-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong, #c8d0d6);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface, #fff);
+  color: var(--ink-soft, #5a6570);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.app.fleet-cc .btn-link:hover {
+  border-color: var(--accent, #0b6b62);
+  color: var(--accent, #0b6b62);
+  background: var(--accent-soft, #e8f7f6);
+}
+
+.app.fleet-cc .fleet-cc-sidenav-head .btn-link {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 0.68rem;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 650;
+}
+
 .fleet-cc-sidenav-nav {
   display: flex;
   flex-direction: column;
