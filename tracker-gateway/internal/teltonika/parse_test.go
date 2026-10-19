@@ -104,16 +104,16 @@ func TestExtractIO8E_EventIDTwoBytes(t *testing.T) {
 }
 
 func TestParseAVL_Codec16IO(t *testing.T) {
-	// Codec 16: 1 record, GPS same as Codec8 golden, IO: event=239, N1=1 id=239 val=1
+	// Codec 16: Event IO u16 + Generation Type u8 + N total (official wiki). No NX.
 	payload := mustHex(t, ""+
 		"10"+"01"+
 		"0000000000000000"+"00"+
 		"3fa86300"+"fc4df480"+"001e"+"005a"+"0c"+"0028"+
 		"00ef"+ // event IO 239
+		"05"+ // generation type (On Change)
 		"01"+ // total IO
 		"01"+"00ef"+"01"+ // N1: AVL 239 = 1
-		"00"+"00"+"00"+ // N2 N4 N8 empty
-		"00") // NX count 0
+		"00"+"00"+"00") // N2 N4 N8 empty
 	ts := time.Date(2024, 6, 1, 10, 30, 0, 0, time.UTC)
 	binary.BigEndian.PutUint64(payload[2:10], uint64(ts.UnixMilli()))
 	n, fixes := parseAVL(payload)
@@ -122,6 +122,9 @@ func TestParseAVL_Codec16IO(t *testing.T) {
 	}
 	if fixes[0].RawAttrs["codec"] != byte(0x10) && fixes[0].RawAttrs["codec"] != 0x10 {
 		t.Fatalf("codec=%v", fixes[0].RawAttrs["codec"])
+	}
+	if fixes[0].RawAttrs["generation_type"] != 5 {
+		t.Fatalf("generation_type=%v", fixes[0].RawAttrs["generation_type"])
 	}
 	io, _ := fixes[0].RawAttrs["io"].(map[string]any)
 	if io["239"] != int64(1) && io["239"] != 1 {
@@ -132,14 +135,82 @@ func TestParseAVL_Codec16IO(t *testing.T) {
 	}
 }
 
-func TestExtractIO16_NX(t *testing.T) {
-	// event 0, total 0, empty N1-N8, NX=1 id=1001 len=3 "ABC"
-	b := mustHex(t, "0000"+"00"+
-		"00"+"00"+"00"+"00"+
-		"01"+"03e9"+"0003"+"414243")
-	_, _, io := extractIO16(b, 0)
-	if io["1001"] != "ABC" {
+func TestExtractIO16_GenerationType(t *testing.T) {
+	// Official Codec 16 layout: event u16, gen u8, total u8, empty N1-N8
+	b := mustHex(t, "000b"+"05"+"00"+"00"+"00"+"00"+"00")
+	_, event, gen, io := extractIO16(b, 0)
+	if event != 11 {
+		t.Fatalf("event=%v", event)
+	}
+	if gen != 5 {
+		t.Fatalf("gen=%v", gen)
+	}
+	if len(io) != 0 {
 		t.Fatalf("io=%v", io)
+	}
+}
+
+func TestParseAVL_Codec8E_OfficialISO6709GPS(t *testing.T) {
+	// Official wiki example: https://wiki.teltonika-gps.com/view/ISO6709
+	// Longitude 0F0E51DB → 25.2596699°, Latitude 20A9B6DA wait 209AB6DA → 54.7010266°
+	// Number of Data is 1 byte (01), not uint16 — that was the lat/lon misalignment bug.
+	payload := mustHex(t, ""+
+		"8e"+"01"+
+		"0000016f7f183310"+"00"+
+		"0f0e51db"+"209ab6da"+
+		"0088"+"0166"+"08"+"0000"+
+		"0000"+"0002"+
+		"0001"+"00ef"+"01"+
+		"0000"+"0000"+"0000"+
+		"0001"+"0183"+"0022"+
+		"2b3534373031302e323636372b303235323539362e373030302b3030302e3133362f"+
+		"01")
+	n, fixes := parseAVL(payload)
+	if n != 1 || len(fixes) != 1 {
+		t.Fatalf("n=%d fixes=%d", n, len(fixes))
+	}
+	f := fixes[0]
+	if math.Abs(f.Lon-25.2596699) > 1e-6 {
+		t.Errorf("lon=%v want ~25.2596699", f.Lon)
+	}
+	if math.Abs(f.Lat-54.7010266) > 1e-6 {
+		t.Errorf("lat=%v want ~54.7010266", f.Lat)
+	}
+	if f.Altitude == nil || *f.Altitude != 136 {
+		t.Errorf("alt=%v want 136", f.Altitude)
+	}
+	if f.Heading == nil || *f.Heading != 358 {
+		t.Errorf("angle=%v want 358", f.Heading)
+	}
+	if f.Satellites == nil || *f.Satellites != 8 {
+		t.Errorf("sats=%v want 8", f.Satellites)
+	}
+	io, _ := f.RawAttrs["io"].(map[string]any)
+	if io["239"] != int64(1) && io["239"] != 1 {
+		t.Fatalf("ignition io=%v", io)
+	}
+}
+
+func TestParseAVL_Codec8E_RecordCountIsOneByte(t *testing.T) {
+	// If Number of Data were wrongly read as BE uint16 from 01 00…, n would be 256.
+	payload := mustHex(t, ""+
+		"8e"+"01"+
+		"0000016f7f183310"+"00"+
+		"0f0e51db"+"209ab6da"+
+		"0088"+"0166"+"08"+"0000"+
+		"0000"+"0000"+
+		"0000"+"0000"+"0000"+"0000"+
+		"0000"+
+		"01")
+	n, fixes := parseAVL(payload)
+	if n != 1 {
+		t.Fatalf("n=%d want 1 (not uint16 misread)", n)
+	}
+	if len(fixes) != 1 {
+		t.Fatalf("fixes=%d", len(fixes))
+	}
+	if math.Abs(fixes[0].Lon-25.2596699) > 1e-6 || math.Abs(fixes[0].Lat-54.7010266) > 1e-6 {
+		t.Fatalf("coords lat=%v lon=%v", fixes[0].Lat, fixes[0].Lon)
 	}
 }
 

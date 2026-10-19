@@ -38,18 +38,11 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 		return 0, nil
 	}
 	codec := payload[0]
-	var n, off int
-	if codec == 0x8e {
-		// Codec 8 Extended: number of records is uint16 BE
-		if len(payload) < 3 {
-			return 0, nil
-		}
-		n = int(binary.BigEndian.Uint16(payload[1:3]))
-		off = 3
-	} else {
-		n = int(payload[1])
-		off = 2
-	}
+	// Official Codec wiki (Codec 8 / 8 Extended / 16): Number of Data 1 is always 1 byte.
+	// Codec 8E only widens IO IDs/counts — not the record-count field.
+	// Mis-reading 8E as uint16 shifts Longitude/Latitude and corrupts the whole AVL.
+	n := int(payload[1])
+	off := 2
 	if n == 0 {
 		return 0, nil
 	}
@@ -61,6 +54,8 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 		if off+15 > len(payload) {
 			break
 		}
+		// GPS Element (official order): Longitude, Latitude, Altitude, Angle, Satellites, Speed.
+		// Coordinates are signed int32 / 10_000_000 (two's complement; MSB set ⇒ south/west).
 		lonRaw := int32(binary.BigEndian.Uint32(payload[off : off+4]))
 		off += 4
 		latRaw := int32(binary.BigEndian.Uint32(payload[off : off+4]))
@@ -74,13 +69,14 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 		speed := int(binary.BigEndian.Uint16(payload[off : off+2]))
 		off += 2
 
-		lon := float64(lonRaw) / 1e7
-		lat := float64(latRaw) / 1e7
+		lon := float64(lonRaw) / 10_000_000
+		lat := float64(latRaw) / 10_000_000
 		spd := float64(speed)
 		hdg := float64(angle)
 		altF := float64(alt)
 		io := map[string]any{}
 		var eventID any
+		var genType any
 
 		var ioOK bool
 		switch codec {
@@ -91,8 +87,8 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 			off, eventID, io = extractIO8E(payload, off)
 			ioOK = true
 		case 0x10:
-			// Codec 16: 1-byte record count (like 8) + 2-byte AVL IDs.
-			off, eventID, io = extractIO16(payload, off)
+			// Codec 16: Event IO u16 + Generation Type u8 + IO groups (no NX).
+			off, eventID, genType, io = extractIO16(payload, off)
 			ioOK = true
 		}
 		if !ioOK {
@@ -106,10 +102,13 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 		}
 
 		raw := map[string]any{
-			"codec":         codec,
-			"io":            io,
-			"event_io":      eventID,
-			"record_index":  i,
+			"codec":        codec,
+			"io":           io,
+			"event_io":     eventID,
+			"record_index": i,
+		}
+		if genType != nil {
+			raw["generation_type"] = genType
 		}
 		// Promote common AVL ids into typed hints when present
 		fix := store.Fix{
@@ -905,55 +904,31 @@ func readSizedIO8(b []byte, off, size int, io map[string]any) int {
 	return off
 }
 
-// extractIO16: Event IO ID u16, N total u8, then sized groups with AVL ID u16 + value.
-// Per Teltonika Codec wiki (Codec 16).
-func extractIO16(b []byte, off int) (int, any, map[string]any) {
+// extractIO16: Event IO ID u16, Generation Type u8, N total u8, then sized groups
+// with AVL ID u16 + value. Codec 16 does not include NX (official Codec wiki).
+func extractIO16(b []byte, off int) (int, any, any, map[string]any) {
 	io := map[string]any{}
 	var event any
+	var genType any
 	if off+2 > len(b) {
-		return off, event, io
+		return off, event, genType, io
 	}
 	event = int(binary.BigEndian.Uint16(b[off : off+2]))
 	off += 2
 	if off >= len(b) {
-		return off, event, io
+		return off, event, genType, io
 	}
-	off++ // total IO count (1 byte)
+	genType = int(b[off])
+	off++
+	if off >= len(b) {
+		return off, event, genType, io
+	}
+	off++ // total IO count (1 byte per Codec 16 structure + wiki hex examples)
 	off = readSizedIO16(b, off, 1, io)
 	off = readSizedIO16(b, off, 2, io)
 	off = readSizedIO16(b, off, 4, io)
 	off = readSizedIO16(b, off, 8, io)
-	// NX variable-length IO (same layout idea as Codec 8E; count is 1 byte for Codec 16).
-	if off >= len(b) {
-		return off, event, io
-	}
-	n := int(b[off])
-	off++
-	for i := 0; i < n && off+4 <= len(b); i++ {
-		id := int(binary.BigEndian.Uint16(b[off : off+2]))
-		off += 2
-		l := int(binary.BigEndian.Uint16(b[off : off+2]))
-		off += 2
-		if off+l > len(b) {
-			break
-		}
-		key := fmt.Sprintf("%d", id)
-		switch l {
-		case 0:
-			io[key] = 0
-		case 1, 2, 4, 8:
-			io[key] = readIntBE(b[off:off+l], l)
-		default:
-			chunk := b[off : off+l]
-			if isPrintableASCII(chunk) {
-				io[key] = string(chunk)
-			} else {
-				io[key] = fmt.Sprintf("%x", chunk)
-			}
-		}
-		off += l
-	}
-	return off, event, io
+	return off, event, genType, io
 }
 
 func readSizedIO16(b []byte, off, size int, io map[string]any) int {
