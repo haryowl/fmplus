@@ -198,7 +198,7 @@ export default function FleetLive() {
   const [listTab, setListTab] = useState<ListTab>("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [queryText, setQueryText] = useState("");
-  const [alertsOpen, setAlertsOpen] = useState(true);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const [sideNavOpen, setSideNavOpen] = useState(() => {
     try {
       const v = localStorage.getItem("fmplus.fleetLive.sideNav");
@@ -495,8 +495,8 @@ export default function FleetLive() {
           <div>
             <h1>Fleet Live</h1>
             <p>
-              Command center · gateway devices
-              <span className="fleet-cc-live-pill">Live telemetry</span>
+              <span className="fleet-cc-live-dot" aria-hidden />
+              Gateway devices · {clockLabel(timezone)}
             </p>
           </div>
         </div>
@@ -509,16 +509,15 @@ export default function FleetLive() {
             title={sideNavOpen ? "Hide menu" : "Show menu"}
             onClick={() => setSideNavOpen((v) => !v)}
           >
-            {sideNavOpen ? "Hide menu" : "Menu"}
+            {sideNavOpen ? "Hide" : "Menu"}
           </button>
           <ViewNav current="fleetLive" />
-          <span className="fleet-cc-clock muted">{clockLabel(timezone)}</span>
           <a className="btn-ghost btn-compact" href={liveHref(typeof window !== "undefined" ? window.location.search : "")}>
             Armada Live
           </a>
           <button
             type="button"
-            className="btn btn-compact"
+            className="btn btn-primary btn-compact"
             disabled={loading}
             onClick={() => setReload((n) => n + 1)}
           >
@@ -535,14 +534,14 @@ export default function FleetLive() {
           hidden={!sideNavOpen}
         >
           <div className="fleet-cc-sidenav-head">
-            <span>Sections</span>
+            <span>Navigate</span>
             <button
               type="button"
-              className="btn-link"
+              className="fleet-cc-icon-btn"
               onClick={() => setSideNavOpen(false)}
               aria-label="Collapse side menu"
             >
-              Hide
+              ⟨
             </button>
           </div>
           <nav className="fleet-cc-sidenav-nav">
@@ -577,17 +576,17 @@ export default function FleetLive() {
         {!sideNavOpen ? (
           <button
             type="button"
-            className="btn btn-ghost btn-compact"
+            className="fleet-cc-icon-btn fleet-cc-menu-open"
             onClick={() => setSideNavOpen(true)}
             title="Show section menu"
           >
-            Menu · {sectionLabel}
+            {sectionLabel}
           </button>
         ) : (
-          <span className="fleet-cc-toolbar-section muted">{sectionLabel}</span>
+          <span className="fleet-cc-toolbar-section">{sectionLabel}</span>
         )}
         <label className="fleet-cc-field">
-          <span>Device group</span>
+          <span>Group</span>
           <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
             <option value="">{deviceGroups.length ? "All devices" : "No groups yet"}</option>
             {deviceGroups.map((g) => (
@@ -599,7 +598,7 @@ export default function FleetLive() {
           </select>
         </label>
         <label className="fleet-cc-field">
-          <span>Timezone</span>
+          <span>Zone</span>
           <select value={timezone} onChange={(e) => setTimezone(e.target.value)}>
             {TIMEZONES.map((tz) => (
               <option key={tz.value} value={tz.value}>
@@ -609,16 +608,16 @@ export default function FleetLive() {
           </select>
         </label>
         <label className="fleet-cc-field fleet-cc-search">
-          <span>Search</span>
+          <span className="sr-only">Search</span>
           <input
             type="search"
             value={queryText}
             onChange={(e) => setQueryText(e.target.value)}
-            placeholder="Label, IMEI, group…"
+            placeholder="Search label, IMEI, group…"
           />
         </label>
-        <div className="fleet-cc-toolbar-meta muted">
-          {selectedGroup ? selectedGroup.name : "All devices"} · {filtered.length}/{rows.length}
+        <div className="fleet-cc-toolbar-meta">
+          {filtered.length}/{rows.length}
         </div>
       </div>
 
@@ -691,38 +690,38 @@ export default function FleetLive() {
 
       {section === "live" && fleetModuleOk && canViewLive ? (
       <>
-      <section className="fleet-cc-kpis" aria-label="Fleet KPIs">
-        <div className="fleet-cc-kpi">
-          <span className="fleet-cc-kpi-label">Total</span>
-          <strong>{kpi.total}</strong>
+      <section className="fleet-cc-status-strip" aria-label="Fleet status">
+        <div className="fleet-cc-stat">
+          <em>{kpi.total}</em>
+          <span>Total</span>
         </div>
-        <div className="fleet-cc-kpi is-moving">
-          <span className="fleet-cc-kpi-label">Moving</span>
-          <strong>{kpi.moving}</strong>
+        <div className="fleet-cc-stat is-moving">
+          <em>{kpi.moving}</em>
+          <span>Moving</span>
         </div>
-        <div className="fleet-cc-kpi is-idle">
-          <span className="fleet-cc-kpi-label">Idle</span>
-          <strong>{kpi.idle}</strong>
+        <div className="fleet-cc-stat is-idle">
+          <em>{kpi.idle}</em>
+          <span>Idle</span>
         </div>
-        <div className="fleet-cc-kpi is-off">
-          <span className="fleet-cc-kpi-label">Off</span>
-          <strong>{kpi.off}</strong>
+        <div className="fleet-cc-stat is-off">
+          <em>{kpi.off}</em>
+          <span>Off</span>
         </div>
-        <div className="fleet-cc-kpi is-stale">
-          <span className="fleet-cc-kpi-label">Stale / no fix</span>
-          <strong>{kpi.stale}</strong>
+        <div className="fleet-cc-stat is-stale">
+          <em>{kpi.stale}</em>
+          <span>Stale</span>
         </div>
-        <div className="fleet-cc-kpi is-alert">
-          <span className="fleet-cc-kpi-label">Alert (24h)</span>
-          <strong>{kpi.alerts}</strong>
+        <div className="fleet-cc-stat is-alert">
+          <em>{kpi.alerts}</em>
+          <span>Alert 24h</span>
         </div>
-        <div className="fleet-cc-kpi is-maint">
-          <span className="fleet-cc-kpi-label">Maintenance</span>
-          <strong>{kpi.maintenance}</strong>
+        <div className="fleet-cc-stat is-maint">
+          <em>{kpi.maintenance}</em>
+          <span>Maint</span>
         </div>
-        <div className="fleet-cc-kpi">
-          <span className="fleet-cc-kpi-label">Avg fuel</span>
-          <strong>{kpi.avgFuel != null ? `${kpi.avgFuel}%` : "—"}</strong>
+        <div className="fleet-cc-stat">
+          <em>{kpi.avgFuel != null ? `${kpi.avgFuel}%` : "—"}</em>
+          <span>Avg fuel</span>
         </div>
       </section>
 
@@ -800,8 +799,12 @@ export default function FleetLive() {
                     <a href={maintenanceOpenHref(selected.id)}>Maintenance</a>
                   </div>
                 ) : null}
-                <button type="button" className="btn-link" onClick={() => setSelectedId(null)}>
-                  Clear selection
+                <button
+                  type="button"
+                  className="fleet-cc-icon-btn"
+                  onClick={() => setSelectedId(null)}
+                >
+                  Clear
                 </button>
               </aside>
             ) : null}
@@ -810,9 +813,10 @@ export default function FleetLive() {
 
         <aside className="fleet-cc-list-pane">
           <header className="fleet-cc-list-head">
-            <h2>
-              Live vehicles <span className="muted">{filtered.length}/{rows.length}</span>
-            </h2>
+            <h2>Vehicles</h2>
+            <span className="fleet-cc-list-count">
+              {filtered.length}/{rows.length}
+            </span>
           </header>
           <div className="fleet-cc-tabs" role="tablist">
             {LIST_TABS.map((tab) => (
@@ -882,63 +886,72 @@ export default function FleetLive() {
         </aside>
       </div>
 
-      <section className="fleet-cc-bottom">
-        <div className="fleet-cc-alerts">
-          <header>
-            <h3>
-              Alerts feed <span className="muted">{alerts.length}</span>
-            </h3>
-            <button type="button" className="btn-link" onClick={() => setAlertsOpen((v) => !v)}>
-              {alertsOpen ? "Hide" : "Show"}
-            </button>
-          </header>
-          {alertsOpen ? (
-            alerts.length === 0 ? (
-              <p className="muted">No recent safety events.</p>
-            ) : (
-              <ul>
-                {(alertsOpen ? alerts : []).slice(0, 12).map((a) => (
-                  <li key={a.id}>
-                    <span
-                      className={`fleet-cc-alert-lvl is-l${Math.min(3, Math.max(0, a.alarmLevel || 0))}`}
-                    />
-                    <div>
-                      <strong>{alarmLabel(a.alarmType)}</strong>
-                      <span className="muted">
-                        {" "}
-                        · {a.deviceLabel || a.imei || a.deviceId.slice(0, 8)}
-                        {a.sourceProtocol ? ` · ${a.sourceProtocol}` : ""}
-                      </span>
-                      <div className="muted">
-                        {a.recordedAt ? new Date(a.recordedAt).toLocaleString() : "—"}
+      <section className={`fleet-cc-drawer${alertsOpen ? " is-open" : ""}`}>
+        <button
+          type="button"
+          className="fleet-cc-drawer-toggle"
+          onClick={() => setAlertsOpen((v) => !v)}
+          aria-expanded={alertsOpen}
+        >
+          <span>
+            Activity · {alerts.length} alerts
+            {!alertsOpen && kpi.moving + kpi.idle > 0
+              ? ` · ${kpi.moving} moving / ${kpi.idle} idle`
+              : ""}
+          </span>
+          <em>{alertsOpen ? "Collapse" : "Expand"}</em>
+        </button>
+        {alertsOpen ? (
+          <div className="fleet-cc-bottom">
+            <div className="fleet-cc-alerts">
+              <h3>Recent alerts</h3>
+              {alerts.length === 0 ? (
+                <p className="muted">No recent safety events.</p>
+              ) : (
+                <ul>
+                  {alerts.slice(0, 12).map((a) => (
+                    <li key={a.id}>
+                      <span
+                        className={`fleet-cc-alert-lvl is-l${Math.min(3, Math.max(0, a.alarmLevel || 0))}`}
+                      />
+                      <div>
+                        <strong>{alarmLabel(a.alarmType)}</strong>
+                        <span className="muted">
+                          {" "}
+                          · {a.deviceLabel || a.imei || a.deviceId.slice(0, 8)}
+                          {a.sourceProtocol ? ` · ${a.sourceProtocol}` : ""}
+                        </span>
+                        <div className="muted">
+                          {a.recordedAt ? new Date(a.recordedAt).toLocaleString() : "—"}
+                        </div>
                       </div>
-                    </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="fleet-cc-breakdown">
+              <h3>Mix</h3>
+              <ul>
+                {statusBreakdown.map(({ cls, n, pct }) => (
+                  <li key={cls}>
+                    <span className="fleet-cc-break-label">
+                      <i style={{ background: LIVE_OPS_COLORS[cls] }} />
+                      {LIVE_OPS_LABELS[cls]}
+                    </span>
+                    <span className="fleet-cc-break-bar">
+                      <span style={{ width: `${pct}%`, background: LIVE_OPS_COLORS[cls] }} />
+                    </span>
+                    <em>
+                      {n} · {pct}%
+                    </em>
                   </li>
                 ))}
               </ul>
-            )
-          ) : null}
-        </div>
-
-        <div className="fleet-cc-breakdown">
-          <h3>Status breakdown</h3>
-          <ul>
-            {statusBreakdown.map(({ cls, n, pct }) => (
-              <li key={cls}>
-                <span className="fleet-cc-break-label">
-                  <i style={{ background: LIVE_OPS_COLORS[cls] }} />
-                  {LIVE_OPS_LABELS[cls]}
-                </span>
-                <span className="fleet-cc-break-bar">
-                  <span style={{ width: `${pct}%`, background: LIVE_OPS_COLORS[cls] }} />
-                </span>
-                <em>
-                  {n} · {pct}%
-                </em>
-              </li>
-            ))}
-          </ul>
-        </div>
+            </div>
+          </div>
+        ) : null}
       </section>
       </>
       ) : null}
