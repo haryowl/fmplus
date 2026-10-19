@@ -989,33 +989,123 @@ export async function cancelCommand(tenantId, deviceId, commandId) {
   return { id: updated.rows[0].id, status: updated.rows[0].status };
 }
 
-export async function listSafetyEvents(tenantId, { deviceId, limit = 50 } = {}) {
-  const lim = Math.min(Number(limit) || 50, 200);
-  const rows = deviceId
-    ? await dbQuery(
-        `SELECT * FROM tracker_safety_events
-         WHERE tenant_id = $1 AND device_id = $2
-         ORDER BY recorded_at DESC LIMIT $3`,
-        [tenantId, deviceId, lim],
-      )
-    : await dbQuery(
-        `SELECT * FROM tracker_safety_events
-         WHERE tenant_id = $1
-         ORDER BY recorded_at DESC LIMIT $2`,
-        [tenantId, lim],
-      );
-  return rows.rows.map((r) => ({
+/**
+ * Classify safety / multimedia event as picture | video | audio | other.
+ * Uses mapped media_kind / media_type (JT808) and attachment hints.
+ */
+export function classifySafetyMediaKind(row) {
+  const mapped =
+    row.mapped_attrs && typeof row.mapped_attrs === "object" && !Array.isArray(row.mapped_attrs)
+      ? row.mapped_attrs
+      : {};
+  const kind = String(mapped.media_kind || mapped.mediaKind || "")
+    .trim()
+    .toLowerCase();
+  if (kind === "picture" || kind === "image" || kind === "photo" || kind === "jpg" || kind === "jpeg") {
+    return "picture";
+  }
+  if (kind === "video" || kind === "clip" || kind === "mp4") return "video";
+  if (kind === "audio" || kind === "sound") return "audio";
+
+  const mediaType = Number(mapped.media_type ?? mapped.mediaType);
+  // JT808 0x0801 media_type: 0 image, 1 audio, 2 video
+  if (mediaType === 0) return "picture";
+  if (mediaType === 1) return "audio";
+  if (mediaType === 2) return "video";
+
+  const alarm = String(row.alarm_type || "").toLowerCase();
+  if (/photo|picture|image|snapshot|camera/.test(alarm)) return "picture";
+  if (/video|clip|dvr|mdvr/.test(alarm)) return "video";
+  if (/audio|voice|mic/.test(alarm)) return "audio";
+
+  const att = String(row.attachment_id || "").toLowerCase();
+  if (/\.(jpe?g|png|gif|webp)(\?|$)/.test(att)) return "picture";
+  if (/\.(mp4|webm|mov|mkv)(\?|$)/.test(att)) return "video";
+  if (/\.(mp3|wav|aac|ogg)(\?|$)/.test(att)) return "audio";
+
+  if (att || mapped.media_id != null || mapped.media_hex || mapped.media_channel != null) {
+    return "picture"; // default multimedia event → pictures tab
+  }
+  return "other";
+}
+
+export function safetyEventHasMedia(row) {
+  const kind = classifySafetyMediaKind(row);
+  if (kind !== "other") return true;
+  const mapped =
+    row.mapped_attrs && typeof row.mapped_attrs === "object" && !Array.isArray(row.mapped_attrs)
+      ? row.mapped_attrs
+      : {};
+  return Boolean(
+    (row.attachment_id && String(row.attachment_id).trim()) ||
+      mapped.media_id != null ||
+      mapped.media_hex ||
+      mapped.media_channel != null ||
+      mapped.media_type != null,
+  );
+}
+
+export async function listSafetyEvents(
+  tenantId,
+  { deviceId, groupIds, from, to, mediaOnly = false, limit = 50 } = {},
+) {
+  const lim = Math.min(Number(limit) || 50, 500);
+  const groups = Array.isArray(groupIds) ? groupIds.filter(Boolean) : [];
+  const params = [tenantId];
+  const where = ["e.tenant_id = $1"];
+
+  if (deviceId) {
+    params.push(deviceId);
+    where.push(`e.device_id = $${params.length}`);
+  }
+  if (groups.length) {
+    params.push(groups);
+    where.push(
+      `EXISTS (
+         SELECT 1 FROM tracker_device_group_members m
+         WHERE m.device_id = e.device_id AND m.group_id = ANY($${params.length}::uuid[])
+       )`,
+    );
+  }
+  if (from) {
+    const ms = Date.parse(from);
+    if (Number.isFinite(ms)) {
+      params.push(new Date(ms).toISOString());
+      where.push(`e.recorded_at >= $${params.length}::timestamptz`);
+    }
+  }
+  if (to) {
+    const ms = Date.parse(to);
+    if (Number.isFinite(ms)) {
+      params.push(new Date(ms).toISOString());
+      where.push(`e.recorded_at <= $${params.length}::timestamptz`);
+    }
+  }
+
+  params.push(lim);
+  const rows = await dbQuery(
+    `SELECT e.*
+     FROM tracker_safety_events e
+     WHERE ${where.join(" AND ")}
+     ORDER BY e.recorded_at DESC
+     LIMIT $${params.length}`,
+    params,
+  );
+
+  const filtered = mediaOnly ? rows.rows.filter((r) => safetyEventHasMedia(r)) : rows.rows;
+  return filtered.map((r) => ({
     id: String(r.id),
     deviceId: r.device_id,
     recordedAt: r.recorded_at,
     alarmType: r.alarm_type,
     alarmLevel: r.alarm_level,
-    lat: r.lat,
-    lon: r.lon,
-    attachmentId: r.attachment_id,
+    lat: r.lat == null ? null : Number(r.lat),
+    lon: r.lon == null ? null : Number(r.lon),
+    attachmentId: r.attachment_id || "",
     sourceProtocol: r.source_protocol,
     rawAttrs: r.raw_attrs,
     mappedAttrs: r.mapped_attrs,
+    mediaKind: classifySafetyMediaKind(r),
   }));
 }
 

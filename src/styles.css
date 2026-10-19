@@ -4307,6 +4307,226 @@ html.onesheet-root body {
   color: var(--ink-soft, #5a6570);
 }
 
+/* Fleet Live Media / Alerts */
+.fleet-media,
+.fleet-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fleet-media-tabs {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.fleet-media-tabs button {
+  border: 1px solid var(--line-strong, #c8d0d6);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface, #fff);
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--ink-soft, #5a6570);
+  cursor: pointer;
+}
+
+.fleet-media-tabs button.is-active {
+  border-color: var(--accent, #0b6b62);
+  color: var(--accent, #0b6b62);
+  background: var(--accent-soft, #e8f7f6);
+}
+
+.fleet-media-empty {
+  padding: 20px 12px;
+  background: var(--surface, #fff);
+  border: 1px dashed var(--line, #d0d7de);
+  border-radius: 10px;
+}
+
+.fleet-media-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.fleet-media-card {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line, #d8dee4);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  padding: 6px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.fleet-media-card:hover {
+  border-color: var(--accent, #0b6b62);
+}
+
+.fleet-media-thumb {
+  aspect-ratio: 4 / 3;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ink, #17212b) 8%, transparent);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-soft, #5a6570);
+}
+
+.fleet-media-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fleet-media-thumb.is-video {
+  background: color-mix(in srgb, #1d4ed8 14%, transparent);
+  color: #1d4ed8;
+}
+
+.fleet-media-meta {
+  display: grid;
+  gap: 1px;
+  padding: 0 2px 2px;
+  font-size: 0.72rem;
+}
+
+.fleet-media-meta strong {
+  font-size: 0.78rem;
+}
+
+.fleet-media-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.fleet-media-lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.55);
+  cursor: pointer;
+}
+
+.fleet-media-lightbox-panel {
+  position: relative;
+  z-index: 1;
+  width: min(720px, 100%);
+  max-height: min(90vh, 800px);
+  overflow: auto;
+  background: var(--surface, #fff);
+  border-radius: 12px;
+  border: 1px solid var(--line, #d8dee4);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.fleet-media-lightbox-panel header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.fleet-media-lightbox-panel header p {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+}
+
+.fleet-media-preview {
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #0f172a;
+}
+
+.fleet-media-preview-fallback {
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--surface-2, #f6fbfa);
+  font-size: 0.85rem;
+}
+
+.fleet-media-preview-fallback dl {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+}
+
+.fleet-media-preview-fallback dt {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft, #5a6570);
+}
+
+.fleet-media-preview-fallback dd {
+  margin: 0;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
+.fleet-alerts-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(200px, 0.7fr);
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .fleet-alerts-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fleet-alerts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(58vh, 620px);
+  overflow: auto;
+}
+
+.fleet-alerts-list li {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 8px;
+  align-items: start;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--line, #eef1f4);
+  font-size: 0.8rem;
+}
+
+.fleet-alerts-list li:last-child {
+  border-bottom: 0;
+}
+
+.fleet-alerts-lvl {
+  font-style: normal;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--ink-soft, #5a6570);
+}
+
 @media (max-width: 800px) {
   .fleet-cc-shell:not(.is-nav-collapsed) {
     grid-template-columns: 1fr;

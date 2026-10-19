@@ -29,8 +29,10 @@ import {
   type TrackerLastFix,
 } from "../lib/trackerDevices";
 import { BrandMark } from "../components/BrandMark";
+import { FleetLiveAlertsPanel } from "../components/FleetLiveAlertsPanel";
 import { FleetLiveDashboardPanel } from "../components/FleetLiveDashboardPanel";
 import { FleetLiveHistoryPanel } from "../components/FleetLiveHistoryPanel";
+import { FleetLiveMediaPanel } from "../components/FleetLiveMediaPanel";
 import { FleetLiveRankingPanel } from "../components/FleetLiveRankingPanel";
 import { FleetLiveTripsPanel } from "../components/FleetLiveTripsPanel";
 import { LiveOpsMap } from "../components/LiveOpsMap";
@@ -660,19 +662,22 @@ export default function FleetLive() {
         />
       ) : null}
 
-      {section !== "live" &&
-      section !== "dashboard" &&
-      section !== "ranking" &&
-      section !== "trips" &&
-      section !== "history" &&
-      fleetModuleOk ? (
-        <div className="fleet-cc-section-soon">
-          <h2>{sectionLabel}</h2>
-          <p className="muted">
-            This section is on the roadmap (P1b+). Privileges and entitlements already gate access —
-            content ships next.
-          </p>
-        </div>
+      {section === "media" && fleetModuleOk ? (
+        <FleetLiveMediaPanel
+          devices={tripDevices}
+          groupId={groupId}
+          timezone={timezone}
+          initialDeviceId={initialTripDeviceId}
+        />
+      ) : null}
+
+      {section === "alerts" && fleetModuleOk ? (
+        <FleetLiveAlertsPanel
+          devices={tripDevices}
+          groupId={groupId}
+          timezone={timezone}
+          initialDeviceId={initialTripDeviceId}
+        />
       ) : null}
 
       {section === "live" && fleetModuleOk && canViewLive ? (

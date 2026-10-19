@@ -159,7 +159,10 @@ export async function handleTrackerIngestRequest(req, res) {
     }
   }
 
-  if (url.pathname === "/api/tracker/safety-events" && req.method === "GET") {
+  if (
+    (url.pathname === "/api/tracker/safety-events" || url.pathname === "/api/tracker/media") &&
+    req.method === "GET"
+  ) {
     try {
       const dbTenant = await resolveDbTenant(req);
       if (!dbTenant) {
@@ -168,30 +171,80 @@ export async function handleTrackerIngestRequest(req, res) {
       }
       const { listSafetyEvents } = await import("./device-manager.mjs");
       const { dbQuery } = await import("./db.mjs");
-      const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 40));
+      const isMedia = url.pathname === "/api/tracker/media";
+      const limit = Math.min(
+        isMedia ? 200 : 100,
+        Math.max(1, Number(url.searchParams.get("limit")) || (isMedia ? 80 : 40)),
+      );
       const deviceId = String(url.searchParams.get("deviceId") || "").trim() || undefined;
-      const events = await listSafetyEvents(dbTenant.id, { deviceId, limit });
+      const groupIds = [
+        ...url.searchParams.getAll("groupId"),
+        ...String(url.searchParams.get("groupIds") || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ];
+      const from = String(url.searchParams.get("from") || "").trim() || undefined;
+      const to = String(url.searchParams.get("to") || "").trim() || undefined;
+      const kindFilter = String(url.searchParams.get("kind") || "all")
+        .trim()
+        .toLowerCase();
+      let events = await listSafetyEvents(dbTenant.id, {
+        deviceId,
+        groupIds,
+        from,
+        to,
+        mediaOnly: isMedia || url.searchParams.get("mediaOnly") === "1",
+        limit: isMedia ? Math.min(500, limit * 3) : limit,
+      });
+      if (isMedia && kindFilter && kindFilter !== "all") {
+        events = events.filter((e) => e.mediaKind === kindFilter);
+      }
+      if (isMedia) events = events.slice(0, limit);
+
       const ids = [...new Set(events.map((e) => e.deviceId).filter(Boolean))];
-      /** @type {Map<string, { label: string, imei: string }>} */
+      /** @type {Map<string, { label: string, imei: string, protocol: string }>} */
       const byDevice = new Map();
       if (ids.length) {
         const rows = await dbQuery(
-          `SELECT id, label, imei FROM tracker_devices WHERE tenant_id = $1 AND id = ANY($2::uuid[])`,
+          `SELECT id, label, imei, protocol FROM tracker_devices WHERE tenant_id = $1 AND id = ANY($2::uuid[])`,
           [dbTenant.id, ids],
         );
         for (const r of rows.rows) {
-          byDevice.set(r.id, { label: r.label || r.imei, imei: r.imei });
+          byDevice.set(r.id, {
+            label: r.label || r.imei,
+            imei: r.imei,
+            protocol: r.protocol || "",
+          });
         }
       }
+
+      let mediaCapableCount = 0;
+      if (isMedia) {
+        const cap = await dbQuery(
+          `SELECT COUNT(*)::int AS n FROM tracker_devices
+           WHERE tenant_id = $1 AND enabled = true
+             AND protocol = ANY($2::text[])`,
+          [dbTenant.id, ["jt808", "subiao", "jt1078", "jt809", "video"]],
+        );
+        mediaCapableCount = Number(cap.rows[0]?.n) || 0;
+      }
+
       json(res, 200, {
         events: events.map((e) => {
           const d = byDevice.get(e.deviceId);
+          const mapped =
+            e.mappedAttrs && typeof e.mappedAttrs === "object" ? e.mappedAttrs : {};
           return {
             ...e,
             deviceLabel: d?.label || "",
             imei: d?.imei || "",
+            protocol: d?.protocol || e.sourceProtocol || "",
+            mediaChannel: mapped.media_channel ?? mapped.mediaChannel ?? null,
+            mediaId: mapped.media_id ?? mapped.mediaId ?? null,
           };
         }),
+        ...(isMedia ? { mediaCapableCount } : {}),
       });
       return true;
     } catch (err) {
