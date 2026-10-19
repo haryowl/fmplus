@@ -35,6 +35,24 @@ import { FleetLiveHistoryPanel } from "../components/FleetLiveHistoryPanel";
 import { FleetLiveMediaPanel } from "../components/FleetLiveMediaPanel";
 import { FleetLiveRankingPanel } from "../components/FleetLiveRankingPanel";
 import { FleetLiveTripsPanel } from "../components/FleetLiveTripsPanel";
+import {
+  IcoAlerts,
+  IcoChevronDown,
+  IcoChevronUp,
+  IcoClose,
+  IcoCollapse,
+  IcoFleet,
+  IcoFuel,
+  IcoGroup,
+  IcoLive,
+  IcoMenu,
+  IcoRefresh,
+  IcoSearch,
+  IcoUtil,
+  IcoWrench,
+  IcoZone,
+  SECTION_ICONS,
+} from "../components/fleetLiveIcons";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
 
@@ -84,14 +102,14 @@ type FixMeta = {
   protocol: string;
 };
 
-const LIST_TABS: { id: ListTab; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "moving", label: "Moving" },
-  { id: "idle", label: "Idle" },
-  { id: "off", label: "Off" },
-  { id: "stale", label: "Stale" },
-  { id: "alert", label: "Alert" },
-  { id: "maintenance", label: "Maint" },
+const LIST_TABS: { id: ListTab; label: string; short: string }[] = [
+  { id: "all", label: "All vehicles", short: "All" },
+  { id: "moving", label: "Moving", short: "Move" },
+  { id: "idle", label: "Idle", short: "Idle" },
+  { id: "off", label: "Ignition off", short: "Off" },
+  { id: "stale", label: "Stale / no fix", short: "Stale" },
+  { id: "alert", label: "Alert (24h)", short: "Alert" },
+  { id: "maintenance", label: "Open maintenance", short: "Maint" },
 ];
 
 function vehicleSearch(userId: number): string {
@@ -501,25 +519,34 @@ export default function FleetLive() {
         <div className="fleet-cc-top-actions">
           <button
             type="button"
-            className="btn btn-ghost btn-compact fleet-cc-nav-toggle"
+            className="fleet-cc-icon-btn fleet-cc-nav-toggle"
             aria-expanded={sideNavOpen}
             aria-controls="fleet-cc-sidenav"
             title={sideNavOpen ? "Hide menu" : "Show menu"}
+            aria-label={sideNavOpen ? "Hide menu" : "Show menu"}
             onClick={() => setSideNavOpen((v) => !v)}
           >
-            {sideNavOpen ? "Hide" : "Menu"}
+            {sideNavOpen ? <IcoCollapse /> : <IcoMenu />}
           </button>
           <ViewNav current="fleetLive" />
-          <a className="btn-ghost btn-compact" href={liveHref(typeof window !== "undefined" ? window.location.search : "")}>
-            Armada Live
+          <a
+            className="fleet-cc-icon-btn"
+            href={liveHref(typeof window !== "undefined" ? window.location.search : "")}
+            title="Armada Live"
+            aria-label="Armada Live"
+          >
+            <IcoLive />
           </a>
           <button
             type="button"
-            className="btn btn-primary btn-compact"
+            className="btn btn-primary btn-compact fleet-cc-refresh"
             disabled={loading}
+            title="Refresh"
+            aria-label={loading ? "Updating" : "Refresh"}
             onClick={() => setReload((n) => n + 1)}
           >
-            {loading ? "Updating…" : "Refresh"}
+            <IcoRefresh className={loading ? "is-spin" : undefined} />
+            <span className="fleet-cc-btn-label">{loading ? "Updating" : "Refresh"}</span>
           </button>
         </div>
       </header>
@@ -532,29 +559,35 @@ export default function FleetLive() {
           hidden={!sideNavOpen}
         >
           <div className="fleet-cc-sidenav-head">
-            <span>Navigate</span>
+            <span>Sections</span>
             <button
               type="button"
               className="fleet-cc-icon-btn"
               onClick={() => setSideNavOpen(false)}
               aria-label="Collapse side menu"
+              title="Collapse"
             >
-              ⟨
+              <IcoCollapse />
             </button>
           </div>
           <nav className="fleet-cc-sidenav-nav">
-            {allowedSections.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                className={section === s.id ? "is-active" : ""}
-                onClick={() => setSection(s.id)}
-                disabled={!fleetModuleOk}
-                aria-current={section === s.id ? "page" : undefined}
-              >
-                {s.label}
-              </button>
-            ))}
+            {allowedSections.map((s) => {
+              const Icon = SECTION_ICONS[s.id];
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={section === s.id ? "is-active" : ""}
+                  onClick={() => setSection(s.id)}
+                  disabled={!fleetModuleOk}
+                  aria-current={section === s.id ? "page" : undefined}
+                  title={s.label}
+                >
+                  <Icon />
+                  <span>{s.label}</span>
+                </button>
+              );
+            })}
           </nav>
         </aside>
 
@@ -576,15 +609,28 @@ export default function FleetLive() {
             type="button"
             className="fleet-cc-icon-btn fleet-cc-menu-open"
             onClick={() => setSideNavOpen(true)}
-            title="Show section menu"
+            title={`Show menu · ${sectionLabel}`}
+            aria-label={`Show menu · ${sectionLabel}`}
           >
-            {sectionLabel}
+            {(() => {
+              const Icon = SECTION_ICONS[section];
+              return <Icon />;
+            })()}
+            <span className="fleet-cc-btn-label">{sectionLabel}</span>
           </button>
         ) : (
-          <span className="fleet-cc-toolbar-section">{sectionLabel}</span>
+          <span className="fleet-cc-toolbar-section">
+            {(() => {
+              const Icon = SECTION_ICONS[section];
+              return <Icon />;
+            })()}
+            {sectionLabel}
+          </span>
         )}
-        <label className="fleet-cc-field">
-          <span>Group</span>
+        <label className="fleet-cc-field fleet-cc-field-ico">
+          <span>
+            <IcoGroup /> Group
+          </span>
           <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
             <option value="">{deviceGroups.length ? "All devices" : "No groups yet"}</option>
             {deviceGroups.map((g) => (
@@ -595,8 +641,10 @@ export default function FleetLive() {
             ))}
           </select>
         </label>
-        <label className="fleet-cc-field">
-          <span>Zone</span>
+        <label className="fleet-cc-field fleet-cc-field-ico">
+          <span>
+            <IcoZone /> Zone
+          </span>
           <select value={timezone} onChange={(e) => setTimezone(e.target.value)}>
             {TIMEZONES.map((tz) => (
               <option key={tz.value} value={tz.value}>
@@ -605,17 +653,23 @@ export default function FleetLive() {
             ))}
           </select>
         </label>
-        <label className="fleet-cc-field fleet-cc-search">
+        <label className="fleet-cc-field fleet-cc-search fleet-cc-field-ico">
           <span className="sr-only">Search</span>
-          <input
-            type="search"
-            value={queryText}
-            onChange={(e) => setQueryText(e.target.value)}
-            placeholder="Search label, IMEI, group…"
-          />
+          <span className="fleet-cc-search-wrap">
+            <IcoSearch />
+            <input
+              type="search"
+              value={queryText}
+              onChange={(e) => setQueryText(e.target.value)}
+              placeholder="Label, IMEI, group…"
+            />
+          </span>
         </label>
-        <div className="fleet-cc-toolbar-meta">
-          {filtered.length}/{rows.length}
+        <div className="fleet-cc-toolbar-meta" title="Shown / total">
+          <IcoFleet />
+          <span>
+            {filtered.length}/{rows.length}
+          </span>
         </div>
       </div>
 
@@ -690,37 +744,45 @@ export default function FleetLive() {
       {section === "live" && fleetModuleOk && canViewLive ? (
       <>
       <section className="fleet-cc-status-strip" aria-label="Fleet status">
-        <div className="fleet-cc-stat">
+        <div className="fleet-cc-stat" title="Fleet total">
+          <IcoFleet />
           <em>{kpi.total}</em>
-          <span>Total</span>
+          <span>Fleet</span>
         </div>
-        <div className="fleet-cc-stat is-moving">
+        <div className="fleet-cc-stat is-moving" title="Moving">
+          <span className="fleet-cc-stat-dot" style={{ background: LIVE_OPS_COLORS.moving }} />
           <em>{kpi.moving}</em>
-          <span>Moving</span>
+          <span>Move</span>
         </div>
-        <div className="fleet-cc-stat is-idle">
+        <div className="fleet-cc-stat is-idle" title="Idle">
+          <span className="fleet-cc-stat-dot" style={{ background: LIVE_OPS_COLORS.idle }} />
           <em>{kpi.idle}</em>
           <span>Idle</span>
         </div>
-        <div className="fleet-cc-stat is-off">
+        <div className="fleet-cc-stat is-off" title="Ignition off">
+          <span className="fleet-cc-stat-dot" style={{ background: LIVE_OPS_COLORS.off }} />
           <em>{kpi.off}</em>
           <span>Off</span>
         </div>
-        <div className="fleet-cc-stat is-stale">
+        <div className="fleet-cc-stat is-stale" title="Stale / no fix">
+          <span className="fleet-cc-stat-dot" style={{ background: LIVE_OPS_COLORS.stale }} />
           <em>{kpi.stale}</em>
           <span>Stale</span>
         </div>
-        <div className="fleet-cc-stat is-alert">
+        <div className="fleet-cc-stat is-alert" title="Units with alerts (24h)">
+          <IcoAlerts />
           <em>{kpi.alerts}</em>
-          <span>Alert 24h</span>
+          <span>Alert</span>
         </div>
-        <div className="fleet-cc-stat is-maint">
+        <div className="fleet-cc-stat is-maint" title="Open maintenance">
+          <IcoWrench />
           <em>{kpi.maintenance}</em>
           <span>Maint</span>
         </div>
-        <div className="fleet-cc-stat">
+        <div className="fleet-cc-stat" title="Average fuel">
+          <IcoFuel />
           <em>{kpi.avgFuel != null ? `${kpi.avgFuel}%` : "—"}</em>
-          <span>Avg fuel</span>
+          <span>Fuel</span>
         </div>
       </section>
 
@@ -802,8 +864,10 @@ export default function FleetLive() {
                   type="button"
                   className="fleet-cc-icon-btn"
                   onClick={() => setSelectedId(null)}
+                  title="Clear selection"
+                  aria-label="Clear selection"
                 >
-                  Clear
+                  <IcoClose />
                 </button>
               </aside>
             ) : null}
@@ -812,33 +876,60 @@ export default function FleetLive() {
 
         <aside className="fleet-cc-list-pane">
           <header className="fleet-cc-list-head">
-            <h2>Vehicles</h2>
+            <h2>
+              <IcoFleet /> Vehicles
+            </h2>
             <span className="fleet-cc-list-count">
               {filtered.length}/{rows.length}
             </span>
           </header>
           <div className="fleet-cc-tabs" role="tablist">
-            {LIST_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={listTab === tab.id}
-                className={listTab === tab.id ? "active" : ""}
-                onClick={() => setListTab(tab.id)}
-              >
-                {tab.label}
-                <em>
-                  {tab.id === "all"
-                    ? tabCounts.all
-                    : tab.id === "alert"
-                      ? tabCounts.alert
-                      : tab.id === "maintenance"
-                        ? tabCounts.maintenance
-                        : tabCounts[tab.id] ?? 0}
-                </em>
-              </button>
-            ))}
+            {LIST_TABS.map((tab) => {
+              const n =
+                tab.id === "all"
+                  ? tabCounts.all
+                  : tab.id === "alert"
+                    ? tabCounts.alert
+                    : tab.id === "maintenance"
+                      ? tabCounts.maintenance
+                      : tabCounts[tab.id] ?? 0;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={listTab === tab.id}
+                  aria-label={`${tab.label}: ${n}`}
+                  title={`${tab.label}: ${n}`}
+                  className={listTab === tab.id ? "active" : ""}
+                  onClick={() => setListTab(tab.id)}
+                >
+                  {tab.id === "alert" ? (
+                    <IcoAlerts />
+                  ) : tab.id === "maintenance" ? (
+                    <IcoWrench />
+                  ) : tab.id === "all" ? (
+                    <IcoFleet />
+                  ) : (
+                    <span
+                      className="fleet-cc-tab-dot"
+                      style={{
+                        background:
+                          tab.id === "moving"
+                            ? LIVE_OPS_COLORS.moving
+                            : tab.id === "idle"
+                              ? LIVE_OPS_COLORS.idle
+                              : tab.id === "off"
+                                ? LIVE_OPS_COLORS.off
+                                : LIVE_OPS_COLORS.stale,
+                      }}
+                    />
+                  )}
+                  <span className="fleet-cc-tab-label">{tab.short}</span>
+                  <em>{n}</em>
+                </button>
+              );
+            })}
           </div>
           <ul className="fleet-cc-vehicle-list">
             {filtered.length === 0 ? (
@@ -862,8 +953,16 @@ export default function FleetLive() {
                       <span className="fleet-cc-vmain">
                         <span className="fleet-cc-vtitle">
                           <strong>{row.name}</strong>
-                          {inAlert ? <span className="fleet-cc-chip is-alert">Alert</span> : null}
-                          {inMaint ? <span className="fleet-cc-chip is-maint">Maint</span> : null}
+                          {inAlert ? (
+                            <span className="fleet-cc-chip is-alert" title="Alert 24h">
+                              <IcoAlerts />
+                            </span>
+                          ) : null}
+                          {inMaint ? (
+                            <span className="fleet-cc-chip is-maint" title="Maintenance">
+                              <IcoWrench />
+                            </span>
+                          ) : null}
                         </span>
                         <span className="muted">
                           {LIVE_OPS_LABELS[cls]} · {ageLabel(row.lastMs, now)} ·{" "}
@@ -892,18 +991,28 @@ export default function FleetLive() {
           onClick={() => setAlertsOpen((v) => !v)}
           aria-expanded={alertsOpen}
         >
-          <span>
-            Activity · {alerts.length} alerts
-            {!alertsOpen && kpi.moving + kpi.idle > 0
-              ? ` · ${kpi.moving} moving / ${kpi.idle} idle`
-              : ""}
+          <span className="fleet-cc-drawer-title">
+            <IcoAlerts />
+            <strong>{alerts.length}</strong>
+            <span className="muted">alerts</span>
+            {!alertsOpen && kpi.moving + kpi.idle > 0 ? (
+              <>
+                <span className="fleet-cc-drawer-sep" />
+                <span className="fleet-cc-stat-dot" style={{ background: LIVE_OPS_COLORS.moving }} />
+                <strong>{kpi.moving}</strong>
+                <span className="fleet-cc-stat-dot" style={{ background: LIVE_OPS_COLORS.idle }} />
+                <strong>{kpi.idle}</strong>
+              </>
+            ) : null}
           </span>
-          <em>{alertsOpen ? "Collapse" : "Expand"}</em>
+          <em aria-hidden>{alertsOpen ? <IcoChevronDown /> : <IcoChevronUp />}</em>
         </button>
         {alertsOpen ? (
           <div className="fleet-cc-bottom">
             <div className="fleet-cc-alerts">
-              <h3>Recent alerts</h3>
+              <h3>
+                <IcoAlerts /> Recent
+              </h3>
               {alerts.length === 0 ? (
                 <p className="muted">No recent safety events.</p>
               ) : (
@@ -931,7 +1040,9 @@ export default function FleetLive() {
             </div>
 
             <div className="fleet-cc-breakdown">
-              <h3>Mix</h3>
+              <h3>
+                <IcoUtil /> Mix
+              </h3>
               <ul>
                 {statusBreakdown.map(({ cls, n, pct }) => (
                   <li key={cls}>

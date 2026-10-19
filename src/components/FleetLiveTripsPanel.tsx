@@ -7,6 +7,16 @@ import {
   type TrackerDayPoint,
 } from "../lib/trackerDevices";
 import { FleetDayTrailMap } from "./FleetDayTrailMap";
+import { FleetLiveSectionHead } from "./FleetLiveSectionHead";
+import {
+  IcoCalendar,
+  IcoDevice,
+  IcoFix,
+  IcoHistory,
+  IcoOdo,
+  IcoSpeed,
+  IcoTrips,
+} from "./fleetLiveIcons";
 
 export type FleetTripDeviceOption = {
   deviceId: string;
@@ -111,39 +121,51 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
   }, [trips]);
 
   return (
-    <div className="fleet-trips">
-      <header className="fleet-trips-head">
-        <div>
-          <h2>Trips</h2>
-          <p className="muted">
-            Gateway-native segments from vehicle fixes (speed / ignition)
-            {loading ? " · loading…" : ""}
-          </p>
-        </div>
-        <div className="fleet-trips-filters">
-          <label className="fleet-cc-field">
-            <span>Device</span>
-            <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
-              {devices.length === 0 ? <option value="">No devices</option> : null}
-              {devices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="fleet-cc-field">
-            <span>Date</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </label>
-        </div>
-      </header>
+    <div className="fleet-sec fleet-trips">
+      <FleetLiveSectionHead
+        section="trips"
+        title="Trips"
+        subtitle={loading ? "Loading day track…" : "Segments from speed / ignition"}
+        actions={
+          <div className="fleet-trips-filters">
+            <label className="fleet-cc-field fleet-cc-field-ico">
+              <span>
+                <IcoDevice /> Device
+              </span>
+              <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+                {devices.length === 0 ? <option value="">No devices</option> : null}
+                {devices.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="fleet-cc-field fleet-cc-field-ico">
+              <span>
+                <IcoCalendar /> Date
+              </span>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </label>
+          </div>
+        }
+      />
 
       {error ? <div className="banner error fleet-cc-banner">{error}</div> : null}
 
-      <div className="fleet-trips-summary muted">
-        {totals.n} trip{totals.n === 1 ? "" : "s"} · {formatKm(totals.distanceKm)} km ·{" "}
-        {formatDur(totals.durationMs)} · {points.length} fixes
+      <div className="fleet-sec-summary">
+        <span title="Trips">
+          <IcoTrips /> <strong>{totals.n}</strong>
+        </span>
+        <span title="Distance">
+          <IcoOdo /> <strong>{formatKm(totals.distanceKm)}</strong> km
+        </span>
+        <span title="Duration">
+          <IcoHistory /> <strong>{formatDur(totals.durationMs)}</strong>
+        </span>
+        <span title="Fixes">
+          <IcoFix /> <strong>{points.length}</strong>
+        </span>
       </div>
 
       <div className="fleet-trips-body">
@@ -162,15 +184,22 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
                 <li key={t.id} className={selectedId === t.id ? "is-selected" : ""}>
                   <button type="button" onClick={() => setSelectedId(t.id)}>
                     <strong>
-                      Trip {t.index}
+                      <IcoTrips /> #{t.index}
                       <span className="muted">
                         {" "}
-                        · {formatTime(t.startMs, timezone)}–{formatTime(t.endMs, timezone)}
+                        {formatTime(t.startMs, timezone)}–{formatTime(t.endMs, timezone)}
                       </span>
                     </strong>
-                    <span className="muted">
-                      {formatKm(t.distanceKm)} km · {formatDur(t.durationMs)} · avg{" "}
-                      {formatSpeed(t.avgSpeedKmh)} km/h · max {formatSpeed(t.maxSpeedKmh)} km/h
+                    <span className="fleet-trips-meta">
+                      <span title="Distance">
+                        <IcoOdo /> {formatKm(t.distanceKm)} km
+                      </span>
+                      <span title="Duration">
+                        <IcoHistory /> {formatDur(t.durationMs)}
+                      </span>
+                      <span title="Avg / max speed">
+                        <IcoSpeed /> {formatSpeed(t.avgSpeedKmh)} / {formatSpeed(t.maxSpeedKmh)}
+                      </span>
                     </span>
                   </button>
                 </li>

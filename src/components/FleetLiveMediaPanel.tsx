@@ -7,6 +7,15 @@ import {
   type FleetMediaEvent,
 } from "../lib/fleetMedia";
 import type { FleetTripDeviceOption } from "./FleetLiveTripsPanel";
+import { FleetLiveSectionHead } from "./FleetLiveSectionHead";
+import {
+  IcoCalendar,
+  IcoClose,
+  IcoDevice,
+  IcoMedia,
+  IcoPicture,
+  IcoVideo,
+} from "./fleetLiveIcons";
 
 type Tab = "picture" | "video";
 
@@ -93,59 +102,70 @@ export function FleetLiveMediaPanel({
   const emptyHint = useMemo(() => {
     if (loading) return "Loading…";
     if (capable === 0) {
-      return "No JT/T / MDVR-capable devices on this tenant yet. Teltonika-only fleets will stay empty until camera devices are registered.";
+      return "No JT/T / MDVR-capable devices on this tenant yet.";
     }
-    return "No stored pictures or clips for this filter. Gateway currently keeps multimedia metadata / attachment ids on safety events — full binary gallery ships when device uploads are persisted.";
+    return "No media for this filter. Gateway keeps multimedia metadata until uploads are persisted.";
   }, [loading, capable]);
 
   return (
-    <div className="fleet-media">
-      <header className="fleet-trips-head">
-        <div>
-          <h2>Media</h2>
-          <p className="muted">
-            Pictures &amp; video evidence from safety / multimedia events
-            {loading ? " · loading…" : ""}
-            {capable != null ? ` · ${capable} media-capable device${capable === 1 ? "" : "s"}` : ""}
-          </p>
-        </div>
-        <div className="fleet-trips-filters">
-          <label className="fleet-cc-field">
-            <span>Device</span>
-            <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
-              <option value="">All devices</option>
-              {devices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="fleet-cc-field">
-            <span>Date</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </label>
-        </div>
-      </header>
+    <div className="fleet-sec fleet-media">
+      <FleetLiveSectionHead
+        section="media"
+        title="Media"
+        subtitle={
+          loading
+            ? "Loading…"
+            : capable != null
+              ? `${capable} camera-capable device${capable === 1 ? "" : "s"}`
+              : "Pictures & video evidence"
+        }
+        actions={
+          <div className="fleet-trips-filters">
+            <label className="fleet-cc-field fleet-cc-field-ico">
+              <span>
+                <IcoDevice /> Device
+              </span>
+              <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+                <option value="">All devices</option>
+                {devices.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="fleet-cc-field fleet-cc-field-ico">
+              <span>
+                <IcoCalendar /> Date
+              </span>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </label>
+          </div>
+        }
+      />
 
-      <div className="fleet-media-tabs" role="tablist">
+      <div className="fleet-ico-tabs" role="tablist">
         <button
           type="button"
           role="tab"
           aria-selected={tab === "picture"}
+          title="Pictures"
           className={tab === "picture" ? "is-active" : ""}
           onClick={() => setTab("picture")}
         >
-          Pictures
+          <IcoPicture />
+          <span>Pics</span>
         </button>
         <button
           type="button"
           role="tab"
           aria-selected={tab === "video"}
+          title="Video"
           className={tab === "video" ? "is-active" : ""}
           onClick={() => setTab("video")}
         >
-          Video
+          <IcoVideo />
+          <span>Video</span>
         </button>
       </div>
 
@@ -163,8 +183,10 @@ export function FleetLiveMediaPanel({
                   <div className={`fleet-media-thumb is-${ev.mediaKind}`}>
                     {tab === "picture" && url ? (
                       <img src={url} alt="" loading="lazy" />
+                    ) : tab === "video" ? (
+                      <IcoVideo />
                     ) : (
-                      <span>{tab === "video" ? "Video" : "Pic"}</span>
+                      <IcoPicture />
                     )}
                   </div>
                   <div className="fleet-media-meta">
@@ -196,8 +218,14 @@ export function FleetLiveMediaPanel({
                   {active.mediaChannel != null ? ` · ch ${active.mediaChannel}` : ""}
                 </p>
               </div>
-              <button type="button" className="btn-link" onClick={() => setActive(null)}>
-                Close
+              <button
+                type="button"
+                className="fleet-cc-icon-btn"
+                onClick={() => setActive(null)}
+                title="Close"
+                aria-label="Close"
+              >
+                <IcoClose />
               </button>
             </header>
             {attachmentIsUrl(active.attachmentId) ? (
@@ -209,7 +237,7 @@ export function FleetLiveMediaPanel({
             ) : (
               <div className="fleet-media-preview-fallback">
                 <p>
-                  <strong>Metadata only</strong> — media body is not stored as a file URL yet.
+                  <IcoMedia /> <strong>Metadata only</strong> — media body not stored as a URL yet.
                 </p>
                 <dl>
                   <div>

@@ -8,7 +8,17 @@ import {
   type TrackerDayPoint,
 } from "../lib/trackerDevices";
 import { FleetDayTrailMap } from "./FleetDayTrailMap";
+import { FleetLiveSectionHead } from "./FleetLiveSectionHead";
 import type { FleetTripDeviceOption } from "./FleetLiveTripsPanel";
+import {
+  IcoAlerts,
+  IcoCalendar,
+  IcoDevice,
+  IcoFix,
+  IcoIgnition,
+  IcoOdo,
+  IcoSpeed,
+} from "./fleetLiveIcons";
 
 type SafetyEvent = {
   id: string;
@@ -155,38 +165,46 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
   }, [points, alerts]);
 
   return (
-    <div className="fleet-hist">
-      <header className="fleet-trips-head">
-        <div>
-          <h2>History</h2>
-          <p className="muted">
-            Day timeline of GPS fixes and safety events
-            {loading ? " · loading…" : ""}
-          </p>
-        </div>
-        <div className="fleet-trips-filters">
-          <label className="fleet-cc-field">
-            <span>Device</span>
-            <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
-              {devices.length === 0 ? <option value="">No devices</option> : null}
-              {devices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="fleet-cc-field">
-            <span>Date</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </label>
-        </div>
-      </header>
+    <div className="fleet-sec fleet-hist">
+      <FleetLiveSectionHead
+        section="history"
+        title="History"
+        subtitle={loading ? "Loading…" : "Day timeline of fixes & safety"}
+        actions={
+          <div className="fleet-trips-filters">
+            <label className="fleet-cc-field fleet-cc-field-ico">
+              <span>
+                <IcoDevice /> Device
+              </span>
+              <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+                {devices.length === 0 ? <option value="">No devices</option> : null}
+                {devices.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="fleet-cc-field fleet-cc-field-ico">
+              <span>
+                <IcoCalendar /> Date
+              </span>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </label>
+          </div>
+        }
+      />
 
       {error ? <div className="banner error fleet-cc-banner">{error}</div> : null}
 
-      <div className="fleet-trips-summary muted">
-        {points.length} fixes · {alerts.length} alert{alerts.length === 1 ? "" : "s"} on {date}
+      <div className="fleet-sec-summary">
+        <span title="GPS fixes">
+          <IcoFix /> <strong>{points.length}</strong>
+        </span>
+        <span title="Alerts">
+          <IcoAlerts /> <strong>{alerts.length}</strong>
+        </span>
+        <span className="muted">{date}</span>
       </div>
 
       <div className="fleet-trips-body">
@@ -201,32 +219,54 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
                 item.kind === "alert" ? (
                   <li key={item.id} className="is-alert">
                     <time>{formatStamp(item.ms, timezone)}</time>
-                    <div>
-                      <strong>{alarmLabel(item.event.alarmType)}</strong>
-                      <span className="muted"> · level {item.event.alarmLevel}</span>
+                    <div className="fleet-hist-row">
+                      <span className="fleet-hist-kind is-alert" title="Alert">
+                        <IcoAlerts />
+                      </span>
+                      <div>
+                        <strong>{alarmLabel(item.event.alarmType)}</strong>
+                        <span className="muted"> · L{item.event.alarmLevel}</span>
+                      </div>
                     </div>
                   </li>
                 ) : (
                   <li key={item.id}>
                     <time>{formatStamp(item.ms, timezone)}</time>
-                    <div>
-                      <strong>
-                        {item.point.speed != null
-                          ? `${formatSpeed(item.point.speed)} km/h`
-                          : "Fix"}
-                      </strong>
-                      <span className="muted">
-                        {" "}
-                        · {item.point.lat.toFixed(5)}, {item.point.lon.toFixed(5)}
-                        {item.point.odometerKm != null
-                          ? ` · ${formatKm(item.point.odometerKm)} km`
-                          : ""}
-                        {item.point.ignition === true
-                          ? " · ign on"
-                          : item.point.ignition === false
-                            ? " · ign off"
-                            : ""}
+                    <div className="fleet-hist-row">
+                      <span className="fleet-hist-kind" title="Fix">
+                        <IcoFix />
                       </span>
+                      <div>
+                        <strong>
+                          {item.point.speed != null ? (
+                            <>
+                              <IcoSpeed /> {formatSpeed(item.point.speed)}
+                            </>
+                          ) : (
+                            "Fix"
+                          )}
+                        </strong>
+                        <span className="muted fleet-hist-detail">
+                          {item.point.lat.toFixed(5)}, {item.point.lon.toFixed(5)}
+                          {item.point.odometerKm != null ? (
+                            <>
+                              {" · "}
+                              <IcoOdo /> {formatKm(item.point.odometerKm)}
+                            </>
+                          ) : null}
+                          {item.point.ignition === true ? (
+                            <>
+                              {" · "}
+                              <IcoIgnition /> on
+                            </>
+                          ) : item.point.ignition === false ? (
+                            <>
+                              {" · "}
+                              <IcoIgnition /> off
+                            </>
+                          ) : null}
+                        </span>
+                      </div>
                     </div>
                   </li>
                 ),

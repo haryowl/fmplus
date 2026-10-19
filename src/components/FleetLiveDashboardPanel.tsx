@@ -8,6 +8,18 @@ import {
   LIVE_OPS_COLORS,
   LIVE_OPS_LABELS,
 } from "../lib/liveOps";
+import { FleetLiveSectionHead } from "./FleetLiveSectionHead";
+import {
+  IcoAlerts,
+  IcoAttention,
+  IcoCover,
+  IcoFleet,
+  IcoFuel,
+  IcoOdo,
+  IcoProtocol,
+  IcoUtil,
+  IcoWrench,
+} from "./fleetLiveIcons";
 
 export type FleetDashFixMeta = {
   deviceId: string;
@@ -177,64 +189,76 @@ export function FleetLiveDashboardPanel({
   }, [rows, fixMeta]);
 
   return (
-    <div className="fleet-dash">
-      <header className="fleet-dash-head">
-        <div>
-          <h2>Dashboard</h2>
-          <p className="muted">
-            Live utilization from last status
-            {loading ? " · updating…" : ""}
-          </p>
-        </div>
-      </header>
+    <div className="fleet-sec fleet-dash">
+      <FleetLiveSectionHead
+        section="dashboard"
+        title="Dashboard"
+        subtitle={loading ? "Updating live snapshot…" : "Live utilization from last status"}
+      />
 
       <section className="fleet-dash-kpis" aria-label="Dashboard KPIs">
-        <div className="fleet-dash-kpi">
-          <span>Fleet</span>
+        <div className="fleet-dash-kpi" title="Fleet size">
+          <span>
+            <IcoFleet /> Fleet
+          </span>
           <strong>{kpi.total}</strong>
           <em className="muted">devices</em>
         </div>
-        <div className="fleet-dash-kpi is-util">
-          <span>Utilization</span>
+        <div className="fleet-dash-kpi is-util" title="Moving / online">
+          <span>
+            <IcoUtil /> Util
+          </span>
           <strong>{utilizationPct}%</strong>
           <em className="muted">
-            {kpi.moving} moving / {online} online
+            {kpi.moving}/{online} online
           </em>
         </div>
-        <div className="fleet-dash-kpi">
-          <span>Coverage</span>
+        <div className="fleet-dash-kpi" title="Non-stale coverage">
+          <span>
+            <IcoCover /> Cover
+          </span>
           <strong>{coveragePct}%</strong>
-          <em className="muted">{kpi.stale} stale / no fix</em>
+          <em className="muted">{kpi.stale} stale</em>
         </div>
-        <div className="fleet-dash-kpi is-alert">
-          <span>Alerts 24h</span>
+        <div className="fleet-dash-kpi is-alert" title="Units with alerts (24h)">
+          <span>
+            <IcoAlerts /> Alerts
+          </span>
           <strong>{kpi.alerts}</strong>
-          <em className="muted">units with events</em>
+          <em className="muted">units · 24h</em>
         </div>
-        <div className="fleet-dash-kpi is-maint">
-          <span>Maintenance</span>
+        <div className="fleet-dash-kpi is-maint" title="Open maintenance">
+          <span>
+            <IcoWrench /> Maint
+          </span>
           <strong>{kpi.maintenance}</strong>
           <em className="muted">
-            <a href={maintenanceHref}>open board</a>
+            <a href={maintenanceHref}>board</a>
           </em>
         </div>
-        <div className="fleet-dash-kpi">
-          <span>Avg fuel</span>
+        <div className="fleet-dash-kpi" title="Average fuel level">
+          <span>
+            <IcoFuel /> Fuel
+          </span>
           <strong>{kpi.avgFuel != null ? `${kpi.avgFuel}%` : "—"}</strong>
           <em className="muted">
-            low {fuelStats.low} · mid {fuelStats.mid} · high {fuelStats.high}
+            ↓{fuelStats.low} · ~{fuelStats.mid} · ↑{fuelStats.high}
           </em>
         </div>
-        <div className="fleet-dash-kpi">
-          <span>Odometer</span>
+        <div className="fleet-dash-kpi" title="Sum of odometer readings">
+          <span>
+            <IcoOdo /> Odo
+          </span>
           <strong>{odoTotal.n ? formatKm(odoTotal.sum) : "—"}</strong>
-          <em className="muted">{odoTotal.n ? `sum · ${odoTotal.n} units` : "no readings"}</em>
+          <em className="muted">{odoTotal.n ? `${odoTotal.n} units` : "no data"}</em>
         </div>
       </section>
 
       <div className="fleet-dash-grid">
         <section className="fleet-dash-card">
-          <h3>Status mix</h3>
+          <h3>
+            <IcoUtil /> Status
+          </h3>
           <ul className="fleet-dash-bars">
             {statusBreakdown.map(({ cls, n, pct }) => (
               <li key={cls}>
@@ -254,9 +278,11 @@ export function FleetLiveDashboardPanel({
         </section>
 
         <section className="fleet-dash-card">
-          <h3>Alerts by type (24h)</h3>
+          <h3>
+            <IcoAlerts /> Alerts · 24h
+          </h3>
           {alertByType.length === 0 ? (
-            <p className="muted fleet-dash-empty">No safety events in the last 24 hours.</p>
+            <p className="muted fleet-dash-empty">No safety events.</p>
           ) : (
             <ul className="fleet-dash-list">
               {alertByType.map((row) => (
@@ -270,7 +296,9 @@ export function FleetLiveDashboardPanel({
         </section>
 
         <section className="fleet-dash-card">
-          <h3>Protocol mix</h3>
+          <h3>
+            <IcoProtocol /> Protocol
+          </h3>
           {protocolMix.length === 0 ? (
             <p className="muted fleet-dash-empty">No devices.</p>
           ) : (
@@ -292,9 +320,11 @@ export function FleetLiveDashboardPanel({
         </section>
 
         <section className="fleet-dash-card fleet-dash-attention">
-          <h3>Needs attention</h3>
+          <h3>
+            <IcoAttention /> Attention
+          </h3>
           {attention.length === 0 ? (
-            <p className="muted fleet-dash-empty">All clear — no stale, alert, or open maintenance units.</p>
+            <p className="muted fleet-dash-empty">All clear.</p>
           ) : (
             <ul className="fleet-dash-attn-list">
               {attention.map((item) => (
@@ -302,7 +332,25 @@ export function FleetLiveDashboardPanel({
                   <button type="button" className="btn-link" onClick={() => onOpenLive(item.id)}>
                     {item.name}
                   </button>
-                  <span className="muted">{item.reasons.join(" · ")}</span>
+                  <span className="fleet-dash-attn-flags">
+                    {item.reasons.includes("Alert 24h") ? (
+                      <span className="fleet-cc-chip is-alert" title="Alert 24h">
+                        <IcoAlerts />
+                      </span>
+                    ) : null}
+                    {item.reasons.some((r) => r === "Maintenance") ? (
+                      <span className="fleet-cc-chip is-maint" title="Maintenance">
+                        <IcoWrench />
+                      </span>
+                    ) : null}
+                    {item.reasons.some((r) => r === LIVE_OPS_LABELS.stale || r === LIVE_OPS_LABELS.noFix) ? (
+                      <span
+                        className="fleet-cc-stat-dot"
+                        title={item.reasons.find((r) => r === LIVE_OPS_LABELS.stale || r === LIVE_OPS_LABELS.noFix)}
+                        style={{ background: LIVE_OPS_COLORS.stale }}
+                      />
+                    ) : null}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -311,17 +359,23 @@ export function FleetLiveDashboardPanel({
       </div>
 
       <section className="fleet-dash-card">
-        <h3>Fleet snapshot</h3>
+        <h3>
+          <IcoFleet /> Snapshot
+        </h3>
         <div className="fleet-dash-table-wrap">
           <table className="fleet-dash-table">
             <thead>
               <tr>
                 <th>Vehicle</th>
-                <th>Status</th>
-                <th>Age</th>
-                <th>Fuel</th>
-                <th>Odo</th>
-                <th>Flags</th>
+                <th title="Status">●</th>
+                <th title="Age">Age</th>
+                <th title="Fuel">
+                  <IcoFuel />
+                </th>
+                <th title="Odometer">
+                  <IcoOdo />
+                </th>
+                <th title="Flags">!</th>
               </tr>
             </thead>
             <tbody>
@@ -335,9 +389,8 @@ export function FleetLiveDashboardPanel({
                 rows.slice(0, 40).map((row) => {
                   const meta = fixMeta[row.id];
                   const cls = classifyLiveRow(row, now);
-                  const flags: string[] = [];
-                  if (meta && alertDeviceIds.has(meta.deviceId)) flags.push("Alert");
-                  if (row.id > 0 && maintUserIds.has(row.id)) flags.push("Maint");
+                  const inAlert = Boolean(meta && alertDeviceIds.has(meta.deviceId));
+                  const inMaint = row.id > 0 && maintUserIds.has(row.id);
                   return (
                     <tr key={row.id}>
                       <td>
@@ -348,18 +401,30 @@ export function FleetLiveDashboardPanel({
                       <td>
                         <span
                           className="fleet-dash-status-dot"
+                          title={LIVE_OPS_LABELS[cls]}
                           style={{ background: LIVE_OPS_COLORS[cls] }}
                         />
-                        {LIVE_OPS_LABELS[cls]}
                       </td>
                       <td>{ageLabel(row.lastMs, now)}</td>
                       <td>
                         {meta?.fuelLevel != null ? `${Math.round(meta.fuelLevel)}%` : "—"}
                       </td>
                       <td>
-                        {meta?.odometerKm != null ? `${formatKm(meta.odometerKm)} km` : "—"}
+                        {meta?.odometerKm != null ? `${formatKm(meta.odometerKm)}` : "—"}
                       </td>
-                      <td className="muted">{flags.length ? flags.join(", ") : "—"}</td>
+                      <td className="fleet-dash-flags">
+                        {inAlert ? (
+                          <span className="fleet-cc-chip is-alert" title="Alert">
+                            <IcoAlerts />
+                          </span>
+                        ) : null}
+                        {inMaint ? (
+                          <span className="fleet-cc-chip is-maint" title="Maint">
+                            <IcoWrench />
+                          </span>
+                        ) : null}
+                        {!inAlert && !inMaint ? <span className="muted">—</span> : null}
+                      </td>
                     </tr>
                   );
                 })

@@ -7,6 +7,17 @@ import {
   LIVE_OPS_LABELS,
 } from "../lib/liveOps";
 import type { FleetDashFixMeta } from "./FleetLiveDashboardPanel";
+import { FleetLiveSectionHead } from "./FleetLiveSectionHead";
+import {
+  IcoAlerts,
+  IcoFuel,
+  IcoHistory,
+  IcoOdo,
+  IcoSortAsc,
+  IcoSortDesc,
+  IcoSpeed,
+  IcoWrench,
+} from "./fleetLiveIcons";
 
 type SortKey = "name" | "status" | "speed" | "odometer" | "fuel" | "alerts" | "age";
 
@@ -103,65 +114,87 @@ export function FleetLiveRankingPanel({
     }
   };
 
-  const sortMark = (key: SortKey) => {
-    if (sortKey !== key) return "";
-    return sortDir === "asc" ? " ↑" : " ↓";
+  const sortIcon = (key: SortKey) => {
+    if (sortKey !== key) return null;
+    return sortDir === "asc" ? <IcoSortAsc /> : <IcoSortDesc />;
   };
 
   return (
-    <div className="fleet-rank">
-      <header className="fleet-rank-head">
-        <div>
-          <h2>Ranking</h2>
-          <p className="muted">
-            Leaderboard from live last-status
-            {loading ? " · updating…" : ""} · sort by column
-          </p>
-        </div>
-      </header>
+    <div className="fleet-sec fleet-rank">
+      <FleetLiveSectionHead
+        section="ranking"
+        title="Ranking"
+        subtitle={loading ? "Updating…" : "Leaderboard from live last-status"}
+      />
 
-      <div className="fleet-rank-table-wrap">
+      <div className="fleet-rank-table-wrap fleet-dash-card">
         <table className="fleet-rank-table">
           <thead>
             <tr>
               <th className="fleet-rank-pos">#</th>
               <th>
                 <button type="button" className="fleet-rank-sort" onClick={() => toggleSort("name")}>
-                  Vehicle{sortMark("name")}
-                </button>
-              </th>
-              <th>
-                <button type="button" className="fleet-rank-sort" onClick={() => toggleSort("status")}>
-                  Status{sortMark("status")}
-                </button>
-              </th>
-              <th>
-                <button type="button" className="fleet-rank-sort" onClick={() => toggleSort("speed")}>
-                  Speed{sortMark("speed")}
+                  Vehicle {sortIcon("name")}
                 </button>
               </th>
               <th>
                 <button
                   type="button"
                   className="fleet-rank-sort"
+                  title="Status"
+                  onClick={() => toggleSort("status")}
+                >
+                  ● {sortIcon("status")}
+                </button>
+              </th>
+              <th>
+                <button
+                  type="button"
+                  className="fleet-rank-sort"
+                  title="Speed"
+                  onClick={() => toggleSort("speed")}
+                >
+                  <IcoSpeed /> {sortIcon("speed")}
+                </button>
+              </th>
+              <th>
+                <button
+                  type="button"
+                  className="fleet-rank-sort"
+                  title="Odometer"
                   onClick={() => toggleSort("odometer")}
                 >
-                  Odometer{sortMark("odometer")}
+                  <IcoOdo /> {sortIcon("odometer")}
                 </button>
               </th>
               <th>
-                <button type="button" className="fleet-rank-sort" onClick={() => toggleSort("fuel")}>
-                  Fuel{sortMark("fuel")}
+                <button
+                  type="button"
+                  className="fleet-rank-sort"
+                  title="Fuel"
+                  onClick={() => toggleSort("fuel")}
+                >
+                  <IcoFuel /> {sortIcon("fuel")}
                 </button>
               </th>
               <th>
-                <button type="button" className="fleet-rank-sort" onClick={() => toggleSort("alerts")}>
-                  Alerts 24h{sortMark("alerts")}
+                <button
+                  type="button"
+                  className="fleet-rank-sort"
+                  title="Alerts 24h"
+                  onClick={() => toggleSort("alerts")}
+                >
+                  <IcoAlerts /> {sortIcon("alerts")}
                 </button>
               </th>
               <th>
-                <button type="button" className="fleet-rank-sort" onClick={() => toggleSort("age")}>
-                  Age{sortMark("age")}
+                <button
+                  type="button"
+                  className="fleet-rank-sort"
+                  title="Age"
+                  onClick={() => toggleSort("age")}
+                >
+                  <IcoHistory /> {sortIcon("age")}
                 </button>
               </th>
             </tr>
@@ -185,19 +218,23 @@ export function FleetLiveRankingPanel({
                     >
                       {item.row.name}
                     </button>
-                    {item.inMaint ? <span className="fleet-cc-chip is-maint">Maint</span> : null}
+                    {item.inMaint ? (
+                      <span className="fleet-cc-chip is-maint" title="Maintenance">
+                        <IcoWrench />
+                      </span>
+                    ) : null}
                   </td>
                   <td>
                     <span
                       className="fleet-dash-status-dot"
+                      title={LIVE_OPS_LABELS[item.cls]}
                       style={{ background: LIVE_OPS_COLORS[item.cls] }}
                     />
-                    {LIVE_OPS_LABELS[item.cls]}
                   </td>
                   <td>
-                    {item.row.speedKmh == null ? "—" : `${formatSpeed(item.row.speedKmh)} km/h`}
+                    {item.row.speedKmh == null ? "—" : formatSpeed(item.row.speedKmh)}
                   </td>
-                  <td>{item.odo != null ? `${formatKm(item.odo)} km` : "—"}</td>
+                  <td>{item.odo != null ? formatKm(item.odo) : "—"}</td>
                   <td>{item.fuel != null ? `${Math.round(item.fuel)}%` : "—"}</td>
                   <td>
                     <strong className={item.alerts > 0 ? "fleet-rank-alert-n" : ""}>

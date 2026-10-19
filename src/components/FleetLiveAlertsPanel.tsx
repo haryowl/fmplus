@@ -19,6 +19,15 @@ import {
 } from "../lib/fleetAlertRules";
 import type { FleetTripDeviceOption } from "./FleetLiveTripsPanel";
 import type { TrackerDeviceGroup } from "../lib/trackerDevices";
+import { FleetLiveSectionHead } from "./FleetLiveSectionHead";
+import {
+  IcoAlerts,
+  IcoCalendar,
+  IcoDevice,
+  IcoMail,
+  IcoRules,
+  IcoWhatsApp,
+} from "./fleetLiveIcons";
 
 type Props = {
   devices: FleetTripDeviceOption[];
@@ -208,43 +217,47 @@ export function FleetLiveAlertsPanel({
   };
 
   return (
-    <div className="fleet-alerts">
-      <header className="fleet-trips-head">
-        <div>
-          <h2>Alerts</h2>
-          <p className="muted">
-            Safety feed and cooked telematics rules
-            {loading ? " · loading…" : ""}
-          </p>
-        </div>
-        <div className="fleet-media-tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            className={sub === "events" ? "is-active" : ""}
-            aria-selected={sub === "events"}
-            onClick={() => setSub("events")}
-          >
-            Events
-          </button>
-          <button
-            type="button"
-            role="tab"
-            className={sub === "rules" ? "is-active" : ""}
-            aria-selected={sub === "rules"}
-            onClick={() => setSub("rules")}
-          >
-            Rules
-          </button>
-        </div>
-      </header>
+    <div className="fleet-sec fleet-alerts">
+      <FleetLiveSectionHead
+        section="alerts"
+        title="Alerts"
+        subtitle={loading ? "Loading…" : "Safety feed & telematics rules"}
+        actions={
+          <div className="fleet-ico-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              className={sub === "events" ? "is-active" : ""}
+              aria-selected={sub === "events"}
+              title="Events"
+              onClick={() => setSub("events")}
+            >
+              <IcoAlerts />
+              <span>Events</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              className={sub === "rules" ? "is-active" : ""}
+              aria-selected={sub === "rules"}
+              title="Rules"
+              onClick={() => setSub("rules")}
+            >
+              <IcoRules />
+              <span>Rules</span>
+            </button>
+          </div>
+        }
+      />
 
       {error ? <div className="banner error fleet-cc-banner">{error}</div> : null}
 
       {sub === "rules" ? (
         <div className="fleet-rules">
           <section className="fleet-dash-card fleet-rules-editor">
-            <h3>{editId ? "Edit rule" : "New rule"}</h3>
+            <h3>
+              <IcoRules /> {editId ? "Edit rule" : "New rule"}
+            </h3>
             <div className="fleet-rules-grid">
               <label className="fleet-cc-field">
                 <span>Name</span>
@@ -373,21 +386,21 @@ export function FleetLiveAlertsPanel({
             </div>
 
             <div className="fleet-rules-actions">
-              <label className="fleet-rules-check">
+              <label className="fleet-rules-check" title="Email notify">
                 <input
                   type="checkbox"
                   checked={draftEmail}
                   onChange={(e) => setDraftEmail(e.target.checked)}
                 />
-                Email notify
+                <IcoMail /> Email
               </label>
-              <label className="fleet-rules-check">
+              <label className="fleet-rules-check" title="WhatsApp notify">
                 <input
                   type="checkbox"
                   checked={draftWa}
                   onChange={(e) => setDraftWa(e.target.checked)}
                 />
-                WhatsApp notify
+                <IcoWhatsApp /> WhatsApp
               </label>
               <button
                 type="button"
@@ -406,7 +419,9 @@ export function FleetLiveAlertsPanel({
           </section>
 
           <section className="fleet-dash-card">
-            <h3>Rules {rules.length}</h3>
+            <h3>
+              <IcoRules /> Rules <span className="muted">{rules.length}</span>
+            </h3>
             {rules.length === 0 ? (
               <p className="muted fleet-dash-empty">No rules yet. Create one above.</p>
             ) : (
@@ -415,12 +430,20 @@ export function FleetLiveAlertsPanel({
                   <li key={r.id}>
                     <div>
                       <strong>{r.name}</strong>
-                      <span className="muted">
-                        {" "}
-                        · {r.severity} · {r.scopeKind}
-                        {r.enabled ? "" : " · disabled"}
-                        {r.notifyEmail ? " · email" : ""}
-                        {r.notifyWhatsapp ? " · whatsapp" : ""}
+                      <span className="fleet-rules-flags muted">
+                        <span className={`fleet-sev is-${r.severity}`}>{r.severity}</span>
+                        <span>{r.scopeKind}</span>
+                        {!r.enabled ? <span className="fleet-sev is-off">off</span> : null}
+                        {r.notifyEmail ? (
+                          <span title="Email">
+                            <IcoMail />
+                          </span>
+                        ) : null}
+                        {r.notifyWhatsapp ? (
+                          <span title="WhatsApp">
+                            <IcoWhatsApp />
+                          </span>
+                        ) : null}
                       </span>
                       <div className="muted">
                         {r.formula.conditions
@@ -467,8 +490,10 @@ export function FleetLiveAlertsPanel({
       ) : (
         <>
           <div className="fleet-trips-filters">
-            <label className="fleet-cc-field">
-              <span>Device</span>
+            <label className="fleet-cc-field fleet-cc-field-ico">
+              <span>
+                <IcoDevice /> Device
+              </span>
               <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
                 <option value="">All devices</option>
                 {devices.map((d) => (
@@ -478,16 +503,22 @@ export function FleetLiveAlertsPanel({
                 ))}
               </select>
             </label>
-            <label className="fleet-cc-field">
-              <span>From</span>
+            <label className="fleet-cc-field fleet-cc-field-ico">
+              <span>
+                <IcoCalendar /> From
+              </span>
               <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
             </label>
-            <label className="fleet-cc-field">
-              <span>To</span>
+            <label className="fleet-cc-field fleet-cc-field-ico">
+              <span>
+                <IcoCalendar /> To
+              </span>
               <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
             </label>
-            <label className="fleet-cc-field">
-              <span>Min level</span>
+            <label className="fleet-cc-field fleet-cc-field-ico">
+              <span>
+                <IcoAlerts /> Level
+              </span>
               <select
                 value={String(minLevel)}
                 onChange={(e) => setMinLevel(Number(e.target.value) || 0)}
@@ -503,7 +534,7 @@ export function FleetLiveAlertsPanel({
           <div className="fleet-alerts-body">
             <section className="fleet-dash-card">
               <h3>
-                Safety events <span className="muted">{filteredSafety.length}</span>
+                <IcoAlerts /> Safety <span className="muted">{filteredSafety.length}</span>
               </h3>
               {filteredSafety.length === 0 ? (
                 <p className="muted fleet-dash-empty">
@@ -533,7 +564,7 @@ export function FleetLiveAlertsPanel({
 
             <section className="fleet-dash-card">
               <h3>
-                Rule fires <span className="muted">{ruleEvents.length}</span>
+                <IcoRules /> Fires <span className="muted">{ruleEvents.length}</span>
               </h3>
               {ruleEvents.length === 0 ? (
                 <p className="muted fleet-dash-empty">No rule events yet.</p>
