@@ -269,6 +269,9 @@ export default function FleetLive() {
   const fleetModuleOk = moduleAllowed("fleetLive");
   const canViewLive =
     !deskUser?.id || deskCanWrite(deskUser, deskPrivileges, "viewFleetLive");
+  const canViewRules = entitlements.features.fleetLiveRules !== false;
+  const canManageRules = deskCanWrite(deskUser, deskPrivileges, "manageFleetRules");
+  const canAckAlerts = deskCanWrite(deskUser, deskPrivileges, "ackFleetAlerts");
   const sectionLabel = FLEET_SECTIONS.find((s) => s.id === section)?.label || section;
 
   useEffect(() => {
@@ -813,6 +816,9 @@ export default function FleetLive() {
           groupId={groupId}
           timezone={timezone}
           initialDeviceId={initialTripDeviceId}
+          canViewRules={canViewRules}
+          canManageRules={canManageRules}
+          canAckAlerts={canAckAlerts}
         />
       ) : null}
 

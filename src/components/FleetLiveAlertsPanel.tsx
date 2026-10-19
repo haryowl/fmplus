@@ -35,6 +35,9 @@ type Props = {
   groupId: string;
   timezone: string;
   initialDeviceId?: string;
+  canViewRules?: boolean;
+  canManageRules?: boolean;
+  canAckAlerts?: boolean;
 };
 
 function formatWhen(iso: string, tz: string): string {
@@ -74,6 +77,9 @@ export function FleetLiveAlertsPanel({
   groupId,
   timezone,
   initialDeviceId,
+  canViewRules = true,
+  canManageRules = true,
+  canAckAlerts = true,
 }: Props) {
   const [sub, setSub] = useState<"events" | "rules">("events");
   const [deviceId, setDeviceId] = useState(() => initialDeviceId || "");
@@ -89,9 +95,11 @@ export function FleetLiveAlertsPanel({
 
   const [draftName, setDraftName] = useState("Speeding");
   const [draftSeverity, setDraftSeverity] = useState<"info" | "warning" | "critical">("warning");
-  const [draftScope, setDraftScope] = useState<"all" | "group">("all");
+  const [draftScope, setDraftScope] = useState<"all" | "group" | "devices">("all");
   const [draftGroupId, setDraftGroupId] = useState(groupId || "");
+  const [draftDeviceIds, setDraftDeviceIds] = useState<string[]>([]);
   const [draftDurationMin, setDraftDurationMin] = useState(0);
+  const [draftCooldownMin, setDraftCooldownMin] = useState(5);
   const [draftEmail, setDraftEmail] = useState(false);
   const [draftWa, setDraftWa] = useState(false);
   const [draftConditions, setDraftConditions] = useState<AlertCondition[]>([emptyCondition()]);
@@ -140,10 +148,14 @@ export function FleetLiveAlertsPanel({
   }, [sub, deviceId, groupId, dateFrom, dateTo, timezone]);
 
   useEffect(() => {
-    if (sub !== "rules") return;
+    if (!canViewRules && sub === "rules") setSub("events");
+  }, [canViewRules, sub]);
+
+  useEffect(() => {
+    if (sub !== "rules" || !canViewRules) return;
     setError("");
     void reloadRules();
-  }, [sub]);
+  }, [sub, canViewRules]);
 
   const filteredSafety = useMemo(
     () => safety.filter((e) => (e.alarmLevel || 0) >= minLevel),
@@ -154,9 +166,13 @@ export function FleetLiveAlertsPanel({
     setEditId(rule.id);
     setDraftName(rule.name);
     setDraftSeverity(rule.severity);
-    setDraftScope(rule.scopeKind === "group" ? "group" : "all");
+    setDraftScope(
+      rule.scopeKind === "group" || rule.scopeKind === "devices" ? rule.scopeKind : "all",
+    );
     setDraftGroupId(rule.scopeGroupId || groupId || "");
+    setDraftDeviceIds(Array.isArray(rule.scopeDeviceIds) ? [...rule.scopeDeviceIds] : []);
     setDraftDurationMin(Math.round((rule.formula.durationSec || 0) / 60));
+    setDraftCooldownMin(Math.max(1, Math.round((rule.cooldownSec || 300) / 60)));
     setDraftEmail(rule.notifyEmail);
     setDraftWa(rule.notifyWhatsapp);
     setDraftConditions(
@@ -170,13 +186,27 @@ export function FleetLiveAlertsPanel({
     setDraftSeverity("warning");
     setDraftScope("all");
     setDraftGroupId(groupId || "");
+    setDraftDeviceIds([]);
     setDraftDurationMin(0);
+    setDraftCooldownMin(5);
     setDraftEmail(false);
     setDraftWa(false);
     setDraftConditions([emptyCondition()]);
   };
 
   const onSaveRule = async () => {
+    if (!canManageRules) {
+      setError("Missing desk privilege: manageFleetRules");
+      return;
+    }
+    if (draftScope === "devices" && draftDeviceIds.length === 0) {
+      setError("Select at least one device for device scope");
+      return;
+    }
+    if (draftScope === "group" && !draftGroupId) {
+      setError("Select a device group");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -187,7 +217,7 @@ export function FleetLiveAlertsPanel({
           severity: draftSeverity,
           scopeKind: draftScope,
           scopeGroupId: draftScope === "group" ? draftGroupId || null : null,
-          scopeDeviceIds: [],
+          scopeDeviceIds: draftScope === "devices" ? draftDeviceIds : [],
           formula: {
             op: "and",
             conditions: draftConditions.map((c) => {
@@ -203,7 +233,7 @@ export function FleetLiveAlertsPanel({
           },
           notifyEmail: draftEmail,
           notifyWhatsapp: draftWa,
-          cooldownSec: 300,
+          cooldownSec: Math.max(60, Math.min(86400, draftCooldownMin * 60)),
         },
         editId || undefined,
       );
@@ -236,25 +266,28 @@ export function FleetLiveAlertsPanel({
               <IcoAlerts />
               <span>Events</span>
             </button>
-            <button
-              type="button"
-              role="tab"
-              className={sub === "rules" ? "is-active" : ""}
-              aria-selected={sub === "rules"}
-              title="Rules"
-              onClick={() => setSub("rules")}
-            >
-              <IcoRules />
-              <span>Rules</span>
-            </button>
+            {canViewRules ? (
+              <button
+                type="button"
+                role="tab"
+                className={sub === "rules" ? "is-active" : ""}
+                aria-selected={sub === "rules"}
+                title="Rules"
+                onClick={() => setSub("rules")}
+              >
+                <IcoRules />
+                <span>Rules</span>
+              </button>
+            ) : null}
           </div>
         }
       />
 
       {error ? <div className="banner error fleet-cc-banner">{error}</div> : null}
 
-      {sub === "rules" ? (
+      {sub === "rules" && canViewRules ? (
         <div className="fleet-rules">
+          {canManageRules ? (
           <section className="fleet-dash-card fleet-rules-editor">
             <h3>
               <IcoRules /> {editId ? "Edit rule" : "New rule"}
@@ -281,10 +314,13 @@ export function FleetLiveAlertsPanel({
                 <span>Scope</span>
                 <select
                   value={draftScope}
-                  onChange={(e) => setDraftScope(e.target.value as "all" | "group")}
+                  onChange={(e) =>
+                    setDraftScope(e.target.value as "all" | "group" | "devices")
+                  }
                 >
                   <option value="all">All devices</option>
                   <option value="group">Device group</option>
+                  <option value="devices">Selected devices</option>
                 </select>
               </label>
               {draftScope === "group" ? (
@@ -300,6 +336,26 @@ export function FleetLiveAlertsPanel({
                   </select>
                 </label>
               ) : null}
+              {draftScope === "devices" ? (
+                <label className="fleet-cc-field fleet-rules-devices">
+                  <span>Devices ({draftDeviceIds.length})</span>
+                  <select
+                    multiple
+                    value={draftDeviceIds}
+                    onChange={(e) =>
+                      setDraftDeviceIds(
+                        Array.from(e.target.selectedOptions).map((o) => o.value),
+                      )
+                    }
+                  >
+                    {devices.map((d) => (
+                      <option key={d.deviceId} value={d.deviceId}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <label className="fleet-cc-field">
                 <span>Hold (minutes)</span>
                 <input
@@ -307,6 +363,16 @@ export function FleetLiveAlertsPanel({
                   min={0}
                   value={draftDurationMin}
                   onChange={(e) => setDraftDurationMin(Number(e.target.value) || 0)}
+                />
+              </label>
+              <label className="fleet-cc-field">
+                <span>Cooldown (minutes)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={draftCooldownMin}
+                  onChange={(e) => setDraftCooldownMin(Math.max(1, Number(e.target.value) || 1))}
                 />
               </label>
             </div>
@@ -418,6 +484,11 @@ export function FleetLiveAlertsPanel({
               ) : null}
             </div>
           </section>
+          ) : (
+            <p className="muted fleet-dash-empty">
+              Rules are view-only. Your desk account needs “Fleet Live · manage rules” to edit.
+            </p>
+          )}
 
           <section className="fleet-dash-card">
             <header className="fleet-dash-card-head">
@@ -427,7 +498,9 @@ export function FleetLiveAlertsPanel({
               <em className="fleet-dash-pill">{rules.length}</em>
             </header>
             {rules.length === 0 ? (
-              <p className="muted fleet-dash-empty">No rules yet. Create one above.</p>
+              <p className="muted fleet-dash-empty">
+                {canManageRules ? "No rules yet. Create one above." : "No rules configured."}
+              </p>
             ) : (
               <ul className="fleet-rules-list">
                 {rules.map((r) => (
@@ -436,7 +509,11 @@ export function FleetLiveAlertsPanel({
                       <strong>{r.name}</strong>
                       <span className="fleet-rules-flags muted">
                         <span className={`fleet-sev is-${r.severity}`}>{r.severity}</span>
-                        <span className="fleet-dash-pill">{r.scopeKind}</span>
+                        <span className="fleet-dash-pill">
+                          {r.scopeKind === "devices"
+                            ? `${r.scopeDeviceIds?.length || 0} devices`
+                            : r.scopeKind}
+                        </span>
                         {!r.enabled ? <span className="fleet-sev is-off">off</span> : null}
                         {r.notifyEmail ? (
                           <span title="Email">
@@ -456,35 +533,41 @@ export function FleetLiveAlertsPanel({
                         {r.formula.durationSec
                           ? ` · hold ${Math.round(r.formula.durationSec / 60)}m`
                           : ""}
+                        {r.cooldownSec ? ` · cd ${Math.round(r.cooldownSec / 60)}m` : ""}
                       </div>
                     </div>
-                    <div className="fleet-rules-row-actions">
-                      <button type="button" className="fleet-cc-icon-btn" onClick={() => startEdit(r)}>
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="fleet-cc-icon-btn"
-                        onClick={() =>
-                          void saveAlertRule({ ...r, name: r.name, formula: r.formula, enabled: !r.enabled }, r.id)
-                            .then(reloadRules)
-                            .catch((err: Error) => setError(err.message))
-                        }
-                      >
-                        {r.enabled ? "Disable" : "Enable"}
-                      </button>
-                      <button
-                        type="button"
-                        className="fleet-cc-icon-btn"
-                        onClick={() =>
-                          void deleteAlertRule(r.id)
-                            .then(reloadRules)
-                            .catch((err: Error) => setError(err.message))
-                        }
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    {canManageRules ? (
+                      <div className="fleet-rules-row-actions">
+                        <button type="button" className="fleet-cc-icon-btn" onClick={() => startEdit(r)}>
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="fleet-cc-icon-btn"
+                          onClick={() =>
+                            void saveAlertRule(
+                              { ...r, name: r.name, formula: r.formula, enabled: !r.enabled },
+                              r.id,
+                            )
+                              .then(reloadRules)
+                              .catch((err: Error) => setError(err.message))
+                          }
+                        >
+                          {r.enabled ? "Disable" : "Enable"}
+                        </button>
+                        <button
+                          type="button"
+                          className="fleet-cc-icon-btn"
+                          onClick={() =>
+                            void deleteAlertRule(r.id)
+                              .then(reloadRules)
+                              .catch((err: Error) => setError(err.message))
+                          }
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -611,7 +694,7 @@ export function FleetLiveAlertsPanel({
                         <div className="muted">{e.detail}</div>
                         <div className="muted">{formatWhen(e.firedAt, timezone)}</div>
                       </div>
-                      {e.status === "open" ? (
+                      {e.status === "open" && canAckAlerts ? (
                         <button
                           type="button"
                           className="btn btn-primary btn-compact"

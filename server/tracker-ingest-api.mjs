@@ -7,7 +7,9 @@
  *
  * Also accepts X-Device-Token header.
  */
-import { databaseUrlConfigured } from "./db.mjs";
+import { databaseUrlConfigured, dbQuery } from "./db.mjs";
+import { mergeEntitlements } from "./entitlements.mjs";
+import { fieldFromRequest } from "./field-auth.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 import { resolveDbTenant } from "./maintenance-api.mjs";
 import {
@@ -61,6 +63,32 @@ function bearerToken(req) {
   if (m) return m[1].trim();
   const x = String(req.headers["x-device-token"] || "").trim();
   return x || "";
+}
+
+/** Desk session optional: unsigned embed/tenant-key OK; signed-in users need the privilege. */
+async function requireDeskPrivilege(req, res, tenantId, privilege) {
+  const user = await fieldFromRequest(req);
+  if (!user) return true;
+  if (String(user.tenantId) !== String(tenantId)) {
+    json(res, 403, { error: "Signed-in user does not match this tenant" });
+    return false;
+  }
+  if (!user.privileges || user.privileges[privilege] !== true) {
+    json(res, 403, { error: `Missing desk privilege: ${privilege}` });
+    return false;
+  }
+  return true;
+}
+
+/** Feature flags default on; only block when explicitly false. */
+async function requireFleetFeature(res, tenantId, featureKey) {
+  const row = await dbQuery(`SELECT entitlements FROM tenants WHERE id = $1`, [tenantId]);
+  const ent = mergeEntitlements(row.rows[0]?.entitlements);
+  if (ent.features?.[featureKey] === false) {
+    json(res, 403, { error: `Feature disabled: ${featureKey}` });
+    return false;
+  }
+  return true;
 }
 
 export async function handleTrackerIngestRequest(req, res) {
@@ -260,6 +288,7 @@ export async function handleTrackerIngestRequest(req, res) {
         json(res, 401, { error: "Tenant key required (k=)" });
         return true;
       }
+      if (!(await requireFleetFeature(res, dbTenant.id, "fleetLiveRules"))) return true;
       const { listFleetAlertRules } = await import("./fleet-alert-rules.mjs");
       json(res, 200, { rules: await listFleetAlertRules(dbTenant.id) });
       return true;
@@ -276,6 +305,8 @@ export async function handleTrackerIngestRequest(req, res) {
         json(res, 401, { error: "Tenant key required (k=)" });
         return true;
       }
+      if (!(await requireFleetFeature(res, dbTenant.id, "fleetLiveRules"))) return true;
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageFleetRules"))) return true;
       const raw = await readBody(req);
       const body = raw.trim() ? JSON.parse(raw) : {};
       const { createFleetAlertRule } = await import("./fleet-alert-rules.mjs");
@@ -296,6 +327,8 @@ export async function handleTrackerIngestRequest(req, res) {
         json(res, 401, { error: "Tenant key required (k=)" });
         return true;
       }
+      if (!(await requireFleetFeature(res, dbTenant.id, "fleetLiveRules"))) return true;
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageFleetRules"))) return true;
       const raw = await readBody(req);
       const body = raw.trim() ? JSON.parse(raw) : {};
       const { updateFleetAlertRule } = await import("./fleet-alert-rules.mjs");
@@ -314,6 +347,8 @@ export async function handleTrackerIngestRequest(req, res) {
         json(res, 401, { error: "Tenant key required (k=)" });
         return true;
       }
+      if (!(await requireFleetFeature(res, dbTenant.id, "fleetLiveRules"))) return true;
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageFleetRules"))) return true;
       const { deleteFleetAlertRule } = await import("./fleet-alert-rules.mjs");
       const ok = await deleteFleetAlertRule(dbTenant.id, ruleMatch[1]);
       if (!ok) {
@@ -354,6 +389,7 @@ export async function handleTrackerIngestRequest(req, res) {
         json(res, 401, { error: "Tenant key required (k=)" });
         return true;
       }
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "ackFleetAlerts"))) return true;
       const { ackFleetAlertEvent } = await import("./fleet-alert-rules.mjs");
       const ok = await ackFleetAlertEvent(dbTenant.id, ackMatch[1]);
       json(res, ok ? 200 : 404, ok ? { ok: true } : { error: "Event not found" });
