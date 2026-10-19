@@ -692,8 +692,13 @@ export function FleetLiveDashboardPanel({
                   const inAlert = Boolean(meta && alertDeviceIds.has(meta.deviceId));
                   const inMaint = row.id > 0 && maintUserIds.has(row.id);
                   const age = ageLabel(row.lastMs, now);
-                  const ageTone =
-                    cls === "stale" || cls === "noFix" ? "bad" : age === "just now" || age.endsWith("s ago") || /^\d+m ago$/.test(age) ? "ok" : "warn";
+                  const tone = ageTone(row.lastMs, now);
+                  const ageClass =
+                    cls === "stale" || cls === "noFix" || tone === "stale"
+                      ? "bad"
+                      : tone === "live"
+                        ? "ok"
+                        : "warn";
                   return (
                     <tr key={row.id}>
                       <td>
@@ -714,7 +719,7 @@ export function FleetLiveDashboardPanel({
                         </span>
                       </td>
                       <td>
-                        <span className={`fleet-dash-age is-${ageTone}`}>{age}</span>
+                        <span className={`fleet-dash-age is-${ageClass}`}>{age}</span>
                       </td>
                       <td>
                         {meta?.fuelLevel != null ? `${Math.round(meta.fuelLevel)}%` : "—"}
