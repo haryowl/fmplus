@@ -29,6 +29,8 @@ import {
   type TrackerLastFix,
 } from "../lib/trackerDevices";
 import { BrandMark } from "../components/BrandMark";
+import { FleetLiveDashboardPanel } from "../components/FleetLiveDashboardPanel";
+import { FleetLiveRankingPanel } from "../components/FleetLiveRankingPanel";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
 
@@ -332,6 +334,17 @@ export default function FleetLive() {
     return set;
   }, [alerts]);
 
+  const alertCounts24h = useMemo(() => {
+    const recent = Date.now() - 24 * 60 * 60 * 1000;
+    const map: Record<string, number> = {};
+    for (const a of alerts) {
+      const t = Date.parse(a.recordedAt);
+      if (!Number.isFinite(t) || t < recent) continue;
+      map[a.deviceId] = (map[a.deviceId] || 0) + 1;
+    }
+    return map;
+  }, [alerts]);
+
   const counts = useMemo(() => countLiveByClass(rows, now), [rows, now]);
 
   const kpi = useMemo(() => {
@@ -371,9 +384,26 @@ export default function FleetLive() {
     return { ...counts, alert, maintenance, all: rows.length };
   }, [rows, counts, fixMeta, alertDeviceIds, maintUserIds]);
 
+  const matchesQuery = useCallback(
+    (row: LastStatusRow) => {
+      const q = queryText.trim().toLowerCase();
+      if (!q) return true;
+      const meta = fixMeta[row.id];
+      return (
+        row.name.toLowerCase().includes(q) ||
+        row.username.toLowerCase().includes(q) ||
+        String(row.id).includes(q) ||
+        (meta?.imei && meta.imei.toLowerCase().includes(q)) ||
+        (meta?.groups && meta.groups.toLowerCase().includes(q))
+      );
+    },
+    [queryText, fixMeta],
+  );
+
+  const searchFiltered = useMemo(() => rows.filter(matchesQuery), [rows, matchesQuery]);
+
   const filtered = useMemo(() => {
-    const q = queryText.trim().toLowerCase();
-    return rows.filter((row) => {
+    return searchFiltered.filter((row) => {
       const meta = fixMeta[row.id];
       const cls = classifyLiveRow(row, now);
       if (
@@ -389,16 +419,9 @@ export default function FleetLive() {
       } else if (listTab === "maintenance") {
         if (!(row.id > 0 && maintUserIds.has(row.id))) return false;
       }
-      if (!q) return true;
-      return (
-        row.name.toLowerCase().includes(q) ||
-        row.username.toLowerCase().includes(q) ||
-        String(row.id).includes(q) ||
-        (meta?.imei && meta.imei.toLowerCase().includes(q)) ||
-        (meta?.groups && meta.groups.toLowerCase().includes(q))
-      );
+      return true;
     });
-  }, [rows, listTab, now, queryText, fixMeta, alertDeviceIds, maintUserIds]);
+  }, [searchFiltered, listTab, now, fixMeta, alertDeviceIds, maintUserIds]);
 
   const mapped = useMemo(
     () => filtered.filter((r) => r.lat !== null && r.lon !== null),
@@ -412,6 +435,11 @@ export default function FleetLive() {
   const fitKey = `${groupId}|${listTab}|${queryText}|${reload}`;
 
   const onSelect = useCallback((id: number | null) => setSelectedId(id), []);
+
+  const openLiveVehicle = useCallback((id: number) => {
+    setSelectedId(id);
+    setSection("live");
+  }, []);
 
   const statusBreakdown = useMemo(
     () =>
@@ -562,7 +590,39 @@ export default function FleetLive() {
         <div className="banner error fleet-cc-banner">{bootError || fetchError}</div>
       )}
 
-      {section !== "live" && fleetModuleOk ? (
+      {section === "dashboard" && fleetModuleOk ? (
+        <FleetLiveDashboardPanel
+          rows={searchFiltered}
+          fixMeta={fixMeta}
+          alerts={alerts}
+          maintUserIds={maintUserIds}
+          alertDeviceIds={alertDeviceIds}
+          now={now}
+          loading={loading}
+          onOpenLive={openLiveVehicle}
+          maintenanceHref={maintenanceHref(
+            typeof window !== "undefined" ? window.location.search : "",
+          )}
+        />
+      ) : null}
+
+      {section === "ranking" && fleetModuleOk ? (
+        <FleetLiveRankingPanel
+          rows={searchFiltered}
+          fixMeta={fixMeta}
+          alertDeviceIds={alertDeviceIds}
+          alertCounts={alertCounts24h}
+          maintUserIds={maintUserIds}
+          now={now}
+          loading={loading}
+          onOpenLive={openLiveVehicle}
+        />
+      ) : null}
+
+      {section !== "live" &&
+      section !== "dashboard" &&
+      section !== "ranking" &&
+      fleetModuleOk ? (
         <div className="fleet-cc-section-soon">
           <h2>{sectionLabel}</h2>
           <p className="muted">

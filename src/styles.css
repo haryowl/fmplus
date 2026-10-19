@@ -3906,6 +3906,275 @@ html.onesheet-root body {
   background: var(--surface, #fff);
 }
 
+/* Fleet Live Dashboard / Ranking (P1b) */
+.fleet-dash,
+.fleet-rank {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fleet-dash-head,
+.fleet-rank-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fleet-dash-head h2,
+.fleet-rank-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.fleet-dash-head p,
+.fleet-rank-head p {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+}
+
+.fleet-dash-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.fleet-dash-kpi {
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #d8dee4);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fleet-dash-kpi > span {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft, #5a6570);
+}
+
+.fleet-dash-kpi > strong {
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.fleet-dash-kpi > em {
+  font-style: normal;
+  font-size: 0.7rem;
+}
+
+.fleet-dash-kpi.is-util > strong {
+  color: var(--gps, #0b6b62);
+}
+
+.fleet-dash-kpi.is-alert > strong {
+  color: #b91c1c;
+}
+
+.fleet-dash-kpi.is-maint > strong {
+  color: #1d4ed8;
+}
+
+.fleet-dash-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .fleet-dash-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fleet-dash-card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #d8dee4);
+  border-radius: 10px;
+  padding: 10px 12px 12px;
+  min-width: 0;
+}
+
+.fleet-dash-card h3 {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+}
+
+.fleet-dash-empty {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.fleet-dash-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.fleet-dash-bars li {
+  display: grid;
+  grid-template-columns: 88px 1fr 56px;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.75rem;
+}
+
+.fleet-dash-bar-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fleet-dash-bar-label i,
+.fleet-dash-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.fleet-dash-status-dot {
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.fleet-dash-bar-track {
+  height: 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink, #17212b) 8%, transparent);
+  overflow: hidden;
+}
+
+.fleet-dash-bar-track > span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.fleet-dash-bars em {
+  font-style: normal;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft, #5a6570);
+}
+
+.fleet-dash-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fleet-dash-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line, #eef1f4);
+  font-size: 0.8rem;
+}
+
+.fleet-dash-list li:last-child {
+  border-bottom: 0;
+}
+
+.fleet-dash-attn-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.fleet-dash-attn-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+
+.fleet-dash-table-wrap,
+.fleet-rank-table-wrap {
+  overflow: auto;
+  max-height: min(52vh, 560px);
+}
+
+.fleet-dash-table,
+.fleet-rank-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.fleet-dash-table th,
+.fleet-dash-table td,
+.fleet-rank-table th,
+.fleet-rank-table td {
+  text-align: left;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line, #eef1f4);
+  white-space: nowrap;
+}
+
+.fleet-dash-table th,
+.fleet-rank-table th {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft, #5a6570);
+  position: sticky;
+  top: 0;
+  background: var(--surface, #fff);
+  z-index: 1;
+}
+
+.fleet-rank-table tr.is-alert td {
+  background: color-mix(in srgb, #fee2e2 55%, transparent);
+}
+
+.fleet-rank-pos {
+  width: 2.2rem;
+  color: var(--ink-soft, #5a6570);
+  font-variant-numeric: tabular-nums;
+}
+
+.fleet-rank-sort {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.fleet-rank-sort:hover {
+  color: var(--accent, #0b6b62);
+}
+
+.fleet-rank-alert-n {
+  color: #b91c1c;
+}
+
+.fleet-rank-table .fleet-cc-chip {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 @media (max-width: 800px) {
   .fleet-cc-shell:not(.is-nav-collapsed) {
     grid-template-columns: 1fr;
