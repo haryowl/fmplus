@@ -152,8 +152,7 @@ func TestExtractIO16_GenerationType(t *testing.T) {
 
 func TestParseAVL_Codec8E_OfficialISO6709GPS(t *testing.T) {
 	// Official wiki example: https://wiki.teltonika-gps.com/view/ISO6709
-	// Longitude 0F0E51DB → 25.2596699°, Latitude 20A9B6DA wait 209AB6DA → 54.7010266°
-	// Number of Data is 1 byte (01), not uint16 — that was the lat/lon misalignment bug.
+	// GPS Element Lon→Lat; Angle=heading°; AVL 387 ISO6709 cross-check.
 	payload := mustHex(t, ""+
 		"8e"+"01"+
 		"0000016f7f183310"+"00"+
@@ -176,18 +175,63 @@ func TestParseAVL_Codec8E_OfficialISO6709GPS(t *testing.T) {
 	if math.Abs(f.Lat-54.7010266) > 1e-6 {
 		t.Errorf("lat=%v want ~54.7010266", f.Lat)
 	}
-	if f.Altitude == nil || *f.Altitude != 136 {
+	if f.Altitude == nil || math.Abs(*f.Altitude-136) > 0.01 {
 		t.Errorf("alt=%v want 136", f.Altitude)
 	}
 	if f.Heading == nil || *f.Heading != 358 {
-		t.Errorf("angle=%v want 358", f.Heading)
+		t.Errorf("angle/heading=%v want 358", f.Heading)
 	}
 	if f.Satellites == nil || *f.Satellites != 8 {
 		t.Errorf("sats=%v want 8", f.Satellites)
 	}
+	if f.RawAttrs["gps.angle"] != 358.0 {
+		t.Errorf("gps.angle=%v", f.RawAttrs["gps.angle"])
+	}
+	if f.RawAttrs["gps.source"] != "iso6709" {
+		t.Errorf("gps.source=%v want iso6709", f.RawAttrs["gps.source"])
+	}
 	io, _ := f.RawAttrs["io"].(map[string]any)
 	if io["239"] != int64(1) && io["239"] != 1 {
 		t.Fatalf("ignition io=%v", io)
+	}
+}
+
+func TestParseAVL_Codec8_OfficialExtVoltage(t *testing.T) {
+	// Codec wiki example: AVL 66 value 5E0F = 24079 × 0.001 = 24.079 V
+	payload := mustHex(t, ""+
+		"08"+"01"+
+		"0000016b40d8ea30"+"01"+
+		"00000000"+"00000000"+
+		"0000"+"0000"+"00"+"0000"+
+		"01"+"05"+
+		"02"+"15"+"03"+"01"+"01"+
+		"01"+"42"+"5e0f"+
+		"01"+"f1"+"0000601a"+
+		"01"+"4e"+"0000000000000000"+
+		"01")
+	n, fixes := parseAVL(payload)
+	if n != 1 || len(fixes) != 1 {
+		t.Fatalf("n=%d fixes=%d", n, len(fixes))
+	}
+	f := fixes[0]
+	if f.RawAttrs["voltage.ext"] != 24.079 {
+		t.Fatalf("voltage.ext=%v want 24.079", f.RawAttrs["voltage.ext"])
+	}
+	if f.Heading == nil || *f.Heading != 0 {
+		t.Fatalf("heading=%v want GPS Angle 0", f.Heading)
+	}
+}
+
+func TestParseTeltonikaISO6709(t *testing.T) {
+	lat, lon, alt, ok := parseTeltonikaISO6709("+547010.2667+0252596.7000+000.136/")
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if math.Abs(lat-54.70102667) > 1e-6 || math.Abs(lon-25.25967) > 1e-5 {
+		t.Fatalf("lat=%v lon=%v", lat, lon)
+	}
+	if math.Abs(alt-136) > 0.01 {
+		t.Fatalf("alt=%v want 136 m", alt)
 	}
 }
 
@@ -270,9 +314,13 @@ func TestPromoteTeltonikaScalars_DallasTemp(t *testing.T) {
 
 func TestPromoteTeltonikaScalars_Battery(t *testing.T) {
 	raw := map[string]any{}
-	promoteTeltonikaScalars(raw, map[string]any{"113": 87, "114": 3900})
-	if raw["battery.level"] != 87.0 || raw["battery.voltage"] != 3.9 {
+	// AVL 113 = Battery Level %; AVL 67 = Battery Voltage mV (not AVL 114).
+	promoteTeltonikaScalars(raw, map[string]any{"113": 87, "67": 3900})
+	if raw["battery.level"] != 87.0 || raw["voltage.batt"] != 3.9 {
 		t.Fatalf("%v", raw)
+	}
+	if _, ok := raw["battery.voltage"]; ok {
+		t.Fatalf("AVL 114 must not invent battery.voltage: %v", raw)
 	}
 }
 
@@ -286,11 +334,13 @@ func TestPromoteTeltonikaScalars_SpeedTripOdo(t *testing.T) {
 
 func TestPromoteTeltonikaScalars_Odometer389(t *testing.T) {
 	raw := map[string]any{}
-	promoteTeltonikaScalars(raw, map[string]any{"389": 12345000})
+	// AVL 389 OBD OEM Total Mileage is already km (FMB140 wiki).
+	promoteTeltonikaScalars(raw, map[string]any{"389": 12345})
 	if raw["odometer"] != 12345.0 {
 		t.Fatalf("389=%v", raw)
 	}
-	promoteTeltonikaScalars(raw, map[string]any{"16": 99, "389": 12345000})
+	// AVL 16 = metres → km (wins over 389 when both present)
+	promoteTeltonikaScalars(raw, map[string]any{"16": 99000, "389": 12345})
 	if raw["odometer"] != 99.0 {
 		t.Fatalf("16 wins=%v", raw)
 	}
@@ -299,7 +349,8 @@ func TestPromoteTeltonikaScalars_Odometer389(t *testing.T) {
 func TestPromoteTeltonikaScalars_GreenDriving(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{"253": 3, "243": 12, "15": 85})
-	if raw["green_driving.value"] != 3.0 || raw["green_driving.duration"] != 12.0 || raw["eco.score"] != 85.0 {
+	// AVL 15 Eco Score ×0.01
+	if raw["green_driving.value"] != 3.0 || raw["green_driving.duration"] != 12.0 || raw["eco.score"] != 0.85 {
 		t.Fatalf("%v", raw)
 	}
 }
@@ -324,7 +375,8 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 	raw := map[string]any{}
 	// Wiki: 12 ×0.001 L, 13 ×0.01 l/100km; AVL 48 not remapped (OBD fuel %)
 	promoteTeltonikaScalars(raw, map[string]any{"89": 75, "239": 1, "16": 12345, "12": 10000, "13": 250, "48": 55})
-	if raw["fuel.level"] != 75.0 || raw["status.ignition"] != true || raw["odometer"] != 12345.0 {
+	// AVL 16 metres → km
+	if raw["fuel.level"] != 75.0 || raw["status.ignition"] != true || raw["odometer"] != 12.345 {
 		t.Fatalf("%v", raw)
 	}
 	if raw["fuel.used"] != 10.0 || raw["fuel.rate"] != 2.5 {
@@ -426,19 +478,26 @@ func TestPromoteTeltonikaScalars_SleepIdling(t *testing.T) {
 
 func TestPromoteTeltonikaScalars_DinDout(t *testing.T) {
 	raw := map[string]any{}
-	promoteTeltonikaScalars(raw, map[string]any{"1": 1, "2": 0, "179": 1, "180": 0, "380": 1, "447": 0})
+	promoteTeltonikaScalars(raw, map[string]any{"1": 1, "2": 0, "179": 1, "180": 0, "380": 1})
 	if raw["status.din1"] != true || raw["status.din2"] != false {
 		t.Fatalf("din=%v", raw)
 	}
 	if raw["status.dout1"] != true || raw["status.dout2"] != false {
 		t.Fatalf("dout=%v", raw)
 	}
-	if raw["status.dout3"] != true || raw["status.dout4"] != false {
-		t.Fatalf("dout34=%v", raw)
+	if raw["status.dout3"] != true {
+		t.Fatalf("dout3=%v", raw)
 	}
+	if _, ok := raw["status.dout4"]; ok {
+		t.Fatalf("AVL 447 not on FMB140 wiki: %v", raw)
+	}
+	// AVL 5 = Pulse Counter Din2, not status.din5
 	promoteTeltonikaScalars(raw, map[string]any{"5": 1, "8": 1})
-	if raw["status.din5"] != true || raw["status.din8"] != true {
-		t.Fatalf("din58=%v", raw)
+	if raw["pulse.din2"] != 1.0 {
+		t.Fatalf("pulse=%v", raw)
+	}
+	if _, ok := raw["status.din5"]; ok {
+		t.Fatalf("AVL 5 must not be status.din5: %v", raw)
 	}
 }
 

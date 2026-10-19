@@ -3,6 +3,8 @@ package teltonika
 import (
 	"encoding/binary"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
@@ -69,9 +71,11 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 		speed := int(binary.BigEndian.Uint16(payload[off : off+2]))
 		off += 2
 
+		// Official: signed int32 / 10_000_000 (two's complement).
 		lon := float64(lonRaw) / 10_000_000
 		lat := float64(latRaw) / 10_000_000
 		spd := float64(speed)
+		// Angle = degrees from north (0–360), unsigned — this is course/heading.
 		hdg := float64(angle)
 		altF := float64(alt)
 		io := map[string]any{}
@@ -106,11 +110,38 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 			"io":           io,
 			"event_io":     eventID,
 			"record_index": i,
+			// Official GPS Element fields (Codec wiki) — scaled for Live values.
+			"gps.longitude":  lon,
+			"gps.latitude":   lat,
+			"gps.altitude":   altF,
+			"gps.angle":      hdg, // degrees from north = heading
+			"gps.satellites": sats,
+			"gps.speed":      spd, // km/h from satellites
 		}
 		if genType != nil {
 			raw["generation_type"] = genType
 		}
-		// Promote common AVL ids into typed hints when present
+		// Flatten io.* for Device Manager remap vendor keys (raw AVL units).
+		for k, v := range io {
+			raw["io."+k] = v
+		}
+		promoteTeltonikaScalars(raw, io)
+		flattenEventAlarm(raw)
+		flattenIOAlarms(raw, io)
+
+		// AVL 387 ISO6709 (Codec 8E): official string form is +lat+lon+alt/.
+		// When present, prefer it over the GPS Element (wiki ISO6709 page).
+		if iso, ok := io["387"].(string); ok {
+			if ilat, ilon, ialt, ok := parseTeltonikaISO6709(iso); ok {
+				lat, lon = ilat, ilon
+				altF = ialt
+				raw["gps.latitude"] = lat
+				raw["gps.longitude"] = lon
+				raw["gps.altitude"] = altF
+				raw["gps.source"] = "iso6709"
+			}
+		}
+
 		fix := store.Fix{
 			Lat: lat, Lon: lon, RecordedAt: time.UnixMilli(tsMs).UTC(),
 			Speed: &spd, Heading: &hdg, Altitude: &altF, Satellites: &sats,
@@ -120,27 +151,69 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 			b := asIOBool(v)
 			fix.Ignition = &b
 		} else if v, ok := io["1"]; ok {
-			// Some configs use DIN1 as ignition
 			b := asIOBool(v)
 			fix.Ignition = &b
 		}
+		// AVL 16 Total Odometer = metres (FMB wiki) → km; AVL 389 OEM mileage already km.
 		if v, ok := io["16"]; ok {
-			f := asIOFloat(v)
-			fix.Odometer = &f
-		} else if v, ok := io["389"]; ok {
 			f := asIOFloat(v) / 1000.0
 			fix.Odometer = &f
+		} else if v, ok := io["389"]; ok {
+			f := asIOFloat(v)
+			fix.Odometer = &f
 		}
-		// Flatten io.* for Device Manager remap vendor keys.
-		for k, v := range io {
-			raw["io."+k] = v
-		}
-		promoteTeltonikaScalars(raw, io)
-		flattenEventAlarm(raw)
-		flattenIOAlarms(raw, io)
 		fixes = append(fixes, fix)
 	}
 	return n, fixes
+}
+
+// parseTeltonikaISO6709 decodes AVL 387 per https://wiki.teltonika-gps.com/view/ISO6709
+// Example: +547010.2667+0252596.7000+000.136/ → lat 54.70102667°, lon 25.25967°, alt 136 m
+// Lat/lon are ±deg×10000; altitude in the wiki example is kilometres (0.136 km = 136 m)
+// matching GPS Element altitude 0x0088.
+func parseTeltonikaISO6709(s string) (lat, lon, alt float64, ok bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, 0, 0, false
+	}
+	s = strings.TrimSuffix(s, "/")
+	parts := splitISO6709Parts(s)
+	if len(parts) < 2 {
+		return 0, 0, 0, false
+	}
+	latRaw, err1 := strconv.ParseFloat(parts[0], 64)
+	lonRaw, err2 := strconv.ParseFloat(parts[1], 64)
+	if err1 != nil || err2 != nil {
+		return 0, 0, 0, false
+	}
+	lat = latRaw / 10000.0
+	lon = lonRaw / 10000.0
+	if len(parts) >= 3 {
+		if a, err := strconv.ParseFloat(parts[2], 64); err == nil {
+			// Wiki sample +000.136/ ↔ GPS Element 136 m ⇒ kilometres in the string.
+			alt = a * 1000.0
+		}
+	}
+	if lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		return 0, 0, 0, false
+	}
+	return lat, lon, alt, true
+}
+
+func splitISO6709Parts(s string) []string {
+	// Keep leading sign on each component: +547010.2667+0252596.7000+000.136
+	var parts []string
+	start := 0
+	for i := 1; i < len(s); i++ {
+		if s[i] == '+' || s[i] == '-' {
+			parts = append(parts, s[start:i])
+			start = i
+		}
+	}
+	if start < len(s) {
+		parts = append(parts, s[start:])
+	}
+	return parts
 }
 
 // promoteTeltonikaScalars lifts common FMB AVL IDs onto remappable raw keys (partial set).
@@ -600,12 +673,13 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 		raw["speed.io"] = asIOFloat(v)
 	}
 	if v, ok := io["199"]; ok {
-		raw["trip.odometer"] = asIOFloat(v)
+		raw["trip.odometer"] = asIOFloat(v) // metres (trip)
 	}
+	// AVL 16 Total Odometer = metres → km; AVL 389 OBD OEM Total Mileage already km.
 	if v, ok := io["16"]; ok {
-		raw["odometer"] = asIOFloat(v)
-	} else if v, ok := io["389"]; ok {
 		raw["odometer"] = asIOFloat(v) / 1000.0
+	} else if v, ok := io["389"]; ok {
+		raw["odometer"] = asIOFloat(v)
 	}
 	if v, ok := io["89"]; ok {
 		raw["fuel.level"] = asIOFloat(v)
@@ -731,10 +805,18 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	} else if v, ok := io["1"]; ok {
 		raw["status.ignition"] = asIOBool(v)
 	}
-	for i, id := range []string{"1", "2", "3", "4", "5", "6", "7", "8"} {
+	// FMB140 wiki: AVL 1/2/3 = Digital Input 1/2/3 only.
+	// AVL 4/5 = Pulse Counter Din1/Din2; AVL 6 = Analog Input 2 — not DINs.
+	for i, id := range []string{"1", "2", "3"} {
 		if v, ok := io[id]; ok {
 			raw[fmt.Sprintf("status.din%d", i+1)] = asIOBool(v)
 		}
+	}
+	if v, ok := io["4"]; ok {
+		raw["pulse.din1"] = asIOFloat(v)
+	}
+	if v, ok := io["5"]; ok {
+		raw["pulse.din2"] = asIOFloat(v)
 	}
 	if v, ok := io["179"]; ok {
 		raw["status.dout1"] = asIOBool(v)
@@ -745,9 +827,7 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["380"]; ok {
 		raw["status.dout3"] = asIOBool(v)
 	}
-	if v, ok := io["447"]; ok {
-		raw["status.dout4"] = asIOBool(v)
-	}
+	// AVL 447 is not on FMB140 Data Sending Parameters wiki — do not invent dout4.
 	if v, ok := io["200"]; ok {
 		raw["sleep.mode"] = asIOFloat(v)
 		raw["status.sleeping"] = asIOFloat(v) != 0
@@ -808,11 +888,10 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 		raw["ble.battery4"] = asIOFloat(v)
 	}
 	if v, ok := io["113"]; ok {
-		raw["battery.level"] = asIOFloat(v)
+		raw["battery.level"] = asIOFloat(v) // AVL 113 Battery Level %
 	}
-	if v, ok := io["114"]; ok {
-		raw["battery.voltage"] = asIOFloat(v) / 1000.0 // mV → V when millivolt
-	}
+	// AVL 114 on FMB140 wiki is NOT battery voltage (ALLCAN Engine Load on some pages).
+	// Battery voltage is AVL 67 → voltage.batt above.
 	// Green driving / eco metrics (AVL IDs — config dependent).
 	if v, ok := io["253"]; ok {
 		raw["green_driving.value"] = asIOFloat(v)
@@ -820,8 +899,9 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	if v, ok := io["243"]; ok {
 		raw["green_driving.duration"] = asIOFloat(v)
 	}
+	// AVL 15 Eco Score ×0.01 (FMB140 wiki).
 	if v, ok := io["15"]; ok {
-		raw["eco.score"] = asIOFloat(v)
+		raw["eco.score"] = asIOFloat(v) / 100.0
 	}
 	// Axis X/Y/Z: AVL 17/18/19, signed mG (FMB wiki).
 	if v, ok := io["17"]; ok {

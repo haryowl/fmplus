@@ -521,13 +521,13 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
     const emitted = new Set();
 
     const typed = [
-      ["lat", d.lat != null ? Number(d.lat) : null],
-      ["lon", d.lon != null ? Number(d.lon) : null],
-      ["speed", d.speed != null ? Number(d.speed) : null],
-      ["heading", d.heading != null ? Number(d.heading) : null],
-      ["ignition", d.ignition == null ? null : Boolean(d.ignition)],
+      ["lat", d.lat != null ? Number(d.lat) : null, "Latitude (°)", "position"],
+      ["lon", d.lon != null ? Number(d.lon) : null, "Longitude (°)", "position"],
+      ["speed", d.speed != null ? Number(d.speed) : null, "Speed (km/h)", "position"],
+      ["heading", d.heading != null ? Number(d.heading) : null, "Heading / GPS Angle (°)", "position"],
+      ["ignition", d.ignition == null ? null : Boolean(d.ignition), "Ignition", "avl"],
     ];
-    for (const [paramId, value] of typed) {
+    for (const [paramId, value, fallbackLabel, category] of typed) {
       if (value === null) continue;
       const def = defById.get(paramId);
       emitted.add(paramId);
@@ -537,8 +537,8 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
         label,
         protocol,
         paramId,
-        paramLabel: def?.label || paramId,
-        category: def?.category || "position",
+        paramLabel: def?.label || fallbackLabel || paramId,
+        category: def?.category || category || "position",
         value: formatParamValue(value),
         source: "typed",
         updatedAt,
