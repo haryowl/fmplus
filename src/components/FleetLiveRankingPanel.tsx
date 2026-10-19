@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { formatKm, formatSpeed } from "../lib/format";
-import { ageLabel, type LastStatusRow } from "../lib/lastStatus";
+import { ageLabel, ageTone, type LastStatusRow } from "../lib/lastStatus";
 import {
   classifyLiveRow,
   LIVE_OPS_COLORS,
@@ -13,6 +13,7 @@ import {
   IcoFuel,
   IcoHistory,
   IcoOdo,
+  IcoRank,
   IcoSortAsc,
   IcoSortDesc,
   IcoSpeed,
@@ -105,6 +106,20 @@ export function FleetLiveRankingPanel({
     return items;
   }, [rows, fixMeta, alertCounts, alertDeviceIds, maintUserIds, now, sortKey, sortDir]);
 
+  const leaders = useMemo(() => {
+    let topOdo = ranked[0] || null;
+    let topSpeed = ranked[0] || null;
+    let topAlerts = ranked[0] || null;
+    for (const item of ranked) {
+      if ((item.odo ?? -1) > (topOdo?.odo ?? -1)) topOdo = item;
+      if ((item.row.speedKmh ?? -1) > (topSpeed?.row.speedKmh ?? -1)) topSpeed = item;
+      if (item.alerts > (topAlerts?.alerts ?? -1)) topAlerts = item;
+    }
+    return { topOdo, topSpeed, topAlerts };
+  }, [ranked]);
+
+  const podium = ranked.slice(0, 3);
+
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -124,8 +139,97 @@ export function FleetLiveRankingPanel({
       <FleetLiveSectionHead
         section="ranking"
         title="Ranking"
-        subtitle={loading ? "Updating…" : "Leaderboard from live last-status"}
+        subtitle={
+          <>
+            Leaderboard from live last-status
+            <span className="fleet-trips-live-pill">LIVE</span>
+          </>
+        }
       />
+
+      <div className="fleet-rank-kpis">
+        <article className="fleet-dash-kpi">
+          <header>
+            <span className="fleet-dash-kpi-ico is-odo">
+              <IcoOdo />
+            </span>
+            <em className="fleet-dash-pill">#1 odo</em>
+          </header>
+          <span className="fleet-dash-kpi-label">Distance</span>
+          <strong>
+            {leaders.topOdo?.odo != null ? formatKm(leaders.topOdo.odo) : "—"}
+          </strong>
+          <p className="muted">{leaders.topOdo?.row.name || "—"}</p>
+        </article>
+        <article className="fleet-dash-kpi is-util">
+          <header>
+            <span className="fleet-dash-kpi-ico is-util">
+              <IcoSpeed />
+            </span>
+            <em className="fleet-dash-pill is-ok">Fastest</em>
+          </header>
+          <span className="fleet-dash-kpi-label">Speed</span>
+          <strong>
+            {leaders.topSpeed?.row.speedKmh != null
+              ? formatSpeed(leaders.topSpeed.row.speedKmh)
+              : "—"}
+            <em className="fleet-rank-unit"> km/h</em>
+          </strong>
+          <p className="muted">{leaders.topSpeed?.row.name || "—"}</p>
+        </article>
+        <article className="fleet-dash-kpi is-alert">
+          <header>
+            <span className="fleet-dash-kpi-ico is-alert">
+              <IcoAlerts />
+            </span>
+            <em className="fleet-dash-pill is-live">24h</em>
+          </header>
+          <span className="fleet-dash-kpi-label">Alerts</span>
+          <strong>{leaders.topAlerts?.alerts ?? 0}</strong>
+          <p className="muted">{leaders.topAlerts?.row.name || "—"}</p>
+        </article>
+        <article className="fleet-dash-kpi">
+          <header>
+            <span className="fleet-dash-kpi-ico">
+              <IcoRank />
+            </span>
+            <em className="fleet-dash-pill">{ranked.length} units</em>
+          </header>
+          <span className="fleet-dash-kpi-label">Sorted</span>
+          <strong>{sortKey}</strong>
+          <p className="muted">{sortDir === "asc" ? "ascending" : "descending"}</p>
+        </article>
+      </div>
+
+      {podium.length > 0 ? (
+        <div className="fleet-rank-podium" aria-label="Top 3">
+          {podium.map((item, idx) => (
+            <button
+              key={item.row.id}
+              type="button"
+              className={`fleet-rank-podium-card is-p${idx + 1}`}
+              onClick={() => onOpenLive(item.row.id)}
+            >
+              <span className="fleet-rank-medal">#{idx + 1}</span>
+              <strong>{item.row.name}</strong>
+              <span
+                className="fleet-dash-status-pill"
+                style={{
+                  color: LIVE_OPS_COLORS[item.cls],
+                  background: `color-mix(in srgb, ${LIVE_OPS_COLORS[item.cls]} 14%, transparent)`,
+                }}
+              >
+                {LIVE_OPS_LABELS[item.cls]}
+              </span>
+              <span className="muted">
+                {item.odo != null ? `${formatKm(item.odo)} km` : "—"}
+                {" · "}
+                {item.row.speedKmh == null ? "—" : `${formatSpeed(item.row.speedKmh)} km/h`}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="fleet-rank-table-wrap fleet-dash-card">
         <table className="fleet-rank-table">
@@ -144,7 +248,7 @@ export function FleetLiveRankingPanel({
                   title="Status"
                   onClick={() => toggleSort("status")}
                 >
-                  ● {sortIcon("status")}
+                  Status {sortIcon("status")}
                 </button>
               </th>
               <th>
@@ -207,43 +311,64 @@ export function FleetLiveRankingPanel({
                 </td>
               </tr>
             ) : (
-              ranked.map((item, idx) => (
-                <tr key={item.row.id} className={item.inAlert ? "is-alert" : ""}>
-                  <td className="fleet-rank-pos">{idx + 1}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn-link"
-                      onClick={() => onOpenLive(item.row.id)}
-                    >
-                      {item.row.name}
-                    </button>
-                    {item.inMaint ? (
-                      <span className="fleet-cc-chip is-maint" title="Maintenance">
-                        <IcoWrench />
+              ranked.map((item, idx) => {
+                const tone = ageTone(item.row.lastMs, now);
+                const ageClass =
+                  item.cls === "stale" || item.cls === "noFix" || tone === "stale"
+                    ? "bad"
+                    : tone === "live"
+                      ? "ok"
+                      : "warn";
+                return (
+                  <tr key={item.row.id} className={item.inAlert ? "is-alert" : ""}>
+                    <td className="fleet-rank-pos">{idx + 1}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="fleet-dash-vehicle"
+                        onClick={() => onOpenLive(item.row.id)}
+                      >
+                        <span
+                          className="fleet-dash-status-dot"
+                          style={{ background: LIVE_OPS_COLORS[item.cls] }}
+                        />
+                        {item.row.name}
+                      </button>
+                      {item.inMaint ? (
+                        <span className="fleet-cc-chip is-maint" title="Maintenance">
+                          <IcoWrench />
+                        </span>
+                      ) : null}
+                    </td>
+                    <td>
+                      <span
+                        className="fleet-dash-status-pill"
+                        style={{
+                          color: LIVE_OPS_COLORS[item.cls],
+                          background: `color-mix(in srgb, ${LIVE_OPS_COLORS[item.cls]} 14%, transparent)`,
+                        }}
+                      >
+                        {LIVE_OPS_LABELS[item.cls]}
                       </span>
-                    ) : null}
-                  </td>
-                  <td>
-                    <span
-                      className="fleet-dash-status-dot"
-                      title={LIVE_OPS_LABELS[item.cls]}
-                      style={{ background: LIVE_OPS_COLORS[item.cls] }}
-                    />
-                  </td>
-                  <td>
-                    {item.row.speedKmh == null ? "—" : formatSpeed(item.row.speedKmh)}
-                  </td>
-                  <td>{item.odo != null ? formatKm(item.odo) : "—"}</td>
-                  <td>{item.fuel != null ? `${Math.round(item.fuel)}%` : "—"}</td>
-                  <td>
-                    <strong className={item.alerts > 0 ? "fleet-rank-alert-n" : ""}>
-                      {item.alerts}
-                    </strong>
-                  </td>
-                  <td>{ageLabel(item.row.lastMs, now)}</td>
-                </tr>
-              ))
+                    </td>
+                    <td>
+                      {item.row.speedKmh == null ? "—" : `${formatSpeed(item.row.speedKmh)}`}
+                    </td>
+                    <td>{item.odo != null ? formatKm(item.odo) : "—"}</td>
+                    <td>{item.fuel != null ? `${Math.round(item.fuel)}%` : "—"}</td>
+                    <td>
+                      <strong className={item.alerts > 0 ? "fleet-rank-alert-n" : ""}>
+                        {item.alerts}
+                      </strong>
+                    </td>
+                    <td>
+                      <span className={`fleet-dash-age is-${ageClass}`}>
+                        {ageLabel(item.row.lastMs, now)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

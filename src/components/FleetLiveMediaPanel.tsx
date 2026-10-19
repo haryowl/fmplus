@@ -144,29 +144,40 @@ export function FleetLiveMediaPanel({
         }
       />
 
-      <div className="fleet-ico-tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "picture"}
-          title="Pictures"
-          className={tab === "picture" ? "is-active" : ""}
-          onClick={() => setTab("picture")}
-        >
-          <IcoPicture />
-          <span>Pics</span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "video"}
-          title="Video"
-          className={tab === "video" ? "is-active" : ""}
-          onClick={() => setTab("video")}
-        >
-          <IcoVideo />
-          <span>Video</span>
-        </button>
+      <div className="fleet-media-toolbar">
+        <div className="fleet-ico-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "picture"}
+            title="Pictures"
+            className={tab === "picture" ? "is-active" : ""}
+            onClick={() => setTab("picture")}
+          >
+            <IcoPicture />
+            <span>Pics</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "video"}
+            title="Video"
+            className={tab === "video" ? "is-active" : ""}
+            onClick={() => setTab("video")}
+          >
+            <IcoVideo />
+            <span>Video</span>
+          </button>
+        </div>
+        <div className="fleet-sec-summary fleet-media-summary">
+          <span title="Items">
+            <IcoMedia /> <strong>{events.length}</strong>
+          </span>
+          <span title="Camera-capable">
+            <IcoDevice /> <strong>{capable ?? "—"}</strong>
+          </span>
+          <span className="muted">{date}</span>
+        </div>
       </div>
 
       {error ? <div className="banner error fleet-cc-banner">{error}</div> : null}
@@ -188,6 +199,9 @@ export function FleetLiveMediaPanel({
                     ) : (
                       <IcoPicture />
                     )}
+                    <span className={`fleet-media-kind is-${ev.mediaKind}`}>
+                      {ev.mediaKind === "video" ? <IcoVideo /> : <IcoPicture />}
+                    </span>
                   </div>
                   <div className="fleet-media-meta">
                     <strong>{ev.deviceLabel || ev.imei || ev.deviceId.slice(0, 8)}</strong>

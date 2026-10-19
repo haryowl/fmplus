@@ -15,6 +15,7 @@ import {
   IcoCalendar,
   IcoDevice,
   IcoFix,
+  IcoHistory,
   IcoIgnition,
   IcoOdo,
   IcoSpeed,
@@ -41,6 +42,8 @@ type TimelineItem =
       ms: number;
       event: SafetyEvent;
     };
+
+type Filter = "all" | "fix" | "alert";
 
 type Props = {
   devices: FleetTripDeviceOption[];
@@ -99,6 +102,8 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
   const [alerts, setAlerts] = useState<SafetyEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [focusMs, setFocusMs] = useState<number | null>(null);
 
   useEffect(() => {
     if (!deviceId && devices[0]?.deviceId) setDeviceId(devices[0].deviceId);
@@ -113,6 +118,7 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
     const ac = new AbortController();
     setLoading(true);
     setError("");
+    setFocusMs(null);
     Promise.all([
       fetchTrackerDeviceDay({ deviceId, date, tzOffset: timezone }, ac.signal),
       fetchDeviceSafety(deviceId, ac.signal).catch(() => [] as SafetyEvent[]),
@@ -164,6 +170,32 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
     return items;
   }, [points, alerts]);
 
+  const visible = useMemo(
+    () => timeline.filter((item) => filter === "all" || item.kind === filter),
+    [timeline, filter],
+  );
+
+  const focusPath = useMemo(() => {
+    if (focusMs == null || slim.length < 2) return mapPath;
+    const idx = slim.findIndex((p) => Date.parse(p.recordedAt) <= focusMs);
+    if (idx < 0) return mapPath;
+    const from = Math.max(0, idx - 8);
+    const to = Math.min(slim.length, idx + 9);
+    return slim.slice(from, to).map((p) => [p.lat, p.lon] as [number, number]);
+  }, [focusMs, slim, mapPath]);
+
+  const avgSpeed = useMemo(() => {
+    let sum = 0;
+    let n = 0;
+    for (const p of points) {
+      if (p.speed != null && Number.isFinite(p.speed)) {
+        sum += p.speed;
+        n += 1;
+      }
+    }
+    return n ? sum / n : null;
+  }, [points]);
+
   return (
     <div className="fleet-sec fleet-hist">
       <FleetLiveSectionHead
@@ -197,77 +229,148 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
 
       {error ? <div className="banner error fleet-cc-banner">{error}</div> : null}
 
-      <div className="fleet-sec-summary">
-        <span title="GPS fixes">
-          <IcoFix /> <strong>{points.length}</strong>
-        </span>
-        <span title="Alerts">
-          <IcoAlerts /> <strong>{alerts.length}</strong>
-        </span>
-        <span className="muted">{date}</span>
+      <div className="fleet-trips-kpis" role="group" aria-label="Day totals">
+        <div className="fleet-trips-kpi is-focus">
+          <span className="fleet-trips-kpi-ico">
+            <IcoFix />
+          </span>
+          <div>
+            <strong>{points.length}</strong>
+            <em>Fixes</em>
+            <span className="muted">gps samples</span>
+          </div>
+        </div>
+        <div className="fleet-trips-kpi">
+          <span className="fleet-trips-kpi-ico">
+            <IcoAlerts />
+          </span>
+          <div>
+            <strong>{alerts.length}</strong>
+            <em>Alerts</em>
+            <span className="muted">on {date}</span>
+          </div>
+        </div>
+        <div className="fleet-trips-kpi">
+          <span className="fleet-trips-kpi-ico">
+            <IcoSpeed />
+          </span>
+          <div>
+            <strong>{avgSpeed != null ? formatSpeed(avgSpeed) : "—"}</strong>
+            <em>Avg speed</em>
+            <span className="muted">km/h</span>
+          </div>
+        </div>
+        <div className="fleet-trips-kpi">
+          <span className="fleet-trips-kpi-ico">
+            <IcoHistory />
+          </span>
+          <div>
+            <strong>{visible.length}</strong>
+            <em>Shown</em>
+            <span className="muted">{filter}</span>
+          </div>
+        </div>
       </div>
 
       <div className="fleet-trips-body">
         <div className="fleet-hist-timeline-pane">
-          {timeline.length === 0 ? (
+          <header className="fleet-trips-list-head">
+            <strong>
+              Timeline <span className="muted">· {visible.length}</span>
+            </strong>
+            <div className="fleet-ico-tabs" role="tablist">
+              {(
+                [
+                  { id: "all" as const, label: "All" },
+                  { id: "fix" as const, label: "Fixes" },
+                  { id: "alert" as const, label: "Alerts" },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  className={filter === tab.id ? "is-active" : ""}
+                  aria-selected={filter === tab.id}
+                  onClick={() => setFilter(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </header>
+
+          {visible.length === 0 ? (
             <p className="muted fleet-dash-empty">
-              {loading ? "Loading…" : "No history for this device/day."}
+              {loading ? "Loading…" : "No history for this filter."}
             </p>
           ) : (
             <ul className="fleet-hist-timeline">
-              {timeline.map((item) =>
+              {visible.map((item) =>
                 item.kind === "alert" ? (
-                  <li key={item.id} className="is-alert">
-                    <time>{formatStamp(item.ms, timezone)}</time>
-                    <div className="fleet-hist-row">
-                      <span className="fleet-hist-kind is-alert" title="Alert">
-                        <IcoAlerts />
-                      </span>
-                      <div>
-                        <strong>{alarmLabel(item.event.alarmType)}</strong>
-                        <span className="muted"> · L{item.event.alarmLevel}</span>
+                  <li key={item.id} className={`is-alert${focusMs === item.ms ? " is-focus" : ""}`}>
+                    <button
+                      type="button"
+                      className="fleet-hist-item"
+                      onClick={() => setFocusMs(item.ms)}
+                    >
+                      <time>{formatStamp(item.ms, timezone)}</time>
+                      <div className="fleet-hist-row">
+                        <span className="fleet-hist-kind is-alert" title="Alert">
+                          <IcoAlerts />
+                        </span>
+                        <div>
+                          <strong>{alarmLabel(item.event.alarmType)}</strong>
+                          <span className="muted"> · L{item.event.alarmLevel}</span>
+                        </div>
                       </div>
-                    </div>
+                    </button>
                   </li>
                 ) : (
-                  <li key={item.id}>
-                    <time>{formatStamp(item.ms, timezone)}</time>
-                    <div className="fleet-hist-row">
-                      <span className="fleet-hist-kind" title="Fix">
-                        <IcoFix />
-                      </span>
-                      <div>
-                        <strong>
-                          {item.point.speed != null ? (
-                            <>
-                              <IcoSpeed /> {formatSpeed(item.point.speed)}
-                            </>
-                          ) : (
-                            "Fix"
-                          )}
-                        </strong>
-                        <span className="muted fleet-hist-detail">
-                          {item.point.lat.toFixed(5)}, {item.point.lon.toFixed(5)}
-                          {item.point.odometerKm != null ? (
-                            <>
-                              {" · "}
-                              <IcoOdo /> {formatKm(item.point.odometerKm)}
-                            </>
-                          ) : null}
-                          {item.point.ignition === true ? (
-                            <>
-                              {" · "}
-                              <IcoIgnition /> on
-                            </>
-                          ) : item.point.ignition === false ? (
-                            <>
-                              {" · "}
-                              <IcoIgnition /> off
-                            </>
-                          ) : null}
+                  <li key={item.id} className={focusMs === item.ms ? "is-focus" : ""}>
+                    <button
+                      type="button"
+                      className="fleet-hist-item"
+                      onClick={() => setFocusMs(item.ms)}
+                    >
+                      <time>{formatStamp(item.ms, timezone)}</time>
+                      <div className="fleet-hist-row">
+                        <span className="fleet-hist-kind" title="Fix">
+                          <IcoFix />
                         </span>
+                        <div>
+                          <strong>
+                            {item.point.speed != null ? (
+                              <>
+                                <IcoSpeed /> {formatSpeed(item.point.speed)} km/h
+                              </>
+                            ) : (
+                              "Fix"
+                            )}
+                          </strong>
+                          <span className="muted fleet-hist-detail">
+                            {item.point.lat.toFixed(5)}, {item.point.lon.toFixed(5)}
+                            {item.point.odometerKm != null ? (
+                              <>
+                                {" · "}
+                                <IcoOdo /> {formatKm(item.point.odometerKm)}
+                              </>
+                            ) : null}
+                            {item.point.ignition === true ? (
+                              <>
+                                {" · "}
+                                <IcoIgnition /> on
+                              </>
+                            ) : item.point.ignition === false ? (
+                              <>
+                                {" · "}
+                                <IcoIgnition /> off
+                              </>
+                            ) : null}
+                          </span>
+                        </div>
                       </div>
-                    </div>
+                    </button>
                   </li>
                 ),
               )}
@@ -275,7 +378,7 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
           )}
         </div>
         <div className="fleet-trips-map-pane">
-          <FleetDayTrailMap path={mapPath} />
+          <FleetDayTrailMap path={focusPath} />
         </div>
       </div>
     </div>

@@ -4812,6 +4812,80 @@ html.onesheet-root body {
 }
 
 .fleet-dash-table-wrap,
+.fleet-rank-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .fleet-rank-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.fleet-rank-unit {
+  font-style: normal;
+  font-size: 0.72rem;
+  font-weight: 550;
+  color: var(--ink-faint, #6d8794);
+  margin-left: 2px;
+}
+
+.fleet-rank-podium {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .fleet-rank-podium {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fleet-rank-podium-card {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  border: 1px solid var(--line, #d5e0e6);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #fff);
+  padding: 12px 14px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  box-shadow: var(--shadow, 0 1px 0 rgba(14, 46, 58, 0.06));
+}
+
+.fleet-rank-podium-card:hover {
+  border-color: color-mix(in srgb, var(--accent, #0f766e) 40%, transparent);
+}
+
+.fleet-rank-podium-card.is-p1 {
+  background: linear-gradient(180deg, color-mix(in srgb, #eab308 16%, #fff), #fff);
+  border-color: color-mix(in srgb, #eab308 35%, transparent);
+}
+
+.fleet-rank-podium-card.is-p2 {
+  background: linear-gradient(180deg, color-mix(in srgb, #94a3b8 14%, #fff), #fff);
+}
+
+.fleet-rank-podium-card.is-p3 {
+  background: linear-gradient(180deg, color-mix(in srgb, #c2410c 12%, #fff), #fff);
+}
+
+.fleet-rank-medal {
+  display: inline-flex;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 750;
+  background: var(--ink, #0f2a33);
+  color: #fff;
+}
+
 .fleet-rank-table-wrap {
   overflow: auto;
   max-height: min(52vh, 560px);
@@ -5348,28 +5422,46 @@ html.onesheet-root body {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: grid;
+  gap: 6px;
 }
 
 .fleet-hist-timeline li {
-  display: grid;
-  grid-template-columns: 4.5rem 1fr;
-  gap: 8px;
-  padding: 6px 4px;
-  border-bottom: 1px solid var(--line, #eef1f4);
+  border: 1px solid var(--line, #e8edf1);
+  border-radius: 10px;
+  background: var(--surface-2, #f6fbfa);
   font-size: 0.78rem;
-}
-
-.fleet-hist-timeline li:last-child {
-  border-bottom: 0;
+  overflow: hidden;
 }
 
 .fleet-hist-timeline li.is-alert {
+  border-color: color-mix(in srgb, var(--danger, #dc2626) 28%, transparent);
   background: color-mix(in srgb, #fee2e2 45%, transparent);
+}
+
+.fleet-hist-timeline li.is-focus {
+  border-color: color-mix(in srgb, var(--accent, #0f766e) 45%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #0f766e) 16%, transparent);
+}
+
+.fleet-hist-item {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 8px 10px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
 }
 
 .fleet-hist-timeline time {
   font-variant-numeric: tabular-nums;
   color: var(--ink-soft, #5a6570);
+  font-weight: 650;
 }
 
 /* Fleet Live Media / Alerts */
@@ -5379,6 +5471,48 @@ html.onesheet-root body {
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+}
+
+.fleet-media-toolbar,
+.fleet-alerts-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fleet-media-summary {
+  margin: 0;
+  padding: 2px;
+}
+
+.fleet-media-kind {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface, #fff) 92%, transparent);
+  color: var(--ink-soft, #3e5966);
+  font-size: 0.85rem;
+  box-shadow: 0 2px 8px rgba(15, 42, 51, 0.12);
+}
+
+.fleet-media-kind.is-video {
+  color: #1d4ed8;
+}
+
+.fleet-alerts-card {
+  align-items: center !important;
+  padding: 10px 8px !important;
+  border-radius: 10px;
+  margin-bottom: 4px;
+  background: var(--surface-2, #f6fbfa);
+  border: 1px solid var(--line, #eef1f4) !important;
 }
 
 .fleet-media-tabs {
@@ -5439,6 +5573,7 @@ html.onesheet-root body {
 }
 
 .fleet-media-thumb {
+  position: relative;
   aspect-ratio: 4 / 3;
   border-radius: 6px;
   background: color-mix(in srgb, var(--ink, #17212b) 8%, transparent);

@@ -489,53 +489,71 @@ export function FleetLiveAlertsPanel({
         </div>
       ) : (
         <>
-          <div className="fleet-trips-filters">
-            <label className="fleet-cc-field fleet-cc-field-ico">
-              <span>
-                <IcoDevice /> Device
+          <div className="fleet-alerts-toolbar">
+            <div className="fleet-trips-filters">
+              <label className="fleet-cc-field fleet-cc-field-ico">
+                <span>
+                  <IcoDevice /> Device
+                </span>
+                <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+                  <option value="">All devices</option>
+                  {devices.map((d) => (
+                    <option key={d.deviceId} value={d.deviceId}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="fleet-cc-field fleet-cc-field-ico">
+                <span>
+                  <IcoCalendar /> From
+                </span>
+                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              </label>
+              <label className="fleet-cc-field fleet-cc-field-ico">
+                <span>
+                  <IcoCalendar /> To
+                </span>
+                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </label>
+              <label className="fleet-cc-field fleet-cc-field-ico">
+                <span>
+                  <IcoAlerts /> Level
+                </span>
+                <select
+                  value={String(minLevel)}
+                  onChange={(e) => setMinLevel(Number(e.target.value) || 0)}
+                >
+                  <option value="0">All</option>
+                  <option value="1">≥ 1</option>
+                  <option value="2">≥ 2</option>
+                  <option value="3">≥ 3</option>
+                </select>
+              </label>
+            </div>
+            <div className="fleet-sec-summary">
+              <span title="Safety events">
+                <IcoAlerts /> <strong>{filteredSafety.length}</strong>
               </span>
-              <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
-                <option value="">All devices</option>
-                {devices.map((d) => (
-                  <option key={d.deviceId} value={d.deviceId}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="fleet-cc-field fleet-cc-field-ico">
-              <span>
-                <IcoCalendar /> From
+              <span title="Rule fires">
+                <IcoRules /> <strong>{ruleEvents.length}</strong>
               </span>
-              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-            </label>
-            <label className="fleet-cc-field fleet-cc-field-ico">
-              <span>
-                <IcoCalendar /> To
+              <span title="Open rules">
+                <em className="fleet-dash-pill is-ok">
+                  {ruleEvents.filter((e) => e.status === "open").length} open
+                </em>
               </span>
-              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-            </label>
-            <label className="fleet-cc-field fleet-cc-field-ico">
-              <span>
-                <IcoAlerts /> Level
-              </span>
-              <select
-                value={String(minLevel)}
-                onChange={(e) => setMinLevel(Number(e.target.value) || 0)}
-              >
-                <option value="0">All</option>
-                <option value="1">≥ 1</option>
-                <option value="2">≥ 2</option>
-                <option value="3">≥ 3</option>
-              </select>
-            </label>
+            </div>
           </div>
 
           <div className="fleet-alerts-body">
             <section className="fleet-dash-card">
-              <h3>
-                <IcoAlerts /> Safety <span className="muted">{filteredSafety.length}</span>
-              </h3>
+              <header className="fleet-dash-card-head">
+                <h3>
+                  <IcoAlerts /> Safety
+                </h3>
+                <em className="fleet-dash-pill">{filteredSafety.length}</em>
+              </header>
               {filteredSafety.length === 0 ? (
                 <p className="muted fleet-dash-empty">
                   {loading ? "Loading…" : "No safety events in this range."}
@@ -543,7 +561,7 @@ export function FleetLiveAlertsPanel({
               ) : (
                 <ul className="fleet-alerts-list">
                   {filteredSafety.map((e) => (
-                    <li key={e.id}>
+                    <li key={e.id} className="fleet-alerts-card">
                       <span
                         className={`fleet-cc-alert-lvl is-l${Math.min(3, Math.max(0, e.alarmLevel || 0))}`}
                       />
@@ -555,7 +573,7 @@ export function FleetLiveAlertsPanel({
                         </span>
                         <div className="muted">{formatWhen(e.recordedAt, timezone)}</div>
                       </div>
-                      <em className="fleet-alerts-lvl">L{e.alarmLevel || 0}</em>
+                      <em className="fleet-cc-active-pill">L{e.alarmLevel || 0}</em>
                     </li>
                   ))}
                 </ul>
@@ -563,15 +581,18 @@ export function FleetLiveAlertsPanel({
             </section>
 
             <section className="fleet-dash-card">
-              <h3>
-                <IcoRules /> Fires <span className="muted">{ruleEvents.length}</span>
-              </h3>
+              <header className="fleet-dash-card-head">
+                <h3>
+                  <IcoRules /> Rule fires
+                </h3>
+                <em className="fleet-dash-pill">{ruleEvents.length}</em>
+              </header>
               {ruleEvents.length === 0 ? (
                 <p className="muted fleet-dash-empty">No rule events yet.</p>
               ) : (
                 <ul className="fleet-alerts-list">
                   {ruleEvents.map((e) => (
-                    <li key={e.id}>
+                    <li key={e.id} className="fleet-alerts-card">
                       <span
                         className={`fleet-cc-alert-lvl is-l${
                           e.severity === "critical" ? 3 : e.severity === "warning" ? 2 : 1
@@ -589,7 +610,7 @@ export function FleetLiveAlertsPanel({
                       {e.status === "open" ? (
                         <button
                           type="button"
-                          className="fleet-cc-icon-btn"
+                          className="btn btn-primary btn-compact"
                           onClick={() =>
                             void ackRuleEvent(e.id)
                               .then(() =>
@@ -603,7 +624,7 @@ export function FleetLiveAlertsPanel({
                           Ack
                         </button>
                       ) : (
-                        <em className="fleet-alerts-lvl">{e.severity}</em>
+                        <em className={`fleet-sev is-${e.severity}`}>{e.severity}</em>
                       )}
                     </li>
                   ))}
