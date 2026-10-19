@@ -16,10 +16,8 @@ import { fullHref, tripsHref } from "../lib/routing";
 type Props = {
   rows: LastStatusRow[];
   now: number;
-  /** Bump when group/filters change so we fitBounds again. */
+  /** Bump when group/filters change so we expect a new focus target. */
   fitKey: string;
-  /** While true, defer focus — avoids fitting to the previous group's markers. */
-  loading?: boolean;
   selectedId: number | null;
   onSelect: (id: number | null) => void;
 };
@@ -85,29 +83,50 @@ function popupHtml(row: LastStatusRow, opsClass: LiveOpsClass, now: number): str
   </div>`;
 }
 
-/**
- * Incremental Leaflet map — keeps markers across polls/selection instead of
- * clearLayers() (which blanked the map under load / group switches).
- */
-function focusMapOnBounds(map: L.Map, bounds: L.LatLngExpression[]) {
-  if (!bounds.length) return;
-  map.invalidateSize({ animate: false });
-  if (bounds.length === 1) {
-    map.setView(bounds[0], 15, { animate: false });
-    return;
+/** Stable token of which devices+positions we should be zoomed to. */
+function focusToken(fitKey: string, rows: LastStatusRow[]): string {
+  const parts: string[] = [fitKey];
+  for (const row of rows) {
+    if (row.lat == null || row.lon == null) continue;
+    if (!Number.isFinite(row.lat) || !Number.isFinite(row.lon)) continue;
+    parts.push(`${row.id}:${row.lat.toFixed(5)},${row.lon.toFixed(5)}`);
   }
-  const llb = L.latLngBounds(bounds);
-  if (!llb.isValid()) return;
-  map.fitBounds(llb, { padding: [36, 36], maxZoom: 16, animate: false });
+  parts.sort();
+  return parts.join("|");
 }
 
-export function LiveOpsMap({ rows, now, fitKey, loading = false, selectedId, onSelect }: Props) {
+function focusMapOnBounds(map: L.Map, points: Array<[number, number]>) {
+  if (!points.length) return;
+  map.invalidateSize({ animate: false });
+  if (points.length === 1) {
+    map.setView(points[0], 15, { animate: false });
+  } else {
+    const llb = L.latLngBounds(points);
+    if (!llb.isValid()) return;
+    // Identical points → treat as single
+    if (llb.getNorthEast().equals(llb.getSouthWest())) {
+      map.setView(points[0], 15, { animate: false });
+    } else {
+      map.fitBounds(llb, { padding: [40, 40], maxZoom: 16, animate: false });
+    }
+  }
+  // Force tile fetch after programmatic move (updateWhenIdle can leave grey canvas).
+  map.eachLayer((layer) => {
+    const tile = layer as L.TileLayer & { redraw?: () => void };
+    if (typeof tile.redraw === "function") tile.redraw();
+  });
+}
+
+/**
+ * Incremental Leaflet map. Re-focuses whenever the set of device positions for
+ * the current fitKey changes (group switch → new ids → zoom to those vehicles).
+ */
+export function LiveOpsMap({ rows, now, fitKey, selectedId, onSelect }: Props) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
   const markersRef = useRef(new Map<number, MarkerMeta>());
-  const needFitRef = useRef(true);
-  const lastFitKeyRef = useRef(fitKey);
+  const lastFocusTokenRef = useRef("");
   const onSelectRef = useRef(onSelect);
   const nowRef = useRef(now);
   const rowsByIdRef = useRef(new Map<number, LastStatusRow>());
@@ -115,35 +134,28 @@ export function LiveOpsMap({ rows, now, fitKey, loading = false, selectedId, onS
   onSelectRef.current = onSelect;
   nowRef.current = now;
 
-  if (lastFitKeyRef.current !== fitKey) {
-    lastFitKeyRef.current = fitKey;
-    needFitRef.current = true;
-  }
-
   useEffect(() => {
     const el = elRef.current;
     if (!el || mapRef.current) return;
 
     const map = L.map(el, {
       scrollWheelZoom: true,
-      // Prefer transform-based pan; smoother under marker churn
-      preferCanvas: false,
+      fadeAnimation: false,
+      zoomAnimation: false,
     }).setView([-2.5, 118], 5);
     L.tileLayer(STREET_TILE.url, {
       ...streetTileOptions(),
-      updateWhenIdle: true,
+      updateWhenIdle: false,
+      updateWhenZooming: true,
       keepBuffer: 2,
     }).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
-    const invalidate = () => {
-      map.invalidateSize({ animate: false });
-    };
-    // Layout often settles after first paint (shell / sidenav / flex).
+    const invalidate = () => map.invalidateSize({ animate: false });
     requestAnimationFrame(invalidate);
-    const t1 = window.setTimeout(invalidate, 80);
-    const t2 = window.setTimeout(invalidate, 320);
+    const t1 = window.setTimeout(invalidate, 100);
+    const t2 = window.setTimeout(invalidate, 400);
 
     let ro: ResizeObserver | null = null;
     if (typeof ResizeObserver !== "undefined") {
@@ -169,7 +181,7 @@ export function LiveOpsMap({ rows, now, fitKey, loading = false, selectedId, onS
 
     const t = nowRef.current;
     const nextIds = new Set<number>();
-    const bounds: L.LatLngExpression[] = [];
+    const points: Array<[number, number]> = [];
     const byId = new Map<number, LastStatusRow>();
 
     for (const row of rows) {
@@ -178,7 +190,7 @@ export function LiveOpsMap({ rows, now, fitKey, loading = false, selectedId, onS
       if (!Number.isFinite(row.lat) || !Number.isFinite(row.lon)) continue;
 
       nextIds.add(row.id);
-      bounds.push([row.lat, row.lon]);
+      points.push([row.lat, row.lon]);
 
       const opsClass = classifyLiveRow(row, t);
       const selected = selectedId === row.id;
@@ -232,22 +244,22 @@ export function LiveOpsMap({ rows, now, fitKey, loading = false, selectedId, onS
       markersRef.current.delete(id);
     }
 
-    map.invalidateSize({ animate: false });
-
-    // Defer focus until the fetch for this group/filter finishes, otherwise we
-    // lock onto the previous group's coordinates and never re-fit.
-    if (loading || !needFitRef.current) return;
-    if (!bounds.length) return;
-
-    needFitRef.current = false;
-    try {
-      focusMapOnBounds(map, bounds);
-      // Second pass after layout (sidenav / flex) settles.
-      window.requestAnimationFrame(() => focusMapOnBounds(map, bounds));
-    } catch {
-      needFitRef.current = true;
+    const token = focusToken(fitKey, rows);
+    if (!points.length) {
+      lastFocusTokenRef.current = token;
+      return;
     }
-  }, [rows, fitKey, selectedId, loading]);
+    if (token === lastFocusTokenRef.current) return;
+    lastFocusTokenRef.current = token;
+
+    try {
+      focusMapOnBounds(map, points);
+      window.requestAnimationFrame(() => focusMapOnBounds(map, points));
+      window.setTimeout(() => focusMapOnBounds(map, points), 120);
+    } catch {
+      lastFocusTokenRef.current = "";
+    }
+  }, [rows, fitKey, selectedId]);
 
   return <div ref={elRef} className="live-ops-map leaflet-container" />;
 }

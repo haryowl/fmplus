@@ -324,6 +324,15 @@ export default function FleetLive() {
     [groupId],
   );
 
+  // Drop stale markers immediately on group change so the map does not fit
+  // the previous group's coordinates before the new fetch returns.
+  useEffect(() => {
+    setLoading(true);
+    setRows([]);
+    setFixMeta({});
+    setSelectedId(null);
+  }, [groupId]);
+
   useEffect(() => {
     if (!ready) return;
     void loadStatus();
@@ -724,7 +733,6 @@ export default function FleetLive() {
               rows={mapped}
               now={now}
               fitKey={fitKey}
-              loading={loading}
               selectedId={selectedId}
               onSelect={onSelect}
             />
