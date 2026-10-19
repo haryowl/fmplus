@@ -83,7 +83,7 @@ export function FleetLiveAlertsPanel({
   const [draftScope, setDraftScope] = useState<"all" | "group">("all");
   const [draftGroupId, setDraftGroupId] = useState(groupId || "");
   const [draftDurationMin, setDraftDurationMin] = useState(0);
-  const [draftCooldown, setDraftEmail] = useState(false);
+  const [draftEmail, setDraftEmail] = useState(false);
   const [draftWa, setDraftWa] = useState(false);
   const [draftConditions, setDraftConditions] = useState<AlertCondition[]>([emptyCondition()]);
   const [editId, setEditId] = useState<string | null>(null);
