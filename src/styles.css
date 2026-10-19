@@ -4534,6 +4534,98 @@ html.onesheet-root body {
   color: var(--ink-soft, #5a6570);
 }
 
+.fleet-rules {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr);
+  gap: 10px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .fleet-rules {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fleet-rules-editor h3,
+.fleet-rules-conditions h4 {
+  margin: 0 0 10px;
+}
+
+.fleet-rules-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.fleet-rules-conditions {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.fleet-rules-cond-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.6fr 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.fleet-rules-cond-row select,
+.fleet-rules-cond-row input {
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line, #d5e0e6);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-2, #f6fbfa);
+  font: inherit;
+}
+
+.fleet-rules-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.fleet-rules-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 550;
+  color: var(--ink-soft, #3e5966);
+}
+
+.fleet-rules-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.fleet-rules-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line, #eef1f4);
+  font-size: 0.82rem;
+}
+
+.fleet-rules-list li:last-child {
+  border-bottom: 0;
+}
+
+.fleet-rules-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+}
+
 @media (max-width: 800px) {
   .fleet-cc-shell:not(.is-nav-collapsed) {
     grid-template-columns: 1fr;

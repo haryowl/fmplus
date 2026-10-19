@@ -702,6 +702,27 @@ export async function ingestVehicleFix(deviceRow, fix) {
     [deviceRow.id, deviceRow.tenant_id, recordedAt.toISOString()],
   );
 
+  // Fire-and-forget rule eval (never block ingest).
+  void import("./fleet-alert-rules.mjs")
+    .then(({ evaluateRulesForDevice }) =>
+      evaluateRulesForDevice(
+        deviceRow.tenant_id,
+        deviceRow,
+        {
+          lat: coords.lat,
+          lon: coords.lon,
+          speed: Number.isFinite(speedOut) ? speedOut : null,
+          heading: Number.isFinite(headingOut) ? headingOut : null,
+          ignition: ignitionOut,
+          odometer: odometerOut,
+          recorded_at: recordedAt,
+          mapped_attrs: mappedAttrs,
+          source_protocol: protocol,
+        },
+      ),
+    )
+    .catch((err) => console.error("[fleet-alert-rules] ingest hook", err?.message || err));
+
   return {
     deviceId: deviceRow.id,
     tenantId: deviceRow.tenant_id,

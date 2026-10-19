@@ -1,18 +1,31 @@
 import { useEffect, useMemo, useState } from "react";
-import { todayKeyInOffset, addDays, zonedEndMs, zonedStartMs } from "../lib/time";
+import { addDays, todayKeyInOffset, zonedEndMs, zonedStartMs } from "../lib/time";
 import {
   alarmLabel,
   fetchFleetAlerts,
   type FleetMediaEvent,
 } from "../lib/fleetMedia";
+import {
+  ackRuleEvent,
+  deleteAlertRule,
+  fetchAlertRules,
+  fetchRuleEvents,
+  RULE_CMPS,
+  RULE_FIELDS,
+  saveAlertRule,
+  type AlertCondition,
+  type FleetAlertRule,
+  type FleetRuleEvent,
+} from "../lib/fleetAlertRules";
 import type { FleetTripDeviceOption } from "./FleetLiveTripsPanel";
+import type { TrackerDeviceGroup } from "../lib/trackerDevices";
 
 type Props = {
   devices: FleetTripDeviceOption[];
+  groups?: TrackerDeviceGroup[];
   groupId: string;
   timezone: string;
   initialDeviceId?: string;
-  onOpenLive?: (deviceId: string) => void;
 };
 
 function formatWhen(iso: string, tz: string): string {
@@ -40,8 +53,15 @@ function formatWhen(iso: string, tz: string): string {
   }
 }
 
+const emptyCondition = (): AlertCondition => ({
+  field: "speed",
+  cmp: ">",
+  value: 80,
+});
+
 export function FleetLiveAlertsPanel({
   devices,
+  groups = [],
   groupId,
   timezone,
   initialDeviceId,
@@ -51,9 +71,27 @@ export function FleetLiveAlertsPanel({
   const [dateFrom, setDateFrom] = useState(() => addDays(todayKeyInOffset(timezone), -1));
   const [dateTo, setDateTo] = useState(() => todayKeyInOffset(timezone));
   const [minLevel, setMinLevel] = useState(0);
-  const [events, setEvents] = useState<FleetMediaEvent[]>([]);
+  const [safety, setSafety] = useState<FleetMediaEvent[]>([]);
+  const [ruleEvents, setRuleEvents] = useState<FleetRuleEvent[]>([]);
+  const [rules, setRules] = useState<FleetAlertRule[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const [draftName, setDraftName] = useState("Speeding");
+  const [draftSeverity, setDraftSeverity] = useState<"info" | "warning" | "critical">("warning");
+  const [draftScope, setDraftScope] = useState<"all" | "group">("all");
+  const [draftGroupId, setDraftGroupId] = useState(groupId || "");
+  const [draftDurationMin, setDraftDurationMin] = useState(0);
+  const [draftCooldown, setDraftEmail] = useState(false);
+  const [draftWa, setDraftWa] = useState(false);
+  const [draftConditions, setDraftConditions] = useState<AlertCondition[]>([emptyCondition()]);
+  const [editId, setEditId] = useState<string | null>(null);
+
+  const reloadRules = () =>
+    fetchAlertRules()
+      .then(setRules)
+      .catch((err: Error) => setError(err.message || "Failed to load rules"));
 
   useEffect(() => {
     if (sub !== "events") return;
@@ -62,20 +100,27 @@ export function FleetLiveAlertsPanel({
     setError("");
     const from = new Date(zonedStartMs(dateFrom, timezone)).toISOString();
     const to = new Date(zonedEndMs(dateTo, timezone)).toISOString();
-    fetchFleetAlerts(
-      {
-        deviceId: deviceId || undefined,
-        groupId: groupId || undefined,
-        from,
-        to,
-        limit: 150,
-      },
-      ac.signal,
-    )
-      .then(setEvents)
+    Promise.all([
+      fetchFleetAlerts(
+        {
+          deviceId: deviceId || undefined,
+          groupId: groupId || undefined,
+          from,
+          to,
+          limit: 100,
+        },
+        ac.signal,
+      ),
+      fetchRuleEvents({ limit: 80 }, ac.signal).catch(() => [] as FleetRuleEvent[]),
+    ])
+      .then(([s, r]) => {
+        setSafety(s);
+        setRuleEvents(r);
+      })
       .catch((err: Error) => {
         if (err.name !== "AbortError") {
-          setEvents([]);
+          setSafety([]);
+          setRuleEvents([]);
           setError(err.message || "Failed to load alerts");
         }
       })
@@ -85,22 +130,82 @@ export function FleetLiveAlertsPanel({
     return () => ac.abort();
   }, [sub, deviceId, groupId, dateFrom, dateTo, timezone]);
 
-  const filtered = useMemo(
-    () => events.filter((e) => (e.alarmLevel || 0) >= minLevel),
-    [events, minLevel],
+  useEffect(() => {
+    if (sub !== "rules") return;
+    setError("");
+    void reloadRules();
+  }, [sub]);
+
+  const filteredSafety = useMemo(
+    () => safety.filter((e) => (e.alarmLevel || 0) >= minLevel),
+    [safety, minLevel],
   );
 
-  const byType = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const e of filtered) {
-      const k = e.alarmType || "unknown";
-      map.set(k, (map.get(k) || 0) + 1);
+  const startEdit = (rule: FleetAlertRule) => {
+    setEditId(rule.id);
+    setDraftName(rule.name);
+    setDraftSeverity(rule.severity);
+    setDraftScope(rule.scopeKind === "group" ? "group" : "all");
+    setDraftGroupId(rule.scopeGroupId || groupId || "");
+    setDraftDurationMin(Math.round((rule.formula.durationSec || 0) / 60));
+    setDraftEmail(rule.notifyEmail);
+    setDraftWa(rule.notifyWhatsapp);
+    setDraftConditions(
+      rule.formula.conditions.length ? rule.formula.conditions.map((c) => ({ ...c })) : [emptyCondition()],
+    );
+  };
+
+  const resetDraft = () => {
+    setEditId(null);
+    setDraftName("Speeding");
+    setDraftSeverity("warning");
+    setDraftScope("all");
+    setDraftGroupId(groupId || "");
+    setDraftDurationMin(0);
+    setDraftEmail(false);
+    setDraftWa(false);
+    setDraftConditions([emptyCondition()]);
+  };
+
+  const onSaveRule = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      await saveAlertRule(
+        {
+          name: draftName,
+          enabled: true,
+          severity: draftSeverity,
+          scopeKind: draftScope,
+          scopeGroupId: draftScope === "group" ? draftGroupId || null : null,
+          scopeDeviceIds: [],
+          formula: {
+            op: "and",
+            conditions: draftConditions.map((c) => {
+              let value: string | number | boolean = c.value;
+              if (c.field === "ignition") {
+                value = String(c.value) === "true" || c.value === true;
+              } else if (typeof c.value === "string" && c.value.trim() !== "" && !Number.isNaN(Number(c.value))) {
+                value = Number(c.value);
+              }
+              return { field: c.field, cmp: c.cmp, value };
+            }),
+            durationSec: Math.max(0, draftDurationMin) * 60,
+          },
+          notifyEmail: draftEmail,
+          notifyWhatsapp: draftWa,
+          cooldownSec: 300,
+        },
+        editId || undefined,
+      );
+      resetDraft();
+      await reloadRules();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
     }
-    return [...map.entries()]
-      .map(([type, n]) => ({ type, n }))
-      .sort((a, b) => b.n - a.n)
-      .slice(0, 8);
-  }, [filtered]);
+  };
 
   return (
     <div className="fleet-alerts">
@@ -108,7 +213,7 @@ export function FleetLiveAlertsPanel({
         <div>
           <h2>Alerts</h2>
           <p className="muted">
-            Safety events from gateway devices
+            Safety feed and cooked telematics rules
             {loading ? " · loading…" : ""}
           </p>
         </div>
@@ -134,13 +239,230 @@ export function FleetLiveAlertsPanel({
         </div>
       </header>
 
+      {error ? <div className="banner error fleet-cc-banner">{error}</div> : null}
+
       {sub === "rules" ? (
-        <div className="fleet-cc-section-soon">
-          <h3>Alert rules</h3>
-          <p className="muted">
-            Flexible formulas on mapped attrs / GPS with Email + WhatsApp notify are next (P2).
-            Events browse is available now.
-          </p>
+        <div className="fleet-rules">
+          <section className="fleet-dash-card fleet-rules-editor">
+            <h3>{editId ? "Edit rule" : "New rule"}</h3>
+            <div className="fleet-rules-grid">
+              <label className="fleet-cc-field">
+                <span>Name</span>
+                <input value={draftName} onChange={(e) => setDraftName(e.target.value)} />
+              </label>
+              <label className="fleet-cc-field">
+                <span>Severity</span>
+                <select
+                  value={draftSeverity}
+                  onChange={(e) =>
+                    setDraftSeverity(e.target.value as "info" | "warning" | "critical")
+                  }
+                >
+                  <option value="info">Info</option>
+                  <option value="warning">Warning</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </label>
+              <label className="fleet-cc-field">
+                <span>Scope</span>
+                <select
+                  value={draftScope}
+                  onChange={(e) => setDraftScope(e.target.value as "all" | "group")}
+                >
+                  <option value="all">All devices</option>
+                  <option value="group">Device group</option>
+                </select>
+              </label>
+              {draftScope === "group" ? (
+                <label className="fleet-cc-field">
+                  <span>Group</span>
+                  <select value={draftGroupId} onChange={(e) => setDraftGroupId(e.target.value)}>
+                    <option value="">Select group…</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <label className="fleet-cc-field">
+                <span>Hold (minutes)</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={draftDurationMin}
+                  onChange={(e) => setDraftDurationMin(Number(e.target.value) || 0)}
+                />
+              </label>
+            </div>
+
+            <div className="fleet-rules-conditions">
+              <h4>When all of these are true</h4>
+              {draftConditions.map((c, idx) => (
+                <div key={idx} className="fleet-rules-cond-row">
+                  <select
+                    value={c.field}
+                    onChange={(e) => {
+                      const next = [...draftConditions];
+                      next[idx] = { ...c, field: e.target.value };
+                      setDraftConditions(next);
+                    }}
+                  >
+                    {RULE_FIELDS.map((f) => (
+                      <option key={f.value} value={f.value}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={c.cmp}
+                    onChange={(e) => {
+                      const next = [...draftConditions];
+                      next[idx] = { ...c, cmp: e.target.value };
+                      setDraftConditions(next);
+                    }}
+                  >
+                    {RULE_CMPS.map((cmp) => (
+                      <option key={cmp} value={cmp}>
+                        {cmp}
+                      </option>
+                    ))}
+                  </select>
+                  {c.field === "ignition" ? (
+                    <select
+                      value={String(c.value)}
+                      onChange={(e) => {
+                        const next = [...draftConditions];
+                        next[idx] = { ...c, value: e.target.value };
+                        setDraftConditions(next);
+                      }}
+                    >
+                      <option value="true">On</option>
+                      <option value="false">Off</option>
+                    </select>
+                  ) : (
+                    <input
+                      value={String(c.value)}
+                      onChange={(e) => {
+                        const next = [...draftConditions];
+                        next[idx] = { ...c, value: e.target.value };
+                        setDraftConditions(next);
+                      }}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    className="fleet-cc-icon-btn"
+                    disabled={draftConditions.length <= 1}
+                    onClick={() =>
+                      setDraftConditions(draftConditions.filter((_, i) => i !== idx))
+                    }
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="fleet-cc-icon-btn"
+                onClick={() => setDraftConditions([...draftConditions, emptyCondition()])}
+              >
+                Add condition
+              </button>
+            </div>
+
+            <div className="fleet-rules-actions">
+              <label className="fleet-rules-check">
+                <input
+                  type="checkbox"
+                  checked={draftEmail}
+                  onChange={(e) => setDraftEmail(e.target.checked)}
+                />
+                Email notify
+              </label>
+              <label className="fleet-rules-check">
+                <input
+                  type="checkbox"
+                  checked={draftWa}
+                  onChange={(e) => setDraftWa(e.target.checked)}
+                />
+                WhatsApp notify
+              </label>
+              <button
+                type="button"
+                className="btn btn-primary btn-compact"
+                disabled={saving}
+                onClick={() => void onSaveRule()}
+              >
+                {saving ? "Saving…" : editId ? "Update rule" : "Create rule"}
+              </button>
+              {editId ? (
+                <button type="button" className="fleet-cc-icon-btn" onClick={resetDraft}>
+                  Cancel edit
+                </button>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="fleet-dash-card">
+            <h3>Rules {rules.length}</h3>
+            {rules.length === 0 ? (
+              <p className="muted fleet-dash-empty">No rules yet. Create one above.</p>
+            ) : (
+              <ul className="fleet-rules-list">
+                {rules.map((r) => (
+                  <li key={r.id}>
+                    <div>
+                      <strong>{r.name}</strong>
+                      <span className="muted">
+                        {" "}
+                        · {r.severity} · {r.scopeKind}
+                        {r.enabled ? "" : " · disabled"}
+                        {r.notifyEmail ? " · email" : ""}
+                        {r.notifyWhatsapp ? " · whatsapp" : ""}
+                      </span>
+                      <div className="muted">
+                        {r.formula.conditions
+                          .map((c) => `${c.field} ${c.cmp} ${JSON.stringify(c.value)}`)
+                          .join(" AND ")}
+                        {r.formula.durationSec
+                          ? ` · hold ${Math.round(r.formula.durationSec / 60)}m`
+                          : ""}
+                      </div>
+                    </div>
+                    <div className="fleet-rules-row-actions">
+                      <button type="button" className="fleet-cc-icon-btn" onClick={() => startEdit(r)}>
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="fleet-cc-icon-btn"
+                        onClick={() =>
+                          void saveAlertRule({ ...r, name: r.name, formula: r.formula, enabled: !r.enabled }, r.id)
+                            .then(reloadRules)
+                            .catch((err: Error) => setError(err.message))
+                        }
+                      >
+                        {r.enabled ? "Disable" : "Enable"}
+                      </button>
+                      <button
+                        type="button"
+                        className="fleet-cc-icon-btn"
+                        onClick={() =>
+                          void deleteAlertRule(r.id)
+                            .then(reloadRules)
+                            .catch((err: Error) => setError(err.message))
+                        }
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       ) : (
         <>
@@ -178,20 +500,18 @@ export function FleetLiveAlertsPanel({
             </label>
           </div>
 
-          {error ? <div className="banner error fleet-cc-banner">{error}</div> : null}
-
           <div className="fleet-alerts-body">
             <section className="fleet-dash-card">
               <h3>
-                Events <span className="muted">{filtered.length}</span>
+                Safety events <span className="muted">{filteredSafety.length}</span>
               </h3>
-              {filtered.length === 0 ? (
+              {filteredSafety.length === 0 ? (
                 <p className="muted fleet-dash-empty">
                   {loading ? "Loading…" : "No safety events in this range."}
                 </p>
               ) : (
                 <ul className="fleet-alerts-list">
-                  {filtered.map((e) => (
+                  {filteredSafety.map((e) => (
                     <li key={e.id}>
                       <span
                         className={`fleet-cc-alert-lvl is-l${Math.min(3, Math.max(0, e.alarmLevel || 0))}`}
@@ -201,8 +521,6 @@ export function FleetLiveAlertsPanel({
                         <span className="muted">
                           {" "}
                           · {e.deviceLabel || e.imei || e.deviceId.slice(0, 8)}
-                          {e.sourceProtocol ? ` · ${e.sourceProtocol}` : ""}
-                          {e.mediaKind && e.mediaKind !== "other" ? ` · ${e.mediaKind}` : ""}
                         </span>
                         <div className="muted">{formatWhen(e.recordedAt, timezone)}</div>
                       </div>
@@ -214,15 +532,48 @@ export function FleetLiveAlertsPanel({
             </section>
 
             <section className="fleet-dash-card">
-              <h3>By type</h3>
-              {byType.length === 0 ? (
-                <p className="muted fleet-dash-empty">—</p>
+              <h3>
+                Rule fires <span className="muted">{ruleEvents.length}</span>
+              </h3>
+              {ruleEvents.length === 0 ? (
+                <p className="muted fleet-dash-empty">No rule events yet.</p>
               ) : (
-                <ul className="fleet-dash-list">
-                  {byType.map((row) => (
-                    <li key={row.type}>
-                      <span>{alarmLabel(row.type)}</span>
-                      <strong>{row.n}</strong>
+                <ul className="fleet-alerts-list">
+                  {ruleEvents.map((e) => (
+                    <li key={e.id}>
+                      <span
+                        className={`fleet-cc-alert-lvl is-l${
+                          e.severity === "critical" ? 3 : e.severity === "warning" ? 2 : 1
+                        }`}
+                      />
+                      <div>
+                        <strong>{e.title}</strong>
+                        <span className="muted">
+                          {" "}
+                          · {e.deviceLabel || "device"} · {e.status}
+                        </span>
+                        <div className="muted">{e.detail}</div>
+                        <div className="muted">{formatWhen(e.firedAt, timezone)}</div>
+                      </div>
+                      {e.status === "open" ? (
+                        <button
+                          type="button"
+                          className="fleet-cc-icon-btn"
+                          onClick={() =>
+                            void ackRuleEvent(e.id)
+                              .then(() =>
+                                setRuleEvents((prev) =>
+                                  prev.map((x) => (x.id === e.id ? { ...x, status: "acked" } : x)),
+                                ),
+                              )
+                              .catch((err: Error) => setError(err.message))
+                          }
+                        >
+                          Ack
+                        </button>
+                      ) : (
+                        <em className="fleet-alerts-lvl">{e.severity}</em>
+                      )}
                     </li>
                   ))}
                 </ul>

@@ -210,8 +210,6 @@ export default function FleetLive() {
     return true;
   });
 
-  const selectedGroup = deviceGroups.find((g) => g.id === groupId);
-
   const allowedSections = useMemo(() => {
     return FLEET_SECTIONS.filter((s) => {
       if (s.feature && entitlements.features[s.feature] === false) return false;
@@ -682,6 +680,7 @@ export default function FleetLive() {
       {section === "alerts" && fleetModuleOk ? (
         <FleetLiveAlertsPanel
           devices={tripDevices}
+          groups={deviceGroups}
           groupId={groupId}
           timezone={timezone}
           initialDeviceId={initialTripDeviceId}

@@ -253,6 +253,117 @@ export async function handleTrackerIngestRequest(req, res) {
     }
   }
 
+  if (url.pathname === "/api/tracker/alert-rules" && req.method === "GET") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      const { listFleetAlertRules } = await import("./fleet-alert-rules.mjs");
+      json(res, 200, { rules: await listFleetAlertRules(dbTenant.id) });
+      return true;
+    } catch (err) {
+      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
+  if (url.pathname === "/api/tracker/alert-rules" && req.method === "POST") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      const raw = await readBody(req);
+      const body = raw.trim() ? JSON.parse(raw) : {};
+      const { createFleetAlertRule } = await import("./fleet-alert-rules.mjs");
+      const rule = await createFleetAlertRule(dbTenant.id, body);
+      json(res, 201, { rule });
+      return true;
+    } catch (err) {
+      json(res, err.status || 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
+  const ruleMatch = /^\/api\/tracker\/alert-rules\/([0-9a-f-]{36})$/i.exec(url.pathname);
+  if (ruleMatch && (req.method === "PUT" || req.method === "PATCH")) {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      const raw = await readBody(req);
+      const body = raw.trim() ? JSON.parse(raw) : {};
+      const { updateFleetAlertRule } = await import("./fleet-alert-rules.mjs");
+      const rule = await updateFleetAlertRule(dbTenant.id, ruleMatch[1], body);
+      json(res, 200, { rule });
+      return true;
+    } catch (err) {
+      json(res, err.status || 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+  if (ruleMatch && req.method === "DELETE") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      const { deleteFleetAlertRule } = await import("./fleet-alert-rules.mjs");
+      const ok = await deleteFleetAlertRule(dbTenant.id, ruleMatch[1]);
+      if (!ok) {
+        json(res, 404, { error: "Rule not found" });
+        return true;
+      }
+      json(res, 200, { ok: true });
+      return true;
+    } catch (err) {
+      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
+  if (url.pathname === "/api/tracker/alert-events" && req.method === "GET") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      const { listFleetAlertEvents } = await import("./fleet-alert-rules.mjs");
+      const status = String(url.searchParams.get("status") || "").trim() || undefined;
+      const limit = Number(url.searchParams.get("limit")) || 80;
+      json(res, 200, { events: await listFleetAlertEvents(dbTenant.id, { status, limit }) });
+      return true;
+    } catch (err) {
+      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
+  const ackMatch = /^\/api\/tracker\/alert-events\/([0-9a-f-]{36})\/ack$/i.exec(url.pathname);
+  if (ackMatch && req.method === "POST") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      const { ackFleetAlertEvent } = await import("./fleet-alert-rules.mjs");
+      const ok = await ackFleetAlertEvent(dbTenant.id, ackMatch[1]);
+      json(res, ok ? 200 : 404, ok ? { ok: true } : { error: "Event not found" });
+      return true;
+    } catch (err) {
+      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
   if (url.pathname === "/api/tracker/ingest/v1/fix" && req.method === "POST") {
     try {
       const token = bearerToken(req);
