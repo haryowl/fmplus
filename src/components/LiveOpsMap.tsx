@@ -20,6 +20,8 @@ type Props = {
   fitKey: string;
   selectedId: number | null;
   onSelect: (id: number | null) => void;
+  /** Bump (`id:n`) to pan/zoom onto a vehicle without changing fitKey. */
+  locateToken?: string;
 };
 
 type MarkerMeta = {
@@ -50,17 +52,25 @@ function vehicleLinks(userId: number): { trips: string; full: string } {
 
 const iconCache = new Map<string, L.DivIcon>();
 
-function markerIcon(opsClass: LiveOpsClass, selected: boolean): L.DivIcon {
-  const key = `${opsClass}:${selected ? 1 : 0}`;
+function markerIcon(
+  opsClass: LiveOpsClass,
+  selected: boolean,
+  label?: string,
+): L.DivIcon {
+  const safe = (label || "").slice(0, 28);
+  const key = `${opsClass}:${selected ? 1 : 0}:${safe}`;
   let icon = iconCache.get(key);
   if (icon) return icon;
   const color = LIVE_OPS_COLORS[opsClass];
   const size = selected ? 18 : 14;
+  const tag = selected
+    ? `<span class="live-ops-marker-tag">${escapeHtml(safe)} · ${escapeHtml(LIVE_OPS_LABELS[opsClass])}</span>`
+    : "";
   icon = L.divIcon({
     className: "live-ops-marker",
-    html: `<span class="live-ops-marker-dot${selected ? " selected" : ""}" style="background:${color};width:${size}px;height:${size}px"></span>`,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
+    html: `<span class="live-ops-marker-wrap">${tag}<span class="live-ops-marker-dot${selected ? " selected" : ""}" style="background:${color};width:${size}px;height:${size}px"></span></span>`,
+    iconSize: selected ? [Math.max(size, 120), size + 22] : [size, size],
+    iconAnchor: selected ? [Math.max(size, 120) / 2, size / 2 + 11] : [size / 2, size / 2],
     popupAnchor: [0, -size / 2],
   });
   iconCache.set(key, icon);
@@ -121,12 +131,13 @@ function focusMapOnBounds(map: L.Map, points: Array<[number, number]>) {
  * Incremental Leaflet map. Re-focuses whenever the set of device positions for
  * the current fitKey changes (group switch → new ids → zoom to those vehicles).
  */
-export function LiveOpsMap({ rows, now, fitKey, selectedId, onSelect }: Props) {
+export function LiveOpsMap({ rows, now, fitKey, selectedId, onSelect, locateToken }: Props) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
   const markersRef = useRef(new Map<number, MarkerMeta>());
   const lastFocusTokenRef = useRef("");
+  const lastLocateRef = useRef("");
   const onSelectRef = useRef(onSelect);
   const nowRef = useRef(now);
   const rowsByIdRef = useRef(new Map<number, LastStatusRow>());
@@ -198,9 +209,10 @@ export function LiveOpsMap({ rows, now, fitKey, selectedId, onSelect }: Props) {
 
       if (!existing) {
         const marker = L.marker([row.lat, row.lon], {
-          icon: markerIcon(opsClass, selected),
+          icon: markerIcon(opsClass, selected, row.name),
           title: row.name,
           keyboard: false,
+          zIndexOffset: selected ? 600 : 0,
         });
         marker.on("click", () => onSelectRef.current(row.id));
         marker.bindPopup(() => {
@@ -225,12 +237,15 @@ export function LiveOpsMap({ rows, now, fitKey, selectedId, onSelect }: Props) {
         existing.lat = row.lat;
         existing.lon = row.lon;
       }
-      if (existing.opsClass !== opsClass || existing.selected !== selected) {
-        existing.marker.setIcon(markerIcon(opsClass, selected));
+      if (
+        existing.opsClass !== opsClass ||
+        existing.selected !== selected ||
+        existing.name !== row.name
+      ) {
+        existing.marker.setIcon(markerIcon(opsClass, selected, row.name));
+        existing.marker.setZIndexOffset(selected ? 600 : 0);
         existing.opsClass = opsClass;
         existing.selected = selected;
-      }
-      if (existing.name !== row.name) {
         existing.marker.options.title = row.name;
         existing.name = row.name;
       }
@@ -260,6 +275,16 @@ export function LiveOpsMap({ rows, now, fitKey, selectedId, onSelect }: Props) {
       lastFocusTokenRef.current = "";
     }
   }, [rows, fitKey, selectedId]);
+
+  useEffect(() => {
+    if (!locateToken || locateToken === lastLocateRef.current) return;
+    lastLocateRef.current = locateToken;
+    const map = mapRef.current;
+    if (!map || selectedId == null) return;
+    const meta = markersRef.current.get(selectedId);
+    if (!meta) return;
+    map.setView([meta.lat, meta.lon], Math.max(map.getZoom(), 15), { animate: true });
+  }, [locateToken, selectedId]);
 
   return <div ref={elRef} className="live-ops-map leaflet-container" />;
 }

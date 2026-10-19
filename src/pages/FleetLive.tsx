@@ -11,7 +11,6 @@ import {
   type LiveOpsClass,
 } from "../lib/liveOps";
 import {
-  fullHref,
   liveHref,
   maintenanceHref,
   tripsHref,
@@ -37,6 +36,7 @@ import { FleetLiveRankingPanel } from "../components/FleetLiveRankingPanel";
 import { FleetLiveTripsPanel } from "../components/FleetLiveTripsPanel";
 import {
   IcoAlerts,
+  IcoAttention,
   IcoChevronDown,
   IcoChevronUp,
   IcoClose,
@@ -118,15 +118,6 @@ function vehicleSearch(userId: number): string {
   params.delete("userIds");
   const q = params.toString();
   return q ? `?${q}` : "";
-}
-
-function maintenanceOpenHref(userId: number): string {
-  const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
-  params.set("userId", String(userId));
-  params.set("open", "1");
-  params.delete("userIds");
-  const q = params.toString();
-  return maintenanceHref(q ? `?${q}` : "?open=1");
 }
 
 async function fetchSafetyEvents(signal?: AbortSignal): Promise<SafetyEvent[]> {
@@ -217,6 +208,7 @@ export default function FleetLive() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [queryText, setQueryText] = useState("");
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [locateToken, setLocateToken] = useState("");
   const [sideNavOpen, setSideNavOpen] = useState(() => {
     try {
       const v = localStorage.getItem("fmplus.fleetLive.sideNav");
@@ -503,6 +495,75 @@ export default function FleetLive() {
     [counts, rows.length],
   );
 
+  const onlineCount = kpi.moving + kpi.idle;
+
+  const liveInsights = useMemo(() => {
+    const chips: Array<{ id: string; tone: "idle" | "stale" | "alert"; label: string; tab: ListTab }> =
+      [];
+    if (kpi.idle > 0) {
+      chips.push({
+        id: "idle",
+        tone: "idle",
+        label: `${kpi.idle} idle unit${kpi.idle === 1 ? "" : "s"}`,
+        tab: "idle",
+      });
+    }
+    if (kpi.stale > 0) {
+      chips.push({
+        id: "stale",
+        tone: "stale",
+        label: `${kpi.stale} stale / no-fix need check`,
+        tab: "stale",
+      });
+    }
+    if (kpi.alerts > 0) {
+      chips.push({
+        id: "alert",
+        tone: "alert",
+        label: `${kpi.alerts} with alerts (24h)`,
+        tab: "alert",
+      });
+    }
+    return chips;
+  }, [kpi.idle, kpi.stale, kpi.alerts]);
+
+  const insightLine = useMemo(() => {
+    const bits: string[] = [];
+    if (kpi.idle) bits.push(`${kpi.idle} idle`);
+    if (kpi.stale) bits.push(`${kpi.stale} stale`);
+    if (kpi.alerts) bits.push(`${kpi.alerts} alert units`);
+    if (kpi.maintenance) bits.push(`${kpi.maintenance} maint`);
+    return bits.length ? bits.join(" · ") : "Fleet looks clear";
+  }, [kpi.idle, kpi.stale, kpi.alerts, kpi.maintenance]);
+
+  const mixDominant = useMemo(() => {
+    let best = statusBreakdown[0];
+    for (const row of statusBreakdown) {
+      if (row.n > (best?.n || 0)) best = row;
+    }
+    return best;
+  }, [statusBreakdown]);
+
+  const donut = useMemo(() => {
+    const r = 34;
+    const c = 2 * Math.PI * r;
+    let offset = 0;
+    const arcs = statusBreakdown
+      .filter((x) => x.n > 0)
+      .map((x) => {
+        const len = (x.pct / 100) * c;
+        const arc = {
+          cls: x.cls,
+          color: LIVE_OPS_COLORS[x.cls],
+          dash: `${len} ${c - len}`,
+          offset,
+        };
+        offset -= len;
+        return arc;
+      });
+    return { r, c, arcs };
+  }, [statusBreakdown]);
+
   return (
     <div className="app fleet-cc">
       <header className="fleet-cc-topbar">
@@ -743,46 +804,71 @@ export default function FleetLive() {
 
       {section === "live" && fleetModuleOk && canViewLive ? (
       <>
-      <section className="fleet-cc-status-strip" aria-label="Fleet status">
-        <div className="fleet-cc-stat" title="Fleet total">
-          <IcoFleet />
-          <em>{kpi.total}</em>
-          <span>Fleet</span>
+      <section className="fleet-cc-status-strip" aria-label="Fleet status filters">
+        <div className="fleet-cc-filter-row">
+          {(
+            [
+              { id: "all" as ListTab, label: "Fleet", n: kpi.total, icon: "fleet" as const },
+              { id: "moving" as ListTab, label: "Move", n: kpi.moving, icon: "dot" as const, color: LIVE_OPS_COLORS.moving },
+              { id: "idle" as ListTab, label: "Idle", n: kpi.idle, icon: "dot" as const, color: LIVE_OPS_COLORS.idle },
+              { id: "off" as ListTab, label: "Off", n: kpi.off, icon: "dot" as const, color: LIVE_OPS_COLORS.off },
+              { id: "stale" as ListTab, label: "Stale", n: kpi.stale, icon: "dot" as const, color: LIVE_OPS_COLORS.stale },
+              { id: "alert" as ListTab, label: "Alert", n: kpi.alerts, icon: "alert" as const },
+              { id: "maintenance" as ListTab, label: "Maint", n: kpi.maintenance, icon: "maint" as const },
+            ] as const
+          ).map((pill) => (
+            <button
+              key={pill.id}
+              type="button"
+              className={`fleet-cc-filter-pill${listTab === pill.id ? " is-active" : ""}${
+                "color" in pill && pill.id !== "all" ? ` is-${pill.id}` : ""
+              }`}
+              aria-pressed={listTab === pill.id}
+              title={`${pill.label}: ${pill.n}`}
+              onClick={() => setListTab(pill.id)}
+            >
+              {pill.icon === "fleet" ? (
+                <IcoFleet />
+              ) : pill.icon === "alert" ? (
+                <IcoAlerts />
+              ) : pill.icon === "maint" ? (
+                <IcoWrench />
+              ) : (
+                <span className="fleet-cc-stat-dot" style={{ background: pill.color }} />
+              )}
+              <span className="fleet-cc-filter-label">{pill.label}</span>
+              <em>{pill.n}</em>
+            </button>
+          ))}
+          <div className="fleet-cc-filter-fuel" title="Average fuel">
+            <IcoFuel />
+            <strong>{kpi.avgFuel != null ? `${kpi.avgFuel}%` : "—"}</strong>
+            <span>Fuel</span>
+          </div>
         </div>
-        <div className="fleet-cc-stat is-moving" title="Moving">
-          <span className="fleet-cc-stat-dot" style={{ background: LIVE_OPS_COLORS.moving }} />
-          <em>{kpi.moving}</em>
-          <span>Move</span>
-        </div>
-        <div className="fleet-cc-stat is-idle" title="Idle">
-          <span className="fleet-cc-stat-dot" style={{ background: LIVE_OPS_COLORS.idle }} />
-          <em>{kpi.idle}</em>
-          <span>Idle</span>
-        </div>
-        <div className="fleet-cc-stat is-off" title="Ignition off">
-          <span className="fleet-cc-stat-dot" style={{ background: LIVE_OPS_COLORS.off }} />
-          <em>{kpi.off}</em>
-          <span>Off</span>
-        </div>
-        <div className="fleet-cc-stat is-stale" title="Stale / no fix">
-          <span className="fleet-cc-stat-dot" style={{ background: LIVE_OPS_COLORS.stale }} />
-          <em>{kpi.stale}</em>
-          <span>Stale</span>
-        </div>
-        <div className="fleet-cc-stat is-alert" title="Units with alerts (24h)">
-          <IcoAlerts />
-          <em>{kpi.alerts}</em>
-          <span>Alert</span>
-        </div>
-        <div className="fleet-cc-stat is-maint" title="Open maintenance">
-          <IcoWrench />
-          <em>{kpi.maintenance}</em>
-          <span>Maint</span>
-        </div>
-        <div className="fleet-cc-stat" title="Average fuel">
-          <IcoFuel />
-          <em>{kpi.avgFuel != null ? `${kpi.avgFuel}%` : "—"}</em>
-          <span>Fuel</span>
+        <div className="fleet-cc-filter-meta">
+          <span className={`fleet-cc-telem${fetchError ? " is-bad" : " is-ok"}`}>
+            {fetchError ? "Telematics issue" : "Telematics OK"}
+          </span>
+          <button
+            type="button"
+            className="fleet-cc-filter-alert-n"
+            onClick={() => {
+              setAlertsOpen(true);
+              setListTab("alert");
+            }}
+          >
+            <IcoAlerts /> {alerts.length} alerts
+          </button>
+          {kpi.idle > 0 ? (
+            <button
+              type="button"
+              className="fleet-cc-filter-spotlight"
+              onClick={() => setListTab("idle")}
+            >
+              {kpi.idle} idle
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -795,80 +881,120 @@ export default function FleetLive() {
               fitKey={fitKey}
               selectedId={selectedId}
               onSelect={onSelect}
+              locateToken={locateToken}
             />
+            {liveInsights.length ? (
+              <div className="fleet-cc-map-insights">
+                {liveInsights.map((chip) => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    className={`fleet-cc-insight is-${chip.tone}`}
+                    onClick={() => setListTab(chip.tab)}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <div className="fleet-cc-map-legend" aria-hidden>
               {LIVE_OPS_CLASSES.map((cls) => (
                 <span key={cls}>
                   <i style={{ background: LIVE_OPS_COLORS[cls] }} />
                   {LIVE_OPS_LABELS[cls]}
+                  <em>{counts[cls]}</em>
                 </span>
               ))}
             </div>
             {selected && selectedCls ? (
               <aside className="fleet-cc-sel-card">
                 <header>
-                  <strong>{selected.name}</strong>
+                  <div>
+                    <strong>{selected.name}</strong>
+                    <p className="muted">
+                      {selectedMeta?.groups || selectedMeta?.imei || selected.username || "—"}
+                      {" · "}
+                      {ageLabel(selected.lastMs, now)}
+                    </p>
+                  </div>
                   <span
                     className={`fleet-cc-badge is-${selectedCls}`}
                     style={{ background: LIVE_OPS_COLORS[selectedCls] }}
                   >
                     {LIVE_OPS_LABELS[selectedCls]}
                   </span>
+                  <button
+                    type="button"
+                    className="fleet-cc-icon-btn fleet-cc-sel-close"
+                    onClick={() => setSelectedId(null)}
+                    title="Clear selection"
+                    aria-label="Clear selection"
+                  >
+                    <IcoClose />
+                  </button>
                 </header>
-                <dl>
+                <div className="fleet-cc-sel-metrics">
                   <div>
-                    <dt>Speed</dt>
-                    <dd>
-                      {selected.speedKmh == null ? "—" : `${formatSpeed(selected.speedKmh)} km/h`}
-                    </dd>
+                    <span>Speed</span>
+                    <strong>
+                      {selected.speedKmh == null ? "—" : `${formatSpeed(selected.speedKmh)}`}
+                      <em> km/h</em>
+                    </strong>
                   </div>
                   <div>
-                    <dt>Fuel</dt>
-                    <dd>
+                    <span>Odometer</span>
+                    <strong>
+                      {selectedMeta?.odometerKm != null ? formatKm(selectedMeta.odometerKm) : "—"}
+                      <em> km</em>
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Fuel</span>
+                    <strong>
                       {selectedMeta?.fuelLevel != null
                         ? `${Math.round(selectedMeta.fuelLevel)}%`
                         : selectedMeta?.fuelLiters != null
                           ? `${selectedMeta.fuelLiters.toFixed(1)} L`
                           : "—"}
-                    </dd>
+                    </strong>
                   </div>
-                  <div>
-                    <dt>Odometer</dt>
-                    <dd>
-                      {selectedMeta?.odometerKm != null
-                        ? `${formatKm(selectedMeta.odometerKm)} km`
-                        : "—"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Age</dt>
-                    <dd>{ageLabel(selected.lastMs, now)}</dd>
-                  </div>
-                  <div>
-                    <dt>IMEI</dt>
-                    <dd>{selectedMeta?.imei || selected.username || "—"}</dd>
-                  </div>
-                  <div>
-                    <dt>Groups</dt>
-                    <dd>{selectedMeta?.groups || "—"}</dd>
-                  </div>
-                </dl>
-                {selected.id > 0 ? (
-                  <div className="fleet-cc-sel-links">
-                    <a href={tripsHref(vehicleSearch(selected.id))}>Trips</a>
-                    <a href={fullHref(vehicleSearch(selected.id))}>Full</a>
-                    <a href={maintenanceOpenHref(selected.id)}>Maintenance</a>
-                  </div>
-                ) : null}
-                <button
-                  type="button"
-                  className="fleet-cc-icon-btn"
-                  onClick={() => setSelectedId(null)}
-                  title="Clear selection"
-                  aria-label="Clear selection"
-                >
-                  <IcoClose />
-                </button>
+                </div>
+                <div className="fleet-cc-sel-flags">
+                  {selectedMeta && alertDeviceIds.has(selectedMeta.deviceId) ? (
+                    <span className="fleet-cc-chip is-alert" title="Alert 24h">
+                      <IcoAlerts /> Alert
+                    </span>
+                  ) : null}
+                  {selected.id > 0 && maintUserIds.has(selected.id) ? (
+                    <span className="fleet-cc-chip is-maint" title="Maintenance">
+                      <IcoWrench /> Maint
+                    </span>
+                  ) : null}
+                </div>
+                <div className="fleet-cc-sel-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-compact"
+                    onClick={() => setSection("history")}
+                  >
+                    View history
+                  </button>
+                  <button
+                    type="button"
+                    className="fleet-cc-icon-btn"
+                    onClick={() =>
+                      setLocateToken(`${selected.id}:${Date.now()}`)
+                    }
+                    disabled={selected.lat == null || selected.lon == null}
+                  >
+                    Locate
+                  </button>
+                  {selected.id > 0 ? (
+                    <a className="fleet-cc-icon-btn" href={tripsHref(vehicleSearch(selected.id))}>
+                      Trips
+                    </a>
+                  ) : null}
+                </div>
               </aside>
             ) : null}
           </div>
@@ -876,11 +1002,17 @@ export default function FleetLive() {
 
         <aside className="fleet-cc-list-pane">
           <header className="fleet-cc-list-head">
-            <h2>
-              <IcoFleet /> Vehicles
-            </h2>
-            <span className="fleet-cc-list-count">
-              {filtered.length}/{rows.length}
+            <div>
+              <h2>
+                <IcoFleet /> Vehicles
+              </h2>
+              <p className="fleet-cc-list-sub muted">
+                {filtered.length}/{rows.length} shown
+                {onlineCount ? ` · ${onlineCount} online` : ""}
+              </p>
+            </div>
+            <span className="fleet-cc-list-live">
+              <span className="fleet-cc-live-dot" /> Live
             </span>
           </header>
           <div className="fleet-cc-tabs" role="tablist">
@@ -953,6 +1085,12 @@ export default function FleetLive() {
                       <span className="fleet-cc-vmain">
                         <span className="fleet-cc-vtitle">
                           <strong>{row.name}</strong>
+                          <span
+                            className="fleet-cc-vstatus"
+                            style={{ color: LIVE_OPS_COLORS[cls] }}
+                          >
+                            {LIVE_OPS_LABELS[cls]}
+                          </span>
                           {inAlert ? (
                             <span className="fleet-cc-chip is-alert" title="Alert 24h">
                               <IcoAlerts />
@@ -964,10 +1102,10 @@ export default function FleetLive() {
                             </span>
                           ) : null}
                         </span>
-                        <span className="muted">
-                          {LIVE_OPS_LABELS[cls]} · {ageLabel(row.lastMs, now)} ·{" "}
-                          {row.speedKmh == null ? "—" : `${formatSpeed(row.speedKmh)} km/h`}
-                          {meta?.odometerKm != null ? ` · ${formatKm(meta.odometerKm)} km` : ""}
+                        <span className="muted fleet-cc-vline">
+                          <span>{row.speedKmh == null ? "—" : `${formatSpeed(row.speedKmh)} km/h`}</span>
+                          <span>{ageLabel(row.lastMs, now)}</span>
+                          {fuel != null ? <span>{Math.round(fuel)}% fuel</span> : null}
                         </span>
                         {fuel != null ? (
                           <span className="fleet-cc-fuelbar" title={`Fuel ${Math.round(fuel)}%`}>
@@ -975,12 +1113,34 @@ export default function FleetLive() {
                           </span>
                         ) : null}
                       </span>
+                      <span className="fleet-cc-vodo">
+                        {meta?.odometerKm != null ? `${formatKm(meta.odometerKm)}` : "—"}
+                        <em>km</em>
+                      </span>
                     </button>
                   </li>
                 );
               })
             )}
           </ul>
+          <div className="fleet-cc-insight-card">
+            <div>
+              <strong>Fleet insight</strong>
+              <p className="muted">{insightLine}</p>
+            </div>
+            <button
+              type="button"
+              className="fleet-cc-icon-btn"
+              onClick={() => {
+                if (kpi.stale) setListTab("stale");
+                else if (kpi.alerts) setListTab("alert");
+                else if (kpi.idle) setListTab("idle");
+                else setAlertsOpen(true);
+              }}
+            >
+              Resolve
+            </button>
+          </div>
         </aside>
       </div>
 
@@ -995,7 +1155,7 @@ export default function FleetLive() {
             <IcoAlerts />
             <strong>{alerts.length}</strong>
             <span className="muted">alerts</span>
-            {!alertsOpen && kpi.moving + kpi.idle > 0 ? (
+            {!alertsOpen && onlineCount > 0 ? (
               <>
                 <span className="fleet-cc-drawer-sep" />
                 <span className="fleet-cc-stat-dot" style={{ background: LIVE_OPS_COLORS.moving }} />
@@ -1010,9 +1170,18 @@ export default function FleetLive() {
         {alertsOpen ? (
           <div className="fleet-cc-bottom">
             <div className="fleet-cc-alerts">
-              <h3>
-                <IcoAlerts /> Recent
-              </h3>
+              <header className="fleet-cc-panel-head">
+                <h3>
+                  <IcoAlerts /> Alerts <span className="muted">{alerts.length}</span>
+                </h3>
+                <button
+                  type="button"
+                  className="btn-link"
+                  onClick={() => setSection("alerts")}
+                >
+                  View all
+                </button>
+              </header>
               {alerts.length === 0 ? (
                 <p className="muted">No recent safety events.</p>
               ) : (
@@ -1027,12 +1196,12 @@ export default function FleetLive() {
                         <span className="muted">
                           {" "}
                           · {a.deviceLabel || a.imei || a.deviceId.slice(0, 8)}
-                          {a.sourceProtocol ? ` · ${a.sourceProtocol}` : ""}
                         </span>
                         <div className="muted">
                           {a.recordedAt ? new Date(a.recordedAt).toLocaleString() : "—"}
                         </div>
                       </div>
+                      <em className="fleet-cc-active-pill">Active</em>
                     </li>
                   ))}
                 </ul>
@@ -1040,25 +1209,72 @@ export default function FleetLive() {
             </div>
 
             <div className="fleet-cc-breakdown">
-              <h3>
-                <IcoUtil /> Mix
-              </h3>
-              <ul>
-                {statusBreakdown.map(({ cls, n, pct }) => (
-                  <li key={cls}>
-                    <span className="fleet-cc-break-label">
-                      <i style={{ background: LIVE_OPS_COLORS[cls] }} />
-                      {LIVE_OPS_LABELS[cls]}
-                    </span>
-                    <span className="fleet-cc-break-bar">
-                      <span style={{ width: `${pct}%`, background: LIVE_OPS_COLORS[cls] }} />
-                    </span>
-                    <em>
-                      {n} · {pct}%
-                    </em>
-                  </li>
-                ))}
-              </ul>
+              <header className="fleet-cc-panel-head">
+                <h3>
+                  <IcoUtil /> Mix &amp; utilization
+                </h3>
+                <span className="muted">Now</span>
+              </header>
+              <div className="fleet-cc-mix-grid">
+                <div className="fleet-cc-donut" aria-hidden>
+                  <svg viewBox="0 0 96 96" width="96" height="96">
+                    <circle
+                      cx="48"
+                      cy="48"
+                      r={donut.r}
+                      fill="none"
+                      stroke="var(--line, #d5e0e6)"
+                      strokeWidth="10"
+                    />
+                    {donut.arcs.map((arc) => (
+                      <circle
+                        key={arc.cls}
+                        cx="48"
+                        cy="48"
+                        r={donut.r}
+                        fill="none"
+                        stroke={arc.color}
+                        strokeWidth="10"
+                        strokeDasharray={arc.dash}
+                        strokeDashoffset={arc.offset}
+                        strokeLinecap="butt"
+                        transform="rotate(-90 48 48)"
+                      />
+                    ))}
+                  </svg>
+                  <div className="fleet-cc-donut-label">
+                    <strong>{kpi.total}</strong>
+                    <span>vehicles</span>
+                  </div>
+                </div>
+                <ul>
+                  {statusBreakdown.map(({ cls, n, pct }) => (
+                    <li key={cls}>
+                      <span className="fleet-cc-break-label">
+                        <i style={{ background: LIVE_OPS_COLORS[cls] }} />
+                        {LIVE_OPS_LABELS[cls]}
+                      </span>
+                      <span className="fleet-cc-break-bar">
+                        <span style={{ width: `${pct}%`, background: LIVE_OPS_COLORS[cls] }} />
+                      </span>
+                      <em>
+                        {n} · {pct}%
+                      </em>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {mixDominant && mixDominant.n > 0 ? (
+                <div className={`fleet-cc-util-callout is-${mixDominant.cls}`}>
+                  <IcoAttention />
+                  <span>
+                    {mixDominant.pct}% {LIVE_OPS_LABELS[mixDominant.cls].toLowerCase()}
+                    {mixDominant.cls === "idle" || mixDominant.cls === "stale"
+                      ? " — needs attention"
+                      : ""}
+                  </span>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}
