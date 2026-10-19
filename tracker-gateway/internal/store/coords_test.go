@@ -13,10 +13,45 @@ func TestValidCoords(t *testing.T) {
 		{0, 181, false},
 		{-90, 180, true},
 		{90, -180, true},
+		{108.3129532, 12.35597, false}, // swapped SE-Asia lon/lat
 	}
 	for _, c := range cases {
 		if got := ValidCoords(c.lat, c.lon); got != c.ok {
 			t.Fatalf("ValidCoords(%v,%v)=%v want %v", c.lat, c.lon, got, c.ok)
 		}
+	}
+}
+
+func TestNormalizeFixCoords_SwapsInvertedLonLat(t *testing.T) {
+	fix := Fix{Lat: 108.3129532, Lon: 12.35597, RawAttrs: map[string]any{}}
+	NormalizeFixCoords(&fix)
+	if !ValidCoords(fix.Lat, fix.Lon) {
+		t.Fatalf("still invalid lat=%v lon=%v", fix.Lat, fix.Lon)
+	}
+	if fix.Lat < 12 || fix.Lat > 13 || fix.Lon < 108 || fix.Lon > 109 {
+		t.Fatalf("swap failed lat=%v lon=%v", fix.Lat, fix.Lon)
+	}
+	if fix.RawAttrs["gps.swapped"] != true {
+		t.Fatalf("expected gps.swapped marker")
+	}
+}
+
+func TestNormalizeFixCoords_LeavesValid(t *testing.T) {
+	fix := Fix{Lat: -6.2, Lon: 106.8}
+	NormalizeFixCoords(&fix)
+	if fix.Lat != -6.2 || fix.Lon != 106.8 {
+		t.Fatalf("mutated valid coords lat=%v lon=%v", fix.Lat, fix.Lon)
+	}
+}
+
+func TestIsCookedAppParamKey_ExcludesOpaqueIO(t *testing.T) {
+	if isCookedAppParamKey("io.66") || isCookedAppParamKey("io.239") {
+		t.Fatal("io.* must not be treated as cooked (raw mV / bits)")
+	}
+	if isCookedAppParamKey("tag.0x41") || isCookedAppParamKey("add.0x01") {
+		t.Fatal("tag/add dumps must not be cooked")
+	}
+	if !isCookedAppParamKey("voltage.ext") || !isCookedAppParamKey("status.ignition") {
+		t.Fatal("semantic cooked keys required")
 	}
 }

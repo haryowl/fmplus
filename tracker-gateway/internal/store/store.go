@@ -172,16 +172,16 @@ func acceptsDevices(source string) bool {
 // ValidCoords is false for missing / Null Island / out-of-range GPS.
 // Callers still ingest IO/status when this is false — only the map pin is preserved.
 // isCookedAppParamKey reports semantic vendor keys already scaled by protocol adapters
-// (e.g. voltage.supply in volts). Excludes opaque tag.0xNN dumps and nested blobs.
+// (e.g. voltage.supply in volts). Excludes opaque io.N / tag.0xNN / add.0xNN dumps.
 func isCookedAppParamKey(k string) bool {
-	if k == "" || k == "tags" {
+	if k == "" || k == "tags" || k == "io" {
 		return false
 	}
-	if len(k) >= 4 && k[:4] == "tag." {
-		return false
-	}
-	if len(k) >= 2 && k[:2] == "0x" {
-		return false
+	// Raw protocol element dumps — not scaled; Live values must not treat these as volts/°C.
+	for _, p := range []string{"tag.", "io.", "add.", "0x"} {
+		if len(k) >= len(p) && k[:len(p)] == p {
+			return false
+		}
 	}
 	// Require dotted semantic names (voltage.supply, can.rpm, time.ms, …).
 	for i := 0; i < len(k); i++ {
@@ -195,6 +195,26 @@ func isCookedAppParamKey(k string) bool {
 		return true
 	}
 	return false
+}
+
+// NormalizeFixCoords repairs clear Longitude/Latitude swaps (lat out of ±90 but
+// swapping yields a valid point). Teltonika GPS element is Lon then Lat; a one-byte
+// AVL misalignment or stale consumer can leave them inverted in last_fix.
+func NormalizeFixCoords(fix *Fix) {
+	if fix == nil {
+		return
+	}
+	if ValidCoords(fix.Lat, fix.Lon) {
+		return
+	}
+	if !ValidCoords(fix.Lon, fix.Lat) {
+		return
+	}
+	fix.Lat, fix.Lon = fix.Lon, fix.Lat
+	if fix.RawAttrs == nil {
+		fix.RawAttrs = map[string]any{}
+	}
+	fix.RawAttrs["gps.swapped"] = true
 }
 
 func isScalarAttr(v any) bool {
@@ -234,6 +254,7 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 	if fix.RawAttrs == nil {
 		fix.RawAttrs = map[string]any{}
 	}
+	NormalizeFixCoords(&fix)
 	gpsOK := ValidCoords(fix.Lat, fix.Lon)
 	fix.RawAttrs["gps.valid"] = gpsOK
 	// Device Manager remap: vendor raw → canonical mapped attrs + typed columns.
@@ -298,25 +319,23 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 			string(raw), string(mapped), fix.SourceProtocol,
 		)
 	} else {
-		// Keep previous map pin; still refresh attrs / typed status so data is not lost.
+		// Keep previous map pin; refresh attrs only. Do not INSERT a new last_fix
+		// row with invalid lat/lon (NOT NULL columns would otherwise pin garbage).
 		_, err = s.pool.Exec(ctx, `
-			INSERT INTO vehicle_last_fix (
-				device_id, tenant_id, recorded_at, lat, lon, speed, heading, ignition,
-				odometer, altitude, satellites, raw_attrs, mapped_attrs, source_protocol, updated_at
-			) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14, now())
-			ON CONFLICT (device_id) DO UPDATE SET
-				recorded_at = GREATEST(vehicle_last_fix.recorded_at, EXCLUDED.recorded_at),
-				speed = COALESCE(EXCLUDED.speed, vehicle_last_fix.speed),
-				heading = COALESCE(EXCLUDED.heading, vehicle_last_fix.heading),
-				ignition = COALESCE(EXCLUDED.ignition, vehicle_last_fix.ignition),
-				odometer = COALESCE(EXCLUDED.odometer, vehicle_last_fix.odometer),
-				altitude = COALESCE(EXCLUDED.altitude, vehicle_last_fix.altitude),
-				satellites = COALESCE(EXCLUDED.satellites, vehicle_last_fix.satellites),
-				raw_attrs = COALESCE(vehicle_last_fix.raw_attrs, '{}'::jsonb) || EXCLUDED.raw_attrs,
-				mapped_attrs = COALESCE(vehicle_last_fix.mapped_attrs, '{}'::jsonb) || EXCLUDED.mapped_attrs,
-				source_protocol = COALESCE(EXCLUDED.source_protocol, vehicle_last_fix.source_protocol),
-				updated_at = now()`,
-			device.ID, device.TenantID, fix.RecordedAt, fix.Lat, fix.Lon,
+			UPDATE vehicle_last_fix SET
+				recorded_at = GREATEST(vehicle_last_fix.recorded_at, $2),
+				speed = COALESCE($3, vehicle_last_fix.speed),
+				heading = COALESCE($4, vehicle_last_fix.heading),
+				ignition = COALESCE($5, vehicle_last_fix.ignition),
+				odometer = COALESCE($6, vehicle_last_fix.odometer),
+				altitude = COALESCE($7, vehicle_last_fix.altitude),
+				satellites = COALESCE($8, vehicle_last_fix.satellites),
+				raw_attrs = COALESCE(vehicle_last_fix.raw_attrs, '{}'::jsonb) || $9::jsonb,
+				mapped_attrs = COALESCE(vehicle_last_fix.mapped_attrs, '{}'::jsonb) || $10::jsonb,
+				source_protocol = COALESCE($11, vehicle_last_fix.source_protocol),
+				updated_at = now()
+			WHERE device_id = $1::uuid`,
+			device.ID, fix.RecordedAt,
 			fix.Speed, fix.Heading, fix.Ignition, fix.Odometer, fix.Altitude, fix.Satellites,
 			string(raw), string(mapped), fix.SourceProtocol,
 		)

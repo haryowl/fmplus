@@ -548,7 +548,16 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
     for (const [paramId, value] of Object.entries(mapped)) {
       if (value === null || value === undefined) continue;
       // Skip nested blobs / duplicate typed mirrors when already shown.
-      if (paramId === "tags" || typeof value === "object") continue;
+      if (paramId === "tags" || paramId === "io" || typeof value === "object") continue;
+      // Skip opaque AVL dumps that older gateways wrongly seeded into mapped_attrs.
+      if (
+        paramId.startsWith("io.") ||
+        paramId.startsWith("tag.") ||
+        paramId.startsWith("add.") ||
+        paramId.startsWith("0x")
+      ) {
+        continue;
+      }
       if (emitted.has(paramId)) continue;
       const def = defById.get(paramId);
       emitted.add(paramId);
@@ -566,19 +575,28 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
       });
     }
 
-    // Cooked / protocol-catalogued vendor keys from raw_attrs → mapped_extra
-    // (not "raw"), so Live values shows official semantics without Device Manager remaps.
+    // Cooked semantic keys from raw_attrs (voltage.*, status.*, …) → mapped_extra.
+    // Do NOT promote opaque io.N / tag.0xNN / add.0xNN dumps here — those are raw AVL
+    // units (mV, etc.) and look wrong next to labels like "External Voltage".
+    // Toggle "Include raw vendor keys" to inspect io.* / tag.*.
     for (const [vendorKey, value] of Object.entries(raw)) {
       if (value === null || value === undefined) continue;
-      if (vendorKey === "tags" || typeof value === "object") continue;
+      if (vendorKey === "tags" || vendorKey === "io" || typeof value === "object") continue;
       if (emitted.has(vendorKey)) continue;
+      if (
+        vendorKey.startsWith("io.") ||
+        vendorKey.startsWith("tag.") ||
+        vendorKey.startsWith("add.") ||
+        vendorKey.startsWith("0x")
+      ) {
+        continue;
+      }
       const def = defById.get(vendorKey);
       const protoLabel = protoKeys.get(vendorKey);
       const isCooked =
         Boolean(def) ||
         protoLabel != null ||
-        // Prefer semantic keys the gateway already promotes (voltage.*, status.*, etc.).
-        (!vendorKey.startsWith("tag.") && !vendorKey.startsWith("0x") && vendorKey.includes("."));
+        vendorKey.includes(".");
       if (!isCooked) continue;
       emitted.add(vendorKey);
       rows.push({
