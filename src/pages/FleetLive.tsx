@@ -724,6 +724,7 @@ export default function FleetLive() {
               rows={mapped}
               now={now}
               fitKey={fitKey}
+              loading={loading}
               selectedId={selectedId}
               onSelect={onSelect}
             />
