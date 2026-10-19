@@ -12,6 +12,7 @@ export const MODULE_KEYS = [
   "status",
   "trips",
   "live",
+  "fleetLive",
   "exceptions",
   "places",
   "maintenance",
@@ -35,6 +36,14 @@ export const FEATURE_KEYS = [
   "dispatchSales",
   /** Show goods sell / fare amounts on Field / POD / WhatsApp */
   "dispatchShowMoneyOnField",
+  /** Fleet Live section features (module.fleetLive must be on) */
+  "fleetLiveDashboard",
+  "fleetLiveRanking",
+  "fleetLiveTrips",
+  "fleetLiveHistory",
+  "fleetLiveMedia",
+  "fleetLiveAlerts",
+  "fleetLiveRules",
 ];
 
 export const ACTION_KEYS = [
@@ -55,6 +64,7 @@ export function defaultEntitlements() {
       status: true,
       trips: true,
       live: false,
+      fleetLive: false,
       exceptions: false,
       places: false,
       maintenance: false,
@@ -73,6 +83,13 @@ export function defaultEntitlements() {
       dispatchPassenger: false,
       dispatchSales: false,
       dispatchShowMoneyOnField: false,
+      fleetLiveDashboard: true,
+      fleetLiveRanking: true,
+      fleetLiveTrips: true,
+      fleetLiveHistory: true,
+      fleetLiveMedia: true,
+      fleetLiveAlerts: true,
+      fleetLiveRules: true,
     },
     actions: {
       ackException: false,
@@ -105,6 +122,17 @@ export function mergeEntitlements(raw) {
     }
   }
   base.scan = mergeScanEntitlements(src.scan);
+  // Back-compat: tenants that only had Armada `live` keep Fleet Live until they set fleetLive.
+  const mods = src.modules;
+  if (
+    mods &&
+    typeof mods === "object" &&
+    !Array.isArray(mods) &&
+    /** @type {Record<string, unknown>} */ (mods).fleetLive === undefined &&
+    /** @type {Record<string, unknown>} */ (mods).live === true
+  ) {
+    base.modules.fleetLive = true;
+  }
   return base;
 }
 

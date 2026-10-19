@@ -21,7 +21,8 @@ export const MODULE_LABELS: Record<string, string> = {
   fleetCompact: "Ranking",
   status: "Last Status",
   trips: "Trips",
-  live: "Live Ops",
+  live: "Live Ops (Armada)",
+  fleetLive: "Fleet Live (devices)",
   exceptions: "Exceptions",
   places: "Places",
   routePlan: "Route plan",
@@ -41,6 +42,13 @@ export const FEATURE_LABELS: Record<string, string> = {
   dispatchPassenger: "Dispatch: passenger profile",
   dispatchSales: "Dispatch: sales visit profile",
   dispatchShowMoneyOnField: "Dispatch: show money on Field / POD / WhatsApp",
+  fleetLiveDashboard: "Fleet Live: Dashboard section",
+  fleetLiveRanking: "Fleet Live: Ranking section",
+  fleetLiveTrips: "Fleet Live: Trips section",
+  fleetLiveHistory: "Fleet Live: History section",
+  fleetLiveMedia: "Fleet Live: Media (video/picture)",
+  fleetLiveAlerts: "Fleet Live: Alerts events",
+  fleetLiveRules: "Fleet Live: Alert rules editor",
 };
 
 export function defaultEntitlements(): Entitlements {
@@ -53,6 +61,7 @@ export function defaultEntitlements(): Entitlements {
       status: true,
       trips: true,
       live: false,
+      fleetLive: false,
       exceptions: false,
       places: false,
       maintenance: false,
@@ -71,6 +80,13 @@ export function defaultEntitlements(): Entitlements {
       dispatchPassenger: false,
       dispatchSales: false,
       dispatchShowMoneyOnField: false,
+      fleetLiveDashboard: true,
+      fleetLiveRanking: true,
+      fleetLiveTrips: true,
+      fleetLiveHistory: true,
+      fleetLiveMedia: true,
+      fleetLiveAlerts: true,
+      fleetLiveRules: true,
     },
     actions: {
       ackException: false,
@@ -101,13 +117,24 @@ export function mergeEntitlements(raw: unknown): Entitlements {
     }
   }
   base.scan = mergeScanEntitlements(src.scan);
+  // Back-compat: tenants that only had Armada `live` keep Fleet Live until they set fleetLive.
+  const mods = src.modules;
+  if (
+    mods &&
+    typeof mods === "object" &&
+    !Array.isArray(mods) &&
+    (mods as Record<string, unknown>).fleetLive === undefined &&
+    (mods as Record<string, unknown>).live === true
+  ) {
+    base.modules.fleetLive = true;
+  }
   return base;
 }
 
 /** Map AppView → entitlements.modules key */
 export function moduleKeyForView(view: string): string {
   if (view === "fleetCompact") return "fleetCompact";
-  if (view === "fleetLive") return "live";
+  if (view === "fleetLive") return "fleetLive";
   if (
     view === "dispatchDesk" ||
     view === "dispatchLive" ||

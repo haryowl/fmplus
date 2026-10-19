@@ -18,6 +18,7 @@ import {
   type ScanEntitlements,
 } from "../lib/scanCapabilities";
 import { BrandMark } from "../components/BrandMark";
+import { AdminFleetDevicePanel, type DeviceFieldDef } from "../components/AdminFleetDevicePanel";
 import {
   DESK_PRIVILEGE_KEYS,
   DESK_PRIVILEGE_LABELS,
@@ -56,6 +57,17 @@ type TrackerDeviceRow = {
   uniqueId?: string;
   protocol: string;
   label: string;
+  description?: string;
+  plate?: string;
+  vin?: string;
+  make?: string;
+  model?: string;
+  modelYear?: number | null;
+  vehicleType?: string;
+  color?: string;
+  cameraChannels?: number;
+  tags?: string[];
+  customAttrs?: Record<string, unknown>;
   armadaUserId: number | null;
   enabled: boolean;
   hasAuthToken: boolean;
@@ -748,6 +760,7 @@ export default function AdminConsole() {
   const [fuEdits, setFuEdits] = useState<Record<string, FieldUserEdit>>({});
   const [fuEditingId, setFuEditingId] = useState<string | null>(null);
   const [trackerDevices, setTrackerDevices] = useState<TrackerDeviceRow[]>([]);
+  const [deviceFieldDefs, setDeviceFieldDefs] = useState<DeviceFieldDef[]>([]);
   const [deviceGroups, setDeviceGroups] = useState<TrackerDeviceGroupRow[]>([]);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDesc, setNewGroupDesc] = useState("");
@@ -882,6 +895,13 @@ export default function AdminConsole() {
     setTrackerDevices(data.devices);
   }, []);
 
+  const loadDeviceFieldDefs = useCallback(async (tenantId: string) => {
+    const data = await api<{ fields: DeviceFieldDef[] }>(
+      `/api/admin/tenants/${tenantId}/tracker-device-fields`,
+    );
+    setDeviceFieldDefs(data.fields || []);
+  }, []);
+
   const loadDeviceGroups = useCallback(async (tenantId: string) => {
     const data = await api<{ groups: TrackerDeviceGroupRow[] }>(
       `/api/admin/tenants/${tenantId}/tracker-device-groups?members=1`,
@@ -995,6 +1015,7 @@ export default function AdminConsole() {
       setFuEdits({});
       setFuEditingId(null);
       setTrackerDevices([]);
+      setDeviceFieldDefs([]);
       setDeviceGroups([]);
       setEditGroupId("");
       setEditGroupMembers([]);
@@ -1003,6 +1024,7 @@ export default function AdminConsole() {
     }
     void loadFieldUsers(selectedId).catch((err: Error) => setError(err.message));
     void loadTrackerDevices(selectedId).catch((err: Error) => setError(err.message));
+    void loadDeviceFieldDefs(selectedId).catch((err: Error) => setError(err.message));
     void loadDeviceGroups(selectedId).catch((err: Error) => setError(err.message));
     void loadUnassignedTrackers().catch((err: Error) => setError(err.message));
     void loadDeviceManager(selectedId).catch((err: Error) => setError(err.message));
@@ -1028,6 +1050,7 @@ export default function AdminConsole() {
     selectedId,
     loadFieldUsers,
     loadTrackerDevices,
+    loadDeviceFieldDefs,
     loadDeviceGroups,
     loadUnassignedTrackers,
     loadDeviceManager,
@@ -1334,8 +1357,7 @@ export default function AdminConsole() {
     }
   }
 
-  async function createTrackerDevice(e: FormEvent) {
-    e.preventDefault();
+  async function createTrackerDeviceBody(body: Record<string, unknown>) {
     if (!selectedId || selectedId === "new") return;
     setBusy(true);
     setError("");
@@ -1343,47 +1365,70 @@ export default function AdminConsole() {
     try {
       const created = await api<{ device: TrackerDeviceRow }>(
         `/api/admin/tenants/${selectedId}/tracker-devices`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            imei: tdImei.trim(),
-            label: tdLabel.trim(),
-            protocol: tdProtocol,
-            profileId: tdProfileId || null,
-            armadaUserId: tdArmadaUserId.trim() ? Number(tdArmadaUserId) : null,
-            videoChannelId: tdVideoChannelId.trim() || null,
-            videoRtspUrl: tdVideoRtspUrl.trim() || null,
-          }),
-        },
+        { method: "POST", body: JSON.stringify(body) },
       );
       setNotice(`Registered device ${created.device.imei}`);
       if (created.device.authToken) setLastDeviceToken(created.device.authToken);
-      setTdImei("");
-      setTdLabel("");
-      setTdArmadaUserId("");
-      setTdVideoChannelId("");
-      setTdVideoRtspUrl("");
       await loadTrackerDevices(selectedId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create device");
+      throw err;
     } finally {
       setBusy(false);
     }
   }
 
-  async function assignDeviceProfile(deviceId: string, profileId: string) {
+  async function updateTrackerDeviceBody(deviceId: string, body: Record<string, unknown>) {
     if (!selectedId || selectedId === "new") return;
     setBusy(true);
     setError("");
     try {
       await api(`/api/admin/tenants/${selectedId}/tracker-devices/${deviceId}`, {
         method: "PATCH",
-        body: JSON.stringify({ profileId: profileId || null }),
+        body: JSON.stringify(body),
       });
-      setNotice(profileId ? "Device profile updated" : "Device profile cleared");
+      setNotice("Device saved");
       await loadTrackerDevices(selectedId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Profile assign failed");
+      setError(err instanceof Error ? err.message : "Could not update device");
+      throw err;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createDeviceFieldDefBody(body: Record<string, unknown>) {
+    if (!selectedId || selectedId === "new") return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/admin/tenants/${selectedId}/tracker-device-fields`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      setNotice("Custom field added");
+      await loadDeviceFieldDefs(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create field");
+      throw err;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteDeviceFieldDefBody(fieldId: string) {
+    if (!selectedId || selectedId === "new") return;
+    if (!window.confirm(`Delete custom field “${fieldId}”?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/admin/tenants/${selectedId}/tracker-device-fields/${fieldId}`, {
+        method: "DELETE",
+      });
+      setNotice("Custom field deleted");
+      await loadDeviceFieldDefs(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete field");
     } finally {
       setBusy(false);
     }
@@ -3393,18 +3438,7 @@ export default function AdminConsole() {
                   )}
                 </section>
 
-                <section className="admin-panel admin-field-users">
-                  <header className="admin-panel-head">
-                    <h3>
-                      Tracker devices{" "}
-                      <span className="admin-count-badge">{trackerDevices.length}</span>
-                    </h3>
-                    <p className="muted">
-                      Direct GPS ingest ·{" "}
-                      <code>{selected?.trackerIngestUrl || "/api/tracker/ingest/v1/fix"}</code>
-                      {" · "}protocols marked MVP/partial until certified
-                    </p>
-                  </header>
+                <section className="admin-panel">
                   {lastDeviceToken ? (
                     <p className="admin-notice">
                       Device token (copy now): <code>{lastDeviceToken}</code>{" "}
@@ -3470,178 +3504,41 @@ export default function AdminConsole() {
                       </ul>
                     </div>
                   ) : null}
-                  <ul className="admin-field-list">
-                    {trackerDevices.map((d) => (
-                      <li key={d.id}>
-                        <div className="admin-field-summary">
-                          <div className="admin-field-identity">
-                            <div className="admin-field-identity-text">
-                              <strong>{d.label || d.imei}</strong>
-                              <div className="admin-field-tags">
-                                <span className="admin-pill is-muted">{d.protocol}</span>
-                                {onlineImeis.has(d.imei) ? (
-                                  <span className="admin-pill is-on">online</span>
-                                ) : d.lastSeenAt &&
-                                  Date.now() - new Date(d.lastSeenAt).getTime() < 5 * 60 * 1000 ? (
-                                  <span className="admin-pill is-muted">seen</span>
-                                ) : null}
-                                {d.lastFix?.ignition === true ? (
-                                  <span className="admin-pill is-on">ACC</span>
-                                ) : d.lastFix?.ignition === false ? (
-                                  <span className="admin-pill is-muted">ACC off</span>
-                                ) : null}
-                                {d.armadaUserId != null ? (
-                                  <span className="admin-pill is-muted">Armada #{d.armadaUserId}</span>
-                                ) : null}
-                                {!d.enabled ? <span className="admin-pill is-off">disabled</span> : null}
-                              </div>
-                              <span className="muted">
-                                IMEI {d.imei}
-                                {d.videoChannelId ? ` · ch ${d.videoChannelId}` : ""}
-                                {d.lastFix && !(d.lastFix.lat === 0 && d.lastFix.lon === 0)
-                                  ? ` · last ${d.lastFix.lat.toFixed(5)}, ${d.lastFix.lon.toFixed(5)}${
-                                      d.lastFix.speed != null ? ` · ${Math.round(d.lastFix.speed)} km/h` : ""
-                                    }`
-                                  : d.lastFix || d.lastSeenAt
-                                    ? " · online, awaiting GPS"
-                                    : " · no data yet"}
-                                {d.lastSeenAt
-                                  ? ` · seen ${new Date(d.lastSeenAt).toLocaleString()}`
-                                  : ""}
-                              </span>
-                              <label className="muted" style={{ display: "block", marginTop: 6 }}>
-                                Profile{" "}
-                                <select
-                                  value={d.profileId || ""}
-                                  disabled={busy}
-                                  onChange={(e) => void assignDeviceProfile(d.id, e.target.value)}
-                                >
-                                  <option value="">(auto / none)</option>
-                                  {trackerProfiles
-                                    .filter((p) => p.protocol === d.protocol || !d.protocol)
-                                    .concat(
-                                      trackerProfiles.filter(
-                                        (p) => p.protocol !== d.protocol && !!d.protocol,
-                                      ),
-                                    )
-                                    .map((p) => (
-                                      <option key={p.id} value={p.id}>
-                                        {p.name} ({p.completeness})
-                                      </option>
-                                    ))}
-                                </select>
-                              </label>
-                            </div>
-                          </div>
-                          <div className="admin-field-row-actions">
-                            <button
-                              type="button"
-                              className="btn-secondary"
-                              disabled={busy}
-                              onClick={() => void rotateDeviceToken(d.id)}
-                            >
-                              Rotate token
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-ghost"
-                              disabled={busy}
-                              onClick={() => void deleteTrackerDevice(d.id, d.imei)}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                    {trackerDevices.length === 0 ? (
-                      <li className="muted admin-empty">No tracker devices yet.</li>
-                    ) : null}
-                  </ul>
-                  <details className="admin-add-details">
-                    <summary>Add tracker device</summary>
-                    <form className="admin-form-grid" onSubmit={(e) => void createTrackerDevice(e)}>
-                      <label>
-                        IMEI / unique id
-                        <input
-                          value={tdImei}
-                          onChange={(e) => setTdImei(e.target.value)}
-                          required
-                          minLength={5}
-                          placeholder="35209408…"
-                        />
-                      </label>
-                      <label>
-                        Label
-                        <input
-                          value={tdLabel}
-                          onChange={(e) => setTdLabel(e.target.value)}
-                          placeholder="Truck 12"
-                        />
-                      </label>
-                      <label>
-                        Protocol
-                        <select
-                          value={tdProtocol}
-                          onChange={(e) => {
-                            const proto = e.target.value;
-                            setTdProtocol(proto);
-                            const match = trackerProfiles.find((p) => p.protocol === proto);
-                            setTdProfileId(match?.id || "");
-                          }}
-                        >
-                          {TRACKER_PROTOCOL_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Device Manager profile
-                        <select value={tdProfileId} onChange={(e) => setTdProfileId(e.target.value)}>
-                          <option value="">Auto (system default for protocol)</option>
-                          {trackerProfiles
-                            .filter((p) => !tdProtocol || p.protocol === tdProtocol)
-                            .map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name} ({p.completeness})
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                      <label>
-                        Armada user id (optional)
-                        <input
-                          value={tdArmadaUserId}
-                          onChange={(e) => setTdArmadaUserId(e.target.value)}
-                          inputMode="numeric"
-                          placeholder="Link to fleet vehicle"
-                        />
-                      </label>
-                      <label>
-                        Video channel id (optional)
-                        <input
-                          value={tdVideoChannelId}
-                          onChange={(e) => setTdVideoChannelId(e.target.value)}
-                          placeholder="cam-1 / GB28181 channel"
-                        />
-                      </label>
-                      <label>
-                        RTSP / stream URL (optional)
-                        <input
-                          value={tdVideoRtspUrl}
-                          onChange={(e) => setTdVideoRtspUrl(e.target.value)}
-                          placeholder="rtsp://…"
-                        />
-                      </label>
-                      <div className="span-2 admin-actions">
-                        <button type="submit" className="btn btn-primary" disabled={busy}>
-                          Register device
-                        </button>
-                      </div>
-                    </form>
-                  </details>
+                  <AdminFleetDevicePanel
+                    devices={trackerDevices}
+                    profiles={trackerProfiles.map((p) => ({
+                      id: p.id,
+                      name: p.name,
+                      protocol: p.protocol,
+                    }))}
+                    fieldDefs={deviceFieldDefs}
+                    onlineImeis={onlineImeis}
+                    protocolOptions={TRACKER_PROTOCOL_OPTIONS}
+                    busy={busy}
+                    onRefresh={() => {
+                      if (!selectedId || selectedId === "new") return;
+                      void loadTrackerDevices(selectedId);
+                      void loadDeviceFieldDefs(selectedId);
+                    }}
+                    onCreate={(body) => createTrackerDeviceBody(body)}
+                    onUpdate={(id, body) => updateTrackerDeviceBody(id, body)}
+                    onDelete={(id, imei) => deleteTrackerDevice(id, imei)}
+                    onCreateField={(body) => createDeviceFieldDefBody(body)}
+                    onDeleteField={(id) => deleteDeviceFieldDefBody(id)}
+                  />
+                  <p className="muted" style={{ marginTop: 8, fontSize: "0.72rem" }}>
+                    Ingest · <code>{selected?.trackerIngestUrl || "/api/tracker/ingest/v1/fix"}</code>
+                    {" · "}
+                    <button
+                      type="button"
+                      className="btn-ghost btn-compact"
+                      disabled={busy || !trackerDevices[0]}
+                      onClick={() => trackerDevices[0] && void rotateDeviceToken(trackerDevices[0].id)}
+                      title="Rotate token for the first listed device (select-specific rotate coming next)"
+                    >
+                      Rotate first device token
+                    </button>
+                  </p>
                 </section>
               </>
               )}

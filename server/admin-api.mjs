@@ -46,6 +46,12 @@ import {
   updateDeviceGroup,
 } from "./tracker-device-groups.mjs";
 import {
+  createDeviceFieldDef,
+  deleteDeviceFieldDef,
+  listDeviceFieldDefs,
+  updateDeviceFieldDef,
+} from "./tracker-device-fields.mjs";
+import {
   cancelCommand,
   cloneProfile,
   createParamDef,
@@ -918,6 +924,63 @@ export async function handleAdminRequest(req, res) {
       if (req.method === "DELETE") {
         await deleteTrackerDevice(tenantId, deviceId);
         await writeAudit(admin.id, "tracker_device.delete", { tenantId, deviceId });
+        json(res, 200, { ok: true });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const deviceFieldsListMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-device-fields$/i.exec(path);
+    if (deviceFieldsListMatch) {
+      const tenantId = deviceFieldsListMatch[1];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      const tenantOk = await dbQuery(`SELECT id FROM tenants WHERE id = $1`, [tenantId]);
+      if (!tenantOk.rows[0]) {
+        json(res, 404, { error: "Tenant not found" });
+        return true;
+      }
+      if (req.method === "GET") {
+        json(res, 200, {
+          fields: await listDeviceFieldDefs(tenantId, { includeDisabled: true }),
+        });
+        return true;
+      }
+      if (req.method === "POST") {
+        const body = await readJson(req);
+        const field = await createDeviceFieldDef(tenantId, body);
+        await writeAudit(admin.id, "tracker_device_field.create", {
+          tenantId,
+          fieldId: field.id,
+        });
+        json(res, 201, { field });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const deviceFieldOneMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-device-fields\/([a-z][a-z0-9_]{1,62})$/i.exec(
+        path,
+      );
+    if (deviceFieldOneMatch) {
+      const tenantId = deviceFieldOneMatch[1];
+      const fieldId = deviceFieldOneMatch[2];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "PATCH") {
+        const body = await readJson(req);
+        const field = await updateDeviceFieldDef(tenantId, fieldId, body);
+        await writeAudit(admin.id, "tracker_device_field.update", { tenantId, fieldId });
+        json(res, 200, { field });
+        return true;
+      }
+      if (req.method === "DELETE") {
+        await deleteDeviceFieldDef(tenantId, fieldId);
+        await writeAudit(admin.id, "tracker_device_field.delete", { tenantId, fieldId });
         json(res, 200, { ok: true });
         return true;
       }

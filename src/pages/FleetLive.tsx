@@ -18,6 +18,8 @@ import {
   writeLocationSearch,
 } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
+import { useDeskSession } from "../lib/deskSession";
+import { deskCanWrite } from "../lib/deskPrivileges";
 import { tenantHeaders } from "../lib/tenant";
 import {
   fetchTrackerDeviceGroups,
@@ -31,6 +33,29 @@ import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
 
 type ListTab = "all" | LiveOpsClass | "alert" | "maintenance";
+type FleetSection = "live" | "dashboard" | "ranking" | "trips" | "history" | "media" | "alerts";
+
+const FLEET_SECTIONS: Array<{
+  id: FleetSection;
+  label: string;
+  feature?: string;
+  privilege?:
+    | "viewFleetLive"
+    | "viewFleetDashboard"
+    | "viewFleetRanking"
+    | "viewFleetTrips"
+    | "viewFleetHistory"
+    | "viewFleetMedia"
+    | "ackFleetAlerts";
+}> = [
+  { id: "live", label: "Live", privilege: "viewFleetLive" },
+  { id: "dashboard", label: "Dashboard", feature: "fleetLiveDashboard", privilege: "viewFleetDashboard" },
+  { id: "ranking", label: "Ranking", feature: "fleetLiveRanking", privilege: "viewFleetRanking" },
+  { id: "trips", label: "Trips", feature: "fleetLiveTrips", privilege: "viewFleetTrips" },
+  { id: "history", label: "History", feature: "fleetLiveHistory", privilege: "viewFleetHistory" },
+  { id: "media", label: "Media", feature: "fleetLiveMedia", privilege: "viewFleetMedia" },
+  { id: "alerts", label: "Alerts", feature: "fleetLiveAlerts", privilege: "ackFleetAlerts" },
+];
 
 type SafetyEvent = {
   id: string;
@@ -142,11 +167,17 @@ function clockLabel(tz: string): string {
  * Device-native command center (sample-guided). Separate from Armada `/live`.
  */
 export default function FleetLive() {
-  const { query, ready, error: tenantError } = useEmbedTenant();
+  const { query, ready, error: tenantError, entitlements, moduleAllowed } = useEmbedTenant();
+  const { user: deskUser, privileges: deskPrivileges } = useDeskSession();
   const [deviceGroups, setDeviceGroups] = useState<TrackerDeviceGroup[]>([]);
   const [groupId, setGroupId] = useState(() => {
     const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
     return params.get("deviceGroupId") || "";
+  });
+  const [section, setSection] = useState<FleetSection>(() => {
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    const s = params.get("section") || "live";
+    return (FLEET_SECTIONS.some((x) => x.id === s) ? s : "live") as FleetSection;
   });
   const [timezone, setTimezone] = useState(query.tz);
   const [bootError, setBootError] = useState("");
@@ -165,12 +196,33 @@ export default function FleetLive() {
 
   const selectedGroup = deviceGroups.find((g) => g.id === groupId);
 
+  const allowedSections = useMemo(() => {
+    return FLEET_SECTIONS.filter((s) => {
+      if (s.feature && entitlements.features[s.feature] === false) return false;
+      if (s.privilege && deskUser?.id && !deskCanWrite(deskUser, deskPrivileges, s.privilege)) {
+        return false;
+      }
+      return true;
+    });
+  }, [entitlements.features, deskUser, deskPrivileges]);
+
+  useEffect(() => {
+    if (!allowedSections.some((s) => s.id === section) && allowedSections[0]) {
+      setSection(allowedSections[0].id);
+    }
+  }, [allowedSections, section]);
+
   useEffect(() => {
     writeLocationSearch({
       deviceGroupId: groupId || null,
       tz: timezone || null,
+      section: section || null,
     });
-  }, [groupId, timezone]);
+  }, [groupId, timezone, section]);
+
+  const fleetModuleOk = moduleAllowed("fleetLive");
+  const canViewLive =
+    !deskUser?.id || deskCanWrite(deskUser, deskPrivileges, "viewFleetLive");
 
   useEffect(() => {
     document.title = "Fleet Live · ARMADA M.1";
@@ -382,6 +434,31 @@ export default function FleetLive() {
         </div>
       </header>
 
+      {!fleetModuleOk ? (
+        <div className="banner error fleet-cc-banner">
+          Fleet Live is disabled for this tenant. Enable module “Fleet Live (devices)” in Admin.
+        </div>
+      ) : null}
+      {fleetModuleOk && deskUser?.id && !canViewLive ? (
+        <div className="banner error fleet-cc-banner">
+          Your desk account needs the “Fleet Live · map” privilege to use this page.
+        </div>
+      ) : null}
+
+      <nav className="fleet-cc-sections" aria-label="Fleet Live sections">
+        {allowedSections.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            className={section === s.id ? "is-active" : ""}
+            onClick={() => setSection(s.id)}
+            disabled={!fleetModuleOk}
+          >
+            {s.label}
+          </button>
+        ))}
+      </nav>
+
       <div className="fleet-cc-toolbar">
         <label className="fleet-cc-field">
           <span>Device group</span>
@@ -423,6 +500,18 @@ export default function FleetLive() {
         <div className="banner error fleet-cc-banner">{bootError || fetchError}</div>
       )}
 
+      {section !== "live" && fleetModuleOk ? (
+        <div className="fleet-cc-section-soon">
+          <h2>{FLEET_SECTIONS.find((s) => s.id === section)?.label || section}</h2>
+          <p className="muted">
+            This section is on the roadmap (P1b+). Privileges and entitlements already gate access —
+            content ships next.
+          </p>
+        </div>
+      ) : null}
+
+      {section === "live" && fleetModuleOk && canViewLive ? (
+      <>
       <section className="fleet-cc-kpis" aria-label="Fleet KPIs">
         <div className="fleet-cc-kpi">
           <span className="fleet-cc-kpi-label">Total</span>
@@ -672,6 +761,8 @@ export default function FleetLive() {
           </ul>
         </div>
       </section>
+      </>
+      ) : null}
     </div>
   );
 }

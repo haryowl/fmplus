@@ -17,6 +17,15 @@ export const DESK_PRIVILEGE_KEYS = [
   "editDispatchOrders",
   "editDispatchLive",
   "manageDispatchSettings",
+  "viewFleetLive",
+  "viewFleetDashboard",
+  "viewFleetRanking",
+  "viewFleetTrips",
+  "viewFleetHistory",
+  "viewFleetMedia",
+  "ackFleetAlerts",
+  "manageFleetRules",
+  "manageFleetDevices",
 ];
 
 /**

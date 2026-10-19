@@ -13,6 +13,15 @@ export type DeskPrivileges = {
   editDispatchLive: boolean;
   /** Depots, capacities, zone map, cost/fare rates. */
   manageDispatchSettings: boolean;
+  viewFleetLive: boolean;
+  viewFleetDashboard: boolean;
+  viewFleetRanking: boolean;
+  viewFleetTrips: boolean;
+  viewFleetHistory: boolean;
+  viewFleetMedia: boolean;
+  ackFleetAlerts: boolean;
+  manageFleetRules: boolean;
+  manageFleetDevices: boolean;
 };
 
 export const DESK_PRIVILEGE_KEYS = [
@@ -25,6 +34,15 @@ export const DESK_PRIVILEGE_KEYS = [
   "editDispatchOrders",
   "editDispatchLive",
   "manageDispatchSettings",
+  "viewFleetLive",
+  "viewFleetDashboard",
+  "viewFleetRanking",
+  "viewFleetTrips",
+  "viewFleetHistory",
+  "viewFleetMedia",
+  "ackFleetAlerts",
+  "manageFleetRules",
+  "manageFleetDevices",
 ] as const;
 
 export type DeskPrivilegeKey = (typeof DESK_PRIVILEGE_KEYS)[number];
@@ -39,6 +57,15 @@ export const DESK_PRIVILEGE_LABELS: Record<DeskPrivilegeKey, string> = {
   editDispatchOrders: "Edit Orders",
   editDispatchLive: "Edit Live / replan",
   manageDispatchSettings: "Manage dispatch settings",
+  viewFleetLive: "Fleet Live · map",
+  viewFleetDashboard: "Fleet Live · dashboard",
+  viewFleetRanking: "Fleet Live · ranking",
+  viewFleetTrips: "Fleet Live · trips",
+  viewFleetHistory: "Fleet Live · history",
+  viewFleetMedia: "Fleet Live · media",
+  ackFleetAlerts: "Fleet Live · ack alerts",
+  manageFleetRules: "Fleet Live · manage rules",
+  manageFleetDevices: "Fleet Live · manage devices",
 };
 
 export function mergeDeskPrivileges(raw: unknown): DeskPrivileges {
@@ -54,6 +81,15 @@ export function mergeDeskPrivileges(raw: unknown): DeskPrivileges {
     editDispatchOrders: src.editDispatchOrders === true,
     editDispatchLive: src.editDispatchLive === true,
     manageDispatchSettings: src.manageDispatchSettings === true,
+    viewFleetLive: src.viewFleetLive === true,
+    viewFleetDashboard: src.viewFleetDashboard === true,
+    viewFleetRanking: src.viewFleetRanking === true,
+    viewFleetTrips: src.viewFleetTrips === true,
+    viewFleetHistory: src.viewFleetHistory === true,
+    viewFleetMedia: src.viewFleetMedia === true,
+    ackFleetAlerts: src.ackFleetAlerts === true,
+    manageFleetRules: src.manageFleetRules === true,
+    manageFleetDevices: src.manageFleetDevices === true,
   };
 }
 

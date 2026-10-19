@@ -13,6 +13,15 @@ describe("mergeDeskPrivileges", () => {
       editDispatchOrders: false,
       editDispatchLive: false,
       manageDispatchSettings: false,
+      viewFleetLive: false,
+      viewFleetDashboard: false,
+      viewFleetRanking: false,
+      viewFleetTrips: false,
+      viewFleetHistory: false,
+      viewFleetMedia: false,
+      ackFleetAlerts: false,
+      manageFleetRules: false,
+      manageFleetDevices: false,
     });
     expect(mergeDeskPrivileges(null)).toEqual(emptyDeskPrivileges());
     expect(mergeDeskPrivileges({ editDispatchGoods: "yes" })).toEqual(emptyDeskPrivileges());
@@ -30,6 +39,8 @@ describe("mergeDeskPrivileges", () => {
         editDispatchOrders: false,
         editDispatchLive: true,
         manageDispatchSettings: "true",
+        viewFleetLive: true,
+        manageFleetRules: "yes",
       }),
     ).toEqual({
       editDispatchGoods: true,
@@ -41,6 +52,15 @@ describe("mergeDeskPrivileges", () => {
       editDispatchOrders: false,
       editDispatchLive: true,
       manageDispatchSettings: false,
+      viewFleetLive: true,
+      viewFleetDashboard: false,
+      viewFleetRanking: false,
+      viewFleetTrips: false,
+      viewFleetHistory: false,
+      viewFleetMedia: false,
+      ackFleetAlerts: false,
+      manageFleetRules: false,
+      manageFleetDevices: false,
     });
   });
 

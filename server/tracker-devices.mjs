@@ -9,6 +9,7 @@ import {
   deviceIdsInGroups,
   groupSummariesByDeviceIds,
 } from "./tracker-device-groups.mjs";
+import { listDeviceFieldDefs, sanitizeCustomAttrs } from "./tracker-device-fields.mjs";
 
 export const TRACKER_PROTOCOLS = [
   "json",
@@ -103,6 +104,25 @@ export function publicTrackerDevice(row, { includeTokenHint = false } = {}) {
     uniqueId: row.unique_id || "",
     protocol: row.protocol,
     label: row.label || "",
+    description: row.description || "",
+    plate: row.plate || "",
+    vin: row.vin || "",
+    make: row.make || "",
+    model: row.model || "",
+    modelYear:
+      row.model_year == null || row.model_year === ""
+        ? null
+        : Number.isFinite(Number(row.model_year))
+          ? Number(row.model_year)
+          : null,
+    vehicleType: row.vehicle_type || "",
+    color: row.color || "",
+    cameraChannels: Math.max(0, Math.min(32, Number(row.camera_channels) || 0)),
+    tags: Array.isArray(row.tags) ? row.tags.map((t) => String(t)).filter(Boolean) : [],
+    customAttrs:
+      row.custom_attrs && typeof row.custom_attrs === "object" && !Array.isArray(row.custom_attrs)
+        ? row.custom_attrs
+        : {},
     armadaUserId: row.armada_user_id == null ? null : Number(row.armada_user_id),
     enabled: row.enabled !== false,
     hasAuthToken: Boolean(row.auth_token_hash),
@@ -130,6 +150,45 @@ export function publicTrackerDevice(row, { includeTokenHint = false } = {}) {
     };
   }
   return out;
+}
+
+function cleanTextField(v, max) {
+  return String(v ?? "").trim().slice(0, max);
+}
+
+function parseModelYear(v) {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1980 || n > 2100) return null;
+  return n;
+}
+
+function parseCameraChannels(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(32, Math.trunc(n)));
+}
+
+function parseTags(v) {
+  if (Array.isArray(v)) return v.map((t) => String(t).trim()).filter(Boolean).slice(0, 24);
+  if (typeof v === "string") {
+    return v
+      .split(/[,;]+/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, 24);
+  }
+  return [];
+}
+
+async function resolveCustomAttrs(tenantId, body, currentAttrs) {
+  if (body.customAttrs === undefined && body.custom_attrs === undefined) {
+    return currentAttrs && typeof currentAttrs === "object" && !Array.isArray(currentAttrs)
+      ? currentAttrs
+      : {};
+  }
+  const defs = await listDeviceFieldDefs(tenantId, { includeDisabled: false });
+  return sanitizeCustomAttrs(body.customAttrs ?? body.custom_attrs, defs);
 }
 
 export async function listTrackerDevices(tenantId) {
@@ -187,6 +246,17 @@ export async function createTrackerDevice(tenantId, body) {
   const videoChannelId = cleanVideoField(body.videoChannelId ?? body.video_channel_id, 64);
   const videoRtspUrl = cleanVideoField(body.videoRtspUrl ?? body.video_rtsp_url, 500);
   const videoNotes = cleanVideoField(body.videoNotes ?? body.video_notes, 500);
+  const description = cleanTextField(body.description, 500);
+  const plate = cleanTextField(body.plate, 32);
+  const vin = cleanTextField(body.vin, 32);
+  const make = cleanTextField(body.make, 64);
+  const model = cleanTextField(body.model, 64);
+  const modelYear = parseModelYear(body.modelYear ?? body.model_year);
+  const vehicleType = cleanTextField(body.vehicleType ?? body.vehicle_type, 64);
+  const color = cleanTextField(body.color, 32);
+  const cameraChannels = parseCameraChannels(body.cameraChannels ?? body.camera_channels);
+  const tags = parseTags(body.tags);
+  const customAttrs = await resolveCustomAttrs(tenantId, body, {});
   let profileId =
     body.profileId || body.profile_id
       ? String(body.profileId || body.profile_id).trim() || null
@@ -201,8 +271,10 @@ export async function createTrackerDevice(tenantId, body) {
   const inserted = await dbQuery(
     `INSERT INTO tracker_devices (
        tenant_id, imei, unique_id, protocol, label, armada_user_id, auth_token_hash, enabled,
-       video_channel_id, video_rtsp_url, video_notes, profile_id
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       video_channel_id, video_rtsp_url, video_notes, profile_id,
+       description, plate, vin, make, model, model_year, vehicle_type, color,
+       camera_channels, tags, custom_attrs
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23::jsonb)
      RETURNING *`,
     [
       tenantId,
@@ -217,6 +289,17 @@ export async function createTrackerDevice(tenantId, body) {
       videoRtspUrl,
       videoNotes,
       profileId,
+      description,
+      plate,
+      vin,
+      make,
+      model,
+      modelYear,
+      vehicleType,
+      color,
+      cameraChannels,
+      tags,
+      JSON.stringify(customAttrs),
     ],
   );
   const row = inserted.rows[0];
@@ -287,12 +370,36 @@ export async function updateTrackerDevice(tenantId, deviceId, body) {
     body.profileId !== undefined || body.profile_id !== undefined
       ? String(body.profileId || body.profile_id || "").trim() || null
       : current.profile_id;
+  const description =
+    body.description !== undefined ? cleanTextField(body.description, 500) : current.description || "";
+  const plate = body.plate !== undefined ? cleanTextField(body.plate, 32) : current.plate || "";
+  const vin = body.vin !== undefined ? cleanTextField(body.vin, 32) : current.vin || "";
+  const make = body.make !== undefined ? cleanTextField(body.make, 64) : current.make || "";
+  const model = body.model !== undefined ? cleanTextField(body.model, 64) : current.model || "";
+  const modelYear =
+    body.modelYear !== undefined || body.model_year !== undefined
+      ? parseModelYear(body.modelYear ?? body.model_year)
+      : current.model_year;
+  const vehicleType =
+    body.vehicleType !== undefined || body.vehicle_type !== undefined
+      ? cleanTextField(body.vehicleType ?? body.vehicle_type, 64)
+      : current.vehicle_type || "";
+  const color = body.color !== undefined ? cleanTextField(body.color, 32) : current.color || "";
+  const cameraChannels =
+    body.cameraChannels !== undefined || body.camera_channels !== undefined
+      ? parseCameraChannels(body.cameraChannels ?? body.camera_channels)
+      : Math.max(0, Number(current.camera_channels) || 0);
+  const tags = body.tags !== undefined ? parseTags(body.tags) : Array.isArray(current.tags) ? current.tags : [];
+  const customAttrs = await resolveCustomAttrs(tenantId, body, current.custom_attrs);
   const updated = await dbQuery(
     `UPDATE tracker_devices SET
        imei = $3, unique_id = $4, protocol = $5, label = $6,
        armada_user_id = $7, auth_token_hash = $8, enabled = $9,
        video_channel_id = $10, video_rtsp_url = $11, video_notes = $12,
-       profile_id = $13, updated_at = now()
+       profile_id = $13,
+       description = $14, plate = $15, vin = $16, make = $17, model = $18,
+       model_year = $19, vehicle_type = $20, color = $21, camera_channels = $22,
+       tags = $23, custom_attrs = $24::jsonb, updated_at = now()
      WHERE tenant_id = $1 AND id = $2
      RETURNING *`,
     [
@@ -309,6 +416,17 @@ export async function updateTrackerDevice(tenantId, deviceId, body) {
       videoRtspUrl,
       videoNotes,
       profileId,
+      description,
+      plate,
+      vin,
+      make,
+      model,
+      modelYear,
+      vehicleType,
+      color,
+      cameraChannels,
+      tags,
+      JSON.stringify(customAttrs),
     ],
   );
   const row = updated.rows[0];
@@ -801,7 +919,7 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
     if (!deviceFilter.length) return [];
   }
   const rows = await dbQuery(
-    `SELECT d.id AS device_id, d.imei, d.label, d.armada_user_id, d.protocol,
+    `SELECT d.id AS device_id, d.imei, d.label, d.plate, d.vehicle_type, d.armada_user_id, d.protocol,
             lf.lat, lf.lon, lf.recorded_at, lf.speed, lf.heading, lf.ignition,
             lf.odometer, lf.mapped_attrs, lf.source_protocol
      FROM tracker_devices d
@@ -823,10 +941,16 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
         ? Math.max(0, Math.round((now - Date.parse(recordedAt)) / 1000))
         : null;
     const tel = enrichFixTelemetry(r);
+    const displayLabel =
+      (r.label && String(r.label).trim()) ||
+      (r.plate && String(r.plate).trim()) ||
+      r.imei;
     return {
       deviceId: r.device_id,
       imei: r.imei,
-      label: r.label || r.imei,
+      label: displayLabel,
+      plate: r.plate || "",
+      vehicleType: r.vehicle_type || "",
       armadaUserId: r.armada_user_id == null ? null : Number(r.armada_user_id),
       protocol: r.protocol,
       lat: Number(r.lat),
