@@ -110,13 +110,17 @@ func parseAVL(payload []byte) (int, []store.Fix) {
 			"io":           io,
 			"event_io":     eventID,
 			"record_index": i,
-			// Official GPS Element fields (Codec wiki) — scaled for Live values.
-			"gps.longitude":  lon,
-			"gps.latitude":   lat,
-			"gps.altitude":   altF,
-			"gps.angle":      hdg, // degrees from north = heading
-			"gps.satellites": sats,
-			"gps.speed":      spd, // km/h from satellites
+			// Official GPS Element fields (Codec wiki) — scaled for Live / Terminal.
+			"gps.longitude":      lon,
+			"gps.latitude":       lat,
+			"gps.altitude":       altF,
+			"gps.angle":          hdg, // degrees from north = heading
+			"gps.satellites":     sats,
+			"gps.speed":          spd, // km/h from satellites
+			"gps.longitude_raw":  lonRaw, // signed int32 before /1e7
+			"gps.latitude_raw":   latRaw,
+			"gps.altitude_raw":   alt,
+			"gps.angle_raw":      angle,
 		}
 		if genType != nil {
 			raw["generation_type"] = genType

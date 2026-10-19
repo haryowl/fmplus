@@ -3558,6 +3558,59 @@ html.onesheet-root body {
   color: #e2e8f0;
 }
 
+.admin-terminal-expand {
+  display: grid;
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+
+.admin-terminal-wire {
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.admin-terminal-wire-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.68rem;
+}
+
+.admin-terminal-wire-head strong {
+  color: #fbbf24;
+  font-weight: 650;
+}
+
+.admin-terminal-hex {
+  margin: 0;
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.66rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 140px;
+  overflow: auto;
+  color: #86efac;
+}
+
+.admin-terminal-decode {
+  margin: 0;
+  font-size: 0.68rem;
+  color: var(--admin-ink-soft);
+  display: grid;
+  gap: 2px;
+}
+
+.admin-terminal-json.is-tall {
+  max-height: 280px;
+}
+
 .admin-section-tabs {
   display: flex;
   flex-wrap: wrap;

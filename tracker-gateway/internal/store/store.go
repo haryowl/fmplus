@@ -177,8 +177,8 @@ func isCookedAppParamKey(k string) bool {
 	if k == "" || k == "tags" || k == "io" {
 		return false
 	}
-	// Raw protocol element dumps — not scaled; Live values must not treat these as volts/°C.
-	for _, p := range []string{"tag.", "io.", "add.", "0x"} {
+	// Raw protocol element dumps / debug hex — not scaled app params.
+	for _, p := range []string{"tag.", "io.", "add.", "avl.", "0x"} {
 		if len(k) >= len(p) && k[:len(p)] == p {
 			return false
 		}

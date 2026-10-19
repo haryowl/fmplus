@@ -825,6 +825,7 @@ export default function AdminConsole() {
       lat: number | null;
       lon: number | null;
       speed: number | null;
+      heading?: number | null;
       ignition: boolean | null;
       remote?: string | null;
       rawAttrs: Record<string, unknown>;
@@ -3768,9 +3769,9 @@ export default function AdminConsole() {
                     <h3>Terminal</h3>
                     <p
                       className="muted"
-                      title="Inbound fixes plus unregistered IMEI connection attempts (poll ~3s)."
+                      title="Expand a row to see device wire hex (AVL/tags) for decode discussion. Poll ~3s."
                     >
-                      Fixes + unregistered IMEI · poll ~3s
+                      Expand row → RAW WIRE HEX · poll ~3s
                     </p>
                   </header>
                   <div className="admin-form-grid">
@@ -3847,10 +3848,16 @@ export default function AdminConsole() {
                                   ? `${ev.lat.toFixed(5)}, ${ev.lon.toFixed(5)}`
                                   : "no fix"}
                               {!unreg && ev.speed != null ? ` · ${ev.speed} km/h` : ""}
+                              {!unreg && ev.heading != null ? ` · hdg ${ev.heading}°` : ""}
                               {!unreg && ev.ignition != null
                                 ? ev.ignition
                                   ? " · IGN"
                                   : " · off"
+                                : ""}
+                              {!unreg &&
+                              (typeof ev.rawAttrs?.["avl.hex"] === "string" ||
+                                typeof ev.rawAttrs?.["avl.frame_hex"] === "string")
+                                ? " · RAW HEX"
                                 : ""}
                               {!unreg && Object.keys(ev.mappedAttrs || {}).length
                                 ? ` · ${Object.keys(ev.mappedAttrs).length} mapped`
@@ -3879,18 +3886,132 @@ export default function AdminConsole() {
                             </div>
                           ) : null}
                           {open ? (
-                            <pre className="admin-terminal-json">
-                              {JSON.stringify(
-                                {
-                                  kind: ev.kind || "fix",
-                                  remote: ev.remote,
-                                  rawAttrs: ev.rawAttrs,
-                                  mappedAttrs: ev.mappedAttrs,
-                                },
-                                null,
-                                2,
-                              )}
-                            </pre>
+                            <div className="admin-terminal-expand">
+                              {(() => {
+                                const raw = ev.rawAttrs || {};
+                                const frameHex =
+                                  typeof raw["avl.frame_hex"] === "string"
+                                    ? (raw["avl.frame_hex"] as string)
+                                    : "";
+                                const avlHex =
+                                  typeof raw["avl.hex"] === "string"
+                                    ? (raw["avl.hex"] as string)
+                                    : "";
+                                const wireHex = frameHex || avlHex;
+                                const gpsRaw = {
+                                  lon_raw: raw["gps.longitude_raw"],
+                                  lat_raw: raw["gps.latitude_raw"],
+                                  alt_raw: raw["gps.altitude_raw"],
+                                  angle_raw: raw["gps.angle_raw"],
+                                  lon: raw["gps.longitude"],
+                                  lat: raw["gps.latitude"],
+                                  angle: raw["gps.angle"],
+                                  speed: raw["gps.speed"],
+                                  sats: raw["gps.satellites"],
+                                  codec: raw.codec,
+                                  ext_v: raw["voltage.ext"] ?? raw["io.66"],
+                                  batt_v: raw["voltage.batt"] ?? raw["io.67"],
+                                };
+                                const restRaw = { ...raw };
+                                delete restRaw["avl.hex"];
+                                delete restRaw["avl.frame_hex"];
+                                delete restRaw["avl.bytes"];
+                                return (
+                                  <>
+                                    {wireHex ? (
+                                      <div className="admin-terminal-wire">
+                                        <div className="admin-terminal-wire-head">
+                                          <strong>RAW WIRE HEX</strong>
+                                          <span className="muted">
+                                            {frameHex
+                                              ? "frame (preamble+len+AVL+CRC)"
+                                              : "AVL / tags payload"}
+                                            {typeof raw["avl.bytes"] === "number"
+                                              ? ` · ${raw["avl.bytes"]} B`
+                                              : ""}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            className="btn btn-ghost"
+                                            style={{ marginLeft: "auto", fontSize: "0.65rem" }}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              void navigator.clipboard?.writeText(wireHex);
+                                            }}
+                                          >
+                                            Copy hex
+                                          </button>
+                                        </div>
+                                        <pre className="admin-terminal-hex">{wireHex}</pre>
+                                        {frameHex && avlHex && frameHex !== avlHex ? (
+                                          <>
+                                            <div className="admin-terminal-wire-head">
+                                              <strong>AVL PAYLOAD</strong>
+                                              <button
+                                                type="button"
+                                                className="btn btn-ghost"
+                                                style={{ marginLeft: "auto", fontSize: "0.65rem" }}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  void navigator.clipboard?.writeText(avlHex);
+                                                }}
+                                              >
+                                                Copy AVL
+                                              </button>
+                                            </div>
+                                            <pre className="admin-terminal-hex">{avlHex}</pre>
+                                          </>
+                                        ) : null}
+                                      </div>
+                                    ) : (
+                                      <p className="muted" style={{ fontSize: "0.7rem", margin: 0 }}>
+                                        No wire hex yet — redeploy tracker-gateway, then wait for the next uplink.
+                                      </p>
+                                    )}
+                                    {!unreg ? (
+                                      <div className="admin-terminal-decode">
+                                        <strong style={{ color: "var(--admin-ink)" }}>
+                                          GPS Element (gateway decode)
+                                        </strong>
+                                        <span>
+                                          lat/lon cooked: {String(gpsRaw.lat ?? "—")},{" "}
+                                          {String(gpsRaw.lon ?? "—")} · heading{" "}
+                                          {String(gpsRaw.angle ?? ev.heading ?? "—")}° · speed{" "}
+                                          {String(gpsRaw.speed ?? ev.speed ?? "—")} km/h · sats{" "}
+                                          {String(gpsRaw.sats ?? "—")}
+                                        </span>
+                                        <span>
+                                          raw ints: lon={String(gpsRaw.lon_raw ?? "—")} lat=
+                                          {String(gpsRaw.lat_raw ?? "—")} alt=
+                                          {String(gpsRaw.alt_raw ?? "—")} angle=
+                                          {String(gpsRaw.angle_raw ?? "—")} · codec=
+                                          {String(gpsRaw.codec ?? "?")}
+                                        </span>
+                                        <span>
+                                          voltage: ext={String(gpsRaw.ext_v ?? "—")} batt=
+                                          {String(gpsRaw.batt_v ?? "—")} (AVL66/67 raw mV in io.*)
+                                        </span>
+                                      </div>
+                                    ) : null}
+                                    <pre className="admin-terminal-json is-tall">
+                                      {JSON.stringify(
+                                        {
+                                          kind: ev.kind || "fix",
+                                          remote: ev.remote,
+                                          lat: ev.lat,
+                                          lon: ev.lon,
+                                          heading: ev.heading,
+                                          rawAttrs: restRaw,
+                                          mappedAttrs: ev.mappedAttrs,
+                                        },
+                                        null,
+                                        2,
+                                      )}
+                                    </pre>
+                                  </>
+                                );
+                              })()}
+                            </div>
                           ) : null}
                         </li>
                       );

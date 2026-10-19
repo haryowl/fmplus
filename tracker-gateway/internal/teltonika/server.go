@@ -142,14 +142,29 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			continue
 		}
 		count, fixes := parseAVL(payload)
-		for _, fix := range fixes {
+		// Full wire frame for Admin Terminal debugging (preamble + length + AVL + CRC).
+		frameHex := fmt.Sprintf("%08x%08x%x%08x",
+			binary.BigEndian.Uint32(preamble),
+			uint32(dataLen),
+			payload,
+			binary.BigEndian.Uint32(crcBuf),
+		)
+		avlHex := fmt.Sprintf("%x", payload)
+		for i := range fixes {
+			fix := &fixes[i]
+			if fix.RawAttrs == nil {
+				fix.RawAttrs = map[string]any{}
+			}
+			fix.RawAttrs["avl.hex"] = avlHex
+			fix.RawAttrs["avl.frame_hex"] = frameHex
+			fix.RawAttrs["avl.bytes"] = len(payload)
 			fix.SourceProtocol = "teltonika"
-			if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
+			if err := deviceauth.Ingest(ctx, st, device, *fix); err != nil {
 				log.Printf("[teltonika] ingest %s: %v", imei, err)
 			}
-			if ev := safetyFromEventIO(fix); ev != nil {
+			if ev := safetyFromEventIO(*fix); ev != nil {
 				_ = st.InsertSafetyEvent(ctx, device, *ev)
-			} else if ev := safetyFromIO(fix); ev != nil {
+			} else if ev := safetyFromIO(*fix); ev != nil {
 				_ = st.InsertSafetyEvent(ctx, device, *ev)
 			}
 		}

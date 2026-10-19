@@ -554,6 +554,7 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
         paramId.startsWith("io.") ||
         paramId.startsWith("tag.") ||
         paramId.startsWith("add.") ||
+        paramId.startsWith("avl.") ||
         paramId.startsWith("0x")
       ) {
         continue;
@@ -587,6 +588,7 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
         vendorKey.startsWith("io.") ||
         vendorKey.startsWith("tag.") ||
         vendorKey.startsWith("add.") ||
+        vendorKey.startsWith("avl.") ||
         vendorKey.startsWith("0x")
       ) {
         continue;

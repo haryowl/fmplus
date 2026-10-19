@@ -105,6 +105,9 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			continue
 		}
 
+		// Full wire packet for Admin Terminal decode (hdr + tags + CRC).
+		packetHex := fmt.Sprintf("%x", append(append([]byte{}, hdr...), body...))
+		tagsHex := fmt.Sprintf("%x", tagsBytes)
 		records := parseTagRecords(tagsBytes)
 		if len(records) == 0 {
 			records = []map[byte][]byte{parseTags(tagsBytes)}
@@ -152,6 +155,9 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				if fix.RawAttrs == nil {
 					fix.RawAttrs = map[string]any{}
 				}
+				fix.RawAttrs["avl.hex"] = tagsHex
+				fix.RawAttrs["avl.frame_hex"] = packetHex
+				fix.RawAttrs["avl.bytes"] = len(tagsBytes)
 				tagRaw := tagsToRaw(tags)
 				fix.RawAttrs["tags"] = tagRaw
 				applyPacketMeta(fix.RawAttrs, archive, len(records))
