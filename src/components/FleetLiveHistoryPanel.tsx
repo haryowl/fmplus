@@ -201,6 +201,7 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
       <FleetLiveSectionHead
         section="history"
         title="History"
+        badge="DAY"
         subtitle={loading ? "Loading…" : "Day timeline of fixes & safety"}
         actions={
           <div className="fleet-trips-filters">

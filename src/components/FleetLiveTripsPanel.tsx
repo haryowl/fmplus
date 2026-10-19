@@ -238,19 +238,9 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
       <FleetLiveSectionHead
         section="trips"
         title="Trips"
-        subtitle={
-          loading
-            ? "Loading day track…"
-            : (
-              <>
-                Segments from speed / ignition
-                <span className="fleet-trips-live-pill" title="Historical day view">
-                  DAY
-                </span>
-                {syncedLabel ? <span className="fleet-trips-sync muted"> · {syncedLabel}</span> : null}
-              </>
-            )
-        }
+        badge="DAY"
+        subtitle={loading ? "Loading day track…" : "Segments from speed / ignition"}
+        meta={syncedLabel || undefined}
         actions={
           <div className="fleet-trips-filters">
             <label className="fleet-cc-field fleet-cc-field-ico">

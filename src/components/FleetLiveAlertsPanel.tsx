@@ -221,6 +221,7 @@ export function FleetLiveAlertsPanel({
       <FleetLiveSectionHead
         section="alerts"
         title="Alerts"
+        badge={sub === "rules" ? "RULES" : "FEED"}
         subtitle={loading ? "Loading…" : "Safety feed & telematics rules"}
         actions={
           <div className="fleet-ico-tabs" role="tablist">
@@ -419,20 +420,23 @@ export function FleetLiveAlertsPanel({
           </section>
 
           <section className="fleet-dash-card">
-            <h3>
-              <IcoRules /> Rules <span className="muted">{rules.length}</span>
-            </h3>
+            <header className="fleet-dash-card-head">
+              <h3>
+                <IcoRules /> Rules
+              </h3>
+              <em className="fleet-dash-pill">{rules.length}</em>
+            </header>
             {rules.length === 0 ? (
               <p className="muted fleet-dash-empty">No rules yet. Create one above.</p>
             ) : (
               <ul className="fleet-rules-list">
                 {rules.map((r) => (
-                  <li key={r.id}>
+                  <li key={r.id} className={!r.enabled ? "is-off" : ""}>
                     <div>
                       <strong>{r.name}</strong>
                       <span className="fleet-rules-flags muted">
                         <span className={`fleet-sev is-${r.severity}`}>{r.severity}</span>
-                        <span>{r.scopeKind}</span>
+                        <span className="fleet-dash-pill">{r.scopeKind}</span>
                         {!r.enabled ? <span className="fleet-sev is-off">off</span> : null}
                         {r.notifyEmail ? (
                           <span title="Email">

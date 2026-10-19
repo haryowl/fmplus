@@ -334,17 +334,13 @@ export function FleetLiveDashboardPanel({
       <FleetLiveSectionHead
         section="dashboard"
         title="Dashboard"
-        subtitle={
+        badge="LIVE"
+        subtitle="Live utilization from last status"
+        meta={
           <>
-            Live utilization from last status
-            <span className="fleet-trips-live-pill">LIVE</span>
-          </>
-        }
-        actions={
-          <div className="fleet-dash-head-meta muted">
             <IcoHistory />
             {loading ? "Updating…" : "Updated just now"}
-          </div>
+          </>
         }
       />
 

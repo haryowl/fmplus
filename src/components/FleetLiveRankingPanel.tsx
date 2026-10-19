@@ -139,12 +139,8 @@ export function FleetLiveRankingPanel({
       <FleetLiveSectionHead
         section="ranking"
         title="Ranking"
-        subtitle={
-          <>
-            Leaderboard from live last-status
-            <span className="fleet-trips-live-pill">LIVE</span>
-          </>
-        }
+        badge="LIVE"
+        subtitle={loading ? "Updating…" : "Leaderboard from live last-status"}
       />
 
       <div className="fleet-rank-kpis">

@@ -3978,12 +3978,41 @@ html.onesheet-root body {
   flex: 0 0 auto;
 }
 
+.fleet-sec-titles {
+  min-width: 0;
+}
+
+.fleet-sec-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .fleet-sec-titles h2 {
   margin: 0;
   font-size: 1.1rem;
   font-weight: 750;
   letter-spacing: -0.02em;
   color: var(--ink, #0f2a33);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-sec-chip {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--gps, #0d9488) 16%, transparent);
+  color: var(--gps, #0d9488);
 }
 
 .fleet-sec-titles p {
@@ -3991,11 +4020,35 @@ html.onesheet-root body {
   font-size: 0.75rem;
 }
 
+.fleet-sec-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.72rem;
+}
+
+.fleet-sec-meta .fleet-ico {
+  flex: 0 0 auto;
+}
+
 .fleet-sec-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 8px;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .fleet-sec-head {
+    align-items: flex-start;
+  }
+
+  .fleet-sec-actions {
+    width: 100%;
+  }
 }
 
 .fleet-sec-summary {
@@ -5796,20 +5849,36 @@ html.onesheet-root body {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .fleet-rules-list li {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line, #eef1f4);
+  padding: 12px;
+  border: 1px solid var(--line, #d5e0e6);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-2, #f6fbfa);
   font-size: 0.82rem;
+  min-width: 0;
 }
 
-.fleet-rules-list li:last-child {
-  border-bottom: 0;
+.fleet-rules-list li > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.fleet-rules-list li strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-rules-list li.is-off {
+  opacity: 0.72;
+  background: var(--surface, #fff);
 }
 
 .fleet-rules-row-actions {
@@ -5817,6 +5886,21 @@ html.onesheet-root body {
   flex-wrap: wrap;
   gap: 6px;
   align-items: flex-start;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .fleet-rules-list li {
+    flex-direction: column;
+  }
+
+  .fleet-rules-cond-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .fleet-rules-cond-row button {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 800px) {
@@ -8127,11 +8211,48 @@ html.onesheet-root body {
   .fleet-cc-map-wrap {
     height: 420px;
   }
+
+  .fleet-cc-sel-card {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    max-height: min(46%, 260px);
+    overflow: auto;
+  }
+
+  .fleet-cc-map-wrap:has(.fleet-cc-sel-card) .fleet-cc-map-insights {
+    display: none;
+  }
+
+  .fleet-cc-map-wrap:has(.fleet-cc-sel-card) .fleet-cc-map-legend {
+    opacity: 0.35;
+    pointer-events: none;
+  }
 }
 
 @media (max-width: 560px) {
   .fleet-cc-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fleet-cc-sel-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .fleet-cc-sel-metrics > div {
+    padding: 6px;
+  }
+
+  .fleet-cc-sel-metrics strong {
+    font-size: 0.82rem;
+  }
+
+  .fleet-cc-map-insights {
+    max-width: calc(100% - 16px);
+    flex-direction: row;
+    flex-wrap: wrap;
   }
 }
 

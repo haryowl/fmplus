@@ -112,6 +112,7 @@ export function FleetLiveMediaPanel({
       <FleetLiveSectionHead
         section="media"
         title="Media"
+        badge="EVIDENCE"
         subtitle={
           loading
             ? "Loading…"
