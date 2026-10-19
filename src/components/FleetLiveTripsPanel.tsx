@@ -221,8 +221,12 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
     replayTimer.current = window.setInterval(() => {
       const t = (performance.now() - started) / duration;
       if (t >= 1) {
+        if (replayTimer.current != null) {
+          window.clearInterval(replayTimer.current);
+          replayTimer.current = null;
+        }
+        setReplaying(false);
         setReplayT(1);
-        stopReplay();
         return;
       }
       setReplayT(t);
