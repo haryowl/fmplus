@@ -156,3 +156,51 @@ export async function fetchTrackerDeviceGroups(signal?: AbortSignal): Promise<Tr
   if (!res.ok) throw new Error(data.error || `Tracker groups ${res.status}`);
   return data.groups || [];
 }
+
+export type TrackerDayPoint = {
+  lat: number;
+  lon: number;
+  speed: number | null;
+  heading: number | null;
+  ignition: boolean | null;
+  odometerKm: number | null;
+  recordedAt: string;
+  sourceProtocol?: string;
+};
+
+export type TrackerDeviceDay = {
+  deviceId: string;
+  date: string;
+  tzOffset?: string;
+  label?: string;
+  imei?: string;
+  points: TrackerDayPoint[];
+  telematicsSource?: TelematicsSource;
+};
+
+export async function fetchTrackerDeviceDay(
+  opts: { deviceId: string; date: string; tzOffset?: string },
+  signal?: AbortSignal,
+): Promise<TrackerDeviceDay> {
+  const q = new URLSearchParams({
+    deviceId: opts.deviceId,
+    date: opts.date,
+  });
+  if (opts.tzOffset) q.set("tz", opts.tzOffset);
+  const res = await fetch(`/api/tracker/device-day?${q}`, {
+    credentials: "include",
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as TrackerDeviceDay & { error?: string };
+  if (!res.ok) throw new Error(data.error || `Device day ${res.status}`);
+  return {
+    deviceId: data.deviceId || opts.deviceId,
+    date: data.date || opts.date,
+    tzOffset: data.tzOffset,
+    label: data.label,
+    imei: data.imei,
+    points: Array.isArray(data.points) ? data.points : [],
+    telematicsSource: data.telematicsSource,
+  };
+}

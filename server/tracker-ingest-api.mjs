@@ -14,6 +14,7 @@ import {
   findDeviceByAuthToken,
   findDeviceByImei,
   ingestVehicleFix,
+  listDeviceDayFixes,
   listTenantLastFixes,
   telematicsUsesDevices,
   tenantTelematicsSource,
@@ -114,6 +115,43 @@ export async function handleTrackerIngestRequest(req, res) {
       const { listDeviceGroups } = await import("./tracker-device-groups.mjs");
       const groups = await listDeviceGroups(dbTenant.id);
       json(res, 200, { groups });
+      return true;
+    } catch (err) {
+      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
+  if (url.pathname === "/api/tracker/device-day" && req.method === "GET") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      const source = await tenantTelematicsSource(dbTenant.id);
+      if (!telematicsUsesDevices(source)) {
+        json(res, 200, {
+          deviceId: "",
+          date: "",
+          points: [],
+          telematicsSource: source,
+        });
+        return true;
+      }
+      const deviceId = String(url.searchParams.get("deviceId") || "").trim();
+      const date = String(url.searchParams.get("date") || "").trim().slice(0, 10);
+      const tzOffset = String(url.searchParams.get("tz") || url.searchParams.get("tzOffset") || "").trim();
+      if (!deviceId || !date) {
+        json(res, 400, { error: "deviceId and date (YYYY-MM-DD) required" });
+        return true;
+      }
+      const day = await listDeviceDayFixes(dbTenant.id, deviceId, { date, tzOffset });
+      if (day.error) {
+        json(res, 404, { error: day.error });
+        return true;
+      }
+      json(res, 200, { ...day, telematicsSource: source });
       return true;
     } catch (err) {
       json(res, 500, { error: err instanceof Error ? err.message : String(err) });

@@ -4175,6 +4175,138 @@ html.onesheet-root body {
   vertical-align: middle;
 }
 
+/* Fleet Live Trips / History */
+.fleet-trips,
+.fleet-hist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fleet-trips-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fleet-trips-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.fleet-trips-head p {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+}
+
+.fleet-trips-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fleet-trips-summary {
+  font-size: 0.78rem;
+}
+
+.fleet-trips-body {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1.4fr);
+  gap: 8px;
+  min-height: 360px;
+}
+
+@media (max-width: 900px) {
+  .fleet-trips-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fleet-trips-list-pane,
+.fleet-hist-timeline-pane {
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #d8dee4);
+  border-radius: 10px;
+  padding: 8px;
+  max-height: min(58vh, 620px);
+  overflow: auto;
+}
+
+.fleet-trips-map-pane {
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #d8dee4);
+  border-radius: 10px;
+  overflow: hidden;
+  min-height: 320px;
+}
+
+.fleet-day-map {
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+}
+
+.fleet-trips-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fleet-trips-list li button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 0 6px 6px 0;
+  background: transparent;
+  padding: 8px 10px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.fleet-trips-list li.is-selected button {
+  background: color-mix(in srgb, var(--gps, #0b6b62) 12%, transparent);
+  border-left-color: var(--gps, #0b6b62);
+}
+
+.fleet-trips-list li button:hover {
+  background: color-mix(in srgb, var(--ink, #17212b) 5%, transparent);
+}
+
+.fleet-hist-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fleet-hist-timeline li {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line, #eef1f4);
+  font-size: 0.78rem;
+}
+
+.fleet-hist-timeline li:last-child {
+  border-bottom: 0;
+}
+
+.fleet-hist-timeline li.is-alert {
+  background: color-mix(in srgb, #fee2e2 45%, transparent);
+}
+
+.fleet-hist-timeline time {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft, #5a6570);
+}
+
 @media (max-width: 800px) {
   .fleet-cc-shell:not(.is-nav-collapsed) {
     grid-template-columns: 1fr;

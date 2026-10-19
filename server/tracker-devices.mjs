@@ -1024,3 +1024,62 @@ export async function deviceTrailsByArmadaDays(tenantId, days) {
   }
   return out;
 }
+
+/**
+ * Day history points for one tracker device (Fleet Live Trips / History).
+ * @param {string} tenantId
+ * @param {string} deviceId
+ * @param {{ date: string, tzOffset?: string, limit?: number }} opts
+ */
+export async function listDeviceDayFixes(tenantId, deviceId, opts = {}) {
+  const date = String(opts.date || "").trim().slice(0, 10);
+  const device = String(deviceId || "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(device) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return { deviceId: device, date, points: [] };
+  }
+  const offset = /^[+-]\d{2}:\d{2}$/.test(String(opts.tzOffset || "").trim())
+    ? String(opts.tzOffset).trim()
+    : "+07:00";
+  const startMs = Date.parse(`${date}T00:00:00${offset}`);
+  if (!Number.isFinite(startMs)) return { deviceId: device, date, points: [] };
+  const endMs = startMs + 86_400_000;
+  const limit = Math.min(8000, Math.max(100, Number(opts.limit) || 4000));
+
+  const own = await dbQuery(
+    `SELECT id, label, imei FROM tracker_devices
+     WHERE tenant_id = $1 AND id = $2::uuid AND enabled = true`,
+    [tenantId, device],
+  );
+  if (!own.rows[0]) return { deviceId: device, date, points: [], error: "Device not found" };
+
+  const rows = await dbQuery(
+    `SELECT lat, lon, speed, heading, ignition, odometer, recorded_at, source_protocol
+     FROM vehicle_fixes
+     WHERE tenant_id = $1
+       AND device_id = $2::uuid
+       AND recorded_at >= $3::timestamptz
+       AND recorded_at < $4::timestamptz
+     ORDER BY recorded_at ASC
+     LIMIT $5`,
+    [tenantId, device, new Date(startMs).toISOString(), new Date(endMs).toISOString(), limit],
+  );
+
+  return {
+    deviceId: device,
+    date,
+    tzOffset: offset,
+    label: own.rows[0].label || own.rows[0].imei,
+    imei: own.rows[0].imei,
+    points: rows.rows.map((r) => ({
+      lat: Number(r.lat),
+      lon: Number(r.lon),
+      speed: r.speed == null ? null : Number(r.speed),
+      heading: r.heading == null ? null : Number(r.heading),
+      ignition: r.ignition == null ? null : Boolean(r.ignition),
+      odometerKm: r.odometer == null ? null : Number(r.odometer),
+      recordedAt:
+        r.recorded_at instanceof Date ? r.recorded_at.toISOString() : String(r.recorded_at),
+      sourceProtocol: r.source_protocol || "",
+    })),
+  };
+}

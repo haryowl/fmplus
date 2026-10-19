@@ -30,7 +30,9 @@ import {
 } from "../lib/trackerDevices";
 import { BrandMark } from "../components/BrandMark";
 import { FleetLiveDashboardPanel } from "../components/FleetLiveDashboardPanel";
+import { FleetLiveHistoryPanel } from "../components/FleetLiveHistoryPanel";
 import { FleetLiveRankingPanel } from "../components/FleetLiveRankingPanel";
+import { FleetLiveTripsPanel } from "../components/FleetLiveTripsPanel";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
 
@@ -441,6 +443,20 @@ export default function FleetLive() {
     setSection("live");
   }, []);
 
+  const tripDevices = useMemo(() => {
+    const list: Array<{ deviceId: string; label: string }> = [];
+    const seen = new Set<string>();
+    for (const row of searchFiltered) {
+      const meta = fixMeta[row.id];
+      if (!meta?.deviceId || seen.has(meta.deviceId)) continue;
+      seen.add(meta.deviceId);
+      list.push({ deviceId: meta.deviceId, label: row.name });
+    }
+    return list;
+  }, [searchFiltered, fixMeta]);
+
+  const initialTripDeviceId = selectedMeta?.deviceId || tripDevices[0]?.deviceId || "";
+
   const statusBreakdown = useMemo(
     () =>
       LIVE_OPS_CLASSES.map((cls) => ({
@@ -619,9 +635,27 @@ export default function FleetLive() {
         />
       ) : null}
 
+      {section === "trips" && fleetModuleOk ? (
+        <FleetLiveTripsPanel
+          devices={tripDevices}
+          timezone={timezone}
+          initialDeviceId={initialTripDeviceId}
+        />
+      ) : null}
+
+      {section === "history" && fleetModuleOk ? (
+        <FleetLiveHistoryPanel
+          devices={tripDevices}
+          timezone={timezone}
+          initialDeviceId={initialTripDeviceId}
+        />
+      ) : null}
+
       {section !== "live" &&
       section !== "dashboard" &&
       section !== "ranking" &&
+      section !== "trips" &&
+      section !== "history" &&
       fleetModuleOk ? (
         <div className="fleet-cc-section-soon">
           <h2>{sectionLabel}</h2>
