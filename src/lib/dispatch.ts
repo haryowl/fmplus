@@ -2693,9 +2693,13 @@ export type DispatchReplanSuggestion = {
 export async function fetchDispatchLive(
   serviceDate?: string,
   signal?: AbortSignal,
+  opts?: { deviceGroupId?: string | null },
 ): Promise<DispatchLiveSnapshot> {
   const date = serviceDate || todayServiceDate();
-  const res = await fetch(`/api/dispatch/live?date=${encodeURIComponent(date)}`, {
+  const q = new URLSearchParams({ date });
+  const deviceGroupId = opts?.deviceGroupId?.trim();
+  if (deviceGroupId) q.set("deviceGroupId", deviceGroupId);
+  const res = await fetch(`/api/dispatch/live?${q}`, {
     headers: { accept: "application/json", ...tenantHeaders() },
     signal,
   });
@@ -2958,9 +2962,13 @@ export async function fetchPhoneTrailForDate(
 export async function fetchDispatchSla(
   serviceDate?: string,
   signal?: AbortSignal,
+  opts?: { deviceGroupId?: string | null },
 ): Promise<{ sla: DispatchSlaScorecard; exceptionSummary: DispatchLiveSnapshot["exceptionSummary"] }> {
   const date = serviceDate || todayServiceDate();
-  const res = await fetch(`/api/dispatch/sla?date=${encodeURIComponent(date)}`, {
+  const q = new URLSearchParams({ date });
+  const deviceGroupId = opts?.deviceGroupId?.trim();
+  if (deviceGroupId) q.set("deviceGroupId", deviceGroupId);
+  const res = await fetch(`/api/dispatch/sla?${q}`, {
     headers: { accept: "application/json", ...tenantHeaders() },
     signal,
   });
@@ -3002,6 +3010,7 @@ export async function replanDispatchRemaining(body: {
   suggestionIds?: string[];
   apply?: boolean;
   autoSafe?: boolean;
+  deviceGroupId?: string | null;
 }): Promise<{
   preview: { serviceDate: string; suggestions: DispatchReplanSuggestion[]; suggestionCount: number };
   apply: boolean;

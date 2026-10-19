@@ -686,6 +686,109 @@ export async function deviceOdometerKmForArmadaUser(tenantId, armadaUserId) {
 }
 
 /**
+ * Armada user ids linked to enabled devices in the given tracker device groups.
+ * @param {string} tenantId
+ * @param {string[]} groupIds
+ * @returns {Promise<number[]>}
+ */
+export async function armadaUserIdsInDeviceGroups(tenantId, groupIds) {
+  const deviceIds = await deviceIdsInGroups(tenantId, groupIds);
+  if (!deviceIds.length) return [];
+  const rows = await dbQuery(
+    `SELECT DISTINCT armada_user_id
+     FROM tracker_devices
+     WHERE tenant_id = $1
+       AND enabled = true
+       AND id = ANY($2::uuid[])
+       AND armada_user_id IS NOT NULL`,
+    [tenantId, deviceIds],
+  );
+  return rows.rows
+    .map((r) => Number(r.armada_user_id))
+    .filter((n) => Number.isInteger(n) && n > 0);
+}
+
+/**
+ * Shared fleet last positions for Dispatch recovery / plan-day / Live start points.
+ * Shape matches fetchVehiclePositions: Map&lt;armadaUserId, { lat, lon, label }&gt;.
+ * Device fixes overlay (and fill) Armada when telematics_source includes devices.
+ *
+ * @param {string} tenantId
+ * @param {{ appId?: number, token?: string } | null | undefined} vaultTenant
+ * @param {{ armadaUserIds?: number[], groupIds?: string[] }} [opts]
+ * @returns {Promise<Map<number, { lat: number, lon: number, label: string }>>}
+ */
+export async function buildTelematicsPosMap(tenantId, vaultTenant, opts = {}) {
+  const source = await tenantTelematicsSource(tenantId).catch(() => "both");
+  /** @type {Map<number, { lat: number, lon: number, label: string }>} */
+  const out = new Map();
+
+  let uidFilter = null;
+  if (Array.isArray(opts.groupIds) && opts.groupIds.filter(Boolean).length) {
+    uidFilter = new Set(await armadaUserIdsInDeviceGroups(tenantId, opts.groupIds));
+  } else if (Array.isArray(opts.armadaUserIds) && opts.armadaUserIds.length) {
+    uidFilter = new Set(
+      opts.armadaUserIds.map(Number).filter((n) => Number.isInteger(n) && n > 0),
+    );
+  }
+
+  if (telematicsUsesArmada(source) && vaultTenant?.appId && vaultTenant?.token) {
+    try {
+      const { fetchVehiclePositions } = await import("./vehicle-positions.mjs");
+      const armada = await fetchVehiclePositions(vaultTenant);
+      for (const [uid, pos] of armada) {
+        if (uidFilter && !uidFilter.has(uid)) continue;
+        out.set(uid, pos);
+      }
+    } catch {
+      /* keep empty / device-only */
+    }
+  }
+
+  if (telematicsUsesDevices(source)) {
+    let ids =
+      uidFilter != null
+        ? [...uidFilter]
+        : Array.isArray(opts.armadaUserIds)
+          ? opts.armadaUserIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+          : null;
+    if (ids == null) {
+      // No scope: overlay all linked devices for the tenant.
+      const all = await dbQuery(
+        `SELECT DISTINCT armada_user_id
+         FROM tracker_devices
+         WHERE tenant_id = $1 AND enabled = true AND armada_user_id IS NOT NULL`,
+        [tenantId],
+      );
+      ids = all.rows
+        .map((r) => Number(r.armada_user_id))
+        .filter((n) => Number.isInteger(n) && n > 0);
+    }
+    if (ids.length) {
+      try {
+        const deviceMap = await lastFixesByArmadaUserIds(tenantId, ids);
+        for (const [uid, fix] of deviceMap) {
+          if (!Number.isFinite(fix.lat) || !Number.isFinite(fix.lon)) continue;
+          const prev = out.get(uid);
+          // Prefer device GPS when present (devices / both).
+          out.set(uid, {
+            lat: fix.lat,
+            lon: fix.lon,
+            label: fix.label
+              ? `${fix.label} (device)`
+              : prev?.label || `Vehicle ${uid} (device)`,
+          });
+        }
+      } catch {
+        /* keep Armada overlay */
+      }
+    }
+  }
+
+  return out;
+}
+
+/**
  * All last fixes for a tenant (Fleet Live / Live Ops overlay / device-only fleet).
  * @param {string} tenantId
  * @param {{ groupIds?: string[] }} [opts]

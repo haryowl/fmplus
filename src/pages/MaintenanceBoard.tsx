@@ -37,6 +37,12 @@ import { CsvImportPanel } from "../components/CsvImportPanel";
 import { filterStatusRows, type LastStatusRow } from "../lib/lastStatus";
 import { formatKm, formatSpeed } from "../lib/format";
 import { fullHref, tripsHref, writeLocationSearch } from "../lib/routing";
+import {
+  fetchTrackerDeviceGroups,
+  fetchTrackerLastStatus,
+  mergeArmadaRowsWithDeviceFixes,
+  type TrackerDeviceGroup,
+} from "../lib/trackerDevices";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
 import { BrandMark } from "../components/BrandMark";
@@ -135,6 +141,11 @@ export default function MaintenanceBoard() {
   } = useEmbedTenant();
   const [timezone, setTimezone] = useState(query.tz);
   const [groupId, setGroupId] = useState(query.groupId);
+  const [deviceGroups, setDeviceGroups] = useState<TrackerDeviceGroup[]>([]);
+  const [deviceGroupId, setDeviceGroupId] = useState(() => {
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    return params.get("deviceGroupId") || "";
+  });
   const [statusFilter, setStatusFilter] = useState<MaintenanceStatusFilter>("open");
   const [healthFilter, setHealthFilter] = useState<"" | "upcoming" | "due" | "overdue" | "completed">(
     "",
@@ -182,9 +193,10 @@ export default function MaintenanceBoard() {
   const deleteOk = entitlements.features.deleteMaintenance === true;
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
   const fleetUserIds = useMemo(() => {
+    if (deviceGroupId) return statusRows.map((r) => r.id).filter((id) => id > 0);
     if (users.length) return users.map((u) => u.id);
     return statusRows.map((r) => r.id);
-  }, [users, statusRows]);
+  }, [users, statusRows, deviceGroupId]);
 
   const statusById = useMemo(() => {
     const map = new Map<number, LastStatusRow>();
@@ -198,9 +210,9 @@ export default function MaintenanceBoard() {
   const vehicleOptions = useMemo(() => {
     const q = vehicleQuery.trim().toLowerCase();
     const base =
-      groupId && users.length
-        ? users
-        : statusRows.map((r) => ({ id: r.id, name: r.name, username: r.username }));
+      deviceGroupId || !groupId || !users.length
+        ? statusRows.map((r) => ({ id: r.id, name: r.name, username: r.username }))
+        : users;
     const list = base.map((u) => {
       const st = statusById.get(u.id);
       return {
@@ -217,7 +229,7 @@ export default function MaintenanceBoard() {
         v.username.toLowerCase().includes(q) ||
         String(v.id).includes(q),
     );
-  }, [groupId, users, statusRows, statusById, vehicleQuery]);
+  }, [groupId, deviceGroupId, users, statusRows, statusById, vehicleQuery]);
 
   const filteredReminders = useMemo(() => {
     if (reminderKind === "all") return reminders;
@@ -233,9 +245,17 @@ export default function MaintenanceBoard() {
   }, [reminders]);
 
   const filteredEvents = useMemo(() => {
+    let list = events;
+    if (deviceGroupId && fleetUserIds.length) {
+      const allow = new Set(fleetUserIds);
+      list = list.filter((ev) => ev.armadaUserId != null && allow.has(Number(ev.armadaUserId)));
+    } else if (groupId && users.length) {
+      const allow = new Set(users.map((u) => u.id));
+      list = list.filter((ev) => ev.armadaUserId != null && allow.has(Number(ev.armadaUserId)));
+    }
     const q = listQuery.trim().toLowerCase();
-    if (!q) return events;
-    return events.filter((ev) => {
+    if (!q) return list;
+    return list.filter((ev) => {
       const hay = [
         ev.title,
         eventVehicleLabel(ev),
@@ -248,7 +268,7 @@ export default function MaintenanceBoard() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [events, listQuery]);
+  }, [events, listQuery, deviceGroupId, fleetUserIds, groupId, users]);
 
   const isHistoryView =
     healthFilter === "completed" ||
@@ -279,11 +299,12 @@ export default function MaintenanceBoard() {
   useEffect(() => {
     writeLocationSearch({
       groupId: groupId || null,
+      deviceGroupId: deviceGroupId || null,
       tz: timezone || null,
       userId: selectedUserId || null,
       eventId: eventId || null,
     });
-  }, [groupId, timezone, selectedUserId, eventId]);
+  }, [groupId, deviceGroupId, timezone, selectedUserId, eventId]);
 
   useEffect(() => {
     const onPop = () => {
@@ -325,8 +346,17 @@ export default function MaintenanceBoard() {
   }, [ready]);
 
   useEffect(() => {
-    if (!selectedGroup) {
-      setUsers([]);
+    if (!ready) return;
+    const ac = new AbortController();
+    fetchTrackerDeviceGroups(ac.signal)
+      .then((list) => setDeviceGroups(list))
+      .catch(() => setDeviceGroups([]));
+    return () => ac.abort();
+  }, [ready]);
+
+  useEffect(() => {
+    if (!selectedGroup || deviceGroupId) {
+      if (!selectedGroup) setUsers([]);
       return;
     }
     const ac = new AbortController();
@@ -338,30 +368,48 @@ export default function MaintenanceBoard() {
         if (err.name !== "AbortError") setError(err.message);
       });
     return () => ac.abort();
-  }, [selectedGroup?.id]);
+  }, [selectedGroup?.id, deviceGroupId]);
 
   useEffect(() => {
     if (!ready) return;
     const ac = new AbortController();
     const gid = Number(groupId);
-    void fetchUsersStatus({
-      groupId: Number.isFinite(gid) && gid > 0 ? gid : undefined,
-      signal: ac.signal,
-    })
-      .then((rows) => {
+    void Promise.all([
+      fetchUsersStatus({
+        groupId: !deviceGroupId && Number.isFinite(gid) && gid > 0 ? gid : undefined,
+        signal: ac.signal,
+      }).catch((err: Error) => {
+        if (err.name === "AbortError") throw err;
+        return [] as LastStatusRow[];
+      }),
+      fetchTrackerLastStatus(ac.signal, {
+        groupIds: deviceGroupId ? [deviceGroupId] : undefined,
+      }).catch((err: Error) => {
+        if (err.name === "AbortError") throw err;
+        return { fixes: [], telematicsSource: "both" as const };
+      }),
+    ])
+      .then(([armadaRows, deviceStatus]) => {
+        const merged = mergeArmadaRowsWithDeviceFixes(
+          armadaRows,
+          deviceStatus.fixes,
+          deviceStatus.telematicsSource,
+        );
         const scopeIds =
-          groupId && users.length
-            ? users.map((u) => u.id)
-            : allowedUserIds.length
-              ? allowedUserIds
-              : undefined;
-        setStatusRows(filterStatusRows(rows, scopeIds));
+          deviceGroupId
+            ? undefined
+            : groupId && users.length
+              ? users.map((u) => u.id)
+              : allowedUserIds.length
+                ? allowedUserIds
+                : undefined;
+        setStatusRows(filterStatusRows(merged, scopeIds));
       })
       .catch(() => {
         /* optional enrichment */
       });
     return () => ac.abort();
-  }, [ready, groupId, users, reload]);
+  }, [ready, groupId, deviceGroupId, users, reload]);
 
   useEffect(() => {
     if (!ready) return;
@@ -567,9 +615,33 @@ export default function MaintenanceBoard() {
       <main className="shell">
         <section className="filters">
           <div className="field">
-            <label htmlFor="maint-group">Group</label>
-            <select id="maint-group" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-              <option value="">{groups.length ? "All devices" : "Loading groups…"}</option>
+            <label htmlFor="maint-device-group">Device group</label>
+            <select
+              id="maint-device-group"
+              value={deviceGroupId}
+              onChange={(e) => {
+                setDeviceGroupId(e.target.value);
+                if (e.target.value) setGroupId("");
+              }}
+            >
+              <option value="">{deviceGroups.length ? "All device groups" : "No device groups"}</option>
+              {deviceGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                  {g.memberCount != null ? ` (${g.memberCount})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="maint-group">Armada group</label>
+            <select
+              id="maint-group"
+              value={groupId}
+              disabled={Boolean(deviceGroupId)}
+              onChange={(e) => setGroupId(e.target.value)}
+            >
+              <option value="">{groups.length ? "All Armada groups" : "Loading groups…"}</option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
                   {groupOptionLabel(group)}

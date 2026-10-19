@@ -35,6 +35,10 @@ import { writeLocationSearch } from "../lib/routing";
 import { useDeskSession } from "../lib/deskSession";
 import { deskCanWrite } from "../lib/deskPrivileges";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
+import {
+  fetchTrackerDeviceGroups,
+  type TrackerDeviceGroup,
+} from "../lib/trackerDevices";
 
 const POLL_MS = 20_000;
 const FOLD_STORAGE_KEY = "fmplus.dispatchLive.folded";
@@ -167,6 +171,11 @@ export default function DispatchLive() {
   const canEditLive = deskCanWrite(deskUser, deskPrivileges, "editDispatchLive");
   const [tab, setTab] = useState<TabId>("live");
   const [serviceDate, setServiceDate] = useState(() => todayServiceDate());
+  const [deviceGroups, setDeviceGroups] = useState<TrackerDeviceGroup[]>([]);
+  const [deviceGroupId, setDeviceGroupId] = useState(() => {
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    return params.get("deviceGroupId") || "";
+  });
   const [snapshot, setSnapshot] = useState<DispatchLiveSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
@@ -254,15 +263,27 @@ export default function DispatchLive() {
   }, []);
 
   useEffect(() => {
-    writeLocationSearch({ date: serviceDate || null });
-  }, [serviceDate]);
+    writeLocationSearch({
+      date: serviceDate || null,
+      deviceGroupId: deviceGroupId || null,
+    });
+  }, [serviceDate, deviceGroupId]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const ac = new AbortController();
+    fetchTrackerDeviceGroups(ac.signal)
+      .then((list) => setDeviceGroups(list))
+      .catch(() => setDeviceGroups([]));
+    return () => ac.abort();
+  }, [ready]);
 
   useEffect(() => {
     if (!ready || (tab !== "live" && tab !== "history")) return;
     const ac = new AbortController();
     let cancelled = false;
     if (tab === "live") setLoading(true);
-    fetchDispatchLive(serviceDate, ac.signal)
+    fetchDispatchLive(serviceDate, ac.signal, { deviceGroupId: deviceGroupId || null })
       .then((data) => {
         if (cancelled) return;
         setSnapshot(data);
@@ -279,7 +300,7 @@ export default function DispatchLive() {
       cancelled = true;
       ac.abort();
     };
-  }, [ready, serviceDate, tab, tick]);
+  }, [ready, serviceDate, tab, tick, deviceGroupId]);
 
   // Armada vehicle day tracks: once per date / vehicle set (not every live poll).
   const armadaTrackJobsKey = useMemo(() => {
@@ -388,7 +409,7 @@ export default function DispatchLive() {
     const ac = new AbortController();
     let cancelled = false;
     setHistoryLoading(true);
-    fetchDispatchSla(serviceDate, ac.signal)
+    fetchDispatchSla(serviceDate, ac.signal, { deviceGroupId: deviceGroupId || null })
       .then((data) => {
         if (cancelled) return;
         setHistorySla(data.sla);
@@ -405,7 +426,7 @@ export default function DispatchLive() {
       cancelled = true;
       ac.abort();
     };
-  }, [ready, tab, serviceDate, tick]);
+  }, [ready, tab, serviceDate, tick, deviceGroupId]);
 
   useEffect(() => {
     if (!focusStopId) return;
@@ -553,6 +574,7 @@ export default function DispatchLive() {
         serviceDate,
         jobIds: focusJobId ? [focusJobId] : undefined,
         apply: false,
+        deviceGroupId: deviceGroupId || null,
       });
       setRecoverPreview(res.preview.suggestions);
       setSelectedSuggestions(res.preview.suggestions.filter((s) => s.safeAuto).map((s) => s.id));
@@ -574,6 +596,7 @@ export default function DispatchLive() {
         apply: true,
         autoSafe: opts.autoSafe === true,
         suggestionIds: opts.ids,
+        deviceGroupId: deviceGroupId || null,
       });
       const n = res.result?.appliedCount ?? 0;
       setActionNote(
@@ -699,6 +722,26 @@ export default function DispatchLive() {
               </button>
             ) : null}
           </div>
+
+          <label className="field dispatch-live-device-group">
+            <span className="visually-hidden">Device group</span>
+            <select
+              value={deviceGroupId}
+              onChange={(e) => {
+                clearFocus();
+                setDeviceGroupId(e.target.value);
+              }}
+              title="Filter by tracker device group"
+            >
+              <option value="">{deviceGroups.length ? "All device groups" : "No device groups"}</option>
+              {deviceGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                  {g.memberCount != null ? ` (${g.memberCount})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {tab === "live" ? (
             <div className="dispatch-live-refresh">

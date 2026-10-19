@@ -100,7 +100,6 @@ import { normalizePlateParity } from "./ganjil-genap.mjs";
 import { getObject, objectStorageConfigured, putObject } from "./storage.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 import { tenantFromRequest } from "./tenants.mjs";
-import { fetchVehiclePositions } from "./vehicle-positions.mjs";
 import {
   maybeNotifyDispatchJobAssigned,
   maybeNotifyDispatchRouteUpdated,
@@ -118,6 +117,7 @@ import { csvBool, csvNum, parseCsv } from "./csv-parse.mjs";
 import { buildDispatchLiveSnapshot } from "./dispatch-live.mjs";
 import { pingTrailForServiceDate } from "./driver-pings.mjs";
 import {
+  buildTelematicsPosMap,
   deviceTrailsByArmadaDays,
   telematicsUsesDevices,
   tenantTelematicsSource,
@@ -2908,10 +2908,19 @@ export async function handleDispatchRequest(req, res) {
     if (url.pathname === "/api/dispatch/live" && req.method === "GET") {
       const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
       const vault = tenantFromRequest(req);
+      const deviceGroupIds = [
+        ...url.searchParams.getAll("deviceGroupId"),
+        ...url.searchParams.getAll("groupId").filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+        ...String(url.searchParams.get("deviceGroupIds") || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ].filter((id, i, arr) => id && arr.indexOf(id) === i);
       const snapshot = await buildDispatchLiveSnapshot({
         tenantId: dbTenant.id,
         serviceDate: date,
         vaultTenant: vault,
+        deviceGroupIds,
       });
       json(res, 200, snapshot);
       return true;
@@ -2979,10 +2988,19 @@ export async function handleDispatchRequest(req, res) {
     if (url.pathname === "/api/dispatch/sla" && req.method === "GET") {
       const date = parseServiceDate(url.searchParams.get("date")) || todayYmd();
       const vault = tenantFromRequest(req);
+      const deviceGroupIds = [
+        ...url.searchParams.getAll("deviceGroupId"),
+        ...url.searchParams.getAll("groupId").filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+        ...String(url.searchParams.get("deviceGroupIds") || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ].filter((id, i, arr) => id && arr.indexOf(id) === i);
       const snapshot = await buildDispatchLiveSnapshot({
         tenantId: dbTenant.id,
         serviceDate: date,
         vaultTenant: vault,
+        deviceGroupIds,
       });
       json(res, 200, {
         sla: snapshot.sla || computeSlaFromSnapshot(snapshot),
@@ -3035,9 +3053,17 @@ export async function handleDispatchRequest(req, res) {
         routing: body.routing && typeof body.routing === "object" ? body.routing : {},
       });
       const vault = tenantFromRequest(req);
+      const deviceGroupIds = [
+        ...(Array.isArray(body.deviceGroupIds) ? body.deviceGroupIds : []),
+        body.deviceGroupId,
+      ]
+        .map((id) => String(id || "").trim())
+        .filter((id) => /^[0-9a-f-]{36}$/i.test(id));
       let posMap = new Map();
       try {
-        posMap = await fetchVehiclePositions(vault || {});
+        posMap = await buildTelematicsPosMap(dbTenant.id, vault || {}, {
+          groupIds: deviceGroupIds.length ? deviceGroupIds : undefined,
+        });
       } catch {
         posMap = new Map();
       }

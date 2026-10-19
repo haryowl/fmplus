@@ -30,7 +30,7 @@ import { getDistanceMatrix } from "./routing-matrix.mjs";
 import { parseRoutingOptions } from "./routing-options.mjs";
 import { parseServiceDate, todayServiceDate as todayYmd } from "./service-day.mjs";
 import { tenantFromRequest } from "./tenants.mjs";
-import { fetchVehiclePositions } from "./vehicle-positions.mjs";
+import { buildTelematicsPosMap } from "./tracker-devices.mjs";
 import { computePlanDayKpis } from "./dispatch-plan-kpis.mjs";
 
 export function rowToPlanOrder(o) {
@@ -654,7 +654,12 @@ export async function handlePlanDayPost(req, res, api) {
       }));
     } else if (depotMode === "open" && openStartMode === "vehicle") {
       const vault = tenantFromRequest(req);
-      const posMap = await fetchVehiclePositions(vault || {});
+      const planUids = vehicles
+        .map((v) => Number(v.meta?.armadaUserId))
+        .filter((n) => Number.isInteger(n) && n > 0);
+      const posMap = await buildTelematicsPosMap(dbTenant.id, vault || {}, {
+        armadaUserIds: planUids,
+      });
       /** @type {{ id: string, name: string, lat: number, lon: number }[]} */
       const starts = [];
       /** @type {Map<string, number[]>} */
@@ -675,7 +680,7 @@ export async function handlePlanDayPost(req, res, api) {
       if (!starts.length) {
         json(res, 400, {
           error:
-            "No vehicle last positions found. Ensure jobs/presets have Armada user IDs and live GPS on Armada.",
+            "No vehicle last positions found. Ensure jobs/presets have Armada user IDs and live GPS (Armada and/or tracker devices).",
         });
         return true;
       }

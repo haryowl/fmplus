@@ -21,7 +21,12 @@ import { locationNameFromScan, lookupCatalogScan } from "../lib/catalogScan";
 import { useDeskSession } from "../lib/deskSession";
 import { deskCanWrite } from "../lib/deskPrivileges";
 import { isNativeDispatchApp } from "../lib/nativeField";
-import { customersHref, goodsHref, navigateView } from "../lib/routing";
+import { customersHref, goodsHref, navigateView, writeLocationSearch } from "../lib/routing";
+import {
+  fetchTrackerDeviceGroups,
+  fetchTrackerLastStatus,
+  type TrackerDeviceGroup,
+} from "../lib/trackerDevices";
 import { nextDatedCode } from "../lib/datedCode";
 import {
   DISPATCH_ORDER_CSV_HEADERS,
@@ -281,6 +286,12 @@ export default function DispatchBoard() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [groupId, setGroupId] = useState(query.groupId);
+  const [deviceGroups, setDeviceGroups] = useState<TrackerDeviceGroup[]>([]);
+  const [deviceGroupId, setDeviceGroupId] = useState(() => {
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    return params.get("deviceGroupId") || "";
+  });
+  const [deviceGroupArmadaIds, setDeviceGroupArmadaIds] = useState<Set<number> | null>(null);
   const [userId, setUserId] = useState(query.userId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
@@ -591,9 +602,14 @@ export default function DispatchBoard() {
   }, [orders, deskMode, multiDesk]);
 
   const deskJobs = useMemo(() => {
-    if (!multiDesk) return jobs;
-    return jobs.filter((j) => jobMatchesDeskMode(j, deskMode));
-  }, [jobs, deskMode, multiDesk]);
+    let list = multiDesk ? jobs.filter((j) => jobMatchesDeskMode(j, deskMode)) : jobs;
+    if (deviceGroupArmadaIds) {
+      list = list.filter(
+        (j) => j.armadaUserId != null && deviceGroupArmadaIds.has(Number(j.armadaUserId)),
+      );
+    }
+    return list;
+  }, [jobs, deskMode, multiDesk, deviceGroupArmadaIds]);
 
   const planDayJobs = useMemo(
     () =>
@@ -750,6 +766,13 @@ export default function DispatchBoard() {
   }, [tenantError]);
 
   useEffect(() => {
+    writeLocationSearch({
+      deviceGroupId: deviceGroupId || null,
+      groupId: groupId || null,
+    });
+  }, [deviceGroupId, groupId]);
+
+  useEffect(() => {
     if (!ready) return;
     const ac = new AbortController();
     fetchGroups(ac.signal)
@@ -764,6 +787,34 @@ export default function DispatchBoard() {
       });
     return () => ac.abort();
   }, [ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const ac = new AbortController();
+    fetchTrackerDeviceGroups(ac.signal)
+      .then((list) => setDeviceGroups(list))
+      .catch(() => setDeviceGroups([]));
+    return () => ac.abort();
+  }, [ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (!deviceGroupId) {
+      setDeviceGroupArmadaIds(null);
+      return;
+    }
+    const ac = new AbortController();
+    fetchTrackerLastStatus(ac.signal, { groupIds: [deviceGroupId] })
+      .then(({ fixes }) => {
+        const ids = new Set<number>();
+        for (const f of fixes) {
+          if (f.armadaUserId != null && f.armadaUserId > 0) ids.add(f.armadaUserId);
+        }
+        setDeviceGroupArmadaIds(ids);
+      })
+      .catch(() => setDeviceGroupArmadaIds(new Set()));
+    return () => ac.abort();
+  }, [ready, deviceGroupId]);
 
   useEffect(() => {
     if (!selectedGroup) {
@@ -1069,7 +1120,7 @@ export default function DispatchBoard() {
 
     // Live dots from the same Live snapshot (phone + Armada when present).
     tasks.push(
-      fetchDispatchLive(date, ac.signal)
+      fetchDispatchLive(date, ac.signal, { deviceGroupId: deviceGroupId || null })
         .then((snap) => {
           if (cancelled) return;
           const driver = snap.drivers.find((d) => d.jobId === selected.id);
@@ -1078,11 +1129,12 @@ export default function DispatchBoard() {
               ? { lat: driver.phonePos.lat, lon: driver.phonePos.lon }
               : null,
           );
-          setJobVehicleLive(
-            driver?.vehiclePos
-              ? { lat: driver.vehiclePos.lat, lon: driver.vehiclePos.lon }
-              : null,
-          );
+          const liveDot =
+            driver?.vehiclePos ||
+            (driver?.livePosition && driver.livePosition.source !== "phone"
+              ? { lat: driver.livePosition.lat, lon: driver.livePosition.lon }
+              : null);
+          setJobVehicleLive(liveDot ? { lat: liveDot.lat, lon: liveDot.lon } : null);
         })
         .catch(() => {
           if (!cancelled) {
@@ -1107,6 +1159,7 @@ export default function DispatchBoard() {
     selected?.startedAt,
     selected?.completedAt,
     activeDayDate,
+    deviceGroupId,
   ]);
 
   useEffect(() => {
@@ -2331,6 +2384,22 @@ export default function DispatchBoard() {
               </button>
             ) : null}
           </div>
+          <label className="field">
+            <span className="visually-hidden">Device group</span>
+            <select
+              value={deviceGroupId}
+              onChange={(e) => setDeviceGroupId(e.target.value)}
+              title="Filter jobs by tracker device group"
+            >
+              <option value="">{deviceGroups.length ? "All device groups" : "No device groups"}</option>
+              {deviceGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                  {g.memberCount != null ? ` (${g.memberCount})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="dispatch-kpi-strip">
             <div className="dispatch-kpi">
               <span>Unassigned</span>

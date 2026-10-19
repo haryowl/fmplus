@@ -24,6 +24,7 @@ import {
 import { contributionMargin, moneyIdr } from "./dispatch-opex.mjs";
 import { tallyVisitOutcomes } from "./dispatch-sales.mjs";
 import {
+  armadaUserIdsInDeviceGroups,
   lastFixesByArmadaUserIds,
   telematicsUsesArmada,
   telematicsUsesDevices,
@@ -455,12 +456,23 @@ async function attachPlannedEtaChain(driver) {
  *   tenantId: string,
  *   serviceDate: string,
  *   vaultTenant?: { appId?: number, token?: string } | null,
+ *   deviceGroupIds?: string[],
  * }} opts
  */
 export async function buildDispatchLiveSnapshot(opts) {
   const serviceDate = opts.serviceDate || todayYmdJakarta();
   const today = todayYmdJakarta();
   const nowHm = nowHmJakarta();
+
+  const deviceGroupIds = Array.isArray(opts.deviceGroupIds)
+    ? opts.deviceGroupIds.filter((id) => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id))
+    : [];
+  /** @type {Set<number>|null} */
+  let groupArmadaIds = null;
+  if (deviceGroupIds.length) {
+    const uids = await armadaUserIdsInDeviceGroups(opts.tenantId, deviceGroupIds);
+    groupArmadaIds = new Set(uids);
+  }
 
   const jobsRes = await dbQuery(
     `SELECT j.*,
@@ -484,6 +496,13 @@ export async function buildDispatchLiveSnapshot(opts) {
      LIMIT 100`,
     [opts.tenantId, serviceDate],
   );
+  if (groupArmadaIds) {
+    // Empty membership → empty live board (explicit group scope).
+    jobsRes.rows = jobsRes.rows.filter((j) => {
+      const uid = j.armada_user_id != null ? Number(j.armada_user_id) : NaN;
+      return Number.isInteger(uid) && groupArmadaIds.has(uid);
+    });
+  }
 
   const jobIds = jobsRes.rows.map((j) => j.id);
   /** @type {Map<string, any[]>} */
