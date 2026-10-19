@@ -14,12 +14,28 @@ export type DeviceTrip = {
   avgSpeedKmh: number;
   maxSpeedKmh: number;
   pointCount: number;
+  /** Downsampled speed profile for UI sparklines (km/h). */
+  speeds: number[];
   path: [number, number][];
   startLat: number;
   startLon: number;
   endLat: number;
   endLon: number;
 };
+
+function sampleSpeeds(pts: PointWithMs[], maxSamples = 28): number[] {
+  if (pts.length === 0) return [];
+  if (pts.length <= maxSamples) {
+    return pts.map((p) => (p.speed != null && Number.isFinite(p.speed) ? Math.max(0, p.speed) : 0));
+  }
+  const out: number[] = [];
+  const step = (pts.length - 1) / (maxSamples - 1);
+  for (let i = 0; i < maxSamples; i += 1) {
+    const p = pts[Math.round(i * step)];
+    out.push(p.speed != null && Number.isFinite(p.speed) ? Math.max(0, p.speed) : 0);
+  }
+  return out;
+}
 
 type PointWithMs = TrackerDayPoint & { ms: number };
 
@@ -94,6 +110,7 @@ export function buildDeviceTrips(
       avgSpeedKmh: speedN ? speedSum / speedN : 0,
       maxSpeedKmh,
       pointCount: pts.length,
+      speeds: sampleSpeeds(pts),
       path,
       startLat: start.lat,
       startLon: start.lon,
