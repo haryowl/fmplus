@@ -4929,6 +4929,58 @@ export default function DispatchBoard() {
                   ) : null}
                 </p>
 
+                {!isSales && deviceGroupId ? (
+                  <label className="field" style={{ marginBottom: 12 }}>
+                    Device / vehicle
+                    <select
+                      value={(() => {
+                        if (selected.armadaUserId != null && selected.armadaUserId > 0) {
+                          return String(selected.armadaUserId);
+                        }
+                        if (selected.trackerDeviceId) {
+                          for (const [rowId, deviceId] of deviceIdByRowId) {
+                            if (deviceId === selected.trackerDeviceId) return String(rowId);
+                          }
+                        }
+                        return "";
+                      })()}
+                      disabled={
+                        busy || selected.status === "done" || selected.status === "cancelled"
+                      }
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (!raw) {
+                          void updateJob(selected.id, {
+                            trackerDeviceId: null,
+                            armadaUserId: null,
+                            armadaUsername: "",
+                            userDisplayName: "",
+                          });
+                          return;
+                        }
+                        const rowId = Number(raw);
+                        const row = deviceStatusRows.find((r) => r.id === rowId);
+                        const trackerDeviceId = deviceIdByRowId.get(rowId) || null;
+                        void updateJob(selected.id, {
+                          trackerDeviceId,
+                          armadaUserId: rowId > 0 ? rowId : null,
+                          armadaUsername: row?.username || "",
+                          userDisplayName: row?.name || "",
+                        });
+                      }}
+                    >
+                      <option value="">Unassigned</option>
+                      {deviceStatusRows.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                          {r.username ? ` (${r.username})` : ""}
+                          {r.id > 0 ? ` · #${r.id}` : " · GPS"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+
                 {!isSales ? (
                 <div
                   className="dispatch-capacity"

@@ -135,8 +135,9 @@ export function DispatchLiveMap({ drivers, focusJobId, fitKey, onSelectJob }: Pr
         if (focused) for (const p of phone) bounds.push(p);
       }
 
-      // Armada actual track only when the job has a linked vehicle.
-      if (d.armadaUserId != null) {
+      // Vehicle GPS track (Armada-linked or device-native).
+      const hasVehicle = d.armadaUserId != null || Boolean(d.trackerDeviceId);
+      if (hasVehicle) {
         const armada = cleanLine(d.armadaTrack);
         if (armada.length >= 2) {
           L.polyline(armada, {
@@ -175,7 +176,7 @@ export function DispatchLiveMap({ drivers, focusJobId, fitKey, onSelectJob }: Pr
           if (focused) bounds.push(startPhone);
         }
         const startArmada = asCoord(s.startVehicleLat, s.startVehicleLon);
-        if (startArmada && d.armadaUserId != null) {
+        if (startArmada && hasVehicle) {
           L.marker(startArmada, {
             icon: eventDotIcon(LIVE_MAP_COLORS.armada, "S"),
             opacity: focused ? 1 : 0.4,
@@ -196,7 +197,7 @@ export function DispatchLiveMap({ drivers, focusJobId, fitKey, onSelectJob }: Pr
           if (focused) bounds.push(donePhone);
         }
         const doneArmada = asCoord(s.vehicleLat, s.vehicleLon);
-        if (doneArmada && d.armadaUserId != null) {
+        if (doneArmada && hasVehicle) {
           L.marker(doneArmada, {
             icon: eventDotIcon(LIVE_MAP_COLORS.armada, "C"),
             opacity: focused ? 1 : 0.4,
@@ -224,16 +225,26 @@ export function DispatchLiveMap({ drivers, focusJobId, fitKey, onSelectJob }: Pr
           .addTo(layer);
         if (focused) bounds.push(phoneLive);
       }
-      if (d.armadaUserId != null) {
-        const vehicleLive = asCoord(d.vehiclePos?.lat, d.vehiclePos?.lon);
+      if (hasVehicle) {
+        const vehicleLive =
+          asCoord(d.vehiclePos?.lat, d.vehiclePos?.lon) ||
+          (d.livePosition && d.livePosition.source !== "phone"
+            ? asCoord(d.livePosition.lat, d.livePosition.lon)
+            : null);
         if (vehicleLive) {
+          const liveSrc =
+            d.livePosition?.source === "device"
+              ? "Device live"
+              : d.armadaUserId != null
+                ? "Armada live"
+                : "Vehicle live";
           L.marker(vehicleLive, {
             icon: liveDotIcon(LIVE_MAP_COLORS.armada, focused),
             opacity: focused ? 1 : 0.45,
             zIndexOffset: 420,
           })
             .bindPopup(
-              `<strong>${escapeHtml(d.vehicleLabel || "Vehicle")}</strong><br/>Armada live`,
+              `<strong>${escapeHtml(d.vehicleLabel || "Vehicle")}</strong><br/>${liveSrc}`,
             )
             .on("click", () => onSelectRef.current?.(d.jobId))
             .addTo(layer);

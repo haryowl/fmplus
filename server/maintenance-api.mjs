@@ -2557,20 +2557,43 @@ export async function handleMaintenanceRequest(req, res) {
           continue;
         }
         const userIdRaw = Number(row.armada_user_id ?? row.armadaUserId ?? row.user_id ?? row.userId);
-        const armadaUserId =
+        let armadaUserId =
           Number.isInteger(userIdRaw) && userIdRaw > 0 ? userIdRaw : null;
-        const armadaUsername = String(
+        let armadaUsername = String(
           row.armada_username || row.armadaUsername || row.username || "",
         )
           .trim()
           .slice(0, 120) || null;
-        const userDisplayName = String(
+        let userDisplayName = String(
           row.user_display_name || row.userDisplayName || row.display_name || "",
         )
           .trim()
           .slice(0, 200) || null;
-        if (!armadaUserId && !armadaUsername) {
-          errors.push({ line, error: "armada_user_id or armada_username is required" });
+        let trackerDeviceId = null;
+        {
+          const rawDevice = String(
+            row.tracker_device_id || row.trackerDeviceId || "",
+          ).trim();
+          if (rawDevice) {
+            const { resolveTenantTrackerDevice } = await import("./tracker-device-resolve.mjs");
+            const device = await resolveTenantTrackerDevice(dbTenant.id, rawDevice);
+            if (!device) {
+              errors.push({ line, error: `tracker_device_id not found: ${rawDevice}` });
+              continue;
+            }
+            trackerDeviceId = device.id;
+            if (!userDisplayName) userDisplayName = device.label;
+            if (!armadaUsername && device.imei) armadaUsername = device.imei;
+            if (armadaUserId == null && device.armadaUserId != null) {
+              armadaUserId = device.armadaUserId;
+            }
+          }
+        }
+        if (!armadaUserId && !armadaUsername && !trackerDeviceId) {
+          errors.push({
+            line,
+            error: "armada_user_id, armada_username, or tracker_device_id is required",
+          });
           continue;
         }
 
@@ -2634,13 +2657,13 @@ export async function handleMaintenanceRequest(req, res) {
           const inserted = await dbQuery(
             `INSERT INTO service_events (
                tenant_id, status, title, notes, armada_user_id, armada_username, user_display_name,
-               odometer_km, assigned_field_user_id,
+               tracker_device_id, odometer_km, assigned_field_user_id,
                remind_due_at, remind_interval_days, remind_interval_km, remind_baseline_odometer_km,
                remind_interval_hours, remind_hours_since_at,
                remind_before_days, remind_before_km, remind_before_hours
              ) VALUES (
-               $1, 'due', $2, $3, $4, $5, $6, $7, $8,
-               $9, $10, $11, $12, $13, $14, $15, $16, $17
+               $1, 'due', $2, $3, $4, $5, $6, $7, $8, $9,
+               $10, $11, $12, $13, $14, $15, $16, $17, $18
              )
              RETURNING ${SELECT_COLS}`,
             [
@@ -2650,6 +2673,7 @@ export async function handleMaintenanceRequest(req, res) {
               armadaUserId,
               armadaUsername,
               userDisplayName || armadaUsername,
+              trackerDeviceId,
               odoRaw,
               assignedFieldUserId,
               remindDueAt,

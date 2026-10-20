@@ -854,7 +854,13 @@ export async function buildDispatchLiveSnapshot(opts) {
               lon: vehiclePos.lon,
               label: vehiclePos.label || "",
             }
-          : null,
+          : devicePos && devicePos.lat != null && devicePos.lon != null
+            ? {
+                lat: devicePos.lat,
+                lon: devicePos.lon,
+                label: devicePos.label || "",
+              }
+            : null,
       plannedGeometry: [],
       phoneTrail: [],
       armadaTrack: [],
