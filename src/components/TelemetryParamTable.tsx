@@ -28,25 +28,17 @@ export function TelemetryParamTable({
         <thead>
           <tr>
             {showDevice ? <th>Device</th> : null}
-            <th>Param</th>
             <th>Label</th>
             <th>Value</th>
-            <th>Source</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row, idx) => (
             <tr key={`${row.deviceId}-${row.source}-${row.paramId}-${idx}`}>
               {showDevice ? <td>{row.label || row.imei || "—"}</td> : null}
-              <td>
-                <code>{row.paramId}</code>
-              </td>
-              <td>{row.paramLabel}</td>
+              <td title={row.paramId}>{row.paramLabel || row.paramId}</td>
               <td>
                 <strong>{row.value == null ? "—" : String(row.value)}</strong>
-              </td>
-              <td>
-                <em className={`fleet-params-src is-${row.source}`}>{row.source}</em>
               </td>
             </tr>
           ))}

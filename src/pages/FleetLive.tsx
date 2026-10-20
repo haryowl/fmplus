@@ -595,10 +595,14 @@ export default function FleetLive() {
   // Do not include search text — refitting on every keystroke blanks/jitters the map.
   const fitKey = `${groupId}|${listTab}|${reload}`;
 
-  const onSelect = useCallback((id: number | null) => setSelectedId(id), []);
+  const onSelect = useCallback((id: number | null) => {
+    setSelectedId(id);
+    if (id != null) setLocateToken(`${id}:${Date.now()}`);
+  }, []);
 
   const openLiveVehicle = useCallback((id: number) => {
     setSelectedId(id);
+    setLocateToken(`${id}:${Date.now()}`);
     setSection("live");
   }, []);
 
@@ -1125,21 +1129,12 @@ export default function FleetLive() {
                   </button>
                   <button
                     type="button"
-                    className={`fleet-cc-icon-btn${selParamsOpen ? " is-active" : ""}`}
+                    className={`btn btn-primary btn-compact${selParamsOpen ? " is-active" : ""}`}
                     onClick={() => setSelParamsOpen((v) => !v)}
                     title="Device mapper parameters"
+                    aria-pressed={selParamsOpen}
                   >
-                    Params
-                  </button>
-                  <button
-                    type="button"
-                    className="fleet-cc-icon-btn"
-                    onClick={() =>
-                      setLocateToken(`${selected.id}:${Date.now()}`)
-                    }
-                    disabled={selected.lat == null || selected.lon == null}
-                  >
-                    Locate
+                    {selParamsOpen ? "Hide params" : "Params"}
                   </button>
                   {selected.id > 0 ? (
                     <a className="fleet-cc-icon-btn" href={tripsHref(vehicleSearch(selected.id))}>
@@ -1232,7 +1227,7 @@ export default function FleetLive() {
                 const fuel = meta?.fuelLevel;
                 return (
                   <li key={row.id} className={selectedId === row.id ? "is-selected" : ""}>
-                    <button type="button" onClick={() => setSelectedId(row.id)}>
+                    <button type="button" onClick={() => onSelect(row.id)}>
                       <span
                         className="fleet-cc-dot"
                         style={{ background: LIVE_OPS_COLORS[cls] }}
