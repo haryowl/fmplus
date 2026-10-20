@@ -405,6 +405,28 @@ async function resolveArmadaCoords(user, armadaUserId) {
   return { lat: pos.lat, lon: pos.lon };
 }
 
+/** Prefer tracker last-fix when the job is device-native; Armada usersstatus as fallback. */
+async function resolveVehicleCoords(user, job) {
+  const deviceId = String(job?.tracker_device_id || "").trim();
+  if (/^[0-9a-f-]{36}$/i.test(deviceId)) {
+    try {
+      const { lastFixesByDeviceIds } = await import("./tracker-devices.mjs");
+      const map = await lastFixesByDeviceIds(user.tenantId, [deviceId]);
+      const fix = map.get(deviceId);
+      if (
+        fix &&
+        Number.isFinite(fix.lat) &&
+        Number.isFinite(fix.lon)
+      ) {
+        return { lat: fix.lat, lon: fix.lon };
+      }
+    } catch {
+      /* fall through to Armada */
+    }
+  }
+  return resolveArmadaCoords(user, job?.armada_user_id);
+}
+
 export async function handleFieldRequest(req, res) {
   const url = new URL(req.url || "/", "http://localhost");
   if (!url.pathname.startsWith("/api/field")) return false;
@@ -1032,9 +1054,9 @@ export async function handleFieldRequest(req, res) {
           }
         }
 
-        // Only a real status change needs vehicle evidence; resolving this
-        // costs a full Armada usersstatus round-trip per call.
-        const armada = await resolveArmadaCoords(user, job.armada_user_id);
+        // Only a real status change needs vehicle evidence. Device-native jobs
+        // use last fix; Armada-linked jobs still hit usersstatus.
+        const armada = await resolveVehicleCoords(user, job);
 
         if (stopRow.status === "done") {
           json(res, 400, { error: "Completed stops cannot be changed" });

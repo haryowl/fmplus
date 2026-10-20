@@ -1875,10 +1875,15 @@ export async function handleMaintenanceRequest(req, res) {
       const days = Math.min(365, Math.max(7, Number(url.searchParams.get("days")) || 90));
       const vehicleIdRaw = Number(url.searchParams.get("userId"));
       const vehicleId = Number.isInteger(vehicleIdRaw) && vehicleIdRaw > 0 ? vehicleIdRaw : null;
+      const deviceIdRaw = String(url.searchParams.get("deviceId") || "").trim();
+      const deviceId = /^[0-9a-f-]{36}$/i.test(deviceIdRaw) ? deviceIdRaw : null;
       const groupKey = String(url.searchParams.get("group") || "").trim(); // part|service|other
       const params = [dbTenant.id, days];
       let vehicleClause = "";
-      if (vehicleId) {
+      if (deviceId) {
+        params.push(deviceId);
+        vehicleClause = ` AND e.tracker_device_id = $${params.length}::uuid`;
+      } else if (vehicleId) {
         params.push(vehicleId);
         vehicleClause = ` AND e.armada_user_id = $${params.length}`;
       }
@@ -2032,10 +2037,20 @@ export async function handleMaintenanceRequest(req, res) {
       const q = String(url.searchParams.get("q") || "").trim().toLowerCase();
       const vehicleIdRaw = Number(url.searchParams.get("userId"));
       const vehicleId = Number.isInteger(vehicleIdRaw) && vehicleIdRaw > 0 ? vehicleIdRaw : null;
+      const deviceIdRaw = String(url.searchParams.get("deviceId") || "").trim();
+      const deviceId = /^[0-9a-f-]{36}$/i.test(deviceIdRaw) ? deviceIdRaw : null;
       const userIdsRaw = String(url.searchParams.get("userIds") || "")
         .split(",")
         .map((s) => Number(s.trim()))
         .filter((n) => Number.isInteger(n) && n > 0);
+      const deviceIdsRaw = [
+        ...new Set(
+          String(url.searchParams.get("deviceIds") || "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+        ),
+      ];
       const rowLimit = Math.min(1000, Math.max(50, Number(url.searchParams.get("limit")) || 500));
 
       /** @type {string[]} */
@@ -2048,9 +2063,18 @@ export async function handleMaintenanceRequest(req, res) {
 
       const params = [dbTenant.id, days, statuses];
       let vehicleClause = "";
-      if (vehicleId) {
+      if (deviceId) {
+        params.push(deviceId);
+        vehicleClause = ` AND e.tracker_device_id = $${params.length}::uuid`;
+      } else if (vehicleId) {
         params.push(vehicleId);
         vehicleClause = ` AND e.armada_user_id = $${params.length}`;
+      } else if (deviceIdsRaw.length && userIdsRaw.length) {
+        params.push(userIdsRaw, deviceIdsRaw);
+        vehicleClause = ` AND (e.armada_user_id = ANY($${params.length - 1}::int[]) OR e.tracker_device_id = ANY($${params.length}::uuid[]))`;
+      } else if (deviceIdsRaw.length) {
+        params.push(deviceIdsRaw);
+        vehicleClause = ` AND e.tracker_device_id = ANY($${params.length}::uuid[])`;
       } else if (userIdsRaw.length) {
         params.push(userIdsRaw);
         vehicleClause = ` AND e.armada_user_id = ANY($${params.length}::int[])`;

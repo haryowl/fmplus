@@ -206,7 +206,14 @@ export type CostDashboard = {
   days: number;
   totals: { price: number; cost: number; margin: number; jobs: number };
   byDay: { day: string; price: number; cost: number; count: number }[];
-  byVehicle: { label: string; userId: number | null; price: number; cost: number; count: number }[];
+  byVehicle: {
+    label: string;
+    userId: number | null;
+    trackerDeviceId?: string | null;
+    price: number;
+    cost: number;
+    count: number;
+  }[];
   byGroup: Record<string, { price: number; cost: number }>;
   topItems: { name: string; kind: string; price: number; cost: number; qty: number }[];
   table: {
@@ -214,6 +221,7 @@ export type CostDashboard = {
     title: string;
     vehicle: string;
     armadaUserId: number | null;
+    trackerDeviceId?: string | null;
     approvedAt: string | null;
     approvedBy: string;
     serviceDurationMinutes: number | null;
@@ -357,12 +365,13 @@ export async function deleteMaintCatalogItem(id: string): Promise<void> {
 }
 
 export async function fetchCostDashboard(
-  opts?: { days?: number; userId?: number; group?: string },
+  opts?: { days?: number; userId?: number; deviceId?: string; group?: string },
   signal?: AbortSignal,
 ): Promise<CostDashboard> {
   const params = new URLSearchParams();
   if (opts?.days) params.set("days", String(opts.days));
-  if (opts?.userId) params.set("userId", String(opts.userId));
+  if (opts?.deviceId) params.set("deviceId", opts.deviceId);
+  else if (opts?.userId) params.set("userId", String(opts.userId));
   if (opts?.group) params.set("group", opts.group);
   const res = await fetch(`/api/maintenance/cost-dashboard?${params}`, {
     headers: { accept: "application/json", ...tenantHeaders() },
@@ -381,6 +390,7 @@ export type ServiceResultsRow = {
   status: ServiceEventStatus;
   vehicle: string;
   armadaUserId: number | null;
+  trackerDeviceId?: string | null;
   date: string | null;
   serviceDurationMinutes: number | null;
   priceTotal: number | null;
@@ -410,6 +420,7 @@ export type ServiceResults = {
   byVehicle: {
     label: string;
     userId: number | null;
+    trackerDeviceId?: string | null;
     price: number;
     cost: number;
     count: number;
@@ -541,6 +552,8 @@ export async function fetchServiceResults(
     status?: ServiceResultsStatus;
     userId?: number;
     userIds?: number[];
+    deviceId?: string;
+    deviceIds?: string[];
     catalogGroup?: string;
     q?: string;
     limit?: number;
@@ -550,8 +563,10 @@ export async function fetchServiceResults(
   const params = new URLSearchParams();
   if (opts?.days) params.set("days", String(opts.days));
   if (opts?.status) params.set("status", opts.status);
-  if (opts?.userId) params.set("userId", String(opts.userId));
+  if (opts?.deviceId) params.set("deviceId", opts.deviceId);
+  else if (opts?.userId) params.set("userId", String(opts.userId));
   if (opts?.userIds?.length) params.set("userIds", opts.userIds.join(","));
+  if (opts?.deviceIds?.length) params.set("deviceIds", opts.deviceIds.join(","));
   if (opts?.catalogGroup) params.set("catalogGroup", opts.catalogGroup);
   if (opts?.q) params.set("q", opts.q);
   if (opts?.limit) params.set("limit", String(opts.limit));

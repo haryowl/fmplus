@@ -62,13 +62,22 @@ export function MaintenanceServiceResultsPanel({
     const ac = new AbortController();
     setLoading(true);
     setError("");
+    const deviceOnly =
+      vehicleId.startsWith("d:") && /^d:[0-9a-f-]{36}$/i.test(vehicleId)
+        ? vehicleId.slice(2)
+        : "";
+    const armadaOnly =
+      !deviceOnly && Number.isInteger(Number(vehicleId)) && Number(vehicleId) > 0
+        ? Number(vehicleId)
+        : undefined;
     void fetchServiceResults(
       {
         days,
         status,
         catalogGroup: catalogGroup || undefined,
         q: qApplied || undefined,
-        userId: vehicleId ? Number(vehicleId) : undefined,
+        deviceId: deviceOnly || undefined,
+        userId: armadaOnly,
         userIds: !vehicleId && fleetFilterUserIds ? fleetFilterUserIds : undefined,
       },
       ac.signal,
@@ -99,7 +108,17 @@ export function MaintenanceServiceResultsPanel({
   const vehicleOptions = useMemo(() => {
     if (!enriched) return [];
     return enriched.byVehicle
-      .filter((v) => v.userId != null)
+      .filter((v) => v.userId != null || Boolean(v.trackerDeviceId))
+      .map((v) => ({
+        ...v,
+        optionValue:
+          v.userId != null
+            ? String(v.userId)
+            : v.trackerDeviceId
+              ? `d:${v.trackerDeviceId}`
+              : "",
+      }))
+      .filter((v) => v.optionValue)
       .slice()
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [enriched]);
@@ -218,7 +237,7 @@ export function MaintenanceServiceResultsPanel({
           <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
             <option value="">All with jobs</option>
             {vehicleOptions.map((v) => (
-              <option key={v.userId!} value={v.userId!}>
+              <option key={v.optionValue} value={v.optionValue}>
                 {v.label}
                 {v.fleetGroups?.length ? ` · ${v.fleetGroups.join(", ")}` : ""}
               </option>
@@ -364,7 +383,7 @@ export function MaintenanceServiceResultsPanel({
                 </thead>
                 <tbody>
                   {enriched.byVehicle.map((v) => (
-                    <tr key={`${v.userId ?? v.label}`}>
+                    <tr key={v.userId != null ? `u:${v.userId}` : `d:${v.trackerDeviceId || v.label}`}>
                       <td>{v.label}</td>
                       <td>{v.fleetGroups?.length ? v.fleetGroups.join(", ") : "—"}</td>
                       <td className="num">{v.count}</td>

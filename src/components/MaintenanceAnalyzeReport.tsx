@@ -30,6 +30,8 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointEleme
 
 type Props = {
   fleetUserIds?: number[];
+  /** GPS tracker device UUIDs in the current group (device-native / unlinked). */
+  fleetDeviceIds?: string[];
   groups?: FleetGroupRef[];
   excelOk?: boolean;
   onOpenEvent?: (id: string) => void;
@@ -46,6 +48,7 @@ function pct(rate: number | null | undefined): string {
 
 export function MaintenanceAnalyzeReport({
   fleetUserIds = [],
+  fleetDeviceIds = [],
   groups = [],
   excelOk = true,
   onOpenEvent,
@@ -85,17 +88,26 @@ export function MaintenanceAnalyzeReport({
   }, [days, group]);
 
   useEffect(() => {
-    if (!fleetUserIds.length) {
+    const armadaIds = fleetUserIds.filter((n) => Number.isInteger(n) && n > 0);
+    const deviceIds = [
+      ...new Set(
+        fleetDeviceIds
+          .map((id) => String(id || "").trim())
+          .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+      ),
+    ];
+    if (!armadaIds.length && !deviceIds.length) {
       setFleet(null);
       return;
     }
     const ac = new AbortController();
-    void fetchMaintStatusSummary(fleetUserIds, ac.signal)
-      .then(({ byUserId }) => {
+    void fetchMaintStatusSummary(armadaIds, ac.signal, { deviceIds })
+      .then(({ byUserId, byDeviceId }) => {
         if (ac.signal.aborted) return;
         let withOpen = 0;
         let withOverdue = 0;
-        for (const id of fleetUserIds) {
+        const seenDevices = new Set<string>();
+        for (const id of armadaIds) {
           const cell = byUserId[String(id)];
           if (!cell?.status) continue;
           if (cell.status === "due" || cell.status === "in_progress") {
@@ -103,13 +115,34 @@ export function MaintenanceAnalyzeReport({
             if (cell.health === "overdue") withOverdue += 1;
           }
         }
-        setFleet({ vehicles: fleetUserIds.length, withOpen, withOverdue });
+        for (const did of deviceIds) {
+          if (seenDevices.has(did)) continue;
+          seenDevices.add(did);
+          const cell = byDeviceId[did];
+          if (!cell?.status) continue;
+          // Skip when the same open job was already counted via Armada user id.
+          if (
+            cell.eventId &&
+            armadaIds.some((uid) => byUserId[String(uid)]?.eventId === cell.eventId)
+          ) {
+            continue;
+          }
+          if (cell.status === "due" || cell.status === "in_progress") {
+            withOpen += 1;
+            if (cell.health === "overdue") withOverdue += 1;
+          }
+        }
+        const vehicles = new Set<string>([
+          ...armadaIds.map((id) => `u:${id}`),
+          ...deviceIds.map((id) => `d:${id}`),
+        ]).size;
+        setFleet({ vehicles, withOpen, withOverdue });
       })
       .catch(() => {
         if (!ac.signal.aborted) setFleet(null);
       });
     return () => ac.abort();
-  }, [fleetUserIds]);
+  }, [fleetUserIds, fleetDeviceIds]);
 
   const assigneeBar = useMemo(() => {
     const rows = (data?.byAssignee || []).filter((a) => a.open > 0 || a.done > 0 || a.approved > 0).slice(0, 12);

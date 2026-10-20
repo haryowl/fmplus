@@ -211,6 +211,16 @@ export default function MaintenanceBoard() {
     return statusRows.map((r) => r.id);
   }, [users, statusRows, deviceGroupId, deviceGroupArmadaIds]);
 
+  const fleetDeviceIds = useMemo(() => {
+    if (deviceGroupDeviceIds?.size) return [...deviceGroupDeviceIds];
+    const ids = new Set<string>();
+    for (const rowId of fleetUserIds) {
+      const did = deviceIdByRowId.get(rowId);
+      if (did) ids.add(did);
+    }
+    return [...ids];
+  }, [deviceGroupDeviceIds, fleetUserIds, deviceIdByRowId]);
+
   const statusById = useMemo(() => {
     const map = new Map<number, LastStatusRow>();
     for (const row of statusRows) map.set(row.id, row);
@@ -902,6 +912,7 @@ export default function MaintenanceBoard() {
         {!eventId && boardPanel === "reports" && (
           <MaintenanceAnalyzeReport
             fleetUserIds={fleetUserIds}
+            fleetDeviceIds={fleetDeviceIds}
             groups={groups}
             excelOk={excelOk}
             onOpenEvent={(id) => {
