@@ -4,7 +4,7 @@ import { BrandMark } from "../components/BrandMark";
 import { RoutePlanMap } from "../components/RoutePlanMap";
 import { ViewNav } from "../components/ViewNav";
 import { formatKm } from "../lib/format";
-import { filterStatusRows } from "../lib/lastStatus";
+import { filterStatusRows, type LastStatusRow } from "../lib/lastStatus";
 import {
   downloadRoutePlanExcel,
   fetchRoutePlanStatus,
@@ -14,6 +14,7 @@ import {
   type RoutePoint,
 } from "../lib/routePlan";
 import { writeLocationSearch } from "../lib/routing";
+import { fetchTrackerLastStatus, mergeArmadaRowsWithDeviceFixes } from "../lib/trackerDevices";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
 
@@ -30,6 +31,7 @@ export default function RoutePlanPage() {
   } = useEmbedTenant();
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [statusRows, setStatusRows] = useState<LastStatusRow[]>([]);
   const [groupId, setGroupId] = useState(query.groupId);
   const [userId, setUserId] = useState(query.userId);
   const [bootError, setBootError] = useState("");
@@ -125,41 +127,86 @@ export default function RoutePlanPage() {
   }, [selectedGroup?.id]);
 
   useEffect(() => {
+    if (!ready) return;
+    const ac = new AbortController();
+    const gid = Number(groupId);
+    void Promise.all([
+      fetchUsersStatus({
+        groupId: Number.isFinite(gid) && gid > 0 ? gid : undefined,
+        signal: ac.signal,
+      }).catch((err: Error) => {
+        if (err.name === "AbortError") throw err;
+        return [] as LastStatusRow[];
+      }),
+      fetchTrackerLastStatus(ac.signal).catch((err: Error) => {
+        if (err.name === "AbortError") throw err;
+        return { fixes: [], telematicsSource: "both" as const };
+      }),
+    ])
+      .then(([armadaRows, deviceStatus]) => {
+        if (ac.signal.aborted) return;
+        setStatusRows(
+          mergeArmadaRowsWithDeviceFixes(
+            armadaRows,
+            deviceStatus.fixes,
+            deviceStatus.telematicsSource,
+          ),
+        );
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") setStatusRows([]);
+      });
+    return () => ac.abort();
+  }, [ready, groupId]);
+
+  const vehicleChoices = useMemo(() => {
+    if (users.length) {
+      return users.map((u) => ({
+        id: String(u.id),
+        label: userOptionLabel(u),
+        rowId: u.id,
+      }));
+    }
+    // Devices-only / no Armada group members: offer GPS last-status rows.
+    const ids = allowedUserIds.length ? allowedUserIds : undefined;
+    const scoped =
+      ids?.length && statusRows.some((r) => r.id > 0)
+        ? filterStatusRows(statusRows, ids)
+        : statusRows;
+    return scoped
+      .filter((r) => r.lat != null && r.lon != null)
+      .map((r) => ({
+        id: String(r.id),
+        label: r.name || r.username || `Vehicle ${r.id}`,
+        rowId: r.id,
+      }));
+  }, [users, statusRows, allowedUserIds]);
+
+  useEffect(() => {
     if (!userId) {
       setStart(null);
       return;
     }
     const id = Number(userId);
-    if (!Number.isInteger(id) || id < 1) return;
-    const ac = new AbortController();
-    const gid = Number(groupId);
-    void fetchUsersStatus({
-      groupId: Number.isFinite(gid) && gid > 0 ? gid : undefined,
-      signal: ac.signal,
-    })
-      .then((rows) => {
-        const scoped = filterStatusRows(rows, [id]);
-        const row = scoped[0] || rows.find((r) => r.id === id);
-        if (!row || row.lat == null || row.lon == null) {
-          setStart(null);
-          setError("Selected vehicle has no last position — pick another or set start manually.");
-          return;
-        }
-        setError("");
-        setStart({
-          lat: row.lat,
-          lon: row.lon,
-          label: row.name || `Vehicle ${id}`,
-          id: String(id),
-        });
-        setResult(null);
-        setFitKey(`start-${id}-${row.lat}-${row.lon}`);
-      })
-      .catch((err: Error) => {
-        if (err.name !== "AbortError") setError(err.message);
-      });
-    return () => ac.abort();
-  }, [userId, groupId]);
+    if (!Number.isInteger(id) || id === 0) return;
+    const row = statusRows.find((r) => r.id === id);
+    if (!row || row.lat == null || row.lon == null) {
+      setStart(null);
+      if (statusRows.length) {
+        setError("Selected vehicle has no last position — pick another or set start manually.");
+      }
+      return;
+    }
+    setError("");
+    setStart({
+      lat: row.lat,
+      lon: row.lon,
+      label: row.name || `Vehicle ${id}`,
+      id: String(id),
+    });
+    setResult(null);
+    setFitKey(`start-${id}-${row.lat}-${row.lon}`);
+  }, [userId, statusRows]);
 
   function addStop(lat: number, lon: number, label?: string) {
     setStops((prev) => [
@@ -270,12 +317,18 @@ export default function RoutePlanPage() {
               id="rp-user"
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
-              disabled={!users.length}
+              disabled={!vehicleChoices.length}
             >
-              <option value="">{users.length ? "Select vehicle" : "Pick a group"}</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {userOptionLabel(u)}
+              <option value="">
+                {vehicleChoices.length
+                  ? "Select vehicle"
+                  : groups.length || statusRows.length
+                    ? "No vehicles with GPS"
+                    : "Pick a group"}
+              </option>
+              {vehicleChoices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
                 </option>
               ))}
             </select>
