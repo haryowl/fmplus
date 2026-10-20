@@ -116,6 +116,39 @@ export function fleetLiveHref(search: string): string {
   return withSearch("/fleet-live", search);
 }
 
+/**
+ * History deep link for a status-row vehicle.
+ * Armada-linked (rowId > 0) → /trips or /full; GPS-only → Fleet Live with deviceId.
+ */
+export function vehicleTrackHref(opts: {
+  rowId: number;
+  deviceId?: string | null;
+  /** trips → Trips panel; history/full → Full / Fleet History */
+  kind?: "trips" | "full" | "history";
+}): string {
+  const params = new URLSearchParams(
+    typeof window !== "undefined" ? window.location.search : "",
+  );
+  const deviceId = String(opts.deviceId || "").trim();
+  const kind = opts.kind || "full";
+  if (opts.rowId > 0) {
+    params.set("userId", String(opts.rowId));
+    params.delete("userIds");
+    params.delete("deviceId");
+    const q = params.toString();
+    return kind === "trips" ? tripsHref(q ? `?${q}` : "") : fullHref(q ? `?${q}` : "");
+  }
+  if (deviceId) {
+    params.set("deviceId", deviceId);
+    params.delete("userId");
+    params.delete("userIds");
+    params.set("section", kind === "trips" ? "trips" : "history");
+    const q = params.toString();
+    return fleetLiveHref(q ? `?${q}` : "");
+  }
+  return fleetLiveHref(params.toString() ? `?${params}` : "");
+}
+
 export function exceptionsHref(search: string): string {
   return withSearch("/exceptions", search);
 }

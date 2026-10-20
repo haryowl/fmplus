@@ -57,6 +57,13 @@ describe("derivedStaleExceptions", () => {
     const out = derivedStaleExceptions(rows, now);
     expect(out.map((x) => x.userId)).toEqual([1]);
   });
+
+  it("attaches trackerDeviceId from the row map", () => {
+    const rows = [row({ id: -9, lastMs: now - STALE_MS - 1 })];
+    const map = new Map<number, string>([[-9, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]]);
+    const out = derivedStaleExceptions(rows, now, map);
+    expect(out[0]?.trackerDeviceId).toBe("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+  });
 });
 
 describe("filterExceptionsByGroup", () => {
@@ -68,6 +75,22 @@ describe("filterExceptionsByGroup", () => {
     ];
     const out = filterExceptionsByGroup(items, { userIds: [10], usernames: ["truck-b"] });
     expect(out.map((x) => x.id).sort()).toEqual(["a", "b"]);
+  });
+
+  it("keeps derived rows matching device id", () => {
+    const items = [
+      notify({
+        id: "d1",
+        source: "derived",
+        userId: -3,
+        trackerDeviceId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      }),
+      notify({ id: "d2", source: "derived", userId: -4, trackerDeviceId: "other" }),
+    ];
+    const out = filterExceptionsByGroup(items, {
+      deviceIds: ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+    });
+    expect(out.map((x) => x.id)).toEqual(["d1"]);
   });
 
   it("resolves user id from payload", () => {

@@ -238,6 +238,12 @@ export default function FleetLive() {
   const [now, setNow] = useState(() => Date.now());
   const [listTab, setListTab] = useState<ListTab>("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const pendingDeviceIdRef = useRef(
+    (() => {
+      const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+      return params.get("deviceId") || "";
+    })(),
+  );
   const [queryText, setQueryText] = useState("");
   const [alertsOpen, setAlertsOpen] = useState(() => {
     try {
@@ -284,12 +290,17 @@ export default function FleetLive() {
   }, [allowedSections, section]);
 
   useEffect(() => {
+    const selectedDeviceId =
+      selectedId != null
+        ? fixMeta[selectedId]?.deviceId || pendingDeviceIdRef.current || null
+        : pendingDeviceIdRef.current || null;
     writeLocationSearch({
       deviceGroupId: groupId || null,
       tz: timezone || null,
       section: section || null,
+      deviceId: selectedDeviceId || null,
     });
-  }, [groupId, timezone, section]);
+  }, [groupId, timezone, section, selectedId, fixMeta]);
 
   useEffect(() => {
     try {
@@ -435,7 +446,18 @@ export default function FleetLive() {
           }
           setMaintUserIds(maintRowIds);
           setNow(Date.now());
-          setSelectedId((prev) => (prev != null && meta[prev] ? prev : null));
+          let deepLinkedId: number | null = null;
+          const pendingDeviceId = pendingDeviceIdRef.current;
+          if (pendingDeviceId) {
+            const hit = Object.entries(meta).find(([, m]) => m.deviceId === pendingDeviceId);
+            if (hit) {
+              deepLinkedId = Number(hit[0]);
+              pendingDeviceIdRef.current = "";
+            }
+          }
+          setSelectedId((prev) =>
+            deepLinkedId != null ? deepLinkedId : prev != null && meta[prev] ? prev : null,
+          );
           if (deviceStatus.telematicsSource === "armada") {
             setFetchError("Tenant telematics_source is Armada-only — enable devices or both.");
           }

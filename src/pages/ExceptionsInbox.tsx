@@ -16,22 +16,19 @@ import {
   type ExceptionStatusFilter,
 } from "../lib/exceptions";
 import { filterStatusRows, type LastStatusRow } from "../lib/lastStatus";
-import { fetchTrackerLastStatus, mergeArmadaRowsWithDeviceFixes } from "../lib/trackerDevices";
-import { fullHref, tripsHref, writeLocationSearch } from "../lib/routing";
+import {
+  deviceIdByStatusRowId,
+  fetchDeviceGroupScope,
+  fetchTrackerDeviceGroups,
+  fetchTrackerLastStatus,
+  mergeArmadaRowsWithDeviceFixes,
+  type TrackerDeviceGroup,
+} from "../lib/trackerDevices";
+import { vehicleTrackHref, writeLocationSearch } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
 import { BrandMark } from "../components/BrandMark";
 import { ViewNav } from "../components/ViewNav";
-
-function vehicleSearch(userId: number | null | undefined): string {
-  const params = new URLSearchParams(window.location.search);
-  if (userId) {
-    params.set("userId", String(userId));
-    params.delete("userIds");
-  }
-  const q = params.toString();
-  return q ? `?${q}` : "";
-}
 
 export default function ExceptionsInbox() {
   const {
@@ -46,7 +43,14 @@ export default function ExceptionsInbox() {
   } = useEmbedTenant();
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [deviceGroups, setDeviceGroups] = useState<TrackerDeviceGroup[]>([]);
   const [groupId, setGroupId] = useState(query.groupId);
+  const [deviceGroupId, setDeviceGroupId] = useState(() => {
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    return params.get("deviceGroupId") || "";
+  });
+  const [deviceGroupDeviceIds, setDeviceGroupDeviceIds] = useState<string[] | undefined>();
+  const [deviceGroupArmadaIds, setDeviceGroupArmadaIds] = useState<number[] | undefined>();
   const [timezone, setTimezone] = useState(query.tz);
   const [bootError, setBootError] = useState("");
   const [statusFilter, setStatusFilter] = useState<ExceptionStatusFilter>("open");
@@ -64,8 +68,21 @@ export default function ExceptionsInbox() {
   const excelOk = entitlements.features.excel !== false;
 
   useEffect(() => {
-    writeLocationSearch({ groupId: groupId || null, tz: timezone || null });
-  }, [groupId, timezone]);
+    writeLocationSearch({
+      groupId: deviceGroupId ? null : groupId || null,
+      deviceGroupId: deviceGroupId || null,
+      tz: timezone || null,
+    });
+  }, [groupId, deviceGroupId, timezone]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const ac = new AbortController();
+    fetchTrackerDeviceGroups(ac.signal)
+      .then((list) => setDeviceGroups(list))
+      .catch(() => setDeviceGroups([]));
+    return () => ac.abort();
+  }, [ready]);
 
   useEffect(() => {
     document.title = "Exceptions · ARMADA M.1";
@@ -147,33 +164,58 @@ export default function ExceptionsInbox() {
     const gid = Number(groupId);
     void Promise.all([
       fetchUsersStatus({
-        groupId: Number.isFinite(gid) && gid > 0 ? gid : undefined,
+        groupId:
+          !deviceGroupId && Number.isFinite(gid) && gid > 0 ? gid : undefined,
         signal: ac.signal,
       }).catch((err: Error) => {
         if (err.name === "AbortError") throw err;
         return [] as LastStatusRow[];
       }),
-      fetchTrackerLastStatus(ac.signal).catch((err: Error) => {
+      fetchTrackerLastStatus(ac.signal, {
+        groupIds: deviceGroupId ? [deviceGroupId] : undefined,
+      }).catch((err: Error) => {
         if (err.name === "AbortError") throw err;
         return { fixes: [], telematicsSource: "both" as const };
       }),
+      deviceGroupId
+        ? fetchDeviceGroupScope([deviceGroupId], ac.signal).catch(() => null)
+        : Promise.resolve(null),
     ])
-      .then(([armadaRows, deviceStatus]) => {
-        const merged = mergeArmadaRowsWithDeviceFixes(
-          armadaRows,
-          deviceStatus.fixes,
-          deviceStatus.telematicsSource,
-        );
-        const ids =
-          groupId && users.length ? users.map((u) => u.id) : allowedUserIds.length ? allowedUserIds : undefined;
-        // Devices-only / unscoped: keep GPS-only rows (synthetic negative ids).
-        // Armada-scoped tenants: filter to allowed users; linked devices overlay those ids.
-        const scoped =
-          deviceStatus.telematicsSource === "devices" || !ids?.length
-            ? merged
-            : filterStatusRows(merged, ids);
+      .then(([armadaRows, deviceStatus, scope]) => {
+        const byDevice = deviceIdByStatusRowId(deviceStatus.fixes);
+        setDeviceGroupDeviceIds(deviceGroupId ? scope?.deviceIds || [] : undefined);
+        setDeviceGroupArmadaIds(deviceGroupId ? scope?.armadaUserIds || [] : undefined);
+        let merged: LastStatusRow[];
+        if (deviceGroupId) {
+          const allow = new Set(scope?.armadaUserIds || []);
+          const armadaScoped = allow.size
+            ? armadaRows.filter((r) => allow.has(r.id))
+            : [];
+          merged = mergeArmadaRowsWithDeviceFixes(
+            armadaScoped,
+            deviceStatus.fixes,
+            deviceStatus.telematicsSource === "armada"
+              ? "devices"
+              : deviceStatus.telematicsSource,
+          );
+        } else {
+          merged = mergeArmadaRowsWithDeviceFixes(
+            armadaRows,
+            deviceStatus.fixes,
+            deviceStatus.telematicsSource,
+          );
+          const ids =
+            groupId && users.length
+              ? users.map((u) => u.id)
+              : allowedUserIds.length
+                ? allowedUserIds
+                : undefined;
+          if (deviceStatus.telematicsSource !== "devices" && ids?.length) {
+            merged = filterStatusRows(merged, ids);
+          }
+        }
         setNow(Date.now());
-        setDerived(derivedStaleExceptions(scoped, Date.now()));
+        setDerived(derivedStaleExceptions(merged, Date.now(), byDevice));
       })
       .catch((err: Error) => {
         if (err.name !== "AbortError") {
@@ -181,27 +223,32 @@ export default function ExceptionsInbox() {
         }
       });
     return () => ac.abort();
-  }, [ready, showDerived, statusFilter, groupId, users, allowedUserIds, reload]);
+  }, [ready, showDerived, statusFilter, groupId, deviceGroupId, users, allowedUserIds, reload]);
 
   const scopeUserIds = useMemo(() => {
+    if (deviceGroupId) return deviceGroupArmadaIds?.length ? deviceGroupArmadaIds : undefined;
     if (groupId && users.length) return users.map((u) => u.id);
     if (allowedUserIds.length) return allowedUserIds;
     return undefined;
-  }, [groupId, users, allowedUserIds]);
+  }, [groupId, users, allowedUserIds, deviceGroupId, deviceGroupArmadaIds]);
 
   const scopeUsernames = useMemo(
-    () => (groupId && users.length ? users.map((u) => u.username || "").filter(Boolean) : undefined),
-    [groupId, users],
+    () =>
+      !deviceGroupId && groupId && users.length
+        ? users.map((u) => u.username || "").filter(Boolean)
+        : undefined,
+    [groupId, users, deviceGroupId],
   );
 
   const list = useMemo(() => {
     const notify = items;
     const extra = showDerived && statusFilter !== "acked" ? derived : [];
     let merged = [...notify, ...extra];
-    if (scopeUserIds?.length || scopeUsernames?.length) {
+    if (scopeUserIds?.length || scopeUsernames?.length || deviceGroupDeviceIds?.length) {
       merged = filterExceptionsByGroup(merged, {
         userIds: scopeUserIds,
         usernames: scopeUsernames,
+        deviceIds: deviceGroupDeviceIds,
       });
     }
     const q = queryText.trim().toLowerCase();
@@ -213,7 +260,16 @@ export default function ExceptionsInbox() {
         (item.armadaUsername || "").toLowerCase().includes(q) ||
         String(exceptionUserId(item) ?? "").includes(q),
     );
-  }, [items, derived, showDerived, statusFilter, scopeUserIds, scopeUsernames, queryText]);
+  }, [
+    items,
+    derived,
+    showDerived,
+    statusFilter,
+    scopeUserIds,
+    scopeUsernames,
+    deviceGroupDeviceIds,
+    queryText,
+  ]);
 
   async function onAck(id: string) {
     setBusyId(id);
@@ -259,7 +315,11 @@ export default function ExceptionsInbox() {
           <ViewNav current="exceptions" />
           <div className="vehicle-chip">
             {loading ? "Loading…" : `${list.length} items`}
-            {selectedGroup ? ` · ${selectedGroup.name}` : " · All devices"}
+            {deviceGroupId
+              ? ` · ${deviceGroups.find((g) => g.id === deviceGroupId)?.name || "Device group"}`
+              : selectedGroup
+                ? ` · ${selectedGroup.name}`
+                : " · All devices"}
           </div>
         </div>
       </header>
@@ -267,10 +327,41 @@ export default function ExceptionsInbox() {
       <main className="shell">
         <section className="filters">
           <div className="field">
-            <label htmlFor="exc-group">Group</label>
-            <select id="exc-group" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+            <label htmlFor="exc-device-group">Device group</label>
+            <select
+              id="exc-device-group"
+              value={deviceGroupId}
+              onChange={(e) => {
+                setDeviceGroupId(e.target.value);
+                if (e.target.value) setGroupId("");
+              }}
+            >
               <option value="">
-                {bootError ? "Groups unavailable" : groups.length ? "All devices" : "Loading groups…"}
+                {deviceGroups.length ? "All device groups" : "No device groups"}
+              </option>
+              {deviceGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="exc-group">Group</label>
+            <select
+              id="exc-group"
+              value={groupId}
+              disabled={Boolean(deviceGroupId)}
+              onChange={(e) => setGroupId(e.target.value)}
+            >
+              <option value="">
+                {bootError
+                  ? "Groups unavailable"
+                  : deviceGroupId
+                    ? "Using device group"
+                    : groups.length
+                      ? "All devices"
+                      : "Loading groups…"}
               </option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
@@ -349,7 +440,9 @@ export default function ExceptionsInbox() {
           )}
           {list.map((item) => {
             const uid = exceptionUserId(item);
-            const search = vehicleSearch(uid);
+            const rowId = item.userId != null && item.userId !== 0 ? item.userId : uid;
+            const deviceId = item.trackerDeviceId || null;
+            const canLink = (rowId != null && rowId > 0) || Boolean(deviceId);
             return (
               <li key={item.id} className={item.ackedAt ? "acked" : "open"}>
                 <div className="exceptions-row-main">
@@ -366,17 +459,31 @@ export default function ExceptionsInbox() {
                   {item.ackedNote ? <span className="muted">Note: {item.ackedNote}</span> : null}
                 </div>
                 <div className="exceptions-row-actions">
-                  {uid ? (
+                  {canLink ? (
                     <>
-                      <a className="btn-ghost" href={tripsHref(search)}>
+                      <a
+                        className="btn-ghost"
+                        href={vehicleTrackHref({
+                          rowId: rowId || 0,
+                          deviceId,
+                          kind: "trips",
+                        })}
+                      >
                         Trips
                       </a>
-                      <a className="btn-ghost" href={fullHref(search)}>
+                      <a
+                        className="btn-ghost"
+                        href={vehicleTrackHref({
+                          rowId: rowId || 0,
+                          deviceId,
+                          kind: "full",
+                        })}
+                      >
                         Full
                       </a>
                     </>
                   ) : (
-                    <span className="muted">No userId</span>
+                    <span className="muted">No vehicle link</span>
                   )}
                   {item.source === "notify" && !item.ackedAt && (
                     <button

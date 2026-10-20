@@ -14,10 +14,11 @@ import {
   LIVE_OPS_LABELS,
 } from "../lib/liveOps";
 import { fetchDriverMap } from "../lib/driverFields";
-import { fullHref, maintenanceHref, tripsHref, writeLocationSearch } from "../lib/routing";
+import { maintenanceHref, vehicleTrackHref, writeLocationSearch } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
 import {
+  deviceIdByStatusRowId,
   fetchDeviceGroupScope,
   fetchTrackerDeviceGroups,
   fetchTrackerLastStatus,
@@ -28,17 +29,17 @@ import { BrandMark } from "../components/BrandMark";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
 
-function vehicleSearch(userId: number): string {
+function maintenanceOpenHref(userId: number, deviceId?: string | null): string {
   const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
-  params.set("userId", String(userId));
-  params.delete("userIds");
-  const q = params.toString();
-  return q ? `?${q}` : "";
-}
-
-function maintenanceOpenHref(userId: number): string {
-  const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
-  params.set("userId", String(userId));
+  if (userId > 0) {
+    params.set("userId", String(userId));
+    params.delete("deviceId");
+  } else if (deviceId) {
+    params.set("deviceId", deviceId);
+    params.delete("userId");
+  } else {
+    params.set("userId", String(userId));
+  }
   params.set("open", "1");
   params.delete("userIds");
   const q = params.toString();
@@ -67,6 +68,7 @@ export default function LiveOps() {
   const [timezone, setTimezone] = useState(query.tz);
   const [bootError, setBootError] = useState("");
   const [rows, setRows] = useState<LastStatusRow[]>([]);
+  const [deviceIdByRowId, setDeviceIdByRowId] = useState<Map<number, string>>(() => new Map());
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
   const [reload, setReload] = useState(0);
@@ -174,6 +176,7 @@ export default function LiveOps() {
           : Promise.resolve(null),
       ])
         .then(([armadaRows, deviceStatus, scope]) => {
+          setDeviceIdByRowId(deviceIdByStatusRowId(deviceStatus.fixes));
           if (deviceGroupId) {
             const allow = new Set(scope?.armadaUserIds || []);
             const armadaScoped = allow.size
@@ -464,9 +467,27 @@ export default function LiveOps() {
                         </span>
                       </button>
                       <div className="live-ops-list-links">
-                        <a href={tripsHref(vehicleSearch(row.id))}>Trips</a>
-                        <a href={fullHref(vehicleSearch(row.id))}>Full</a>
-                        <a href={maintenanceOpenHref(row.id)}>Maintenance</a>
+                        <a
+                          href={vehicleTrackHref({
+                            rowId: row.id,
+                            deviceId: deviceIdByRowId.get(row.id),
+                            kind: "trips",
+                          })}
+                        >
+                          Trips
+                        </a>
+                        <a
+                          href={vehicleTrackHref({
+                            rowId: row.id,
+                            deviceId: deviceIdByRowId.get(row.id),
+                            kind: "full",
+                          })}
+                        >
+                          Full
+                        </a>
+                        <a href={maintenanceOpenHref(row.id, deviceIdByRowId.get(row.id))}>
+                          Maintenance
+                        </a>
                       </div>
                     </li>
                   );

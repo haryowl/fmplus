@@ -14,7 +14,13 @@ import {
   type RoutePoint,
 } from "../lib/routePlan";
 import { writeLocationSearch } from "../lib/routing";
-import { fetchTrackerLastStatus, mergeArmadaRowsWithDeviceFixes } from "../lib/trackerDevices";
+import {
+  fetchDeviceGroupScope,
+  fetchTrackerDeviceGroups,
+  fetchTrackerLastStatus,
+  mergeArmadaRowsWithDeviceFixes,
+  type TrackerDeviceGroup,
+} from "../lib/trackerDevices";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
 
@@ -32,7 +38,12 @@ export default function RoutePlanPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [statusRows, setStatusRows] = useState<LastStatusRow[]>([]);
+  const [deviceGroups, setDeviceGroups] = useState<TrackerDeviceGroup[]>([]);
   const [groupId, setGroupId] = useState(query.groupId);
+  const [deviceGroupId, setDeviceGroupId] = useState(() => {
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    return params.get("deviceGroupId") || "";
+  });
   const [userId, setUserId] = useState(query.userId);
   const [bootError, setBootError] = useState("");
   const [osrmConfigured, setOsrmConfigured] = useState(false);
@@ -61,10 +72,20 @@ export default function RoutePlanPage() {
 
   useEffect(() => {
     writeLocationSearch({
-      groupId: groupId || null,
+      groupId: deviceGroupId ? null : groupId || null,
+      deviceGroupId: deviceGroupId || null,
       userId: userId || null,
     });
-  }, [groupId, userId]);
+  }, [groupId, deviceGroupId, userId]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const ac = new AbortController();
+    fetchTrackerDeviceGroups(ac.signal)
+      .then((list) => setDeviceGroups(list))
+      .catch(() => setDeviceGroups([]));
+    return () => ac.abort();
+  }, [ready]);
 
   useEffect(() => {
     if (tenantError) setBootError(tenantError);
@@ -132,19 +153,41 @@ export default function RoutePlanPage() {
     const gid = Number(groupId);
     void Promise.all([
       fetchUsersStatus({
-        groupId: Number.isFinite(gid) && gid > 0 ? gid : undefined,
+        groupId:
+          !deviceGroupId && Number.isFinite(gid) && gid > 0 ? gid : undefined,
         signal: ac.signal,
       }).catch((err: Error) => {
         if (err.name === "AbortError") throw err;
         return [] as LastStatusRow[];
       }),
-      fetchTrackerLastStatus(ac.signal).catch((err: Error) => {
+      fetchTrackerLastStatus(ac.signal, {
+        groupIds: deviceGroupId ? [deviceGroupId] : undefined,
+      }).catch((err: Error) => {
         if (err.name === "AbortError") throw err;
         return { fixes: [], telematicsSource: "both" as const };
       }),
+      deviceGroupId
+        ? fetchDeviceGroupScope([deviceGroupId], ac.signal).catch(() => null)
+        : Promise.resolve(null),
     ])
-      .then(([armadaRows, deviceStatus]) => {
+      .then(([armadaRows, deviceStatus, scope]) => {
         if (ac.signal.aborted) return;
+        if (deviceGroupId) {
+          const allow = new Set(scope?.armadaUserIds || []);
+          const armadaScoped = allow.size
+            ? armadaRows.filter((r) => allow.has(r.id))
+            : [];
+          setStatusRows(
+            mergeArmadaRowsWithDeviceFixes(
+              armadaScoped,
+              deviceStatus.fixes,
+              deviceStatus.telematicsSource === "armada"
+                ? "devices"
+                : deviceStatus.telematicsSource,
+            ),
+          );
+          return;
+        }
         setStatusRows(
           mergeArmadaRowsWithDeviceFixes(
             armadaRows,
@@ -157,9 +200,18 @@ export default function RoutePlanPage() {
         if (err.name !== "AbortError") setStatusRows([]);
       });
     return () => ac.abort();
-  }, [ready, groupId]);
+  }, [ready, groupId, deviceGroupId]);
 
   const vehicleChoices = useMemo(() => {
+    if (deviceGroupId) {
+      return statusRows
+        .filter((r) => r.lat != null && r.lon != null)
+        .map((r) => ({
+          id: String(r.id),
+          label: r.name || r.username || `Vehicle ${r.id}`,
+          rowId: r.id,
+        }));
+    }
     if (users.length) {
       return users.map((u) => ({
         id: String(u.id),
@@ -180,7 +232,7 @@ export default function RoutePlanPage() {
         label: r.name || r.username || `Vehicle ${r.id}`,
         rowId: r.id,
       }));
-  }, [users, statusRows, allowedUserIds]);
+  }, [users, statusRows, allowedUserIds, deviceGroupId]);
 
   useEffect(() => {
     if (!userId) {
@@ -301,9 +353,44 @@ export default function RoutePlanPage() {
       <main className="shell">
         <section className="filters route-plan-toolbar">
           <div className="field">
+            <label htmlFor="rp-device-group">Device group</label>
+            <select
+              id="rp-device-group"
+              value={deviceGroupId}
+              onChange={(e) => {
+                setDeviceGroupId(e.target.value);
+                if (e.target.value) setGroupId("");
+                setUserId("");
+              }}
+            >
+              <option value="">
+                {deviceGroups.length ? "All device groups" : "No device groups"}
+              </option>
+              {deviceGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
             <label htmlFor="rp-group">Group</label>
-            <select id="rp-group" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-              <option value="">{groups.length ? "Select group" : "Loading…"}</option>
+            <select
+              id="rp-group"
+              value={groupId}
+              disabled={Boolean(deviceGroupId)}
+              onChange={(e) => {
+                setGroupId(e.target.value);
+                setUserId("");
+              }}
+            >
+              <option value="">
+                {deviceGroupId
+                  ? "Using device group"
+                  : groups.length
+                    ? "Select group"
+                    : "Loading…"}
+              </option>
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>
                   {groupOptionLabel(g)}
@@ -322,7 +409,7 @@ export default function RoutePlanPage() {
               <option value="">
                 {vehicleChoices.length
                   ? "Select vehicle"
-                  : groups.length || statusRows.length
+                  : groups.length || deviceGroupId || statusRows.length
                     ? "No vehicles with GPS"
                     : "Pick a group"}
               </option>

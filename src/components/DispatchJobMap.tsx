@@ -27,7 +27,7 @@ type Props = {
   armadaTrack?: [number, number][];
   phoneLive?: { lat: number; lon: number } | null;
   vehicleLive?: { lat: number; lon: number } | null;
-  /** When true, draw Armada track / start / complete / live. */
+  /** When true, draw vehicle GPS track / start / complete / live. */
   hasVehicle?: boolean;
   trackStatus?: string;
 };
@@ -330,7 +330,7 @@ export function DispatchJobMap({
       const vl = asCoord(vehicleLive?.lat, vehicleLive?.lon);
       if (vl) {
         L.marker(vl, { icon: liveIcon(LIVE_MAP_COLORS.armada), zIndexOffset: 420 })
-          .bindPopup("Armada live")
+          .bindPopup("Vehicle GPS live")
           .addTo(layer);
         bounds.push(vl);
       }
@@ -414,7 +414,7 @@ export function DispatchJobMap({
           </li>
           {hasVehicle ? (
             <li>
-              <i style={{ background: LIVE_MAP_COLORS.armada }} /> Armada
+              <i style={{ background: LIVE_MAP_COLORS.armada }} /> Vehicle GPS
             </li>
           ) : null}
           {trackStatus ? <li>{trackStatus}</li> : null}

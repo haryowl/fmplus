@@ -17,7 +17,7 @@ import {
   fetchMaintStatusSummary,
   type MaintStatusCell,
 } from "../lib/maintenance";
-import { fullHref, maintenanceHref } from "../lib/routing";
+import { maintenanceHref, vehicleTrackHref } from "../lib/routing";
 import {
   deviceIdByStatusRowId,
   fetchDeviceGroupScope,
@@ -35,17 +35,25 @@ type Props = {
   fill?: boolean;
 };
 
-function vehicleHref(userId: number): string {
-  const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
-  params.set("userId", String(userId));
-  params.delete("userIds");
-  const q = params.toString();
-  return fullHref(q ? `?${q}` : "");
+function vehicleHref(rowId: number, deviceId?: string | null): string {
+  return vehicleTrackHref({ rowId, deviceId, kind: "full" });
 }
 
-function maintenanceOpenHref(userId: number, eventId?: string | null): string {
+function maintenanceOpenHref(
+  userId: number,
+  eventId?: string | null,
+  deviceId?: string | null,
+): string {
   const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
-  params.set("userId", String(userId));
+  if (userId > 0) {
+    params.set("userId", String(userId));
+    params.delete("deviceId");
+  } else if (deviceId) {
+    params.set("deviceId", deviceId);
+    params.delete("userId");
+  } else {
+    params.set("userId", String(userId));
+  }
   params.set("open", "1");
   if (eventId) params.set("eventId", eventId);
   params.delete("userIds");
@@ -341,7 +349,10 @@ export function LastStatusPanel({
                 return (
                   <tr key={row.id}>
                     <td>
-                      <a className="status-vehicle" href={vehicleHref(row.id)}>
+                      <a
+                        className="status-vehicle"
+                        href={vehicleHref(row.id, deviceIdByRowId.get(row.id))}
+                      >
                         {row.name}
                       </a>
                       <div className="status-id">{row.id}</div>
@@ -366,7 +377,11 @@ export function LastStatusPanel({
                     <td>
                       <a
                         className={`status-maint-pill${maintClass ? ` ${maintClass}` : ""}`}
-                        href={maintenanceOpenHref(row.id, maint?.eventId)}
+                        href={maintenanceOpenHref(
+                          row.id,
+                          maint?.eventId,
+                          deviceIdByRowId.get(row.id),
+                        )}
                         title={maint?.title || "Open maintenance"}
                       >
                         {maint?.label || "—"}

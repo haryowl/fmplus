@@ -17,8 +17,10 @@ export type ExceptionItem = {
   ackedAt: string | null;
   ackedNote: string;
   source: "notify" | "derived";
-  /** Present on derived stale rows */
+  /** Present on derived stale rows (Armada user id, or synthetic hash for GPS-only) */
   userId?: number;
+  /** GPS tracker UUID when known (derived stale / device-native) */
+  trackerDeviceId?: string | null;
 };
 
 export type ExceptionStatusFilter = "open" | "acked" | "all";
@@ -61,7 +63,11 @@ export async function unackException(id: string): Promise<ExceptionItem> {
 }
 
 /** Secondary feed: stale vehicles from last status (not persisted). */
-export function derivedStaleExceptions(rows: LastStatusRow[], now = Date.now()): ExceptionItem[] {
+export function derivedStaleExceptions(
+  rows: LastStatusRow[],
+  now = Date.now(),
+  deviceIdByRowId?: Map<number, string>,
+): ExceptionItem[] {
   return rows
     .filter((row) => row.lastMs !== null && now - row.lastMs > STALE_MS)
     .map((row) => ({
@@ -79,6 +85,7 @@ export function derivedStaleExceptions(rows: LastStatusRow[], now = Date.now()):
       ackedNote: "",
       source: "derived" as const,
       userId: row.id,
+      trackerDeviceId: deviceIdByRowId?.get(row.id) || null,
     }));
 }
 
@@ -105,26 +112,43 @@ export function exceptionWhen(item: ExceptionItem, now = Date.now()): string {
 }
 
 export function exceptionUserId(item: ExceptionItem): number | null {
-  if (item.userId) return item.userId;
+  if (item.userId != null && item.userId > 0) return item.userId;
   const p = item.payload || {};
   const raw = p.USER_ID ?? p.userId ?? p.UserId;
   const n = Number(raw);
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+/** Synthetic status-row id for GPS-only derived rows (negative hash). */
+export function exceptionStatusRowId(item: ExceptionItem): number | null {
+  if (item.userId != null && Number.isInteger(item.userId) && item.userId !== 0) {
+    return item.userId;
+  }
+  return exceptionUserId(item);
+}
+
 /** Scope notifier/derived rows to a group (or tenant allowlist). */
 export function filterExceptionsByGroup(
   items: ExceptionItem[],
-  opts?: { userIds?: number[]; usernames?: string[] },
+  opts?: { userIds?: number[]; usernames?: string[]; deviceIds?: string[] },
 ): ExceptionItem[] {
   const ids = opts?.userIds?.length ? new Set(opts.userIds) : null;
   const names = opts?.usernames?.length
     ? new Set(opts.usernames.map((u) => u.trim().toLowerCase()).filter(Boolean))
     : null;
-  if (!ids && !names) return items;
+  const devices = opts?.deviceIds?.length
+    ? new Set(opts.deviceIds.map((d) => d.trim().toLowerCase()).filter(Boolean))
+    : null;
+  if (!ids && !names && !devices) return items;
   return items.filter((item) => {
     const uid = exceptionUserId(item);
     if (uid != null && ids?.has(uid)) return true;
+    const did = String(item.trackerDeviceId || "").trim().toLowerCase();
+    if (did && devices?.has(did)) return true;
+    // GPS-only derived rows use synthetic negative userId — keep when device scope is open-ended.
+    if (item.source === "derived" && item.userId != null && item.userId < 0 && !devices && !ids) {
+      return true;
+    }
     const un = (item.armadaUsername || "").trim().toLowerCase();
     if (un && names?.has(un)) return true;
     return false;
