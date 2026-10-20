@@ -2476,6 +2476,8 @@ export type DispatchLiveDriver = {
   driverInitials: string;
   vehicleLabel: string;
   armadaUserId: number | null;
+  /** GPS tracker when the job is device-native (Armada link optional). */
+  trackerDeviceId?: string | null;
   liveLat: number | null;
   liveLon: number | null;
   /** Resolved live position with its provenance; null when nothing is reporting. */

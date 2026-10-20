@@ -154,23 +154,30 @@ async function fetchSafetyEvents(
   return data.events || [];
 }
 
-async function fetchOpenMaintenanceUserIds(signal?: AbortSignal): Promise<Set<number>> {
+async function fetchOpenMaintenanceMarks(signal?: AbortSignal): Promise<{
+  userIds: Set<number>;
+  deviceIds: Set<string>;
+}> {
   const params = new URLSearchParams({ status: "open", limit: "200" });
   const res = await fetch(`/api/maintenance/events?${params}`, {
     credentials: "include",
     headers: { accept: "application/json", ...tenantHeaders() },
     signal,
   });
-  if (!res.ok) return new Set();
+  const empty = { userIds: new Set<number>(), deviceIds: new Set<string>() };
+  if (!res.ok) return empty;
   const data = (await res.json().catch(() => ({}))) as {
-    events?: Array<{ armadaUserId?: number | null }>;
+    events?: Array<{ armadaUserId?: number | null; trackerDeviceId?: string | null }>;
   };
-  const set = new Set<number>();
+  const userIds = new Set<number>();
+  const deviceIds = new Set<string>();
   for (const e of data.events || []) {
     const id = Number(e.armadaUserId);
-    if (Number.isInteger(id) && id > 0) set.add(id);
+    if (Number.isInteger(id) && id > 0) userIds.add(id);
+    const deviceId = String(e.trackerDeviceId || "").trim();
+    if (deviceId) deviceIds.add(deviceId);
   }
-  return set;
+  return { userIds, deviceIds };
 }
 
 function alarmLabel(type: string): string {
@@ -358,12 +365,15 @@ export default function FleetLive() {
           () => [] as FleetRuleEvent[],
         ),
         fetchRuleHolds({ limit: 20 }, ac.signal).catch(() => [] as FleetRuleHold[]),
-        fetchOpenMaintenanceUserIds(ac.signal).catch(() => new Set<number>()),
+        fetchOpenMaintenanceMarks(ac.signal).catch(() => ({
+          userIds: new Set<number>(),
+          deviceIds: new Set<string>(),
+        })),
         groupId
           ? fetchDeviceGroupScope([groupId], ac.signal).catch(() => null)
           : Promise.resolve(null),
       ])
-        .then(([deviceStatus, safety, openRules, holds, maintIds, groupScope]) => {
+        .then(([deviceStatus, safety, openRules, holds, openMaint, groupScope]) => {
           if (ac.signal.aborted) return;
           const nextRows: LastStatusRow[] = [];
           const meta: Record<number, FixMeta> = {};
@@ -402,13 +412,28 @@ export default function FleetLive() {
               ? holds.filter((h) => groupDeviceIds.has(h.deviceId))
               : holds,
           );
-          setMaintUserIds(
-            groupArmadaIds && groupArmadaIds.size > 0
-              ? new Set([...maintIds].filter((id) => groupArmadaIds.has(id)))
-              : groupId
-                ? new Set() // GPS-only group: maintenance badges are Armada-keyed (Phase 2)
-                : maintIds,
-          );
+          const maintUsers = groupId
+            ? new Set(
+                [...openMaint.userIds].filter(
+                  (id) => groupArmadaIds != null && groupArmadaIds.has(id),
+                ),
+              )
+            : openMaint.userIds;
+          const maintDevices = groupId
+            ? new Set(
+                [...openMaint.deviceIds].filter(
+                  (id) => groupDeviceIds != null && groupDeviceIds.has(id),
+                ),
+              )
+            : openMaint.deviceIds;
+          // Status-row ids (Armada or synthetic) that should show a Maint badge.
+          const maintRowIds = new Set<number>();
+          for (const row of nextRows) {
+            if (row.id > 0 && maintUsers.has(row.id)) maintRowIds.add(row.id);
+            const deviceId = meta[row.id]?.deviceId;
+            if (deviceId && maintDevices.has(deviceId)) maintRowIds.add(row.id);
+          }
+          setMaintUserIds(maintRowIds);
           setNow(Date.now());
           setSelectedId((prev) => (prev != null && meta[prev] ? prev : null));
           if (deviceStatus.telematicsSource === "armada") {
@@ -530,7 +555,7 @@ export default function FleetLive() {
         fuelN += 1;
       }
       if (meta && alertDeviceIds.has(meta.deviceId)) alertUnits += 1;
-      if (row.id > 0 && maintUserIds.has(row.id)) maintUnits += 1;
+      if (maintUserIds.has(row.id)) maintUnits += 1;
     }
     return {
       total: rows.length,
@@ -550,7 +575,7 @@ export default function FleetLive() {
     for (const row of rows) {
       const meta = fixMeta[row.id];
       if (meta && alertDeviceIds.has(meta.deviceId)) alert += 1;
-      if (row.id > 0 && maintUserIds.has(row.id)) maintenance += 1;
+      if (maintUserIds.has(row.id)) maintenance += 1;
     }
     return { ...counts, alert, maintenance, all: rows.length };
   }, [rows, counts, fixMeta, alertDeviceIds, maintUserIds]);
@@ -588,7 +613,7 @@ export default function FleetLive() {
       } else if (listTab === "alert") {
         if (!meta || !alertDeviceIds.has(meta.deviceId)) return false;
       } else if (listTab === "maintenance") {
-        if (!(row.id > 0 && maintUserIds.has(row.id))) return false;
+        if (!maintUserIds.has(row.id)) return false;
       }
       return true;
     });
@@ -1136,7 +1161,7 @@ export default function FleetLive() {
                       <IcoAlerts /> Alert
                     </span>
                   ) : null}
-                  {selected.id > 0 && maintUserIds.has(selected.id) ? (
+                  {maintUserIds.has(selected.id) ? (
                     <span className="fleet-cc-chip is-maint" title="Maintenance">
                       <IcoWrench /> Maint
                     </span>
@@ -1246,7 +1271,7 @@ export default function FleetLive() {
                 const cls = classifyLiveRow(row, now);
                 const meta = fixMeta[row.id];
                 const inAlert = meta ? alertDeviceIds.has(meta.deviceId) : false;
-                const inMaint = row.id > 0 && maintUserIds.has(row.id);
+                const inMaint = maintUserIds.has(row.id);
                 const fuel = meta?.fuelLevel;
                 return (
                   <li key={row.id} className={selectedId === row.id ? "is-selected" : ""}>

@@ -901,6 +901,66 @@ export function enrichFixTelemetry(row, pinIds = FLEET_DISPLAY_PIN_IDS) {
 }
 
 /**
+ * Latest device fixes keyed by tracker device UUID.
+ * @returns {Promise<Map<string, object>>}
+ */
+export async function lastFixesByDeviceIds(tenantId, deviceIds) {
+  const ids = [
+    ...new Set(
+      (deviceIds || [])
+        .map((id) => String(id || "").trim())
+        .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+    ),
+  ];
+  /** @type {Map<string, object>} */
+  const map = new Map();
+  if (!ids.length) return map;
+  const rows = await dbQuery(
+    `SELECT d.id AS device_id, d.imei, d.label, d.armada_user_id,
+            lf.lat, lf.lon, lf.recorded_at, lf.speed, lf.heading, lf.ignition,
+            lf.odometer, lf.mapped_attrs, lf.source_protocol
+     FROM tracker_devices d
+     JOIN vehicle_last_fix lf ON lf.device_id = d.id
+     WHERE d.tenant_id = $1
+       AND d.enabled = true
+       AND d.id = ANY($2::uuid[])`,
+    [tenantId, ids],
+  );
+  const now = Date.now();
+  const groupsByDevice = await groupSummariesByDeviceIds(
+    tenantId,
+    rows.rows.map((r) => r.device_id),
+  ).catch(() => new Map());
+  for (const r of rows.rows) {
+    const deviceId = String(r.device_id);
+    const recordedAt = r.recorded_at ? new Date(r.recorded_at).toISOString() : null;
+    const ageSec =
+      recordedAt && !Number.isNaN(Date.parse(recordedAt))
+        ? Math.max(0, Math.round((now - Date.parse(recordedAt)) / 1000))
+        : null;
+    const tel = enrichFixTelemetry(r);
+    map.set(deviceId, {
+      lat: Number(r.lat),
+      lon: Number(r.lon),
+      recordedAt,
+      ageSec,
+      speed: r.speed == null ? null : Number(r.speed),
+      heading: r.heading == null ? null : Number(r.heading),
+      ignition: r.ignition,
+      deviceId,
+      imei: r.imei,
+      label: r.label || r.imei,
+      sourceProtocol: r.source_protocol,
+      odometerKm: tel.odometerKm,
+      fuelLevel: tel.fuelLevel,
+      fuelLiters: tel.fuelLiters,
+      groups: groupsByDevice.get(r.device_id) || [],
+    });
+  }
+  return map;
+}
+
+/**
  * Latest device fixes keyed by armada_user_id for Dispatch Live / Maintenance merge.
  * @returns {Promise<Map<number, object>>}
  */

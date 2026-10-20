@@ -78,7 +78,7 @@ export function FleetLiveRankingPanel({
         cls,
         alerts: deviceId ? alertCounts[deviceId] || 0 : 0,
         inAlert: Boolean(deviceId && alertDeviceIds.has(deviceId)),
-        inMaint: row.id > 0 && maintUserIds.has(row.id),
+        inMaint: maintUserIds.has(row.id),
         odo: meta?.odometerKm ?? null,
         fuel: meta?.fuelLevel ?? null,
         ageMs: row.lastMs != null ? Math.max(0, now - row.lastMs) : Number.POSITIVE_INFINITY,

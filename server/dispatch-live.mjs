@@ -27,6 +27,7 @@ import { deviceIdsInGroups } from "./tracker-device-groups.mjs";
 import {
   armadaUserIdsInDeviceGroups,
   lastFixesByArmadaUserIds,
+  lastFixesByDeviceIds,
   telematicsUsesArmada,
   telematicsUsesDevices,
   tenantTelematicsSource,
@@ -475,8 +476,6 @@ export async function buildDispatchLiveSnapshot(opts) {
   if (deviceGroupIds.length) {
     groupDeviceIds = await deviceIdsInGroups(opts.tenantId, deviceGroupIds).catch(() => []);
     const uids = await armadaUserIdsInDeviceGroups(opts.tenantId, deviceGroupIds).catch(() => []);
-    // Device-first: only filter jobs when the group has linked Armada users.
-    // Empty links must not wipe the board (GPS devices can exist without Armada).
     if (uids.length) groupArmadaIds = new Set(uids);
   }
 
@@ -502,14 +501,18 @@ export async function buildDispatchLiveSnapshot(opts) {
      LIMIT 100`,
     [opts.tenantId, serviceDate],
   );
-  if (groupArmadaIds && groupArmadaIds.size > 0) {
-    jobsRes.rows = jobsRes.rows.filter((j) => {
-      const uid = j.armada_user_id != null ? Number(j.armada_user_id) : NaN;
-      return Number.isInteger(uid) && groupArmadaIds.has(uid);
-    });
-  } else if (deviceGroupIds.length && !groupDeviceIds.length) {
-    // Explicit empty device group → no jobs.
-    jobsRes.rows = [];
+  if (deviceGroupIds.length) {
+    if (!groupDeviceIds.length) {
+      // Explicit empty device group → no jobs.
+      jobsRes.rows = [];
+    } else {
+      const deviceSet = new Set(groupDeviceIds.map(String));
+      jobsRes.rows = jobsRes.rows.filter((j) => {
+        if (j.tracker_device_id && deviceSet.has(String(j.tracker_device_id))) return true;
+        const uid = j.armada_user_id != null ? Number(j.armada_user_id) : NaN;
+        return groupArmadaIds != null && Number.isInteger(uid) && groupArmadaIds.has(uid);
+      });
+    }
   }
 
   const jobIds = jobsRes.rows.map((j) => j.id);
@@ -562,7 +565,10 @@ export async function buildDispatchLiveSnapshot(opts) {
     }
   }
 
+  /** @type {Map<number, object>} */
   let deviceMap = new Map();
+  /** @type {Map<string, object>} */
+  let deviceByIdMap = new Map();
   if (telematicsUsesDevices(telematicsSource)) {
     try {
       deviceMap = await lastFixesByArmadaUserIds(
@@ -571,6 +577,14 @@ export async function buildDispatchLiveSnapshot(opts) {
       );
     } catch {
       deviceMap = new Map();
+    }
+    try {
+      deviceByIdMap = await lastFixesByDeviceIds(
+        opts.tenantId,
+        jobsRes.rows.map((j) => j.tracker_device_id).filter(Boolean),
+      );
+    } catch {
+      deviceByIdMap = new Map();
     }
   }
 
@@ -735,8 +749,12 @@ export async function buildDispatchLiveSnapshot(opts) {
       (job.armada_user_id ? `#${job.armada_user_id}` : "—");
 
     const uid = job.armada_user_id != null ? Number(job.armada_user_id) : null;
+    const trackerDeviceId = job.tracker_device_id ? String(job.tracker_device_id) : null;
     const vehiclePos = uid != null && Number.isFinite(uid) ? posMap.get(uid) : null;
-    const devicePos = uid != null && Number.isFinite(uid) ? deviceMap.get(uid) : null;
+    const devicePos =
+      (trackerDeviceId ? deviceByIdMap.get(trackerDeviceId) : null) ||
+      (uid != null && Number.isFinite(uid) ? deviceMap.get(uid) : null) ||
+      null;
     const phonePos = job.assigned_field_user_id
       ? pingMap.get(String(job.assigned_field_user_id))
       : null;
@@ -814,6 +832,7 @@ export async function buildDispatchLiveSnapshot(opts) {
       driverInitials: initialsFromName(driverName),
       vehicleLabel,
       armadaUserId: uid,
+      trackerDeviceId,
       // Kept for existing callers (timeline, map markers) that read the flat pair.
       liveLat: livePos?.lat ?? null,
       liveLon: livePos?.lon ?? null,

@@ -177,7 +177,7 @@ export function FleetLiveDashboardPanel({
         fuelN += 1;
       }
       if (meta && alertDeviceIds.has(meta.deviceId)) alertUnits += 1;
-      if (row.id > 0 && maintUserIds.has(row.id)) maintUnits += 1;
+      if (maintUserIds.has(row.id)) maintUnits += 1;
     }
     return {
       total: rows.length,
@@ -274,7 +274,7 @@ export function FleetLiveDashboardPanel({
       const reasons: string[] = [];
       if (cls === "stale" || cls === "noFix") reasons.push(LIVE_OPS_LABELS[cls]);
       if (meta && alertDeviceIds.has(meta.deviceId)) reasons.push("Alert 24h");
-      if (row.id > 0 && maintUserIds.has(row.id)) reasons.push("Maintenance");
+      if (maintUserIds.has(row.id)) reasons.push("Maintenance");
       if (!reasons.length) continue;
       const latest = meta ? latestAlertByDevice.get(meta.deviceId) : undefined;
       const detail = latest
@@ -705,7 +705,7 @@ export function FleetLiveDashboardPanel({
                   const meta = fixMeta[row.id];
                   const cls = classifyLiveRow(row, now);
                   const inAlert = Boolean(meta && alertDeviceIds.has(meta.deviceId));
-                  const inMaint = row.id > 0 && maintUserIds.has(row.id);
+                  const inMaint = maintUserIds.has(row.id);
                   const age = ageLabel(row.lastMs, now);
                   const tone = ageTone(row.lastMs, now);
                   const ageClass =

@@ -36,6 +36,7 @@ import { useDeskSession } from "../lib/deskSession";
 import { deskCanWrite } from "../lib/deskPrivileges";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import {
+  fetchTrackerDeviceDay,
   fetchTrackerDeviceGroups,
   type TrackerDeviceGroup,
 } from "../lib/trackerDevices";
@@ -194,6 +195,10 @@ export default function DispatchLive() {
   /** Armada day polylines keyed by `${userId}|${date}` — loaded separately from the 20s live poll. */
   const [armadaTracks, setArmadaTracks] = useState<Map<string, TimedMapPoint[]>>(new Map());
   const [deviceTracks, setDeviceTracks] = useState<Map<string, TimedMapPoint[]>>(new Map());
+  /** Device-native jobs (no Armada id) keyed by `d:${deviceId}|${date}`. */
+  const [deviceNativeTracks, setDeviceNativeTracks] = useState<Map<string, TimedMapPoint[]>>(
+    () => new Map(),
+  );
   const [armadaTracksLoading, setArmadaTracksLoading] = useState(false);
   const [phoneTracks, setPhoneTracks] = useState<Map<string, TimedMapPoint[]>>(new Map());
   const [folded, setFolded] = useState<FoldState>(() => loadFoldState());
@@ -312,6 +317,15 @@ export default function DispatchLive() {
       .join(",");
   }, [snapshot?.drivers]);
 
+  const deviceNativeTrackKey = useMemo(() => {
+    if (!snapshot?.drivers?.length) return "";
+    return snapshot.drivers
+      .filter((d) => d.trackerDeviceId && !(d.armadaUserId != null && d.armadaUserId > 0))
+      .map((d) => String(d.trackerDeviceId))
+      .sort()
+      .join(",");
+  }, [snapshot?.drivers]);
+
   useEffect(() => {
     if (!ready || (tab !== "live" && tab !== "history") || !armadaTrackJobsKey) return;
     const days = armadaTrackJobsKey
@@ -355,8 +369,48 @@ export default function DispatchLive() {
   }, [ready, tab, serviceDate, armadaTrackJobsKey]);
 
   useEffect(() => {
+    if (!ready || (tab !== "live" && tab !== "history") || !deviceNativeTrackKey) {
+      setDeviceNativeTracks(new Map());
+      return;
+    }
+    const ids = [...new Set(deviceNativeTrackKey.split(",").filter(Boolean))];
+    let cancelled = false;
+    const ac = new AbortController();
+    void Promise.all(
+      ids.map((deviceId) =>
+        fetchTrackerDeviceDay({ deviceId, date: serviceDate }, ac.signal).catch(() => null),
+      ),
+    ).then((days) => {
+      if (cancelled) return;
+      const map = new Map<string, TimedMapPoint[]>();
+      for (const day of days) {
+        if (!day?.deviceId) continue;
+        const pts = (day.points || [])
+          .filter(
+            (p) =>
+              Number.isFinite(Number(p.lat)) &&
+              Number.isFinite(Number(p.lon)) &&
+              typeof p.recordedAt === "string",
+          )
+          .map((p) => ({
+            lat: Number(p.lat),
+            lon: Number(p.lon),
+            recordedAt: p.recordedAt,
+          }));
+        if (pts.length) map.set(`d:${day.deviceId}|${serviceDate}`, pts);
+      }
+      setDeviceNativeTracks(map);
+    });
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [ready, tab, serviceDate, deviceNativeTrackKey]);
+
+  useEffect(() => {
     setArmadaTracks(new Map());
     setDeviceTracks(new Map());
+    setDeviceNativeTracks(new Map());
     setArmadaTracksLoading(false);
     setPhoneTracks(new Map());
   }, [serviceDate]);
@@ -468,7 +522,32 @@ export default function DispatchLive() {
       const phoneTrail = phoneTrailOrCrumbs(fromFetch.length >= 2 ? fromFetch : d.phoneTrail, d);
 
       if (d.armadaUserId == null) {
-        return { ...d, phoneTrail };
+        const nativeKey = d.trackerDeviceId ? `d:${d.trackerDeviceId}|${serviceDate}` : "";
+        const nativeTimed = nativeKey ? deviceNativeTracks.get(nativeKey) || [] : [];
+        let track = nativeTimed.length
+          ? clipTimedTrackToWindow(nativeTimed, d.startedAt, d.completedAt, now)
+          : [];
+        const live = d.vehiclePos ||
+          (d.livePosition && d.livePosition.source !== "phone"
+            ? { lat: d.livePosition.lat, lon: d.livePosition.lon }
+            : null);
+        if (
+          live &&
+          Number.isFinite(live.lat) &&
+          Number.isFinite(live.lon) &&
+          Math.abs(live.lat) <= 90 &&
+          Math.abs(live.lon) <= 180
+        ) {
+          const last = track[track.length - 1];
+          if (!last || last[0] !== live.lat || last[1] !== live.lon) {
+            track = [...track, [live.lat, live.lon]];
+          }
+        }
+        return {
+          ...d,
+          phoneTrail,
+          armadaTrack: track.length >= 2 ? track : d.armadaTrack,
+        };
       }
       const key = `${d.armadaUserId}|${serviceDate}`;
       const deviceTimed = deviceTracks.get(key) || [];
@@ -512,8 +591,15 @@ export default function DispatchLive() {
       }
       return { ...d, phoneTrail, armadaTrack: track.length >= 2 ? track : d.armadaTrack };
     });
-  }, [snapshot?.drivers, armadaTracks, deviceTracks, phoneTracks, serviceDate]);
-  const mapFitKey = `${serviceDate}:${focusJobId || "all"}:${drivers.length}:${armadaTracks.size}:${deviceTracks.size}:${phoneTracks.size}`;
+  }, [
+    snapshot?.drivers,
+    armadaTracks,
+    deviceTracks,
+    deviceNativeTracks,
+    phoneTracks,
+    serviceDate,
+  ]);
+  const mapFitKey = `${serviceDate}:${focusJobId || "all"}:${drivers.length}:${armadaTracks.size}:${deviceTracks.size}:${deviceNativeTracks.size}:${phoneTracks.size}`;
   const exceptions = snapshot?.exceptions || [];
   const exceptionSummary = snapshot?.exceptionSummary;
   const sla = snapshot?.sla;
