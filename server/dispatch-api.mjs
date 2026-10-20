@@ -3333,14 +3333,26 @@ export async function handleDispatchRequest(req, res) {
         if (mapped.volumeCapacityM3 != null) volCap = mapped.volumeCapacityM3;
         if (mapped.weightCapacityKg != null) wtCap = mapped.weightCapacityKg;
       }
-      if ((volCap == null || wtCap == null || seatCap == null || luggageCap == null) && armadaUserId != null) {
-        const preset = await dbQuery(
-          `SELECT volume_capacity_m3, weight_capacity_kg, seat_capacity, luggage_capacity_kg
-           FROM vehicle_capacities
-           WHERE tenant_id = $1 AND armada_user_id = $2`,
-          [dbTenant.id, armadaUserId],
-        );
-        const p = preset.rows[0];
+      if (volCap == null || wtCap == null || seatCap == null || luggageCap == null) {
+        let p = null;
+        if (trackerDeviceId) {
+          const preset = await dbQuery(
+            `SELECT volume_capacity_m3, weight_capacity_kg, seat_capacity, luggage_capacity_kg
+             FROM vehicle_capacities
+             WHERE tenant_id = $1 AND tracker_device_id = $2::uuid`,
+            [dbTenant.id, trackerDeviceId],
+          );
+          p = preset.rows[0] || null;
+        }
+        if (!p && armadaUserId != null) {
+          const preset = await dbQuery(
+            `SELECT volume_capacity_m3, weight_capacity_kg, seat_capacity, luggage_capacity_kg
+             FROM vehicle_capacities
+             WHERE tenant_id = $1 AND armada_user_id = $2`,
+            [dbTenant.id, armadaUserId],
+          );
+          p = preset.rows[0] || null;
+        }
         if (p) {
           if (volCap == null) volCap = Number(p.volume_capacity_m3);
           if (wtCap == null) wtCap = Number(p.weight_capacity_kg);

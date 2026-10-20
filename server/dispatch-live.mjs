@@ -743,16 +743,19 @@ export async function buildDispatchLiveSnapshot(opts) {
       job.assignee_display_name ||
       job.assignee_username ||
       "Unassigned";
+    const uid = job.armada_user_id != null ? Number(job.armada_user_id) : null;
+    const trackerDeviceId = job.tracker_device_id ? String(job.tracker_device_id) : null;
+    const deviceMeta = trackerDeviceId ? deviceByIdMap.get(trackerDeviceId) : null;
     const vehicleLabel =
       job.user_display_name ||
       job.armada_username ||
-      (job.armada_user_id ? `#${job.armada_user_id}` : "—");
+      deviceMeta?.label ||
+      deviceMeta?.imei ||
+      (job.armada_user_id ? `#${job.armada_user_id}` : trackerDeviceId ? "GPS device" : "—");
 
-    const uid = job.armada_user_id != null ? Number(job.armada_user_id) : null;
-    const trackerDeviceId = job.tracker_device_id ? String(job.tracker_device_id) : null;
     const vehiclePos = uid != null && Number.isFinite(uid) ? posMap.get(uid) : null;
     const devicePos =
-      (trackerDeviceId ? deviceByIdMap.get(trackerDeviceId) : null) ||
+      deviceMeta ||
       (uid != null && Number.isFinite(uid) ? deviceMap.get(uid) : null) ||
       null;
     const phonePos = job.assigned_field_user_id

@@ -30,7 +30,7 @@ import { getDistanceMatrix } from "./routing-matrix.mjs";
 import { parseRoutingOptions } from "./routing-options.mjs";
 import { parseServiceDate, todayServiceDate as todayYmd } from "./service-day.mjs";
 import { tenantFromRequest } from "./tenants.mjs";
-import { buildTelematicsPosMap } from "./tracker-devices.mjs";
+import { buildTelematicsPosMap, lastFixesByDeviceIds } from "./tracker-devices.mjs";
 import { computePlanDayKpis } from "./dispatch-plan-kpis.mjs";
 
 export function rowToPlanOrder(o) {
@@ -687,22 +687,60 @@ export async function handlePlanDayPost(req, res, api) {
       const planUids = vehicles
         .map((v) => Number(v.meta?.armadaUserId))
         .filter((n) => Number.isInteger(n) && n > 0);
+      const planDeviceIds = [
+        ...new Set(
+          vehicles
+            .map((v) => String(v.meta?.trackerDeviceId || "").trim())
+            .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+        ),
+      ];
       const posMap = await buildTelematicsPosMap(dbTenant.id, vault || {}, {
         armadaUserIds: planUids,
       });
+      /** @type {Map<string, { lat: number, lon: number, label?: string }>} */
+      let devicePosMap = new Map();
+      if (planDeviceIds.length) {
+        try {
+          const fixes = await lastFixesByDeviceIds(dbTenant.id, planDeviceIds);
+          for (const [id, fix] of fixes) {
+            if (fix && Number.isFinite(fix.lat) && Number.isFinite(fix.lon)) {
+              devicePosMap.set(id, {
+                lat: fix.lat,
+                lon: fix.lon,
+                label: fix.label || fix.imei || "GPS device",
+              });
+            }
+          }
+        } catch {
+          devicePosMap = new Map();
+        }
+      }
       /** @type {{ id: string, name: string, lat: number, lon: number }[]} */
       const starts = [];
       /** @type {Map<string, number[]>} */
       const vehicleByStart = new Map();
       for (let vi = 0; vi < vehicles.length; vi++) {
         const v = vehicles[vi];
-        const uid = v.meta?.armadaUserId;
-        if (uid == null) continue;
-        const pos = posMap.get(Number(uid));
-        if (!pos) continue;
-        const sid = `vehicle:${uid}`;
+        const uid = v.meta?.armadaUserId != null ? Number(v.meta.armadaUserId) : null;
+        const deviceId = String(v.meta?.trackerDeviceId || "").trim();
+        let sid = null;
+        let pos = null;
+        if (uid != null && Number.isFinite(uid) && uid > 0) {
+          pos = posMap.get(uid) || null;
+          if (pos) sid = `vehicle:${uid}`;
+        }
+        if (!pos && /^[0-9a-f-]{36}$/i.test(deviceId)) {
+          pos = devicePosMap.get(deviceId) || null;
+          if (pos) sid = `vehicle:d:${deviceId}`;
+        }
+        if (!sid || !pos) continue;
         if (!vehicleByStart.has(sid)) {
-          starts.push({ id: sid, name: pos.label, lat: pos.lat, lon: pos.lon });
+          starts.push({
+            id: sid,
+            name: pos.label || v.label || (uid != null ? `Vehicle #${uid}` : "GPS device"),
+            lat: pos.lat,
+            lon: pos.lon,
+          });
           vehicleByStart.set(sid, []);
         }
         vehicleByStart.get(sid).push(vi);
@@ -710,7 +748,7 @@ export async function handlePlanDayPost(req, res, api) {
       if (!starts.length) {
         json(res, 400, {
           error:
-            "No vehicle last positions found. Ensure jobs/presets have Armada user IDs and live GPS (Armada and/or tracker devices).",
+            "No vehicle last positions found. Ensure jobs/presets have Armada or GPS device links and live GPS.",
         });
         return true;
       }
@@ -900,16 +938,19 @@ export async function handlePlanDayPost(req, res, api) {
       }
       if (!jobId && (route.meta?.kind === "preset" || tripIndex > 1)) {
         const uid = route.meta?.armadaUserId ?? null;
+        const deviceIdRaw = String(route.meta?.trackerDeviceId || "").trim();
+        const trackerDeviceId = /^[0-9a-f-]{36}$/i.test(deviceIdRaw) ? deviceIdRaw : null;
         const baseLabel = String(route.meta?.parentKey
           ? route.label.replace(/\s·\s*trip\s+\d+$/i, "")
-          : route.label || (uid != null ? `Auto · #${uid}` : "Auto plan")).slice(0, 160);
+          : route.label ||
+            (uid != null ? `Auto · #${uid}` : trackerDeviceId ? "Auto · GPS device" : "Auto plan")).slice(0, 160);
         const title = (tripIndex > 1 ? `${baseLabel} · trip ${tripIndex}` : baseLabel).slice(0, 200);
         const inserted = await dbQuery(
           `INSERT INTO dispatch_jobs (
              tenant_id, status, title,
-             armada_user_id, armada_username, user_display_name,
+             armada_user_id, armada_username, user_display_name, tracker_device_id,
              volume_capacity_m3, weight_capacity_kg, service_date
-           ) VALUES ($1,'draft',$2,$3,$4,$5,$6,$7,$8::date)
+           ) VALUES ($1,'draft',$2,$3,$4,$5,$6::uuid,$7,$8,$9::date)
            RETURNING id`,
           [
             dbTenant.id,
@@ -917,6 +958,7 @@ export async function handlePlanDayPost(req, res, api) {
             uid,
             route.meta?.armadaUsername || null,
             route.meta?.userDisplayName || baseLabel,
+            trackerDeviceId,
             route.meta?.fullVolumeCapacityM3 || route.volumeCapacityM3,
             route.meta?.fullWeightCapacityKg || route.weightCapacityKg,
             serviceDate,

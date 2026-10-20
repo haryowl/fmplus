@@ -1194,7 +1194,7 @@ export default function MaintenanceBoard() {
             title="Import jobs CSV"
             disabled={Boolean(busyId)}
             templateFilename="maintenance-jobs-template.csv"
-            hint="Required: title and armada_user_id or armada_username. Optional: schedule fields, assigned_username (field user). Max 200 rows."
+            hint="Required: title and armada_user_id, armada_username, or tracker_device_id. Optional: schedule fields, assigned_username (field user). Max 200 rows."
             onDownloadTemplate={() =>
               downloadCsv("maintenance-jobs-template.csv", maintenanceEventCsvTemplate())
             }
@@ -1203,10 +1203,14 @@ export default function MaintenanceBoard() {
               if (!headers.includes("title")) {
                 return { rows: [], error: "CSV must include title column" };
               }
-              if (!headers.includes("armada_user_id") && !headers.includes("armada_username")) {
+              if (
+                !headers.includes("armada_user_id") &&
+                !headers.includes("armada_username") &&
+                !headers.includes("tracker_device_id")
+              ) {
                 return {
                   rows: [],
-                  error: "CSV must include armada_user_id or armada_username",
+                  error: "CSV must include armada_user_id, armada_username, or tracker_device_id",
                 };
               }
               if (!rows.length) return { rows: [], error: "No data rows found" };
