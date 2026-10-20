@@ -122,6 +122,7 @@ export async function fetchTrackerLastStatus(
   fixes: TrackerLastFix[];
   telematicsSource: TelematicsSource;
   displayPinIds: string[];
+  displayPinLabels: Record<string, string>;
 }> {
   const q = new URLSearchParams();
   for (const id of opts?.groupIds || []) {
@@ -137,13 +138,21 @@ export async function fetchTrackerLastStatus(
     fixes?: TrackerLastFix[];
     telematicsSource?: TelematicsSource;
     displayPinIds?: string[];
+    displayPinLabels?: Record<string, string>;
     error?: string;
   };
   if (!res.ok) throw new Error(data.error || `Tracker status ${res.status}`);
+  const labels =
+    data.displayPinLabels && typeof data.displayPinLabels === "object" && !Array.isArray(data.displayPinLabels)
+      ? Object.fromEntries(
+          Object.entries(data.displayPinLabels).map(([k, v]) => [k, String(v)]),
+        )
+      : {};
   return {
     fixes: data.fixes || [],
     telematicsSource: data.telematicsSource || "both",
     displayPinIds: Array.isArray(data.displayPinIds) ? data.displayPinIds.map(String) : [],
+    displayPinLabels: labels,
   };
 }
 

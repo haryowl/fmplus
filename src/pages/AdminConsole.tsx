@@ -9,7 +9,9 @@ import {
 } from "../lib/entitlements";
 import {
   FLEET_DISPLAY_PIN_IDS,
+  effectiveDisplayPinIds,
   parseDisplayPinIdsText,
+  toggleDisplayPinIdText,
 } from "../lib/fleetTelemetryParams";
 import {
   SCAN_ACTION_KEYS,
@@ -2341,8 +2343,65 @@ export default function AdminConsole() {
                       <option value="devices">Direct devices only</option>
                     </select>
                   </label>
-                  <label className="span-2">
-                    Fleet Live display pins
+                  <div className="span-2 admin-pin-field">
+                    <span className="admin-pin-field-label">Fleet Live display pins</span>
+                    {selectedId && selectedId !== "new" && paramDefs.length ? (
+                      <div className="admin-pin-checks" role="group" aria-label="Mapper pin picker">
+                        {paramDefs.map((p) => {
+                          const on = effectiveDisplayPinIds(draft.fleetLiveDisplayPinsText).includes(
+                            p.id,
+                          );
+                          return (
+                            <label
+                              key={p.id}
+                              className={`admin-chip-toggle${on ? " is-on" : ""}`}
+                              title={p.id}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={on}
+                                onChange={() =>
+                                  setDraft({
+                                    ...draft,
+                                    fleetLiveDisplayPinsText: toggleDisplayPinIdText(
+                                      draft.fleetLiveDisplayPinsText,
+                                      p.id,
+                                    ),
+                                  })
+                                }
+                              />
+                              <span>{p.label || p.id}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    <div className="admin-pin-actions">
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-compact"
+                        onClick={() =>
+                          setDraft({
+                            ...draft,
+                            fleetLiveDisplayPinsText: "",
+                          })
+                        }
+                      >
+                        Use defaults
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-compact"
+                        onClick={() =>
+                          setDraft({
+                            ...draft,
+                            fleetLiveDisplayPinsText: FLEET_DISPLAY_PIN_IDS.join(", "),
+                          })
+                        }
+                      >
+                        Seed defaults
+                      </button>
+                    </div>
                     <textarea
                       rows={2}
                       value={draft.fleetLiveDisplayPinsText}
@@ -2352,10 +2411,11 @@ export default function AdminConsole() {
                       }
                     />
                     <span className="muted">
-                      Mapper param ids for Dashboard / Live selection pins (comma-separated). Leave
-                      blank for defaults ({FLEET_DISPLAY_PIN_IDS.join(", ")}).
+                      {draft.fleetLiveDisplayPinsText.trim()
+                        ? "Custom pin list for Dashboard / Live selection."
+                        : `Using defaults (${FLEET_DISPLAY_PIN_IDS.join(", ")}). Toggle chips or edit the list to customize.`}
                     </span>
-                  </label>
+                  </div>
                 </div>
               </section>
 

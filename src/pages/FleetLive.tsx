@@ -241,6 +241,7 @@ export default function FleetLive() {
   });
   const [locateToken, setLocateToken] = useState("");
   const [displayPinIds, setDisplayPinIds] = useState<string[]>([]);
+  const [displayPinLabels, setDisplayPinLabels] = useState<Record<string, string>>({});
   const [selParamsOpen, setSelParamsOpen] = useState(false);
   const [sideNavOpen, setSideNavOpen] = useState(() => {
     try {
@@ -373,6 +374,7 @@ export default function FleetLive() {
             };
           }
           setDisplayPinIds(deviceStatus.displayPinIds || []);
+          setDisplayPinLabels(deviceStatus.displayPinLabels || {});
           setRows(nextRows);
           setFixMeta(meta);
           setAlerts(safety);
@@ -584,7 +586,7 @@ export default function FleetLive() {
   const selected = rows.find((r) => r.id === selectedId) || null;
   const selectedMeta = selected ? fixMeta[selected.id] : null;
   const selectedCls = selected ? classifyLiveRow(selected, now) : null;
-  const pinColumns = extraDisplayPinColumns(displayPinIds);
+  const pinColumns = extraDisplayPinColumns(displayPinIds, displayPinLabels);
   const selectedPins = pinColumns
     .map((col) => {
       const v = readDisplayPin(selectedMeta?.displayParams, col);
@@ -884,6 +886,7 @@ export default function FleetLive() {
           now={now}
           loading={loading}
           displayPinIds={displayPinIds}
+          displayPinLabels={displayPinLabels}
           onOpenLive={openLiveVehicle}
           maintenanceHref={maintenanceHref(
             typeof window !== "undefined" ? window.location.search : "",

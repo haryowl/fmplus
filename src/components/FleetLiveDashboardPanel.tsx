@@ -58,6 +58,7 @@ type Props = {
   now: number;
   loading: boolean;
   displayPinIds?: string[];
+  displayPinLabels?: Record<string, string>;
   onOpenLive: (vehicleId: number) => void;
   maintenanceHref: string;
 };
@@ -151,12 +152,16 @@ export function FleetLiveDashboardPanel({
   now,
   loading,
   displayPinIds,
+  displayPinLabels,
   onOpenLive,
   maintenanceHref,
 }: Props) {
   const [snapFilter, setSnapFilter] = useState<SnapFilter>("all");
   const [snapQuery, setSnapQuery] = useState("");
-  const pinColumns = useMemo(() => extraDisplayPinColumns(displayPinIds), [displayPinIds]);
+  const pinColumns = useMemo(
+    () => extraDisplayPinColumns(displayPinIds, displayPinLabels),
+    [displayPinIds, displayPinLabels],
+  );
 
   const counts = useMemo(() => countLiveByClass(rows, now), [rows, now]);
 

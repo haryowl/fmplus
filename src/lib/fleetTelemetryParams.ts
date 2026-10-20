@@ -70,19 +70,39 @@ function humanizePinId(id: string): string {
 }
 
 /** Build columns from tenant/last-status pin ids (falls back to defaults). */
-export function buildDisplayPinColumns(pinIds?: string[] | null): DisplayPinColumn[] {
+export function buildDisplayPinColumns(
+  pinIds?: string[] | null,
+  labels?: Record<string, string> | null,
+): DisplayPinColumn[] {
   const ids =
     Array.isArray(pinIds) && pinIds.length > 0 ? pinIds : FLEET_DISPLAY_PIN_IDS;
   return ids.map((id) => ({
     id,
     aliases: PIN_ALIASES[id],
-    label: humanizePinId(id),
+    label: (labels && labels[id]) || humanizePinId(id),
   }));
 }
 
 /** Extra mapper pins shown beside dedicated Fuel/Odo columns. */
-export function extraDisplayPinColumns(pinIds?: string[] | null): DisplayPinColumn[] {
-  return buildDisplayPinColumns(pinIds).filter((c) => !FUEL_PIN_IDS.has(c.id));
+export function extraDisplayPinColumns(
+  pinIds?: string[] | null,
+  labels?: Record<string, string> | null,
+): DisplayPinColumn[] {
+  return buildDisplayPinColumns(pinIds, labels).filter((c) => !FUEL_PIN_IDS.has(c.id));
+}
+
+/** Effective pin ids for Admin checkbox UI (blank text = defaults). */
+export function effectiveDisplayPinIds(text: string): string[] {
+  const parsed = parseDisplayPinIdsText(text);
+  return parsed == null ? FLEET_DISPLAY_PIN_IDS.slice() : parsed;
+}
+
+/** Toggle one pin id in Admin free-text (seeds from defaults when blank). */
+export function toggleDisplayPinIdText(text: string, pinId: string): string {
+  const current = effectiveDisplayPinIds(text);
+  const has = current.includes(pinId);
+  const next = has ? current.filter((id) => id !== pinId) : [...current, pinId];
+  return next.join(", ");
 }
 
 export function readDisplayPin(

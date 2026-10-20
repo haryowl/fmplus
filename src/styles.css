@@ -3380,6 +3380,34 @@ html.onesheet-root body {
   color: #fff;
 }
 
+.admin-pin-field {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-pin-field-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--admin-muted, #6d8794);
+}
+
+.admin-pin-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 160px;
+  overflow: auto;
+  padding: 2px 0;
+}
+
+.admin-pin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .admin-scan-matrix-wrap {
   overflow-x: auto;
   margin-top: 6px;

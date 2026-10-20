@@ -19,7 +19,7 @@ import {
   listDeviceDayFixes,
   listTenantLastFixes,
   telematicsUsesDevices,
-  tenantFleetLiveDisplayPins,
+  tenantFleetLiveDisplayPinMeta,
   tenantTelematicsSource,
 } from "./tracker-devices.mjs";
 
@@ -114,9 +114,14 @@ export async function handleTrackerIngestRequest(req, res) {
         return true;
       }
       const source = await tenantTelematicsSource(dbTenant.id);
-      const displayPinIds = await tenantFleetLiveDisplayPins(dbTenant.id);
+      const { displayPinIds, displayPinLabels } = await tenantFleetLiveDisplayPinMeta(dbTenant.id);
       if (!telematicsUsesDevices(source)) {
-        json(res, 200, { fixes: [], telematicsSource: source, displayPinIds });
+        json(res, 200, {
+          fixes: [],
+          telematicsSource: source,
+          displayPinIds,
+          displayPinLabels,
+        });
         return true;
       }
       const groupIds = [
@@ -127,7 +132,12 @@ export async function handleTrackerIngestRequest(req, res) {
           .filter(Boolean),
       ];
       const fixes = await listTenantLastFixes(dbTenant.id, { groupIds, displayPinIds });
-      json(res, 200, { fixes, telematicsSource: source, displayPinIds });
+      json(res, 200, {
+        fixes,
+        telematicsSource: source,
+        displayPinIds,
+        displayPinLabels,
+      });
       return true;
     } catch (err) {
       json(res, 500, { error: err instanceof Error ? err.message : String(err) });

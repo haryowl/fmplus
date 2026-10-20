@@ -780,6 +780,43 @@ export async function tenantFleetLiveDisplayPins(tenantId) {
   return resolveFleetLiveDisplayPins(rows.rows[0]?.entitlements);
 }
 
+/** Built-in short labels when a param def is missing. */
+const FLEET_DISPLAY_PIN_LABELS = {
+  fuel_level: "Fuel %",
+  "can.fuel_l": "Fuel L",
+  ext_voltage: "Ext V",
+  "voltage.ext": "Ext V",
+  battery_voltage: "Batt V",
+  "voltage.batt": "Batt V",
+  "pcb.temp": "PCB °C",
+  "gps.valid": "GPS",
+};
+
+/**
+ * Resolve pin ids + labels (param defs preferred) for Fleet Live Dashboard/Live.
+ * @param {string} tenantId
+ * @returns {Promise<{ displayPinIds: string[], displayPinLabels: Record<string, string> }>}
+ */
+export async function tenantFleetLiveDisplayPinMeta(tenantId) {
+  const displayPinIds = await tenantFleetLiveDisplayPins(tenantId);
+  /** @type {Record<string, string>} */
+  const displayPinLabels = {};
+  try {
+    const { listParamDefs } = await import("./device-manager.mjs");
+    const defs = await listParamDefs(tenantId);
+    const byId = new Map(defs.map((d) => [d.id, d.label]));
+    for (const id of displayPinIds) {
+      displayPinLabels[id] =
+        byId.get(id) || FLEET_DISPLAY_PIN_LABELS[id] || id;
+    }
+  } catch {
+    for (const id of displayPinIds) {
+      displayPinLabels[id] = FLEET_DISPLAY_PIN_LABELS[id] || id;
+    }
+  }
+  return { displayPinIds, displayPinLabels };
+}
+
 /**
  * @param {Record<string, unknown>} mappedAttrs
  * @param {string[]} [pinIds]
