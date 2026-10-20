@@ -365,13 +365,22 @@ export async function deleteMaintCatalogItem(id: string): Promise<void> {
 }
 
 export async function fetchCostDashboard(
-  opts?: { days?: number; userId?: number; deviceId?: string; group?: string },
+  opts?: {
+    days?: number;
+    userId?: number;
+    deviceId?: string;
+    userIds?: number[];
+    deviceIds?: string[];
+    group?: string;
+  },
   signal?: AbortSignal,
 ): Promise<CostDashboard> {
   const params = new URLSearchParams();
   if (opts?.days) params.set("days", String(opts.days));
   if (opts?.deviceId) params.set("deviceId", opts.deviceId);
   else if (opts?.userId) params.set("userId", String(opts.userId));
+  if (opts?.deviceIds?.length) params.set("deviceIds", opts.deviceIds.join(","));
+  if (opts?.userIds?.length) params.set("userIds", opts.userIds.join(","));
   if (opts?.group) params.set("group", opts.group);
   const res = await fetch(`/api/maintenance/cost-dashboard?${params}`, {
     headers: { accept: "application/json", ...tenantHeaders() },

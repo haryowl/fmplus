@@ -96,9 +96,25 @@ export function MaintenanceAnalyzeReport({
     const ac = new AbortController();
     setLoading(true);
     setError("");
+    const scopedUserIds = fleetUserIds.filter((n) => Number.isInteger(n) && n > 0);
+    const scopedDeviceIds = [
+      ...new Set(
+        fleetDeviceIds
+          .map((id) => String(id || "").trim())
+          .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+      ),
+    ];
     void Promise.all([
       fetchAnalyzeSummary(days, ac.signal),
-      fetchCostDashboard({ days, group: group || undefined }, ac.signal),
+      fetchCostDashboard(
+        {
+          days,
+          group: group || undefined,
+          userIds: scopedUserIds.length ? scopedUserIds : undefined,
+          deviceIds: scopedDeviceIds.length ? scopedDeviceIds : undefined,
+        },
+        ac.signal,
+      ),
     ])
       .then(([summary, costDash]) => {
         if (ac.signal.aborted) return;
@@ -112,7 +128,7 @@ export function MaintenanceAnalyzeReport({
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [days, group]);
+  }, [days, group, fleetUserIds, fleetDeviceIds]);
 
   useEffect(() => {
     const armadaIds = fleetUserIds.filter((n) => Number.isInteger(n) && n > 0);

@@ -1877,6 +1877,18 @@ export async function handleMaintenanceRequest(req, res) {
       const vehicleId = Number.isInteger(vehicleIdRaw) && vehicleIdRaw > 0 ? vehicleIdRaw : null;
       const deviceIdRaw = String(url.searchParams.get("deviceId") || "").trim();
       const deviceId = /^[0-9a-f-]{36}$/i.test(deviceIdRaw) ? deviceIdRaw : null;
+      const userIdsRaw = String(url.searchParams.get("userIds") || "")
+        .split(",")
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isInteger(n) && n > 0);
+      const deviceIdsRaw = [
+        ...new Set(
+          String(url.searchParams.get("deviceIds") || "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+        ),
+      ];
       const groupKey = String(url.searchParams.get("group") || "").trim(); // part|service|other
       const params = [dbTenant.id, days];
       let vehicleClause = "";
@@ -1885,7 +1897,28 @@ export async function handleMaintenanceRequest(req, res) {
         vehicleClause = ` AND e.tracker_device_id = $${params.length}::uuid`;
       } else if (vehicleId) {
         params.push(vehicleId);
-        vehicleClause = ` AND e.armada_user_id = $${params.length}`;
+        vehicleClause = ` AND (
+          e.armada_user_id = $${params.length}
+          OR e.tracker_device_id IN (
+            SELECT id FROM tracker_devices
+            WHERE tenant_id = $1 AND armada_user_id = $${params.length}
+          )
+        )`;
+      } else if (deviceIdsRaw.length && userIdsRaw.length) {
+        params.push(userIdsRaw, deviceIdsRaw);
+        vehicleClause = ` AND (e.armada_user_id = ANY($${params.length - 1}::int[]) OR e.tracker_device_id = ANY($${params.length}::uuid[]))`;
+      } else if (deviceIdsRaw.length) {
+        params.push(deviceIdsRaw);
+        vehicleClause = ` AND e.tracker_device_id = ANY($${params.length}::uuid[])`;
+      } else if (userIdsRaw.length) {
+        params.push(userIdsRaw);
+        vehicleClause = ` AND (
+          e.armada_user_id = ANY($${params.length}::int[])
+          OR e.tracker_device_id IN (
+            SELECT id FROM tracker_devices
+            WHERE tenant_id = $1 AND armada_user_id = ANY($${params.length}::int[])
+          )
+        )`;
       }
       const events = await dbQuery(
         `SELECT e.id, e.title, e.armada_user_id, e.armada_username, e.user_display_name,

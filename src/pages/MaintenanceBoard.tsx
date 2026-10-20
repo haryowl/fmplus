@@ -920,6 +920,8 @@ export default function MaintenanceBoard() {
 
         {!eventId && boardPanel === "costs" && (
           <MaintenanceCostDashboard
+            fleetUserIds={fleetUserIds}
+            fleetDeviceIds={fleetDeviceIds}
             onOpenEvent={(id) => {
               setEventId(id);
               setBoardPanel("jobs");

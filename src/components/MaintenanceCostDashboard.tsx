@@ -21,10 +21,16 @@ import {
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip);
 
 type Props = {
+  fleetUserIds?: number[];
+  fleetDeviceIds?: string[];
   onOpenEvent?: (id: string) => void;
 };
 
-export function MaintenanceCostDashboard({ onOpenEvent }: Props) {
+export function MaintenanceCostDashboard({
+  fleetUserIds = [],
+  fleetDeviceIds = [],
+  onOpenEvent,
+}: Props) {
   const theme = useChartTheme();
   const [days, setDays] = useState(90);
   const [group, setGroup] = useState("");
@@ -36,7 +42,23 @@ export function MaintenanceCostDashboard({ onOpenEvent }: Props) {
     const ac = new AbortController();
     setLoading(true);
     setError("");
-    void fetchCostDashboard({ days, group: group || undefined }, ac.signal)
+    const scopedUserIds = fleetUserIds.filter((n) => Number.isInteger(n) && n > 0);
+    const scopedDeviceIds = [
+      ...new Set(
+        fleetDeviceIds
+          .map((id) => String(id || "").trim())
+          .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+      ),
+    ];
+    void fetchCostDashboard(
+      {
+        days,
+        group: group || undefined,
+        userIds: scopedUserIds.length ? scopedUserIds : undefined,
+        deviceIds: scopedDeviceIds.length ? scopedDeviceIds : undefined,
+      },
+      ac.signal,
+    )
       .then((d) => {
         if (!ac.signal.aborted) setData(d);
       })
@@ -47,7 +69,7 @@ export function MaintenanceCostDashboard({ onOpenEvent }: Props) {
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [days, group]);
+  }, [days, group, fleetUserIds, fleetDeviceIds]);
 
   const dayLabels = data?.byDay.map((d) => d.day.slice(5)) || [];
   const lineData: ChartData<"line"> = {
