@@ -406,9 +406,11 @@ export type DispatchFieldUser = {
   enabled: boolean;
 };
 
-/** Per-vehicle capacity preset (Armada GPS user within tenant). */
+/** Per-vehicle capacity preset (Armada user and/or GPS tracker device). */
 export type VehicleCapacity = {
-  armadaUserId: number;
+  id?: string | null;
+  armadaUserId: number | null;
+  trackerDeviceId?: string | null;
   volumeCapacityM3: number;
   weightCapacityKg: number;
   seatCapacity?: number | null;
@@ -1055,7 +1057,8 @@ export async function fetchVehicleCapacities(signal?: AbortSignal): Promise<Vehi
 }
 
 export async function upsertVehicleCapacity(body: {
-  armadaUserId: number;
+  armadaUserId?: number | null;
+  trackerDeviceId?: string | null;
   volumeCapacityM3?: number;
   weightCapacityKg?: number;
   seatCapacity?: number | null;
@@ -1064,12 +1067,22 @@ export async function upsertVehicleCapacity(body: {
   depotId?: string | null;
   plateParity?: "odd" | "even" | "unknown" | "exempt" | null;
 }): Promise<VehicleCapacity> {
-  const res = await fetch(`/api/dispatch/vehicle-capacities/${encodeURIComponent(String(body.armadaUserId))}`, {
+  const deviceId = String(body.trackerDeviceId || "").trim();
+  const armadaUserId = body.armadaUserId == null ? null : Number(body.armadaUserId);
+  const path = /^[0-9a-f-]{36}$/i.test(deviceId)
+    ? `/api/dispatch/vehicle-capacities/device/${encodeURIComponent(deviceId)}`
+    : armadaUserId != null && Number.isInteger(armadaUserId) && armadaUserId > 0
+      ? `/api/dispatch/vehicle-capacities/${encodeURIComponent(String(armadaUserId))}`
+      : "";
+  if (!path) throw new Error("armadaUserId or trackerDeviceId required");
+  const res = await fetch(path, {
     method: "PUT",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
     body: JSON.stringify({
       volumeCapacityM3: body.volumeCapacityM3,
       weightCapacityKg: body.weightCapacityKg,
+      seatCapacity: body.seatCapacity,
+      luggageCapacityKg: body.luggageCapacityKg,
       label: body.label,
       ...(Object.prototype.hasOwnProperty.call(body, "depotId") ? { depotId: body.depotId } : {}),
       ...(Object.prototype.hasOwnProperty.call(body, "plateParity") ? { plateParity: body.plateParity } : {}),
@@ -1087,19 +1100,32 @@ export async function upsertVehicleCapacity(body: {
 export function capacityForVehicle(
   capacities: VehicleCapacity[],
   armadaUserId: number | null | undefined,
+  trackerDeviceId?: string | null,
 ): {
   volumeCapacityM3: number;
   weightCapacityKg: number;
   seatCapacity: number | null;
   luggageCapacityKg: number | null;
+  depotId?: string | null;
+  plateParity?: VehicleCapacity["plateParity"];
 } {
+  const did = String(trackerDeviceId || "").trim();
+  const byDevice = /^[0-9a-f-]{36}$/i.test(did)
+    ? capacities.find((c) => c.trackerDeviceId === did)
+    : undefined;
   const id = armadaUserId == null ? null : Number(armadaUserId);
-  const hit = id != null ? capacities.find((c) => c.armadaUserId === id) : undefined;
+  const byArmada =
+    id != null && Number.isInteger(id) && id > 0
+      ? capacities.find((c) => c.armadaUserId === id)
+      : undefined;
+  const hit = byDevice || byArmada;
   return {
     volumeCapacityM3: hit?.volumeCapacityM3 ?? 12,
     weightCapacityKg: hit?.weightCapacityKg ?? 1500,
     seatCapacity: hit?.seatCapacity ?? null,
     luggageCapacityKg: hit?.luggageCapacityKg ?? null,
+    depotId: hit?.depotId ?? null,
+    plateParity: hit?.plateParity,
   };
 }
 

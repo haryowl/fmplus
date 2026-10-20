@@ -353,6 +353,7 @@ export async function handlePlanDayPost(req, res, api) {
     /** @type {{ key: string, label: string, volumeCapacityM3: number, weightCapacityKg: number, meta: object }[]} */
     const vehicles = [];
     const usedArmada = new Set();
+    const usedDevices = new Set();
 
     if (fleetMode === "jobs" || fleetMode === "both") {
       const jobParams = [dbTenant.id, serviceDate];
@@ -370,15 +371,20 @@ export async function handlePlanDayPost(req, res, api) {
       jobSql += ` ORDER BY created_at ASC LIMIT 50`;
       const jobs = await dbQuery(jobSql, jobParams);
       const plateByArmada = new Map();
+      const plateByDevice = new Map();
       {
         const caps = await dbQuery(
-          `SELECT armada_user_id, plate_parity FROM vehicle_capacities WHERE tenant_id = $1`,
+          `SELECT armada_user_id, tracker_device_id, plate_parity
+           FROM vehicle_capacities WHERE tenant_id = $1`,
           [dbTenant.id],
         );
         for (const r of caps.rows) {
-          plateByArmada.set(Number(r.armada_user_id), normalizePlateParity(r.plate_parity || "unknown"));
+          const parity = normalizePlateParity(r.plate_parity || "unknown");
+          if (r.armada_user_id != null) plateByArmada.set(Number(r.armada_user_id), parity);
+          if (r.tracker_device_id) plateByDevice.set(String(r.tracker_device_id), parity);
         }
       }
+      const usedDevices = new Set();
       for (const j of jobs.rows) {
         const stops = await loadStops(j.id);
         if (planProfile && !jobMatchesDeskMode(j, stops, planProfile)) continue;
@@ -389,7 +395,13 @@ export async function handlePlanDayPost(req, res, api) {
         if (residualVol <= 0 || residualWt <= 0) continue;
         if (onlyEmptyJobs && stops.length > 0) continue;
         if (j.armada_user_id != null) usedArmada.add(Number(j.armada_user_id));
+        const deviceId = j.tracker_device_id ? String(j.tracker_device_id) : null;
+        if (deviceId) usedDevices.add(deviceId);
         const uid = j.armada_user_id == null ? null : Number(j.armada_user_id);
+        const plateParity =
+          (deviceId && plateByDevice.get(deviceId)) ||
+          (uid != null ? plateByArmada.get(uid) : null) ||
+          "unknown";
         vehicles.push({
           key: `job:${j.id}`,
           label: j.title || j.user_display_name || j.armada_username || j.id,
@@ -399,12 +411,13 @@ export async function handlePlanDayPost(req, res, api) {
             kind: "job",
             jobId: j.id,
             armadaUserId: uid,
+            trackerDeviceId: deviceId,
             armadaUsername: j.armada_username || "",
             userDisplayName: j.user_display_name || "",
             fullVolumeCapacityM3: cap.volumeCapacityM3,
             fullWeightCapacityKg: cap.weightCapacityKg,
             existingStops: stops.length,
-            plateParity: uid != null ? plateByArmada.get(uid) || "unknown" : "unknown",
+            plateParity,
           },
         });
       }
@@ -416,22 +429,31 @@ export async function handlePlanDayPost(req, res, api) {
       const allowPresets = fleetMode === "presets" || selectedJobIds.length === 0;
       if (allowPresets) {
       const presets = await dbQuery(
-        `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, label, depot_id, plate_parity
+        `SELECT armada_user_id, tracker_device_id, volume_capacity_m3, weight_capacity_kg,
+                label, depot_id, plate_parity
          FROM vehicle_capacities WHERE tenant_id = $1
-         ORDER BY armada_user_id ASC LIMIT 100`,
+         ORDER BY armada_user_id ASC NULLS LAST, tracker_device_id ASC NULLS LAST
+         LIMIT 100`,
         [dbTenant.id],
       );
       for (const p of presets.rows) {
-        const uid = Number(p.armada_user_id);
-        if (fleetMode === "both" && usedArmada.has(uid)) continue;
+        const uid = p.armada_user_id == null ? null : Number(p.armada_user_id);
+        const deviceId = p.tracker_device_id ? String(p.tracker_device_id) : null;
+        if (fleetMode === "both") {
+          if (uid != null && usedArmada.has(uid)) continue;
+          if (deviceId && usedDevices.has(deviceId)) continue;
+        }
         vehicles.push({
-          key: `preset:${uid}`,
-          label: p.label || `Vehicle #${uid}`,
+          key: deviceId ? `preset:d:${deviceId}` : `preset:${uid}`,
+          label:
+            p.label ||
+            (deviceId ? `GPS device` : uid != null ? `Vehicle #${uid}` : "Vehicle"),
           volumeCapacityM3: Number(p.volume_capacity_m3) || 12,
           weightCapacityKg: Number(p.weight_capacity_kg) || 1500,
           meta: {
             kind: "preset",
             armadaUserId: uid,
+            trackerDeviceId: deviceId,
             armadaUsername: "",
             userDisplayName: p.label || "",
             fullVolumeCapacityM3: Number(p.volume_capacity_m3) || 12,
@@ -455,14 +477,22 @@ export async function handlePlanDayPost(req, res, api) {
     // Attach depot from capacity preset when planning from existing jobs
     if (depotMode === "multi") {
       const capRows = await dbQuery(
-        `SELECT armada_user_id, depot_id FROM vehicle_capacities WHERE tenant_id = $1`,
+        `SELECT armada_user_id, tracker_device_id, depot_id FROM vehicle_capacities WHERE tenant_id = $1`,
         [dbTenant.id],
       );
-      const depotByArmada = new Map(
-        capRows.rows.map((r) => [Number(r.armada_user_id), r.depot_id || null]),
-      );
+      const depotByArmada = new Map();
+      const depotByDevice = new Map();
+      for (const r of capRows.rows) {
+        if (r.armada_user_id != null) depotByArmada.set(Number(r.armada_user_id), r.depot_id || null);
+        if (r.tracker_device_id) depotByDevice.set(String(r.tracker_device_id), r.depot_id || null);
+      }
       for (const v of vehicles) {
         if (v.meta?.depotId) continue;
+        const deviceId = v.meta?.trackerDeviceId;
+        if (deviceId && depotByDevice.has(String(deviceId))) {
+          v.meta.depotId = depotByDevice.get(String(deviceId));
+          continue;
+        }
         const uid = v.meta?.armadaUserId;
         if (uid != null && depotByArmada.has(Number(uid))) {
           v.meta.depotId = depotByArmada.get(Number(uid));

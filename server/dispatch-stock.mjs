@@ -288,6 +288,16 @@ export async function resolveSourceDepotId(tenantId, { order = null, job = null 
     if (mapped.rows[0]?.depot_id) return mapped.rows[0].depot_id;
   }
 
+  const trackerDeviceId = String(job?.trackerDeviceId || job?.tracker_device_id || "").trim();
+  if (/^[0-9a-f-]{36}$/i.test(trackerDeviceId)) {
+    const veh = await dbQuery(
+      `SELECT depot_id FROM vehicle_capacities
+       WHERE tenant_id = $1 AND tracker_device_id = $2::uuid AND depot_id IS NOT NULL`,
+      [tenantId, trackerDeviceId],
+    );
+    if (veh.rows[0]?.depot_id) return veh.rows[0].depot_id;
+  }
+
   const armadaUserId = job?.armadaUserId ?? job?.armada_user_id;
   if (armadaUserId != null && Number.isFinite(Number(armadaUserId))) {
     const veh = await dbQuery(

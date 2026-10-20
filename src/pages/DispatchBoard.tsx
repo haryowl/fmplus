@@ -922,7 +922,9 @@ export default function DispatchBoard() {
 
   useEffect(() => {
     const id = userId ? Number(userId) : null;
-    const cap = capacityForVehicle(vehicleCaps, id);
+    const deviceId = id != null ? deviceIdByRowId.get(id) || null : null;
+    const armadaId = id != null && id > 0 ? id : null;
+    const cap = capacityForVehicle(vehicleCaps, armadaId, deviceId);
     if (isPassenger) {
       setJobVolCap(String(cap.seatCapacity ?? cap.volumeCapacityM3 ?? 4));
       setJobWtCap(String(cap.luggageCapacityKg ?? cap.weightCapacityKg ?? 50));
@@ -930,7 +932,7 @@ export default function DispatchBoard() {
       setJobVolCap(String(cap.volumeCapacityM3));
       setJobWtCap(String(cap.weightCapacityKg));
     }
-  }, [userId, vehicleCaps, isPassenger]);
+  }, [userId, vehicleCaps, isPassenger, deviceIdByRowId]);
 
   useEffect(() => {
     if (!selected) return;
@@ -941,9 +943,13 @@ export default function DispatchBoard() {
       setEditVolCap(String(selected.volumeCapacityM3 ?? 12));
       setEditWtCap(String(selected.weightCapacityKg ?? 1500));
     }
-    const cap = vehicleCaps.find((c) => c.armadaUserId === selected.armadaUserId);
-    setEditDepotId(cap?.depotId || "");
-    setEditPlateParity((cap?.plateParity as typeof editPlateParity) || "unknown");
+    const cap = capacityForVehicle(
+      vehicleCaps,
+      selected.armadaUserId,
+      selected.trackerDeviceId,
+    );
+    setEditDepotId(cap.depotId || "");
+    setEditPlateParity((cap.plateParity as typeof editPlateParity) || "unknown");
   }, [
     selected?.id,
     selected?.volumeCapacityM3,
@@ -951,6 +957,7 @@ export default function DispatchBoard() {
     selected?.seatCapacity,
     selected?.luggageCapacityKg,
     selected?.armadaUserId,
+    selected?.trackerDeviceId,
     vehicleCaps,
     isPassenger,
   ]);
@@ -2100,8 +2107,8 @@ export default function DispatchBoard() {
   }
 
   async function handleSaveVehicleDefault() {
-    if (!selected?.armadaUserId) {
-      setError("Assign an Armada vehicle on the job before saving a vehicle default");
+    if (!selected?.armadaUserId && !selected?.trackerDeviceId) {
+      setError("Assign a vehicle or GPS device on the job before saving a vehicle default");
       return;
     }
     const vol = Number(editVolCap);
@@ -2124,6 +2131,7 @@ export default function DispatchBoard() {
         isPassenger
           ? {
               armadaUserId: selected.armadaUserId,
+              trackerDeviceId: selected.trackerDeviceId,
               seatCapacity: vol,
               luggageCapacityKg: wt,
               label: dispatchVehicleLabel(selected),
@@ -2132,6 +2140,7 @@ export default function DispatchBoard() {
             }
           : {
               armadaUserId: selected.armadaUserId,
+              trackerDeviceId: selected.trackerDeviceId,
               volumeCapacityM3: vol,
               weightCapacityKg: wt,
               label: dispatchVehicleLabel(selected),
@@ -2140,8 +2149,23 @@ export default function DispatchBoard() {
             },
       );
       setVehicleCaps((prev) => {
-        const rest = prev.filter((c) => c.armadaUserId !== saved.armadaUserId);
-        return [...rest, saved].sort((a, b) => a.armadaUserId - b.armadaUserId);
+        const rest = prev.filter((c) => {
+          if (saved.trackerDeviceId && c.trackerDeviceId === saved.trackerDeviceId) return false;
+          if (
+            saved.armadaUserId != null &&
+            c.armadaUserId === saved.armadaUserId &&
+            !saved.trackerDeviceId
+          ) {
+            return false;
+          }
+          return true;
+        });
+        return [...rest, saved].sort((a, b) => {
+          const aa = a.armadaUserId ?? 0;
+          const bb = b.armadaUserId ?? 0;
+          if (aa !== bb) return aa - bb;
+          return String(a.trackerDeviceId || "").localeCompare(String(b.trackerDeviceId || ""));
+        });
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save vehicle capacity failed");
@@ -2297,12 +2321,11 @@ export default function DispatchBoard() {
           plateParity:
             plateParity !== "unknown"
               ? plateParity
-              : (vehicleCaps.find((c) => c.armadaUserId === selected.armadaUserId)?.plateParity as
-                  | "odd"
-                  | "even"
-                  | "unknown"
-                  | "exempt"
-                  | undefined) || "unknown",
+              : (capacityForVehicle(
+                  vehicleCaps,
+                  selected.armadaUserId,
+                  selected.trackerDeviceId,
+                ).plateParity as "odd" | "even" | "unknown" | "exempt" | undefined) || "unknown",
         },
         // Each day of a tour resequences on its own; day 1 is the single-day case.
         jobDayCount > 1 ? activeDay : null,
@@ -3491,7 +3514,11 @@ export default function DispatchBoard() {
                       <select value={userId} onChange={(e) => setUserId(e.target.value)}>
                         <option value="">Select device</option>
                         {deviceStatusRows.map((r) => {
-                          const cap = capacityForVehicle(vehicleCaps, r.id > 0 ? r.id : null);
+                          const cap = capacityForVehicle(
+                            vehicleCaps,
+                            r.id > 0 ? r.id : null,
+                            deviceIdByRowId.get(r.id),
+                          );
                           return (
                             <option key={r.id} value={r.id}>
                               {r.name}
@@ -5263,14 +5290,14 @@ export default function DispatchBoard() {
                       className="btn-secondary"
                       disabled={
                         busy ||
-                        !selected.armadaUserId ||
+                        (!selected.armadaUserId && !selected.trackerDeviceId) ||
                         selected.status === "done" ||
                         selected.status === "cancelled"
                       }
                       title={
-                        selected.armadaUserId
-                          ? "Remember this capacity for the Armada vehicle"
-                          : "Job needs an Armada vehicle"
+                        selected.armadaUserId || selected.trackerDeviceId
+                          ? "Remember this capacity for the vehicle / GPS device"
+                          : "Job needs a vehicle or GPS device"
                       }
                       onClick={() => void handleSaveVehicleDefault()}
                     >

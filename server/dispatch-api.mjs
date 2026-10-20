@@ -16,6 +16,7 @@
  * GET /api/dispatch/field-users
  * GET/PUT /api/dispatch/vehicle-capacities
  * PUT /api/dispatch/vehicle-capacities/:armadaUserId
+ * PUT /api/dispatch/vehicle-capacities/device/:deviceId
  * GET/PUT /api/dispatch/depot
  * GET/POST /api/dispatch/depots · PATCH/DELETE /api/dispatch/depots/:id
  * GET/PUT /api/dispatch/zone-depot-map — optional zone → depot preferences
@@ -1586,43 +1587,139 @@ export async function handleDispatchRequest(req, res) {
       return true;
     }
 
-    // —— Vehicle capacity presets (keyed by Armada user id) ——
-    if (url.pathname === "/api/dispatch/vehicle-capacities" && req.method === "GET") {
-      const rows = await dbQuery(
-        `SELECT armada_user_id, volume_capacity_m3, weight_capacity_kg, seat_capacity, luggage_capacity_kg,
-                label, depot_id, plate_parity, updated_at
-         FROM vehicle_capacities
-         WHERE tenant_id = $1
-         ORDER BY armada_user_id ASC
-         LIMIT 500`,
-        [dbTenant.id],
-      );
-      json(res, 200, {
-        capacities: rows.rows.map((r) => ({
-          armadaUserId: Number(r.armada_user_id),
-          volumeCapacityM3: Number(r.volume_capacity_m3) || 12,
-          weightCapacityKg: Number(r.weight_capacity_kg) || 1500,
-          seatCapacity: r.seat_capacity == null ? null : Number(r.seat_capacity),
-          luggageCapacityKg:
-            r.luggage_capacity_kg == null ? null : Number(r.luggage_capacity_kg),
-          label: r.label || "",
-          depotId: r.depot_id || null,
-          plateParity: normalizePlateParity(r.plate_parity || "unknown"),
-          updatedAt: r.updated_at,
-        })),
-      });
-      return true;
-    }
+    // —— Vehicle capacity presets (Armada user id and/or tracker device) ——
+    const publicVehicleCapacity = (r) => ({
+      id: r.id || null,
+      armadaUserId: r.armada_user_id == null ? null : Number(r.armada_user_id),
+      trackerDeviceId: r.tracker_device_id || null,
+      volumeCapacityM3: Number(r.volume_capacity_m3) || 12,
+      weightCapacityKg: Number(r.weight_capacity_kg) || 1500,
+      seatCapacity: r.seat_capacity == null ? null : Number(r.seat_capacity),
+      luggageCapacityKg:
+        r.luggage_capacity_kg == null ? null : Number(r.luggage_capacity_kg),
+      label: r.label || "",
+      depotId: r.depot_id || null,
+      plateParity: normalizePlateParity(r.plate_parity || "unknown"),
+      updatedAt: r.updated_at,
+    });
 
-    const vehicleCapOne = /^\/api\/dispatch\/vehicle-capacities\/(\d+)$/i.exec(url.pathname);
-    if (vehicleCapOne && req.method === "PUT") {
-      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageDispatchSettings"))) return true;
-      const armadaUserId = Number(vehicleCapOne[1]);
-      if (!Number.isInteger(armadaUserId) || armadaUserId <= 0) {
-        json(res, 400, { error: "Invalid armada user id" });
-        return true;
+    const upsertVehicleCapacityRow = async (opts) => {
+      const {
+        armadaUserId = null,
+        trackerDeviceId = null,
+        vol,
+        wt,
+        seatCapacity,
+        luggageCapacityKg,
+        label,
+        depotId,
+        plateParity,
+        hasDepotField,
+        hasPlateField,
+      } = opts;
+      const plateVal = plateParity === "unknown" ? null : plateParity;
+      if (trackerDeviceId) {
+        const updated = await dbQuery(
+          `UPDATE vehicle_capacities SET
+             volume_capacity_m3 = $3,
+             weight_capacity_kg = $4,
+             seat_capacity = $5,
+             luggage_capacity_kg = $6,
+             label = COALESCE($7, label),
+             depot_id = CASE WHEN $8 THEN $9 ELSE depot_id END,
+             plate_parity = CASE WHEN $10 THEN $11 ELSE plate_parity END,
+             updated_at = now()
+           WHERE tenant_id = $1 AND tracker_device_id = $2::uuid
+           RETURNING id, armada_user_id, tracker_device_id, volume_capacity_m3, weight_capacity_kg,
+                     seat_capacity, luggage_capacity_kg, label, depot_id, plate_parity, updated_at`,
+          [
+            dbTenant.id,
+            trackerDeviceId,
+            vol,
+            wt,
+            seatCapacity,
+            luggageCapacityKg,
+            label,
+            hasDepotField,
+            depotId,
+            hasPlateField,
+            plateVal,
+          ],
+        );
+        if (updated.rows[0]) return updated.rows[0];
+        const inserted = await dbQuery(
+          `INSERT INTO vehicle_capacities (
+             tenant_id, armada_user_id, tracker_device_id, volume_capacity_m3, weight_capacity_kg,
+             seat_capacity, luggage_capacity_kg, label, depot_id, plate_parity, updated_at
+           ) VALUES ($1, $2, $3::uuid, $4, $5, $6, $7, $8, $9, $10, now())
+           RETURNING id, armada_user_id, tracker_device_id, volume_capacity_m3, weight_capacity_kg,
+                     seat_capacity, luggage_capacity_kg, label, depot_id, plate_parity, updated_at`,
+          [
+            dbTenant.id,
+            armadaUserId,
+            trackerDeviceId,
+            vol,
+            wt,
+            seatCapacity,
+            luggageCapacityKg,
+            label,
+            hasDepotField ? depotId : null,
+            hasPlateField ? plateVal : null,
+          ],
+        );
+        return inserted.rows[0];
       }
-      const body = await readJson(req);
+      const updated = await dbQuery(
+        `UPDATE vehicle_capacities SET
+           volume_capacity_m3 = $3,
+           weight_capacity_kg = $4,
+           seat_capacity = $5,
+           luggage_capacity_kg = $6,
+           label = COALESCE($7, label),
+           depot_id = CASE WHEN $8 THEN $9 ELSE depot_id END,
+           plate_parity = CASE WHEN $10 THEN $11 ELSE plate_parity END,
+           updated_at = now()
+         WHERE tenant_id = $1 AND armada_user_id = $2
+         RETURNING id, armada_user_id, tracker_device_id, volume_capacity_m3, weight_capacity_kg,
+                   seat_capacity, luggage_capacity_kg, label, depot_id, plate_parity, updated_at`,
+        [
+          dbTenant.id,
+          armadaUserId,
+          vol,
+          wt,
+          seatCapacity,
+          luggageCapacityKg,
+          label,
+          hasDepotField,
+          depotId,
+          hasPlateField,
+          plateVal,
+        ],
+      );
+      if (updated.rows[0]) return updated.rows[0];
+      const inserted = await dbQuery(
+        `INSERT INTO vehicle_capacities (
+           tenant_id, armada_user_id, tracker_device_id, volume_capacity_m3, weight_capacity_kg,
+           seat_capacity, luggage_capacity_kg, label, depot_id, plate_parity, updated_at
+         ) VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8, $9, now())
+         RETURNING id, armada_user_id, tracker_device_id, volume_capacity_m3, weight_capacity_kg,
+                   seat_capacity, luggage_capacity_kg, label, depot_id, plate_parity, updated_at`,
+        [
+          dbTenant.id,
+          armadaUserId,
+          vol,
+          wt,
+          seatCapacity,
+          luggageCapacityKg,
+          label,
+          hasDepotField ? depotId : null,
+          hasPlateField ? plateVal : null,
+        ],
+      );
+      return inserted.rows[0];
+    };
+
+    const parseVehicleCapacityBody = async (body) => {
       const hasSeats =
         body.seatCapacity != null ||
         body.seat_capacity != null ||
@@ -1640,12 +1737,11 @@ export async function handleDispatchRequest(req, res) {
         if (mapped.weightCapacityKg != null) wt = mapped.weightCapacityKg;
       }
       if (vol == null || vol <= 0 || wt == null || wt <= 0) {
-        json(res, 400, {
+        return {
           error: hasSeats
             ? "seatCapacity and luggageCapacityKg must be > 0"
             : "volumeCapacityM3 and weightCapacityKg must be > 0",
-        });
-        return true;
+        };
       }
       const label = String(body.label || "").trim().slice(0, 200) || null;
       const hasDepotField = Object.prototype.hasOwnProperty.call(body, "depotId");
@@ -1657,62 +1753,95 @@ export async function handleDispatchRequest(req, res) {
             `SELECT id FROM dispatch_depots WHERE id = $1 AND tenant_id = $2`,
             [did, dbTenant.id],
           );
-          if (!ok.rows.length) {
-            json(res, 400, { error: "Unknown depotId" });
-            return true;
-          }
+          if (!ok.rows.length) return { error: "Unknown depotId" };
           depotId = ok.rows[0].id;
         }
       }
       const hasPlateField = Object.prototype.hasOwnProperty.call(body, "plateParity");
-      const plateParity = hasPlateField
-        ? normalizePlateParity(body.plateParity)
-        : null;
-      const upserted = await dbQuery(
-        `INSERT INTO vehicle_capacities (
-           tenant_id, armada_user_id, volume_capacity_m3, weight_capacity_kg,
-           seat_capacity, luggage_capacity_kg, label, depot_id, plate_parity, updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
-         ON CONFLICT (tenant_id, armada_user_id) DO UPDATE SET
-           volume_capacity_m3 = EXCLUDED.volume_capacity_m3,
-           weight_capacity_kg = EXCLUDED.weight_capacity_kg,
-           seat_capacity = EXCLUDED.seat_capacity,
-           luggage_capacity_kg = EXCLUDED.luggage_capacity_kg,
-           label = COALESCE(EXCLUDED.label, vehicle_capacities.label),
-           depot_id = CASE WHEN $10 THEN EXCLUDED.depot_id ELSE vehicle_capacities.depot_id END,
-           plate_parity = CASE WHEN $11 THEN EXCLUDED.plate_parity ELSE vehicle_capacities.plate_parity END,
-           updated_at = now()
-         RETURNING armada_user_id, volume_capacity_m3, weight_capacity_kg, seat_capacity,
-                   luggage_capacity_kg, label, depot_id, plate_parity, updated_at`,
-        [
-          dbTenant.id,
-          armadaUserId,
-          vol,
-          wt,
-          seatCapacity,
-          luggageCapacityKg,
-          label,
-          depotId,
-          plateParity === "unknown" ? null : plateParity,
-          hasDepotField,
-          hasPlateField,
-        ],
+      const plateParity = hasPlateField ? normalizePlateParity(body.plateParity) : null;
+      return {
+        vol,
+        wt,
+        seatCapacity,
+        luggageCapacityKg,
+        label,
+        depotId,
+        plateParity,
+        hasDepotField,
+        hasPlateField,
+      };
+    };
+
+    if (url.pathname === "/api/dispatch/vehicle-capacities" && req.method === "GET") {
+      const rows = await dbQuery(
+        `SELECT id, armada_user_id, tracker_device_id, volume_capacity_m3, weight_capacity_kg,
+                seat_capacity, luggage_capacity_kg, label, depot_id, plate_parity, updated_at
+         FROM vehicle_capacities
+         WHERE tenant_id = $1
+         ORDER BY armada_user_id ASC NULLS LAST, tracker_device_id ASC NULLS LAST
+         LIMIT 500`,
+        [dbTenant.id],
       );
-      const r = upserted.rows[0];
       json(res, 200, {
-        capacity: {
-          armadaUserId: Number(r.armada_user_id),
-          volumeCapacityM3: Number(r.volume_capacity_m3) || 12,
-          weightCapacityKg: Number(r.weight_capacity_kg) || 1500,
-          seatCapacity: r.seat_capacity == null ? null : Number(r.seat_capacity),
-          luggageCapacityKg:
-            r.luggage_capacity_kg == null ? null : Number(r.luggage_capacity_kg),
-          label: r.label || "",
-          depotId: r.depot_id || null,
-          plateParity: normalizePlateParity(r.plate_parity || "unknown"),
-          updatedAt: r.updated_at,
-        },
+        capacities: rows.rows.map((r) => publicVehicleCapacity(r)),
       });
+      return true;
+    }
+
+    const vehicleCapDevice = /^\/api\/dispatch\/vehicle-capacities\/device\/([0-9a-f-]{36})$/i.exec(
+      url.pathname,
+    );
+    if (vehicleCapDevice && req.method === "PUT") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageDispatchSettings"))) return true;
+      const trackerDeviceId = vehicleCapDevice[1];
+      const device = await dbQuery(
+        `SELECT id, armada_user_id FROM tracker_devices
+         WHERE id = $1::uuid AND tenant_id = $2 AND enabled = true`,
+        [trackerDeviceId, dbTenant.id],
+      );
+      if (!device.rows[0]) {
+        json(res, 404, { error: "tracker device not found" });
+        return true;
+      }
+      const body = await readJson(req);
+      const parsed = await parseVehicleCapacityBody(body);
+      if (parsed.error) {
+        json(res, 400, { error: parsed.error });
+        return true;
+      }
+      const linkedArmada =
+        device.rows[0].armada_user_id != null && Number(device.rows[0].armada_user_id) > 0
+          ? Number(device.rows[0].armada_user_id)
+          : null;
+      const r = await upsertVehicleCapacityRow({
+        armadaUserId: linkedArmada,
+        trackerDeviceId,
+        ...parsed,
+      });
+      json(res, 200, { capacity: publicVehicleCapacity(r) });
+      return true;
+    }
+
+    const vehicleCapOne = /^\/api\/dispatch\/vehicle-capacities\/(\d+)$/i.exec(url.pathname);
+    if (vehicleCapOne && req.method === "PUT") {
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "manageDispatchSettings"))) return true;
+      const armadaUserId = Number(vehicleCapOne[1]);
+      if (!Number.isInteger(armadaUserId) || armadaUserId <= 0) {
+        json(res, 400, { error: "Invalid armada user id" });
+        return true;
+      }
+      const body = await readJson(req);
+      const parsed = await parseVehicleCapacityBody(body);
+      if (parsed.error) {
+        json(res, 400, { error: parsed.error });
+        return true;
+      }
+      const r = await upsertVehicleCapacityRow({
+        armadaUserId,
+        trackerDeviceId: null,
+        ...parsed,
+      });
+      json(res, 200, { capacity: publicVehicleCapacity(r) });
       return true;
     }
 
@@ -3449,24 +3578,35 @@ export async function handleDispatchRequest(req, res) {
         routing.plateParity === "unknown"
       ) {
         const uid = job.armada_user_id == null ? null : Number(job.armada_user_id);
-        if (uid) {
+        const deviceId = String(job.tracker_device_id || "").trim();
+        let plateRow = null;
+        if (/^[0-9a-f-]{36}$/i.test(deviceId)) {
+          const cap = await dbQuery(
+            `SELECT plate_parity FROM vehicle_capacities
+             WHERE tenant_id = $1 AND tracker_device_id = $2::uuid`,
+            [dbTenant.id, deviceId],
+          );
+          plateRow = cap.rows[0] || null;
+        }
+        if (!plateRow?.plate_parity && uid) {
           const cap = await dbQuery(
             `SELECT plate_parity FROM vehicle_capacities
              WHERE tenant_id = $1 AND armada_user_id = $2`,
             [dbTenant.id, uid],
           );
-          if (cap.rows[0]?.plate_parity) {
-            routing = parseRoutingOptions({
-              routing: {
-                ...routing,
-                plateParity: cap.rows[0].plate_parity,
-                respectGanjilGenap:
-                  routing.respectGanjilGenap ||
-                  body.respectGanjilGenap === true ||
-                  Boolean(cap.rows[0].plate_parity),
-              },
-            });
-          }
+          plateRow = cap.rows[0] || null;
+        }
+        if (plateRow?.plate_parity) {
+          routing = parseRoutingOptions({
+            routing: {
+              ...routing,
+              plateParity: plateRow.plate_parity,
+              respectGanjilGenap:
+                routing.respectGanjilGenap ||
+                body.respectGanjilGenap === true ||
+                Boolean(plateRow.plate_parity),
+            },
+          });
         }
       }
       // Each day of a multi-day tour optimizes on its own; day 1 stays put while

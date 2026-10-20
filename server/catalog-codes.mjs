@@ -197,14 +197,19 @@ async function hydrateTrackerDevice(tenantId, targetId) {
     row.armada_user_id != null && Number(row.armada_user_id) > 0
       ? Number(row.armada_user_id)
       : 0;
+  const cap = await dbQuery(
+    `SELECT label, plate_parity FROM vehicle_capacities
+     WHERE tenant_id = $1 AND tracker_device_id = $2::uuid`,
+    [tenantId, id],
+  );
   return {
     kind: "vehicle",
     item: {
       id: String(row.id),
       armadaUserId,
       trackerDeviceId: String(row.id),
-      label: row.label || row.imei || "",
-      plateParity: "",
+      label: cap.rows[0]?.label || row.label || row.imei || "",
+      plateParity: cap.rows[0]?.plate_parity || "",
     },
   };
 }
