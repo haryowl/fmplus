@@ -10,6 +10,7 @@ import {
   deleteAlertRule,
   fetchAlertRules,
   fetchRuleEvents,
+  isMappedField,
   resolveRuleEvent,
   RULE_CMPS,
   RULE_FIELDS,
@@ -211,6 +212,10 @@ export function FleetLiveAlertsPanel({
       setError("Select a device group");
       return;
     }
+    if (draftConditions.some((c) => isMappedField(c.field) && c.field === "mapped.")) {
+      setError("Enter a mapped attribute key");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -228,7 +233,13 @@ export function FleetLiveAlertsPanel({
               let value: string | number | boolean = c.value;
               if (c.field === "ignition") {
                 value = String(c.value) === "true" || c.value === true;
-              } else if (typeof c.value === "string" && c.value.trim() !== "" && !Number.isNaN(Number(c.value))) {
+              } else if (
+                c.cmp !== "in" &&
+                c.cmp !== "contains" &&
+                typeof c.value === "string" &&
+                c.value.trim() !== "" &&
+                !Number.isNaN(Number(c.value))
+              ) {
                 value = Number(c.value);
               }
               return { field: c.field, cmp: c.cmp, value };
@@ -398,10 +409,23 @@ export function FleetLiveAlertsPanel({
               {draftConditions.map((c, idx) => (
                 <div key={idx} className="fleet-rules-cond-row">
                   <select
-                    value={c.field}
+                    value={isMappedField(c.field) ? "__mapped__" : c.field}
                     onChange={(e) => {
                       const next = [...draftConditions];
-                      next[idx] = { ...c, field: e.target.value };
+                      const v = e.target.value;
+                      if (v === "__mapped__") {
+                        next[idx] = {
+                          ...c,
+                          field: isMappedField(c.field) ? c.field : "mapped.",
+                          cmp: c.cmp === "in" || c.cmp === "contains" ? c.cmp : "==",
+                        };
+                      } else {
+                        next[idx] = {
+                          ...c,
+                          field: v,
+                          value: v === "ignition" ? "true" : c.value,
+                        };
+                      }
                       setDraftConditions(next);
                     }}
                   >
@@ -410,7 +434,21 @@ export function FleetLiveAlertsPanel({
                         {f.label}
                       </option>
                     ))}
+                    <option value="__mapped__">Mapped attr…</option>
                   </select>
+                  {isMappedField(c.field) ? (
+                    <input
+                      className="fleet-rules-mapped-key"
+                      placeholder="attr key (e.g. alarm)"
+                      value={c.field.slice("mapped.".length)}
+                      onChange={(e) => {
+                        const key = e.target.value.replace(/^mapped\./i, "").trim();
+                        const next = [...draftConditions];
+                        next[idx] = { ...c, field: `mapped.${key}` };
+                        setDraftConditions(next);
+                      }}
+                    />
+                  ) : null}
                   <select
                     value={c.cmp}
                     onChange={(e) => {
@@ -440,6 +478,7 @@ export function FleetLiveAlertsPanel({
                   ) : (
                     <input
                       value={String(c.value)}
+                      placeholder={c.cmp === "in" ? "a, b, c" : c.cmp === "contains" ? "text" : ""}
                       onChange={(e) => {
                         const next = [...draftConditions];
                         next[idx] = { ...c, value: e.target.value };
@@ -708,7 +747,19 @@ export function FleetLiveAlertsPanel({
                           · {e.deviceLabel || "device"} · {e.status}
                         </span>
                         <div className="muted">{e.detail}</div>
-                        <div className="muted">{formatWhen(e.firedAt, timezone)}</div>
+                        <div className="muted fleet-rules-notify-flags">
+                          {formatWhen(e.firedAt, timezone)}
+                          {e.notifyEmailSent ? (
+                            <span title="Email sent">
+                              <IcoMail /> sent
+                            </span>
+                          ) : null}
+                          {e.notifyWhatsappSent ? (
+                            <span title="WhatsApp sent">
+                              <IcoWhatsApp /> sent
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                       {canAckAlerts && (e.status === "open" || e.status === "acked") ? (
                         <div className="fleet-rules-row-actions">

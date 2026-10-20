@@ -5849,6 +5849,34 @@ html.onesheet-root body {
   align-items: center;
 }
 
+.fleet-rules-cond-row:has(.fleet-rules-mapped-key) {
+  grid-template-columns: minmax(110px, 1fr) minmax(110px, 1fr) 0.55fr 1fr auto;
+}
+
+.fleet-rules-mapped-key {
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line, #d5e0e6);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-2, #f6fbfa);
+  font: inherit;
+}
+
+.fleet-rules-notify-flags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.fleet-rules-notify-flags > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.7rem;
+  color: var(--gps, #0d9488);
+}
+
 .fleet-rules-cond-row select,
 .fleet-rules-cond-row input {
   height: 34px;
@@ -8064,6 +8092,22 @@ html.onesheet-root body {
 .fleet-cc-alerts li strong .fleet-ico {
   vertical-align: -0.15em;
   margin-right: 2px;
+}
+
+.fleet-cc-drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.fleet-cc-drawer-actions .btn,
+.fleet-cc-drawer-actions .fleet-cc-icon-btn {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 0.68rem;
 }
 
 .fleet-cc-mix-grid {

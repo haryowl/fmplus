@@ -56,7 +56,12 @@ import {
 } from "../components/fleetLiveIcons";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
-import { fetchRuleEvents, type FleetRuleEvent } from "../lib/fleetAlertRules";
+import {
+  ackRuleEvent,
+  fetchRuleEvents,
+  resolveRuleEvent,
+  type FleetRuleEvent,
+} from "../lib/fleetAlertRules";
 
 type ListTab = "all" | LiveOpsClass | "alert" | "maintenance";
 type FleetSection = "live" | "dashboard" | "ranking" | "trips" | "history" | "media" | "alerts";
@@ -396,6 +401,7 @@ export default function FleetLive() {
     type Item = {
       key: string;
       kind: "safety" | "rule";
+      eventId?: string;
       title: string;
       device: string;
       atMs: number;
@@ -422,6 +428,7 @@ export default function FleetLive() {
       items.push({
         key: `r-${r.id}`,
         kind: "rule",
+        eventId: r.id,
         title: r.title,
         device: r.deviceLabel || "device",
         atMs: Number.isFinite(atMs) ? atMs : 0,
@@ -1280,13 +1287,50 @@ export default function FleetLive() {
                         <span className="muted"> · {item.device}</span>
                         <div className="muted">{item.atLabel}</div>
                       </div>
-                      <em
-                        className={`fleet-cc-active-pill${
-                          item.kind === "rule" ? " is-rule" : " is-safety"
-                        }`}
-                      >
-                        {item.pill}
-                      </em>
+                      {item.kind === "rule" && item.eventId && canAckAlerts ? (
+                        <div className="fleet-cc-drawer-actions">
+                          <button
+                            type="button"
+                            className="fleet-cc-icon-btn"
+                            title="Acknowledge"
+                            onClick={() =>
+                              void ackRuleEvent(item.eventId!)
+                                .then(() =>
+                                  setRuleFires((prev) =>
+                                    prev.filter((x) => x.id !== item.eventId),
+                                  ),
+                                )
+                                .catch((err: Error) => setFetchError(err.message))
+                            }
+                          >
+                            Ack
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-compact"
+                            title="Resolve"
+                            onClick={() =>
+                              void resolveRuleEvent(item.eventId!)
+                                .then(() =>
+                                  setRuleFires((prev) =>
+                                    prev.filter((x) => x.id !== item.eventId),
+                                  ),
+                                )
+                                .catch((err: Error) => setFetchError(err.message))
+                            }
+                          >
+                            Resolve
+                          </button>
+                        </div>
+                      ) : (
+                        <em
+                          className={`fleet-cc-active-pill${
+                            item.kind === "rule" ? " is-rule" : " is-safety"
+                          }`}
+                        >
+                          {item.pill}
+                        </em>
+                      )}
                     </li>
                   ))}
                 </ul>

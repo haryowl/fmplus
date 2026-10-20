@@ -37,6 +37,8 @@ export type FleetRuleEvent = {
   detail: string;
   status: string;
   firedAt: string;
+  notifyEmailSent?: boolean;
+  notifyWhatsappSent?: boolean;
 };
 
 export const RULE_FIELDS = [
@@ -48,7 +50,12 @@ export const RULE_FIELDS = [
   { value: "heading", label: "Heading" },
 ] as const;
 
-export const RULE_CMPS = [">", ">=", "<", "<=", "==", "!="] as const;
+export const RULE_CMPS = [">", ">=", "<", "<=", "==", "!=", "in", "contains"] as const;
+
+/** True when the field is a free-form mapped.* key (not a cooked snap field). */
+export function isMappedField(field: string): boolean {
+  return String(field || "").startsWith("mapped.");
+}
 
 async function parseJson(res: Response) {
   return (await res.json().catch(() => ({}))) as Record<string, unknown>;

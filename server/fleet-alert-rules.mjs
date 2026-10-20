@@ -313,6 +313,8 @@ export async function listFleetAlertEvents(tenantId, { limit = 80, status } = {}
     firedAt: r.fired_at,
     ackedAt: r.acked_at,
     resolvedAt: r.resolved_at,
+    notifyEmailSent: Boolean(r.notify_email_sent),
+    notifyWhatsappSent: Boolean(r.notify_whatsapp_sent),
   }));
 }
 
