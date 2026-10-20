@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchGroups, fetchUsersForGroup, groupOptionLabel, userOptionLabel } from "../lib/api";
+import {
+  fetchGroups,
+  fetchUsersForGroup,
+  fetchUsersStatus,
+  groupOptionLabel,
+  userOptionLabel,
+} from "../lib/api";
 import { BrandMark } from "../components/BrandMark";
 import { CsvImportPanel } from "../components/CsvImportPanel";
 import { CatalogCodesEditor } from "../components/CatalogCodesEditor";
@@ -20,11 +26,15 @@ import {
 import { locationNameFromScan, lookupCatalogScan } from "../lib/catalogScan";
 import { useDeskSession } from "../lib/deskSession";
 import { deskCanWrite } from "../lib/deskPrivileges";
+import type { LastStatusRow } from "../lib/lastStatus";
 import { isNativeDispatchApp } from "../lib/nativeField";
 import { customersHref, goodsHref, navigateView, writeLocationSearch } from "../lib/routing";
 import {
+  deviceIdByStatusRowId,
   fetchDeviceGroupScope,
   fetchTrackerDeviceGroups,
+  fetchTrackerLastStatus,
+  mergeArmadaRowsWithDeviceFixes,
   type TrackerDeviceGroup,
 } from "../lib/trackerDevices";
 import { nextDatedCode } from "../lib/datedCode";
@@ -292,7 +302,10 @@ export default function DispatchBoard() {
     return params.get("deviceGroupId") || "";
   });
   const [deviceGroupArmadaIds, setDeviceGroupArmadaIds] = useState<Set<number> | null>(null);
+  const [deviceGroupDeviceIds, setDeviceGroupDeviceIds] = useState<Set<string> | null>(null);
   const [deviceGroupMemberCount, setDeviceGroupMemberCount] = useState(0);
+  const [deviceStatusRows, setDeviceStatusRows] = useState<LastStatusRow[]>([]);
+  const [deviceIdByRowId, setDeviceIdByRowId] = useState<Map<number, string>>(() => new Map());
   const [userId, setUserId] = useState(query.userId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
@@ -599,24 +612,25 @@ export default function DispatchBoard() {
 
   const deskJobs = useMemo(() => {
     let list = multiDesk ? jobs.filter((j) => jobMatchesDeskMode(j, deskMode)) : jobs;
-    // Device-first: only narrow jobs when the group has linked Armada vehicles.
-    if (deviceGroupArmadaIds && deviceGroupArmadaIds.size > 0) {
-      list = list.filter(
-        (j) => j.armadaUserId != null && deviceGroupArmadaIds.has(Number(j.armadaUserId)),
-      );
+    if (deviceGroupId && (deviceGroupDeviceIds || deviceGroupArmadaIds)) {
+      list = list.filter((j) => {
+        if (j.trackerDeviceId && deviceGroupDeviceIds?.has(j.trackerDeviceId)) return true;
+        if (j.armadaUserId != null && deviceGroupArmadaIds?.has(Number(j.armadaUserId))) return true;
+        return false;
+      });
     }
     return list;
-  }, [jobs, deskMode, multiDesk, deviceGroupArmadaIds]);
+  }, [jobs, deskMode, multiDesk, deviceGroupId, deviceGroupDeviceIds, deviceGroupArmadaIds]);
 
   const deskOrders = useMemo(() => {
     let list = multiDesk ? orders.filter((o) => orderMatchesDeskMode(o, deskMode)) : orders;
-    if (deviceGroupArmadaIds && deviceGroupArmadaIds.size > 0) {
+    if (deviceGroupId && (deviceGroupDeviceIds?.size || deviceGroupArmadaIds?.size)) {
       const jobIds = new Set(deskJobs.map((j) => j.id));
       // Keep unassigned inbox orders; hide orders already on jobs outside this device group.
       list = list.filter((o) => !o.jobId || jobIds.has(o.jobId));
     }
     return list;
-  }, [orders, deskMode, multiDesk, deviceGroupArmadaIds, deskJobs]);
+  }, [orders, deskMode, multiDesk, deviceGroupId, deviceGroupDeviceIds, deviceGroupArmadaIds, deskJobs]);
 
   const planDayJobs = useMemo(
     () =>
@@ -808,18 +822,44 @@ export default function DispatchBoard() {
     if (!ready) return;
     if (!deviceGroupId) {
       setDeviceGroupArmadaIds(null);
+      setDeviceGroupDeviceIds(null);
       setDeviceGroupMemberCount(0);
+      setDeviceStatusRows([]);
+      setDeviceIdByRowId(new Map());
       return;
     }
     const ac = new AbortController();
-    fetchDeviceGroupScope([deviceGroupId], ac.signal)
-      .then((scope) => {
+    Promise.all([
+      fetchDeviceGroupScope([deviceGroupId], ac.signal),
+      fetchTrackerLastStatus(ac.signal, { groupIds: [deviceGroupId] }).catch(() => ({
+        fixes: [],
+        telematicsSource: "devices" as const,
+        displayPinIds: [] as string[],
+        displayPinLabels: {} as Record<string, string>,
+      })),
+      fetchUsersStatus({ signal: ac.signal }).catch(() => [] as LastStatusRow[]),
+    ])
+      .then(([scope, deviceStatus, armadaRows]) => {
         setDeviceGroupArmadaIds(new Set(scope.armadaUserIds));
+        setDeviceGroupDeviceIds(new Set(scope.deviceIds));
         setDeviceGroupMemberCount(scope.memberCount || scope.deviceIds.length);
+        setDeviceIdByRowId(deviceIdByStatusRowId(deviceStatus.fixes));
+        const allow = new Set(scope.armadaUserIds);
+        const armadaScoped = allow.size ? armadaRows.filter((r) => allow.has(r.id)) : [];
+        setDeviceStatusRows(
+          mergeArmadaRowsWithDeviceFixes(
+            armadaScoped,
+            deviceStatus.fixes,
+            deviceStatus.telematicsSource === "armada" ? "devices" : deviceStatus.telematicsSource,
+          ),
+        );
       })
       .catch(() => {
         setDeviceGroupArmadaIds(new Set());
+        setDeviceGroupDeviceIds(new Set());
         setDeviceGroupMemberCount(0);
+        setDeviceStatusRows([]);
+        setDeviceIdByRowId(new Map());
       });
     return () => ac.abort();
   }, [ready, deviceGroupId]);
@@ -1952,13 +1992,29 @@ export default function DispatchBoard() {
     try {
       const vol = Number(jobVolCap);
       const wt = Number(jobWtCap);
+      const deviceRow =
+        !isSales && deviceGroupId && userId
+          ? deviceStatusRows.find((r) => String(r.id) === userId)
+          : undefined;
+      const trackerDeviceId =
+        !isSales && userId ? deviceIdByRowId.get(Number(userId)) || null : null;
+      const armadaFromUser = !isSales && selectedUser ? Number(selectedUser.id) : null;
+      const armadaFromDevice =
+        deviceRow && deviceRow.id > 0 ? deviceRow.id : null;
       const job = await createDispatchJob({
         title: jobTitle.trim(),
         serviceDate: planDate,
         assignedFieldUserId: assigneeId || null,
-        armadaUserId: isSales ? null : selectedUser ? Number(selectedUser.id) : null,
-        armadaUsername: isSales ? "" : selectedUser?.username || "",
-        userDisplayName: isSales ? "" : selectedUser ? userOptionLabel(selectedUser) : "",
+        armadaUserId: isSales ? null : armadaFromUser ?? armadaFromDevice,
+        armadaUsername: isSales
+          ? ""
+          : selectedUser?.username || deviceRow?.username || "",
+        userDisplayName: isSales
+          ? ""
+          : selectedUser
+            ? userOptionLabel(selectedUser)
+            : deviceRow?.name || "",
+        trackerDeviceId: isSales ? null : trackerDeviceId,
         ...(isPassenger
           ? {
               profile: "passenger" as const,
@@ -2551,9 +2607,8 @@ export default function DispatchBoard() {
         deviceGroupArmadaIds &&
         deviceGroupArmadaIds.size === 0 ? (
           <p className="dispatch-alert" role="status">
-            {deviceGroupMemberCount} GPS device(s) in this group. Dispatch jobs still attach to Armada
-            vehicles when linked — optional in Admin → Device Management. Group membership no longer
-            requires an Armada link.
+            {deviceGroupMemberCount} GPS device(s) in this group — New job can assign a device
+            directly (Armada link optional in Admin → Device Management).
           </p>
         ) : null}
 
@@ -3401,40 +3456,71 @@ export default function DispatchBoard() {
               </label>
               {!isSales ? (
                 <>
-                  <label className="field">
-                    Group
-                    <select
-                      value={groupId}
-                      onChange={(e) => {
-                        setGroupId(e.target.value);
-                        setUserId("");
-                      }}
-                    >
-                      <option value="">None</option>
-                      {groups.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {groupOptionLabel(g)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="field">
-                    Vehicle
-                    <select value={userId} onChange={(e) => setUserId(e.target.value)} disabled={!selectedGroup}>
-                      <option value="">{selectedGroup ? "Select vehicle" : "Pick group first"}</option>
-                      {users.map((u) => {
-                        const cap = capacityForVehicle(vehicleCaps, Number(u.id));
-                        return (
-                          <option key={u.id} value={u.id}>
-                            {userOptionLabel(u)} ·{" "}
-                            {isPassenger
-                              ? `${cap.seatCapacity ?? cap.volumeCapacityM3 ?? 4} seats / ${cap.luggageCapacityKg ?? cap.weightCapacityKg ?? 50} kg`
-                              : `${cap.volumeCapacityM3} m³ / ${cap.weightCapacityKg} kg`}
+                  {deviceGroupId ? (
+                    <label className="field">
+                      Device / vehicle
+                      <select value={userId} onChange={(e) => setUserId(e.target.value)}>
+                        <option value="">Select device</option>
+                        {deviceStatusRows.map((r) => {
+                          const cap = capacityForVehicle(vehicleCaps, r.id > 0 ? r.id : null);
+                          return (
+                            <option key={r.id} value={r.id}>
+                              {r.name}
+                              {r.username ? ` (${r.username})` : ""}
+                              {r.id > 0 ? ` · #${r.id}` : " · GPS"}
+                              {" · "}
+                              {isPassenger
+                                ? `${cap.seatCapacity ?? cap.volumeCapacityM3 ?? 4} seats / ${cap.luggageCapacityKg ?? cap.weightCapacityKg ?? 50} kg`
+                                : `${cap.volumeCapacityM3} m³ / ${cap.weightCapacityKg} kg`}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </label>
+                  ) : (
+                    <>
+                      <label className="field">
+                        Group
+                        <select
+                          value={groupId}
+                          onChange={(e) => {
+                            setGroupId(e.target.value);
+                            setUserId("");
+                          }}
+                        >
+                          <option value="">None</option>
+                          {groups.map((g) => (
+                            <option key={g.id} value={g.id}>
+                              {groupOptionLabel(g)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        Vehicle
+                        <select
+                          value={userId}
+                          onChange={(e) => setUserId(e.target.value)}
+                          disabled={!selectedGroup}
+                        >
+                          <option value="">
+                            {selectedGroup ? "Select vehicle" : "Pick group first"}
                           </option>
-                        );
-                      })}
-                    </select>
-                  </label>
+                          {users.map((u) => {
+                            const cap = capacityForVehicle(vehicleCaps, Number(u.id));
+                            return (
+                              <option key={u.id} value={u.id}>
+                                {userOptionLabel(u)} ·{" "}
+                                {isPassenger
+                                  ? `${cap.seatCapacity ?? cap.volumeCapacityM3 ?? 4} seats / ${cap.luggageCapacityKg ?? cap.weightCapacityKg ?? 50} kg`
+                                  : `${cap.volumeCapacityM3} m³ / ${cap.weightCapacityKg} kg`}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </label>
+                    </>
+                  )}
                   <div className="field">
                     <label htmlFor="dispatch-new-cap-vol">
                       {isPassenger ? "Seat capacity" : "Volume capacity (m³)"}

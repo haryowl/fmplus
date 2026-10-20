@@ -35,11 +35,26 @@ export type TrackerDeviceGroup = {
 
 export type TelematicsSource = "armada" | "devices" | "both";
 
-function hashDeviceId(id: string): number {
+/** Stable negative status-row id for a GPS device with no Armada link. */
+export function hashDeviceId(id: string): number {
   let h = 0;
   for (let i = 0; i < id.length; i += 1) h = (Math.imul(31, h) + id.charCodeAt(i)) | 0;
   const n = Math.abs(h) % 900_000_000;
   return -(n + 100_000_000);
+}
+
+/** Map status-row ids (Armada or synthetic) → tracker device UUID from last fixes. */
+export function deviceIdByStatusRowId(fixes: TrackerLastFix[]): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const fix of fixes) {
+    if (!fix.deviceId) continue;
+    if (fix.armadaUserId != null && fix.armadaUserId > 0) {
+      map.set(fix.armadaUserId, fix.deviceId);
+    } else {
+      map.set(hashDeviceId(fix.deviceId), fix.deviceId);
+    }
+  }
+  return map;
 }
 
 /** Map a device last-fix into the Live Ops / Last Status row shape. */

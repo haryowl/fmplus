@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  deviceIdByStatusRowId,
+  hashDeviceId,
   mergeArmadaRowsWithDeviceFixes,
   trackerFixToStatusRow,
   type TrackerLastFix,
@@ -36,6 +38,18 @@ describe("trackerFixToStatusRow", () => {
   it("uses a stable negative id for orphan devices", () => {
     const row = trackerFixToStatusRow(fix({ deviceId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", imei: "3520" }));
     expect(row.id).toBeLessThan(0);
+  });
+});
+
+describe("deviceIdByStatusRowId", () => {
+  it("maps linked and synthetic status ids to device UUID", () => {
+    const orphanId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const map = deviceIdByStatusRowId([
+      fix({ deviceId: "linked-dev", imei: "1", armadaUserId: 42 }),
+      fix({ deviceId: orphanId, imei: "2" }),
+    ]);
+    expect(map.get(42)).toBe("linked-dev");
+    expect(map.get(hashDeviceId(orphanId))).toBe(orphanId);
   });
 });
 

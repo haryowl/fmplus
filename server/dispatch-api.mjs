@@ -581,6 +581,7 @@ function publicJob(row, stops = []) {
     armadaUserId: row.armada_user_id == null ? null : Number(row.armada_user_id),
     armadaUsername: row.armada_username || "",
     userDisplayName: row.user_display_name || "",
+    trackerDeviceId: row.tracker_device_id || null,
     assignedFieldUserId: row.assigned_field_user_id || null,
     assigneeUsername: row.assignee_username || "",
     assigneeDisplayName: row.assignee_display_name || "",
@@ -3146,14 +3147,31 @@ export async function handleDispatchRequest(req, res) {
         return true;
       }
       const notes = String(body.notes || "").trim().slice(0, 4000) || null;
-      const armadaUserId =
+      let armadaUserId =
         body.armadaUserId == null || body.armadaUserId === ""
           ? null
           : Number.isInteger(Number(body.armadaUserId)) && Number(body.armadaUserId) > 0
             ? Number(body.armadaUserId)
             : null;
-      const armadaUsername = String(body.armadaUsername || "").trim().slice(0, 120) || null;
-      const userDisplayName = String(body.userDisplayName || "").trim().slice(0, 200) || null;
+      let armadaUsername = String(body.armadaUsername || "").trim().slice(0, 120) || null;
+      let userDisplayName = String(body.userDisplayName || "").trim().slice(0, 200) || null;
+      let trackerDeviceId = null;
+      {
+        const { resolveTenantTrackerDevice } = await import("./tracker-device-resolve.mjs");
+        const device = await resolveTenantTrackerDevice(dbTenant.id, body.trackerDeviceId);
+        if (body.trackerDeviceId && !device) {
+          json(res, 400, { error: "trackerDeviceId not found" });
+          return true;
+        }
+        if (device) {
+          trackerDeviceId = device.id;
+          if (!userDisplayName) userDisplayName = device.label;
+          if (!armadaUsername && device.imei) armadaUsername = device.imei;
+          if (armadaUserId == null && device.armadaUserId != null) {
+            armadaUserId = device.armadaUserId;
+          }
+        }
+      }
       let assigneeId = body.assignedFieldUserId || null;
       if (assigneeId) {
         const ok = await dbQuery(
@@ -3208,13 +3226,13 @@ export async function handleDispatchRequest(req, res) {
       const inserted = await dbQuery(
         `INSERT INTO dispatch_jobs (
            tenant_id, status, title, notes,
-           armada_user_id, armada_username, user_display_name,
+           armada_user_id, armada_username, user_display_name, tracker_device_id,
            assigned_field_user_id, assigned_at,
            volume_capacity_m3, weight_capacity_kg, seat_capacity, luggage_capacity_kg, service_date
          ) VALUES (
-           $1,$2,$3,$4,$5,$6,$7,$8,
-           CASE WHEN $8::uuid IS NULL THEN NULL ELSE now() END,
-           COALESCE($9, 12), COALESCE($10, 1500), $11, $12, $13
+           $1,$2,$3,$4,$5,$6,$7,$8,$9,
+           CASE WHEN $9::uuid IS NULL THEN NULL ELSE now() END,
+           COALESCE($10, 12), COALESCE($11, 1500), $12, $13, $14
          )
          RETURNING id`,
         [
@@ -3225,6 +3243,7 @@ export async function handleDispatchRequest(req, res) {
           armadaUserId,
           armadaUsername,
           userDisplayName,
+          trackerDeviceId,
           assigneeId,
           volCap,
           wtCap,
@@ -3346,13 +3365,13 @@ export async function handleDispatchRequest(req, res) {
       const inserted = await dbQuery(
         `INSERT INTO dispatch_jobs (
            tenant_id, status, title, notes,
-           armada_user_id, armada_username, user_display_name,
+           armada_user_id, armada_username, user_display_name, tracker_device_id,
            assigned_field_user_id, assigned_at,
            volume_capacity_m3, weight_capacity_kg, service_date
          ) VALUES (
-           $1,$2,$3,$4,$5,$6,$7,$8,
-           CASE WHEN $8::uuid IS NULL THEN NULL ELSE now() END,
-           COALESCE($9, 12), COALESCE($10, 1500), $11
+           $1,$2,$3,$4,$5,$6,$7,$8,$9,
+           CASE WHEN $9::uuid IS NULL THEN NULL ELSE now() END,
+           COALESCE($10, 12), COALESCE($11, 1500), $12
          )
          RETURNING id`,
         [
@@ -3363,6 +3382,7 @@ export async function handleDispatchRequest(req, res) {
           source.armada_user_id == null ? null : Number(source.armada_user_id),
           source.armada_username || null,
           source.user_display_name || null,
+          source.tracker_device_id || null,
           assigneeId,
           source.volume_capacity_m3 == null ? null : Number(source.volume_capacity_m3),
           source.weight_capacity_kg == null ? null : Number(source.weight_capacity_kg),
@@ -3595,6 +3615,33 @@ export async function handleDispatchRequest(req, res) {
       if ("userDisplayName" in body) {
         params.push(String(body.userDisplayName || "").trim().slice(0, 200) || null);
         sets.push(`user_display_name = $${params.length}`);
+      }
+      if ("trackerDeviceId" in body) {
+        const { resolveTenantTrackerDevice } = await import("./tracker-device-resolve.mjs");
+        if (body.trackerDeviceId == null || body.trackerDeviceId === "") {
+          params.push(null);
+          sets.push(`tracker_device_id = $${params.length}`);
+        } else {
+          const device = await resolveTenantTrackerDevice(dbTenant.id, body.trackerDeviceId);
+          if (!device) {
+            json(res, 400, { error: "trackerDeviceId not found" });
+            return true;
+          }
+          params.push(device.id);
+          sets.push(`tracker_device_id = $${params.length}`);
+          if (!("userDisplayName" in body)) {
+            params.push(device.label);
+            sets.push(`user_display_name = $${params.length}`);
+          }
+          if (!("armadaUsername" in body) && device.imei) {
+            params.push(device.imei);
+            sets.push(`armada_username = $${params.length}`);
+          }
+          if (!("armadaUserId" in body) && device.armadaUserId != null) {
+            params.push(device.armadaUserId);
+            sets.push(`armada_user_id = $${params.length}`);
+          }
+        }
       }
       if ("assignedFieldUserId" in body) {
         let assigneeId = body.assignedFieldUserId || null;

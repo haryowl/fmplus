@@ -38,6 +38,7 @@ import { filterStatusRows, type LastStatusRow } from "../lib/lastStatus";
 import { formatKm, formatSpeed } from "../lib/format";
 import { fullHref, tripsHref, writeLocationSearch } from "../lib/routing";
 import {
+  deviceIdByStatusRowId,
   fetchDeviceGroupScope,
   fetchTrackerDeviceGroups,
   fetchTrackerLastStatus,
@@ -63,6 +64,7 @@ type VehicleGroup = {
 };
 
 function vehicleGroupKey(ev: ServiceEvent): string {
+  if (ev.trackerDeviceId) return `d:${ev.trackerDeviceId}`;
   if (ev.armadaUserId != null) return `u:${ev.armadaUserId}`;
   return `n:${eventVehicleLabel(ev)}`;
 }
@@ -148,6 +150,8 @@ export default function MaintenanceBoard() {
     return params.get("deviceGroupId") || "";
   });
   const [deviceGroupArmadaIds, setDeviceGroupArmadaIds] = useState<Set<number> | null>(null);
+  const [deviceGroupDeviceIds, setDeviceGroupDeviceIds] = useState<Set<string> | null>(null);
+  const [deviceIdByRowId, setDeviceIdByRowId] = useState<Map<number, string>>(() => new Map());
   const [deviceGroupMemberCount, setDeviceGroupMemberCount] = useState(0);
   const [statusFilter, setStatusFilter] = useState<MaintenanceStatusFilter>("open");
   const [healthFilter, setHealthFilter] = useState<"" | "upcoming" | "due" | "overdue" | "completed">(
@@ -241,17 +245,19 @@ export default function MaintenanceBoard() {
 
   const groupScopedReminders = useMemo(() => {
     if (!deviceGroupId) return reminders;
-    // Jobs/reminders still key off Armada ids when linked; GPS-only members stay on the vehicle list.
-    const linked = deviceGroupArmadaIds ? [...deviceGroupArmadaIds] : [];
-    if (!linked.length) return reminders.filter(() => false);
-    const allowUsers = new Set(linked);
+    const allowUsers = deviceGroupArmadaIds;
+    const allowDevices = deviceGroupDeviceIds;
     const allowEventIds = new Set(
       events
-        .filter((ev) => ev.armadaUserId != null && allowUsers.has(Number(ev.armadaUserId)))
+        .filter((ev) => {
+          if (ev.trackerDeviceId && allowDevices?.has(ev.trackerDeviceId)) return true;
+          if (ev.armadaUserId != null && allowUsers?.has(Number(ev.armadaUserId))) return true;
+          return false;
+        })
         .map((ev) => ev.id),
     );
     return reminders.filter((r) => r.eventId != null && allowEventIds.has(r.eventId));
-  }, [reminders, deviceGroupId, deviceGroupArmadaIds, events]);
+  }, [reminders, deviceGroupId, deviceGroupArmadaIds, deviceGroupDeviceIds, events]);
 
   const filteredReminders = useMemo(() => {
     if (reminderKind === "all") return groupScopedReminders;
@@ -275,14 +281,13 @@ export default function MaintenanceBoard() {
   const filteredEvents = useMemo(() => {
     let list = events;
     if (deviceGroupId) {
-      const linked = deviceGroupArmadaIds ? [...deviceGroupArmadaIds] : [];
-      if (linked.length) {
-        const allow = new Set(linked);
-        list = list.filter((ev) => ev.armadaUserId != null && allow.has(Number(ev.armadaUserId)));
-      } else {
-        // Group has GPS devices only — no Armada-keyed jobs to show yet.
-        list = [];
-      }
+      const allowUsers = deviceGroupArmadaIds;
+      const allowDevices = deviceGroupDeviceIds;
+      list = list.filter((ev) => {
+        if (ev.trackerDeviceId && allowDevices?.has(ev.trackerDeviceId)) return true;
+        if (ev.armadaUserId != null && allowUsers?.has(Number(ev.armadaUserId))) return true;
+        return false;
+      });
     } else if (groupId && users.length) {
       const allow = new Set(users.map((u) => u.id));
       list = list.filter((ev) => ev.armadaUserId != null && allow.has(Number(ev.armadaUserId)));
@@ -302,7 +307,7 @@ export default function MaintenanceBoard() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [events, listQuery, deviceGroupId, deviceGroupArmadaIds, groupId, users]);
+  }, [events, listQuery, deviceGroupId, deviceGroupArmadaIds, deviceGroupDeviceIds, groupId, users]);
 
   const isHistoryView =
     healthFilter === "completed" ||
@@ -408,6 +413,7 @@ export default function MaintenanceBoard() {
     if (!ready) return;
     if (!deviceGroupId) {
       setDeviceGroupArmadaIds(null);
+      setDeviceGroupDeviceIds(null);
       setDeviceGroupMemberCount(0);
       return;
     }
@@ -415,10 +421,12 @@ export default function MaintenanceBoard() {
     fetchDeviceGroupScope([deviceGroupId], ac.signal)
       .then((scope) => {
         setDeviceGroupArmadaIds(new Set(scope.armadaUserIds));
+        setDeviceGroupDeviceIds(new Set(scope.deviceIds));
         setDeviceGroupMemberCount(scope.memberCount || scope.deviceIds.length);
       })
       .catch(() => {
         setDeviceGroupArmadaIds(new Set());
+        setDeviceGroupDeviceIds(new Set());
         setDeviceGroupMemberCount(0);
       });
     return () => ac.abort();
@@ -447,9 +455,11 @@ export default function MaintenanceBoard() {
         : Promise.resolve(null),
     ])
       .then(([armadaRows, deviceStatus, scope]) => {
+        setDeviceIdByRowId(deviceIdByStatusRowId(deviceStatus.fixes));
         if (deviceGroupId) {
           const allow = new Set(scope?.armadaUserIds || []);
           setDeviceGroupArmadaIds(allow);
+          setDeviceGroupDeviceIds(new Set(scope?.deviceIds || []));
           setDeviceGroupMemberCount(scope?.memberCount || scope?.deviceIds?.length || 0);
           // Device-first: group last-status fixes are authoritative; overlay linked Armada rows.
           const armadaScoped = allow.size
@@ -549,7 +559,14 @@ export default function MaintenanceBoard() {
     try {
       const uid = Number(selectedUserId);
       const st = statusById.get(uid);
-      const name = st?.name || selectedUser?.name || displayFallback(uid);
+      const trackerDeviceId = deviceIdByRowId.get(uid) || null;
+      const linkedArmada = Number.isInteger(uid) && uid > 0 ? uid : null;
+      if (!linkedArmada && !trackerDeviceId) {
+        setError("Select a GPS device or linked Armada vehicle.");
+        setBusyId(null);
+        return;
+      }
+      const name = st?.name || selectedUser?.name || (linkedArmada ? displayFallback(linkedArmada) : "Device");
       const uname = st?.username || selectedUser?.username || "";
       const oneTime = createScheduleMode === "one_time";
       const created = await createServiceEvent({
@@ -557,7 +574,8 @@ export default function MaintenanceBoard() {
         notes: notes.trim() || undefined,
         userDisplayName: name,
         armadaUsername: uname || undefined,
-        armadaUserId: uid,
+        armadaUserId: linkedArmada,
+        trackerDeviceId,
         lat: st?.lat ?? null,
         lon: st?.lon ?? null,
         odometerKm: st?.odometerKm ?? null,
@@ -1209,9 +1227,8 @@ export default function MaintenanceBoard() {
         deviceGroupArmadaIds &&
         deviceGroupArmadaIds.size === 0 ? (
           <div className="banner warn">
-            {deviceGroupMemberCount} GPS device(s) in this group. Maintenance jobs still use Armada
-            vehicle ids when linked — optional link in Admin → Device Management. Vehicle list and
-            live status work without Armada.
+            {deviceGroupMemberCount} GPS device(s) in this group — create jobs directly on devices
+            (Armada link optional in Admin → Device Management).
           </div>
         ) : null}
         {error && <div className="banner error">{error}</div>}

@@ -41,6 +41,8 @@ export type ServiceEvent = {
   armadaUserId: number | null;
   armadaUsername: string;
   userDisplayName: string;
+  /** Optional GPS tracker device (device-native / unlinked Armada). */
+  trackerDeviceId?: string | null;
   lat: number | null;
   lon: number | null;
   notificationId: string | null;
@@ -679,6 +681,7 @@ export async function createServiceEvent(body: {
   armadaUsername?: string;
   userDisplayName?: string;
   armadaUserId?: number | null;
+  trackerDeviceId?: string | null;
   lat?: number | null;
   lon?: number | null;
   odometerKm?: number | null;

@@ -254,6 +254,8 @@ export type DispatchJob = {
   armadaUserId: number | null;
   armadaUsername: string;
   userDisplayName: string;
+  /** Optional GPS tracker device (device-native / unlinked Armada). */
+  trackerDeviceId?: string | null;
   assignedFieldUserId: string | null;
   assigneeUsername?: string;
   assigneeDisplayName?: string;
@@ -555,6 +557,7 @@ export async function createDispatchJob(body: {
   armadaUserId?: number | null;
   armadaUsername?: string;
   userDisplayName?: string;
+  trackerDeviceId?: string | null;
   assignedFieldUserId?: string | null;
   profile?: "cargo" | "passenger" | "sales";
   volumeCapacityM3?: number | null;
