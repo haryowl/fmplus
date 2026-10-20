@@ -398,7 +398,7 @@ export default function MaintenanceBoard() {
   useEffect(() => {
     if (!ready) return;
     const ac = new AbortController();
-    fetchTrackerDeviceGroups(ac.signal)
+    fetchTrackerDeviceGroups(ac.signal, { members: true })
       .then((list) => setDeviceGroups(list))
       .catch(() => setDeviceGroups([]));
     return () => ac.abort();
