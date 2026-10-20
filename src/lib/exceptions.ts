@@ -119,14 +119,6 @@ export function exceptionUserId(item: ExceptionItem): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-/** Synthetic status-row id for GPS-only derived rows (negative hash). */
-export function exceptionStatusRowId(item: ExceptionItem): number | null {
-  if (item.userId != null && Number.isInteger(item.userId) && item.userId !== 0) {
-    return item.userId;
-  }
-  return exceptionUserId(item);
-}
-
 /** Scope notifier/derived rows to a group (or tenant allowlist). */
 export function filterExceptionsByGroup(
   items: ExceptionItem[],
