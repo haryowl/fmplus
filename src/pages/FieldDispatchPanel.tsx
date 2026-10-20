@@ -438,7 +438,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
     setGpsWarn("");
     try {
       const phone = await readPhonePosition();
-      if (!phone) setGpsWarn("Phone GPS unavailable — Armada position will still be recorded if available.");
+      if (!phone) setGpsWarn("Phone GPS unavailable — vehicle / GPS device position will still be recorded if available.");
       if (stop.status === "pending") {
         const { job } = await fieldPatchStop(selected.id, stop.id, {
           status: "arrived",
@@ -533,7 +533,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
         }
       }
       const phone = await readPhonePosition();
-      if (!phone) setGpsWarn("Phone GPS unavailable — Armada position will still be recorded if available.");
+      if (!phone) setGpsWarn("Phone GPS unavailable — vehicle / GPS device position will still be recorded if available.");
       const { job, deliveryOrderId } = await fieldPatchStop(selected.id, activeStop.id, {
         status: "done",
         notes: stopNote,
@@ -594,7 +594,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
     setGpsWarn("");
     try {
       const phone = await readPhonePosition();
-      if (!phone) setGpsWarn("Phone GPS unavailable — Armada position will still be recorded if available.");
+      if (!phone) setGpsWarn("Phone GPS unavailable — vehicle / GPS device position will still be recorded if available.");
       const { job } = await fieldPatchStop(selected.id, activeStop.id, {
         status: "skipped",
         notes: stopNote,

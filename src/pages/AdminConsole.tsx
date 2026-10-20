@@ -1215,10 +1215,17 @@ export default function AdminConsole() {
         telematicsSource: draft.telematicsSource,
       };
       if (selectedId === "new") {
-        if (!payload.token) throw new Error("Armada token is required for new tenants");
+        if (!payload.token && draft.telematicsSource !== "devices") {
+          throw new Error("Armada token is required (or set telematics to Direct devices only)");
+        }
         const created = await api<{ tenant: AdminTenant }>("/api/admin/tenants", {
           method: "POST",
-          body: JSON.stringify({ ...payload, token: draft.token.trim(), webhookSecret: draft.webhookSecret.trim() }),
+          body: JSON.stringify({
+            ...payload,
+            token: draft.token.trim(),
+            webhookSecret: draft.webhookSecret.trim(),
+            telematicsSource: draft.telematicsSource,
+          }),
         });
         setNotice(`Created tenant ${created.tenant.key}`);
         await loadTenants();
@@ -2275,7 +2282,7 @@ export default function AdminConsole() {
                     />
                   </label>
                   <label>
-                    App ID
+                    App ID{draft.telematicsSource === "devices" ? " (placeholder OK)" : ""}
                     <input
                       value={draft.appId}
                       onChange={(e) => setDraft({ ...draft, appId: e.target.value })}
@@ -2428,7 +2435,12 @@ export default function AdminConsole() {
               >
                 <div className="admin-form-grid">
                   <label>
-                    Armada token {selectedId !== "new" ? "(leave blank to keep)" : ""}
+                    Armada token{" "}
+                    {selectedId !== "new"
+                      ? "(leave blank to keep)"
+                      : draft.telematicsSource === "devices"
+                        ? "(optional for devices-only)"
+                        : ""}
                     <input
                       type="password"
                       value={draft.token}

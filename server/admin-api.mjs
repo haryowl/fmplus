@@ -289,18 +289,23 @@ export async function handleAdminRequest(req, res) {
       }
       const body = await readJson(req);
       const key = String(body.key || "").trim();
-      const appId = Number(body.appId);
+      const telematicsSource = normalizeTelematicsSource(body.telematicsSource);
+      let appId = Number(body.appId);
       const token = String(body.token || "").trim();
       if (!isTenantKey(key)) {
         json(res, 400, { error: "Invalid embed key (8–80 chars: A–Z a–z 0–9 . _ -)" });
         return true;
       }
+      // Devices-only tenants may omit Armada appId/token (placeholder app_id=1).
+      if (telematicsSource === "devices" && (!Number.isInteger(appId) || appId < 1)) {
+        appId = 1;
+      }
       if (!Number.isInteger(appId) || appId < 1) {
         json(res, 400, { error: "Invalid appId" });
         return true;
       }
-      if (!token) {
-        json(res, 400, { error: "Armada token is required" });
+      if (!token && telematicsSource !== "devices") {
+        json(res, 400, { error: "Armada token is required (or set telematics source to Direct devices only)" });
         return true;
       }
       const entitlements = mergeEntitlements(body.entitlements);
@@ -309,7 +314,7 @@ export async function handleAdminRequest(req, res) {
       const displayName = String(body.displayName || "").trim();
       const webhookSecret = String(body.webhookSecret || "").trim();
       const webhookHash = webhookSecret ? hashWebhookSecret(webhookSecret) : null;
-      const tokenCipher = encryptSecret(token);
+      const tokenCipher = token ? encryptSecret(token) : null;
       const notifyEmails = String(body.notifyEmails || "").trim() || null;
       const notifyWhatsapp = String(body.notifyWhatsapp || "").trim() || null;
       const wablasBaseUrl = String(body.wablasBaseUrl || "").trim() || null;
@@ -320,12 +325,14 @@ export async function handleAdminRequest(req, res) {
       const inserted = await dbQuery(
         `INSERT INTO tenants (
            key, app_id, token_ciphertext, webhook_secret_hash, user_ids, group_ids, entitlements, enabled, display_name,
-           notify_emails, notify_whatsapp, wablas_base_url, wablas_token_ciphertext, wablas_secret_ciphertext
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14)
+           notify_emails, notify_whatsapp, wablas_base_url, wablas_token_ciphertext, wablas_secret_ciphertext,
+           telematics_source
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15)
          RETURNING id, key, app_id, display_name, enabled, user_ids, group_ids, entitlements,
                    webhook_secret_hash, token_ciphertext,
                    notify_emails, notify_whatsapp, wablas_base_url,
                    wablas_token_ciphertext, wablas_secret_ciphertext,
+                   telematics_source,
                    created_at, updated_at`,
         [
           key,
@@ -342,9 +349,10 @@ export async function handleAdminRequest(req, res) {
           wablasBaseUrl,
           wablasTokenCipher,
           wablasSecretCipher,
+          telematicsSource,
         ],
       );
-      await writeAudit(admin.id, "tenant.create", { key, appId });
+      await writeAudit(admin.id, "tenant.create", { key, appId, telematicsSource });
       await initTenantVault();
       json(res, 201, { tenant: publicTenantRow(inserted.rows[0]) });
       return true;
@@ -1249,7 +1257,9 @@ export async function handleAdminRequest(req, res) {
           }
         }
         let tokenCipher = current.token_ciphertext;
-        if (body.token !== undefined && String(body.token).trim()) {
+        if (body.clearToken === true) {
+          tokenCipher = null;
+        } else if (body.token !== undefined && String(body.token).trim()) {
           tokenCipher = encryptSecret(String(body.token).trim());
         }
         let webhookHash = current.webhook_secret_hash;

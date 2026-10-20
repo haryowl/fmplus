@@ -21,7 +21,11 @@ export async function loadTenantsFromDatabase(upsert) {
   let loaded = 0;
   for (const row of res.rows) {
     try {
-      const token = decryptSecret(row.token_ciphertext);
+      // Null ciphertext = devices-only tenant (no Armada token).
+      const token =
+        row.token_ciphertext == null || row.token_ciphertext === ""
+          ? ""
+          : decryptSecret(row.token_ciphertext);
       upsert({
         key: row.key,
         appId: Number(row.app_id),

@@ -15,7 +15,8 @@ import {
   type ExceptionItem,
   type ExceptionStatusFilter,
 } from "../lib/exceptions";
-import { filterStatusRows } from "../lib/lastStatus";
+import { filterStatusRows, type LastStatusRow } from "../lib/lastStatus";
+import { fetchTrackerLastStatus, mergeArmadaRowsWithDeviceFixes } from "../lib/trackerDevices";
 import { fullHref, tripsHref, writeLocationSearch } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
@@ -144,13 +145,33 @@ export default function ExceptionsInbox() {
     }
     const ac = new AbortController();
     const gid = Number(groupId);
-    void fetchUsersStatus({
-      groupId: Number.isFinite(gid) && gid > 0 ? gid : undefined,
-      signal: ac.signal,
-    })
-      .then((rows) => {
-        const ids = groupId && users.length ? users.map((u) => u.id) : allowedUserIds.length ? allowedUserIds : undefined;
-        const scoped = filterStatusRows(rows, ids);
+    void Promise.all([
+      fetchUsersStatus({
+        groupId: Number.isFinite(gid) && gid > 0 ? gid : undefined,
+        signal: ac.signal,
+      }).catch((err: Error) => {
+        if (err.name === "AbortError") throw err;
+        return [] as LastStatusRow[];
+      }),
+      fetchTrackerLastStatus(ac.signal).catch((err: Error) => {
+        if (err.name === "AbortError") throw err;
+        return { fixes: [], telematicsSource: "both" as const };
+      }),
+    ])
+      .then(([armadaRows, deviceStatus]) => {
+        const merged = mergeArmadaRowsWithDeviceFixes(
+          armadaRows,
+          deviceStatus.fixes,
+          deviceStatus.telematicsSource,
+        );
+        const ids =
+          groupId && users.length ? users.map((u) => u.id) : allowedUserIds.length ? allowedUserIds : undefined;
+        // Devices-only / unscoped: keep GPS-only rows (synthetic negative ids).
+        // Armada-scoped tenants: filter to allowed users; linked devices overlay those ids.
+        const scoped =
+          deviceStatus.telematicsSource === "devices" || !ids?.length
+            ? merged
+            : filterStatusRows(merged, ids);
         setNow(Date.now());
         setDerived(derivedStaleExceptions(scoped, Date.now()));
       })
@@ -231,7 +252,7 @@ export default function ExceptionsInbox() {
           <BrandMark />
           <div>
             <h1>Exceptions</h1>
-            <p>Armada Command notifier + derived stale positions</p>
+            <p>Command notifier + derived stale positions (Armada &amp; GPS devices)</p>
           </div>
         </div>
         <div className="topbar-actions">
@@ -322,7 +343,7 @@ export default function ExceptionsInbox() {
           {list.length === 0 && !loading && (
             <li className="muted exceptions-empty">
               {query.tenantKey
-                ? "No exceptions yet. Wire Armada Command notifier or wait for stale devices."
+                ? "No exceptions yet. Wire Command notifier or wait for stale GPS positions."
                 : "Add k= to the URL."}
             </li>
           )}

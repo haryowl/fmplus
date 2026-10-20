@@ -22,8 +22,9 @@ function asIdList(value) {
 function asTenant(key, raw, source = "file") {
   if (!raw || typeof raw !== "object") return null;
   const appId = Number(raw.appId);
+  // Empty token is allowed for devices-only tenants (Armada API calls check token separately).
   const token = String(raw.token || "").trim();
-  if (!Number.isInteger(appId) || appId < 1 || !token) return null;
+  if (!Number.isInteger(appId) || appId < 1) return null;
   return {
     key,
     appId,
