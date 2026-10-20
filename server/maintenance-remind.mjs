@@ -324,9 +324,9 @@ export async function evaluateTenantReminders(tenantId, vaultTenant) {
       }
     }
 
-    if (ev.remindIntervalKm != null && vaultTenant?.token) {
+    if (ev.remindIntervalKm != null && (ev.trackerDeviceId || vaultTenant?.token)) {
       try {
-        const km = await computeKmAccrued(ev, vaultTenant);
+        const km = await computeKmAccrued(ev, vaultTenant || {}, { tenantId });
         if (km.kmAccrued != null && km.intervalKm != null) {
           const remaining = km.intervalKm - km.kmAccrued;
           if (remaining <= 0) {
