@@ -54,6 +54,33 @@ export const ACTION_KEYS = [
   "uploadPom",
 ];
 
+/** Max Fleet Live Dashboard/Live mapper pin ids per tenant. */
+export const FLEET_LIVE_DISPLAY_PINS_MAX = 24;
+
+const FLEET_LIVE_PIN_ID_RE = /^[a-zA-Z0-9_.:/-]{1,64}$/;
+
+/**
+ * Normalize Admin-configured mapper pin ids.
+ * `null` = use built-in defaults; array (incl. empty) = explicit override.
+ * @param {unknown} raw
+ * @returns {string[] | null}
+ */
+export function normalizeFleetLiveDisplayPins(raw) {
+  if (raw == null) return null;
+  if (!Array.isArray(raw)) return null;
+  /** @type {string[]} */
+  const out = [];
+  const seen = new Set();
+  for (const item of raw) {
+    const id = String(item || "").trim();
+    if (!FLEET_LIVE_PIN_ID_RE.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    if (out.length >= FLEET_LIVE_DISPLAY_PINS_MAX) break;
+  }
+  return out;
+}
+
 export function defaultEntitlements() {
   return {
     modules: {
@@ -104,6 +131,8 @@ export function defaultEntitlements() {
       dispatch: false,
     },
     scan: defaultScanEntitlements(),
+    /** null = built-in Fleet Live pin defaults; string[] = tenant override */
+    fleetLiveDisplayPins: /** @type {string[] | null} */ (null),
   };
 }
 
@@ -122,6 +151,9 @@ export function mergeEntitlements(raw) {
     }
   }
   base.scan = mergeScanEntitlements(src.scan);
+  if ("fleetLiveDisplayPins" in src) {
+    base.fleetLiveDisplayPins = normalizeFleetLiveDisplayPins(src.fleetLiveDisplayPins);
+  }
   // Back-compat: tenants that only had Armada `live` keep Fleet Live until they set fleetLive.
   const mods = src.modules;
   if (

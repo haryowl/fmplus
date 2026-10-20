@@ -121,6 +121,7 @@ export async function fetchTrackerLastStatus(
 ): Promise<{
   fixes: TrackerLastFix[];
   telematicsSource: TelematicsSource;
+  displayPinIds: string[];
 }> {
   const q = new URLSearchParams();
   for (const id of opts?.groupIds || []) {
@@ -135,12 +136,14 @@ export async function fetchTrackerLastStatus(
   const data = (await res.json().catch(() => ({}))) as {
     fixes?: TrackerLastFix[];
     telematicsSource?: TelematicsSource;
+    displayPinIds?: string[];
     error?: string;
   };
   if (!res.ok) throw new Error(data.error || `Tracker status ${res.status}`);
   return {
     fixes: data.fixes || [],
     telematicsSource: data.telematicsSource || "both",
+    displayPinIds: Array.isArray(data.displayPinIds) ? data.displayPinIds.map(String) : [],
   };
 }
 

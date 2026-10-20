@@ -5,6 +5,7 @@
 import crypto from "node:crypto";
 import { dbQuery } from "./db.mjs";
 import { applyDeviceRemap } from "./device-manager.mjs";
+import { mergeEntitlements } from "./entitlements.mjs";
 import {
   deviceIdsInGroups,
   groupSummariesByDeviceIds,
@@ -751,13 +752,54 @@ export const FLEET_DISPLAY_PIN_IDS = [
   "gps.valid",
 ];
 
-export function pickDisplayParams(mappedAttrs) {
+/** Alias lookups when a configured pin id is missing from mapped_attrs. */
+export const FLEET_DISPLAY_PIN_ALIASES = {
+  ext_voltage: ["voltage.ext"],
+  "voltage.ext": ["ext_voltage"],
+  battery_voltage: ["voltage.batt"],
+  "voltage.batt": ["battery_voltage"],
+  fuel_level: ["fuel_liters"],
+  "can.fuel_l": ["fuel_liters"],
+};
+
+/**
+ * Resolve effective pin ids for a tenant (Admin override or built-in defaults).
+ * @param {unknown} entitlements
+ * @returns {string[]}
+ */
+export function resolveFleetLiveDisplayPins(entitlements) {
+  const merged = mergeEntitlements(entitlements);
+  if (Array.isArray(merged.fleetLiveDisplayPins)) {
+    return merged.fleetLiveDisplayPins.slice();
+  }
+  return FLEET_DISPLAY_PIN_IDS.slice();
+}
+
+export async function tenantFleetLiveDisplayPins(tenantId) {
+  const rows = await dbQuery(`SELECT entitlements FROM tenants WHERE id = $1`, [tenantId]);
+  return resolveFleetLiveDisplayPins(rows.rows[0]?.entitlements);
+}
+
+/**
+ * @param {Record<string, unknown>} mappedAttrs
+ * @param {string[]} [pinIds]
+ */
+export function pickDisplayParams(mappedAttrs, pinIds = FLEET_DISPLAY_PIN_IDS) {
   const mapped =
     mappedAttrs && typeof mappedAttrs === "object" && !Array.isArray(mappedAttrs) ? mappedAttrs : {};
+  const ids = Array.isArray(pinIds) && pinIds.length ? pinIds : FLEET_DISPLAY_PIN_IDS;
   /** @type {Record<string, string | number | boolean>} */
   const out = {};
-  for (const id of FLEET_DISPLAY_PIN_IDS) {
-    const v = mapped[id];
+  for (const id of ids) {
+    let v = mapped[id];
+    if (v === null || v === undefined) {
+      for (const alias of FLEET_DISPLAY_PIN_ALIASES[id] || []) {
+        if (mapped[alias] !== null && mapped[alias] !== undefined) {
+          v = mapped[alias];
+          break;
+        }
+      }
+    }
     if (v === null || v === undefined) continue;
     if (typeof v === "object") continue;
     out[id] = v;
@@ -765,7 +807,11 @@ export function pickDisplayParams(mappedAttrs) {
   return out;
 }
 
-export function enrichFixTelemetry(row) {
+/**
+ * @param {object} row
+ * @param {string[]} [pinIds]
+ */
+export function enrichFixTelemetry(row, pinIds = FLEET_DISPLAY_PIN_IDS) {
   const mapped =
     row.mapped_attrs && typeof row.mapped_attrs === "object" && !Array.isArray(row.mapped_attrs)
       ? row.mapped_attrs
@@ -785,7 +831,7 @@ export function enrichFixTelemetry(row) {
     odometerKm,
     fuelLevel,
     fuelLiters,
-    displayParams: pickDisplayParams(mapped),
+    displayParams: pickDisplayParams(mapped, pinIds),
   };
 }
 
@@ -966,6 +1012,9 @@ export async function buildTelematicsPosMap(tenantId, vaultTenant, opts = {}) {
 export async function listTenantLastFixes(tenantId, opts = {}) {
   const groupIds = Array.isArray(opts.groupIds) ? opts.groupIds.filter(Boolean) : [];
   const groupFilter = groupIds.length ? groupIds : null;
+  const pinIds = Array.isArray(opts.displayPinIds)
+    ? opts.displayPinIds
+    : await tenantFleetLiveDisplayPins(tenantId);
 
   // Single round-trip: filter by group membership + aggregate group labels.
   // Avoids deviceIdsInGroups + groupSummariesByDeviceIds (2 extra queries per poll).
@@ -1004,7 +1053,7 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
       recordedAt && !Number.isNaN(Date.parse(recordedAt))
         ? Math.max(0, Math.round((now - Date.parse(recordedAt)) / 1000))
         : null;
-    const tel = enrichFixTelemetry(r);
+    const tel = enrichFixTelemetry(r, pinIds);
     const displayLabel =
       (r.label && String(r.label).trim()) ||
       (r.plate && String(r.plate).trim()) ||

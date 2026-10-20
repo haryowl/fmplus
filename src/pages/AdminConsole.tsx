@@ -4,8 +4,13 @@ import {
   FEATURE_LABELS,
   mergeEntitlements,
   MODULE_LABELS,
+  normalizeFleetLiveDisplayPins,
   type Entitlements,
 } from "../lib/entitlements";
+import {
+  FLEET_DISPLAY_PIN_IDS,
+  parseDisplayPinIdsText,
+} from "../lib/fleetTelemetryParams";
 import {
   SCAN_ACTION_KEYS,
   SCAN_ACTION_LABELS,
@@ -158,6 +163,8 @@ type Draft = {
   dutyQuietSec: string;
   dutyMinMoveM: string;
   telematicsSource: "armada" | "devices" | "both";
+  /** Raw Admin text for Fleet Live pins; blank = defaults. */
+  fleetLiveDisplayPinsText: string;
 };
 
 /** Collapsed remap-rule cards shown before “Show more” (≈2 rows of 4). */
@@ -529,10 +536,12 @@ function emptyDraft(): Draft {
     dutyQuietSec: "60",
     dutyMinMoveM: "25",
     telematicsSource: "both",
+    fleetLiveDisplayPinsText: "",
   };
 }
 
 function draftFromTenant(t: AdminTenant): Draft {
+  const entitlements = mergeEntitlements(t.entitlements);
   return {
     key: t.key,
     appId: String(t.appId),
@@ -547,11 +556,15 @@ function draftFromTenant(t: AdminTenant): Draft {
     wablasToken: "",
     wablasSecret: "",
     enabled: t.enabled,
-    entitlements: mergeEntitlements(t.entitlements),
+    entitlements,
     dutyIntervalSec: String(t.dutyLocation?.intervalSec ?? 15),
     dutyQuietSec: String(t.dutyLocation?.quietSec ?? 60),
     dutyMinMoveM: String(t.dutyLocation?.minMoveM ?? 25),
     telematicsSource: t.telematicsSource || "both",
+    fleetLiveDisplayPinsText:
+      entitlements.fleetLiveDisplayPins == null
+        ? ""
+        : entitlements.fleetLiveDisplayPins.join(", "),
   };
 }
 
@@ -1171,6 +1184,9 @@ export default function AdminConsole() {
     setError("");
     setNotice("");
     try {
+      const fleetLiveDisplayPins = normalizeFleetLiveDisplayPins(
+        parseDisplayPinIdsText(draft.fleetLiveDisplayPinsText),
+      );
       const payload = {
         key: draft.key.trim(),
         appId: Number(draft.appId),
@@ -1178,7 +1194,10 @@ export default function AdminConsole() {
         userIds: parseIdList(draft.userIds),
         groupIds: parseIdList(draft.groupIds),
         enabled: draft.enabled,
-        entitlements: draft.entitlements,
+        entitlements: {
+          ...draft.entitlements,
+          fleetLiveDisplayPins,
+        },
         notifyEmails: draft.notifyEmails.trim(),
         notifyWhatsapp: draft.notifyWhatsapp.trim(),
         wablasBaseUrl: draft.wablasBaseUrl.trim(),
@@ -2321,6 +2340,21 @@ export default function AdminConsole() {
                       <option value="armada">Armada only</option>
                       <option value="devices">Direct devices only</option>
                     </select>
+                  </label>
+                  <label className="span-2">
+                    Fleet Live display pins
+                    <textarea
+                      rows={2}
+                      value={draft.fleetLiveDisplayPinsText}
+                      placeholder={FLEET_DISPLAY_PIN_IDS.join(", ")}
+                      onChange={(e) =>
+                        setDraft({ ...draft, fleetLiveDisplayPinsText: e.target.value })
+                      }
+                    />
+                    <span className="muted">
+                      Mapper param ids for Dashboard / Live selection pins (comma-separated). Leave
+                      blank for defaults ({FLEET_DISPLAY_PIN_IDS.join(", ")}).
+                    </span>
                   </label>
                 </div>
               </section>

@@ -18,6 +18,8 @@ export type TelemetryParamResponse = {
   recordedAt?: string | null;
 };
 
+export type DisplayPinColumn = { id: string; aliases?: string[]; label: string };
+
 /** Default Dashboard pin labels (ids match server FLEET_DISPLAY_PIN_IDS). */
 export const FLEET_DISPLAY_PIN_LABELS: Record<string, string> = {
   fuel_level: "Fuel %",
@@ -30,15 +32,58 @@ export const FLEET_DISPLAY_PIN_LABELS: Record<string, string> = {
   "gps.valid": "GPS",
 };
 
-/** Preferred pin order / de-dupe aliases for Dashboard columns. */
-export const FLEET_DASH_PIN_COLUMNS: Array<{ id: string; aliases?: string[]; label: string }> = [
-  { id: "fuel_level", label: "Fuel %" },
-  { id: "can.fuel_l", label: "Fuel L" },
-  { id: "ext_voltage", aliases: ["voltage.ext"], label: "Ext V" },
-  { id: "battery_voltage", aliases: ["voltage.batt"], label: "Batt V" },
-  { id: "pcb.temp", label: "PCB °C" },
-  { id: "gps.valid", label: "GPS" },
+/** Built-in pin order when tenant has no Admin override. */
+export const FLEET_DISPLAY_PIN_IDS = [
+  "fuel_level",
+  "can.fuel_l",
+  "ext_voltage",
+  "voltage.ext",
+  "battery_voltage",
+  "voltage.batt",
+  "pcb.temp",
+  "gps.valid",
 ];
+
+const PIN_ALIASES: Record<string, string[]> = {
+  ext_voltage: ["voltage.ext"],
+  "voltage.ext": ["ext_voltage"],
+  battery_voltage: ["voltage.batt"],
+  "voltage.batt": ["battery_voltage"],
+};
+
+/** Preferred pin order / de-dupe aliases for Dashboard columns (defaults). */
+export const FLEET_DASH_PIN_COLUMNS: DisplayPinColumn[] = FLEET_DISPLAY_PIN_IDS.map((id) => ({
+  id,
+  aliases: PIN_ALIASES[id],
+  label: FLEET_DISPLAY_PIN_LABELS[id] || id,
+}));
+
+const FUEL_PIN_IDS = new Set(["fuel_level", "can.fuel_l"]);
+
+function humanizePinId(id: string): string {
+  const known = FLEET_DISPLAY_PIN_LABELS[id];
+  if (known) return known;
+  const leaf = id.includes(".") ? id.slice(id.lastIndexOf(".") + 1) : id;
+  return leaf
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Build columns from tenant/last-status pin ids (falls back to defaults). */
+export function buildDisplayPinColumns(pinIds?: string[] | null): DisplayPinColumn[] {
+  const ids =
+    Array.isArray(pinIds) && pinIds.length > 0 ? pinIds : FLEET_DISPLAY_PIN_IDS;
+  return ids.map((id) => ({
+    id,
+    aliases: PIN_ALIASES[id],
+    label: humanizePinId(id),
+  }));
+}
+
+/** Extra mapper pins shown beside dedicated Fuel/Odo columns. */
+export function extraDisplayPinColumns(pinIds?: string[] | null): DisplayPinColumn[] {
+  return buildDisplayPinColumns(pinIds).filter((c) => !FUEL_PIN_IDS.has(c.id));
+}
 
 export function readDisplayPin(
   pins: Record<string, string | number | boolean> | null | undefined,
@@ -59,6 +104,17 @@ export function formatDisplayPinValue(v: string | number | boolean | null): stri
     return Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
   }
   return String(v);
+}
+
+/** Parse Admin textarea (comma / whitespace / newline separated). Blank → null (defaults). */
+export function parseDisplayPinIdsText(text: string): string[] | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const parts = trimmed
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts.length ? parts : null;
 }
 
 async function parseJson(res: Response) {

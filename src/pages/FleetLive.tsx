@@ -57,7 +57,7 @@ import {
 } from "../components/fleetLiveIcons";
 import { FleetLiveParamsPanel } from "../components/FleetLiveParamsPanel";
 import {
-  FLEET_DASH_PIN_COLUMNS,
+  extraDisplayPinColumns,
   formatDisplayPinValue,
   readDisplayPin,
 } from "../lib/fleetTelemetryParams";
@@ -240,6 +240,7 @@ export default function FleetLive() {
     }
   });
   const [locateToken, setLocateToken] = useState("");
+  const [displayPinIds, setDisplayPinIds] = useState<string[]>([]);
   const [selParamsOpen, setSelParamsOpen] = useState(false);
   const [sideNavOpen, setSideNavOpen] = useState(() => {
     try {
@@ -371,6 +372,7 @@ export default function FleetLive() {
               displayParams: fix.displayParams || {},
             };
           }
+          setDisplayPinIds(deviceStatus.displayPinIds || []);
           setRows(nextRows);
           setFixMeta(meta);
           setAlerts(safety);
@@ -582,9 +584,8 @@ export default function FleetLive() {
   const selected = rows.find((r) => r.id === selectedId) || null;
   const selectedMeta = selected ? fixMeta[selected.id] : null;
   const selectedCls = selected ? classifyLiveRow(selected, now) : null;
-  const selectedPins = FLEET_DASH_PIN_COLUMNS.filter(
-    (c) => c.id !== "fuel_level" && c.id !== "can.fuel_l",
-  )
+  const pinColumns = extraDisplayPinColumns(displayPinIds);
+  const selectedPins = pinColumns
     .map((col) => {
       const v = readDisplayPin(selectedMeta?.displayParams, col);
       if (v == null) return null;
@@ -882,6 +883,7 @@ export default function FleetLive() {
           alertDeviceIds={alertDeviceIds}
           now={now}
           loading={loading}
+          displayPinIds={displayPinIds}
           onOpenLive={openLiveVehicle}
           maintenanceHref={maintenanceHref(
             typeof window !== "undefined" ? window.location.search : "",

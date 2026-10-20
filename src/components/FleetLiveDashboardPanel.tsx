@@ -10,7 +10,7 @@ import {
   type LiveOpsClass,
 } from "../lib/liveOps";
 import {
-  FLEET_DASH_PIN_COLUMNS,
+  extraDisplayPinColumns,
   formatDisplayPinValue,
   readDisplayPin,
 } from "../lib/fleetTelemetryParams";
@@ -57,6 +57,7 @@ type Props = {
   alertDeviceIds: Set<string>;
   now: number;
   loading: boolean;
+  displayPinIds?: string[];
   onOpenLive: (vehicleId: number) => void;
   maintenanceHref: string;
 };
@@ -149,11 +150,13 @@ export function FleetLiveDashboardPanel({
   alertDeviceIds,
   now,
   loading,
+  displayPinIds,
   onOpenLive,
   maintenanceHref,
 }: Props) {
   const [snapFilter, setSnapFilter] = useState<SnapFilter>("all");
   const [snapQuery, setSnapQuery] = useState("");
+  const pinColumns = useMemo(() => extraDisplayPinColumns(displayPinIds), [displayPinIds]);
 
   const counts = useMemo(() => countLiveByClass(rows, now), [rows, now]);
 
@@ -677,20 +680,18 @@ export function FleetLiveDashboardPanel({
                 <th>
                   <IcoOdo /> Odo
                 </th>
-                {FLEET_DASH_PIN_COLUMNS.filter((c) => c.id !== "fuel_level" && c.id !== "can.fuel_l").map(
-                  (col) => (
-                    <th key={col.id} title={`Mapper pin · ${col.id}`}>
-                      {col.label}
-                    </th>
-                  ),
-                )}
+                {pinColumns.map((col) => (
+                  <th key={col.id} title={`Mapper pin · ${col.id}`}>
+                    {col.label}
+                  </th>
+                ))}
                 <th>Alert</th>
               </tr>
             </thead>
             <tbody>
               {snapRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6 + FLEET_DASH_PIN_COLUMNS.filter((c) => c.id !== "fuel_level" && c.id !== "can.fuel_l").length} className="muted">
+                  <td colSpan={6 + pinColumns.length} className="muted">
                     {loading ? "Loading…" : "No devices match this filter."}
                   </td>
                 </tr>
@@ -739,9 +740,7 @@ export function FleetLiveDashboardPanel({
                       <td>
                         {meta?.odometerKm != null ? `${formatKm(meta.odometerKm)} km` : "—"}
                       </td>
-                      {FLEET_DASH_PIN_COLUMNS.filter(
-                        (c) => c.id !== "fuel_level" && c.id !== "can.fuel_l",
-                      ).map((col) => (
+                      {pinColumns.map((col) => (
                         <td key={col.id} className="fleet-dash-pin" title={col.id}>
                           {formatDisplayPinValue(readDisplayPin(pins, col))}
                         </td>
