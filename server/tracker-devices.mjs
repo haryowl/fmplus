@@ -1027,6 +1027,18 @@ export async function deviceOdometerKmForArmadaUser(tenantId, armadaUserId) {
 }
 
 /**
+ * Odometer km for one tracker device UUID (device-native maintenance).
+ * @returns {Promise<number|null>}
+ */
+export async function deviceOdometerKmForDevice(tenantId, trackerDeviceId) {
+  const deviceId = String(trackerDeviceId || "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(deviceId)) return null;
+  const map = await lastFixesByDeviceIds(tenantId, [deviceId]);
+  const fix = map.get(deviceId);
+  return fix?.odometerKm != null && Number.isFinite(fix.odometerKm) ? fix.odometerKm : null;
+}
+
+/**
  * Armada user ids linked to enabled devices in the given tracker device groups.
  * @param {string} tenantId
  * @param {string[]} groupIds

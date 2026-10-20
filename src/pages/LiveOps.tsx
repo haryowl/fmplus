@@ -18,8 +18,11 @@ import { fullHref, maintenanceHref, tripsHref, writeLocationSearch } from "../li
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import type { Group, User } from "../lib/types";
 import {
+  fetchDeviceGroupScope,
+  fetchTrackerDeviceGroups,
   fetchTrackerLastStatus,
   mergeArmadaRowsWithDeviceFixes,
+  type TrackerDeviceGroup,
 } from "../lib/trackerDevices";
 import { BrandMark } from "../components/BrandMark";
 import { LiveOpsMap } from "../components/LiveOpsMap";
@@ -56,6 +59,11 @@ export default function LiveOps() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [groupId, setGroupId] = useState(query.groupId);
+  const [deviceGroups, setDeviceGroups] = useState<TrackerDeviceGroup[]>([]);
+  const [deviceGroupId, setDeviceGroupId] = useState(() => {
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    return params.get("deviceGroupId") || "";
+  });
   const [timezone, setTimezone] = useState(query.tz);
   const [bootError, setBootError] = useState("");
   const [rows, setRows] = useState<LastStatusRow[]>([]);
@@ -73,10 +81,20 @@ export default function LiveOps() {
 
   useEffect(() => {
     writeLocationSearch({
-      groupId: groupId || null,
+      groupId: deviceGroupId ? null : groupId || null,
+      deviceGroupId: deviceGroupId || null,
       tz: timezone || null,
     });
-  }, [groupId, timezone]);
+  }, [groupId, deviceGroupId, timezone]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const ac = new AbortController();
+    fetchTrackerDeviceGroups(ac.signal)
+      .then((list) => setDeviceGroups(list))
+      .catch(() => setDeviceGroups([]));
+    return () => ac.abort();
+  }, [ready]);
 
   useEffect(() => {
     document.title = "Live Ops · ARMADA M.1";
@@ -138,25 +156,47 @@ export default function LiveOps() {
       const gid = Number(groupId);
       return Promise.all([
         fetchUsersStatus({
-          groupId: Number.isFinite(gid) && gid > 0 ? gid : undefined,
+          groupId:
+            !deviceGroupId && Number.isFinite(gid) && gid > 0 ? gid : undefined,
           signal,
         }).catch((err: Error) => {
           if (err.name === "AbortError") throw err;
           return [] as LastStatusRow[];
         }),
-        fetchTrackerLastStatus(signal).catch((err: Error) => {
+        fetchTrackerLastStatus(signal, {
+          groupIds: deviceGroupId ? [deviceGroupId] : undefined,
+        }).catch((err: Error) => {
           if (err.name === "AbortError") throw err;
           return { fixes: [], telematicsSource: "both" as const };
         }),
+        deviceGroupId
+          ? fetchDeviceGroupScope([deviceGroupId], signal).catch(() => null)
+          : Promise.resolve(null),
       ])
-        .then(([armadaRows, deviceStatus]) => {
-          setRows(
-            mergeArmadaRowsWithDeviceFixes(
-              armadaRows,
-              deviceStatus.fixes,
-              deviceStatus.telematicsSource,
-            ),
-          );
+        .then(([armadaRows, deviceStatus, scope]) => {
+          if (deviceGroupId) {
+            const allow = new Set(scope?.armadaUserIds || []);
+            const armadaScoped = allow.size
+              ? armadaRows.filter((r) => allow.has(r.id))
+              : [];
+            setRows(
+              mergeArmadaRowsWithDeviceFixes(
+                armadaScoped,
+                deviceStatus.fixes,
+                deviceStatus.telematicsSource === "armada"
+                  ? "devices"
+                  : deviceStatus.telematicsSource,
+              ),
+            );
+          } else {
+            setRows(
+              mergeArmadaRowsWithDeviceFixes(
+                armadaRows,
+                deviceStatus.fixes,
+                deviceStatus.telematicsSource,
+              ),
+            );
+          }
           setNow(Date.now());
         })
         .catch((err: Error) => {
@@ -166,7 +206,7 @@ export default function LiveOps() {
           if (!signal?.aborted) setLoading(false);
         });
     },
-    [groupId],
+    [groupId, deviceGroupId],
   );
 
   useEffect(() => {
@@ -174,7 +214,7 @@ export default function LiveOps() {
     const ac = new AbortController();
     void loadStatus(ac.signal);
     return () => ac.abort();
-  }, [ready, groupId, reload, loadStatus]);
+  }, [ready, groupId, deviceGroupId, reload, loadStatus]);
 
   useEffect(() => {
     if (!ready) return;
@@ -185,11 +225,12 @@ export default function LiveOps() {
   }, [ready, loadStatus]);
 
   const scoped = useMemo(() => {
+    if (deviceGroupId) return rows;
     let ids: number[] | undefined =
       groupId && users.length ? users.map((u) => u.id) : undefined;
     if (!ids?.length && allowedUserIds.length) ids = allowedUserIds;
     return filterStatusRows(rows, ids);
-  }, [rows, groupId, users, allowedUserIds]);
+  }, [rows, groupId, deviceGroupId, users, allowedUserIds]);
 
   const scopedIdsKey = useMemo(() => scoped.map((r) => r.id).join(","), [scoped]);
 
@@ -262,7 +303,11 @@ export default function LiveOps() {
           <ViewNav current="live" />
           <div className="vehicle-chip">
             {loading ? "Updating…" : `${filtered.length} shown`}
-            {selectedGroup ? ` · ${selectedGroup.name}` : " · All devices"}
+            {deviceGroupId
+              ? ` · ${deviceGroups.find((g) => g.id === deviceGroupId)?.name || "Device group"}`
+              : selectedGroup
+                ? ` · ${selectedGroup.name}`
+                : " · All devices"}
           </div>
         </div>
       </header>
@@ -270,10 +315,42 @@ export default function LiveOps() {
       <main className="shell">
         <section className="filters">
           <div className="field">
-            <label htmlFor="live-group">Group</label>
-            <select id="live-group" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+            <label htmlFor="live-device-group">Device group</label>
+            <select
+              id="live-device-group"
+              value={deviceGroupId}
+              onChange={(e) => {
+                setDeviceGroupId(e.target.value);
+                if (e.target.value) setGroupId("");
+              }}
+            >
               <option value="">
-                {bootError ? "Groups unavailable" : groups.length ? "All devices" : "Loading groups…"}
+                {deviceGroups.length ? "All device groups" : "No device groups"}
+              </option>
+              {deviceGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                  {g.memberCount != null ? ` (${g.memberCount})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="live-group">Armada group</label>
+            <select
+              id="live-group"
+              value={groupId}
+              disabled={Boolean(deviceGroupId)}
+              onChange={(e) => setGroupId(e.target.value)}
+            >
+              <option value="">
+                {bootError
+                  ? "Groups unavailable"
+                  : deviceGroupId
+                    ? "Using device group"
+                    : groups.length
+                      ? "All devices"
+                      : "Loading groups…"}
               </option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>

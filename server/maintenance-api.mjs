@@ -20,6 +20,7 @@ import { eachDateYmd, sumIgnitionOnHours } from "./ignition-hours.mjs";
 import { evaluateKmInterval, findOdometerKmInStatus } from "./odometer-status.mjs";
 import {
   deviceOdometerKmForArmadaUser,
+  deviceOdometerKmForDevice,
   telematicsUsesArmada,
   telematicsUsesDevices,
   tenantTelematicsSource,
@@ -1137,12 +1138,19 @@ export async function computeHoursAccrued(eventRow, vaultTenant) {
  * @param {{ tenantId?: string }} [opts]
  */
 export async function computeKmAccrued(event, vaultTenant, opts = {}) {
-  const userId = Number(event.armadaUserId);
-  const intervalKm = event.remindIntervalKm;
-  let baselineKm = event.remindBaselineOdometerKm;
-  if (baselineKm == null && event.odometerKm != null) baselineKm = event.odometerKm;
+  const userId = Number(event.armadaUserId ?? event.armada_user_id);
+  const trackerDeviceId = String(
+    event.trackerDeviceId || event.tracker_device_id || "",
+  ).trim();
+  const intervalKm = event.remindIntervalKm ?? event.remind_interval_km;
+  let baselineKm = event.remindBaselineOdometerKm ?? event.remind_baseline_odometer_km;
+  if (baselineKm == null && (event.odometerKm ?? event.odometer_km) != null) {
+    baselineKm = event.odometerKm ?? event.odometer_km;
+  }
 
-  if (!Number.isInteger(userId) || userId < 1) {
+  const hasArmada = Number.isInteger(userId) && userId > 0;
+  const hasDevice = /^[0-9a-f-]{36}$/i.test(trackerDeviceId);
+  if (!hasArmada && !hasDevice) {
     return { ...evaluateKmInterval({ currentOdoKm: null, baselineKm, intervalKm }), reason: "no_vehicle" };
   }
   if (intervalKm == null || !(intervalKm > 0)) {
@@ -1162,7 +1170,12 @@ export async function computeKmAccrued(event, vaultTenant, opts = {}) {
   let deviceOdo = null;
   if (tenantId && telematicsUsesDevices(telematicsSource)) {
     try {
-      deviceOdo = await deviceOdometerKmForArmadaUser(tenantId, userId);
+      if (hasDevice) {
+        deviceOdo = await deviceOdometerKmForDevice(tenantId, trackerDeviceId);
+      }
+      if (deviceOdo == null && hasArmada) {
+        deviceOdo = await deviceOdometerKmForArmadaUser(tenantId, userId);
+      }
     } catch {
       deviceOdo = null;
     }
@@ -1175,7 +1188,7 @@ export async function computeKmAccrued(event, vaultTenant, opts = {}) {
     };
   }
 
-  if (!telematicsUsesArmada(telematicsSource) || !vaultTenant?.token) {
+  if (!hasArmada || !telematicsUsesArmada(telematicsSource) || !vaultTenant?.token) {
     return {
       ...evaluateKmInterval({ currentOdoKm: null, baselineKm, intervalKm }),
       reason: deviceOdo == null ? "no_device_odometer" : "no_armada",
@@ -1768,6 +1781,7 @@ export async function handleMaintenanceRequest(req, res) {
       }
       const events = await dbQuery(
         `SELECT e.id, e.title, e.armada_user_id, e.armada_username, e.user_display_name,
+                e.tracker_device_id,
                 e.started_at, e.ended_at, e.approved_at, e.approved_by
          FROM service_events e
          WHERE e.tenant_id = $1 AND e.status = 'approved'
@@ -1844,9 +1858,28 @@ export async function handleMaintenanceRequest(req, res) {
           if (hasCost) d.cost += costTotal;
           byDayMap.set(day, d);
         }
-        const vKey = ev.armada_user_id != null ? String(ev.armada_user_id) : `n:${ev.user_display_name || ev.armada_username || "—"}`;
-        const vLabel = ev.user_display_name || ev.armada_username || (ev.armada_user_id != null ? `User ${ev.armada_user_id}` : "—");
-        const v = byVehicleMap.get(vKey) || { label: vLabel, userId: ev.armada_user_id, price: 0, cost: 0, count: 0 };
+        const vKey =
+          ev.tracker_device_id
+            ? `d:${ev.tracker_device_id}`
+            : ev.armada_user_id != null
+              ? String(ev.armada_user_id)
+              : `n:${ev.user_display_name || ev.armada_username || "—"}`;
+        const vLabel =
+          ev.user_display_name ||
+          ev.armada_username ||
+          (ev.armada_user_id != null
+            ? `User ${ev.armada_user_id}`
+            : ev.tracker_device_id
+              ? "GPS device"
+              : "—");
+        const v = byVehicleMap.get(vKey) || {
+          label: vLabel,
+          userId: ev.armada_user_id,
+          trackerDeviceId: ev.tracker_device_id || null,
+          price: 0,
+          cost: 0,
+          count: 0,
+        };
         v.count += 1;
         if (hasPrice) v.price += priceTotal;
         if (hasCost) v.cost += costTotal;
@@ -1856,6 +1889,7 @@ export async function handleMaintenanceRequest(req, res) {
           title: ev.title || "",
           vehicle: vLabel,
           armadaUserId: ev.armada_user_id == null ? null : Number(ev.armada_user_id),
+          trackerDeviceId: ev.tracker_device_id || null,
           approvedAt: ev.approved_at,
           approvedBy: ev.approved_by || "",
           serviceDurationMinutes: serviceDurationMinutes(ev.started_at, ev.ended_at),
@@ -1921,6 +1955,7 @@ export async function handleMaintenanceRequest(req, res) {
 
       const events = await dbQuery(
         `SELECT e.id, e.status, e.title, e.armada_user_id, e.armada_username, e.user_display_name,
+                e.tracker_device_id,
                 e.started_at, e.ended_at, e.approved_at, e.created_at, e.updated_at
          FROM service_events e
          WHERE e.tenant_id = $1
@@ -2055,16 +2090,23 @@ export async function handleMaintenanceRequest(req, res) {
         }
 
         const vKey =
-          ev.armada_user_id != null
-            ? String(ev.armada_user_id)
-            : `n:${ev.user_display_name || ev.armada_username || "—"}`;
+          ev.tracker_device_id
+            ? `d:${ev.tracker_device_id}`
+            : ev.armada_user_id != null
+              ? String(ev.armada_user_id)
+              : `n:${ev.user_display_name || ev.armada_username || "—"}`;
         const vLabel =
           ev.user_display_name ||
           ev.armada_username ||
-          (ev.armada_user_id != null ? `User ${ev.armada_user_id}` : "—");
+          (ev.armada_user_id != null
+            ? `User ${ev.armada_user_id}`
+            : ev.tracker_device_id
+              ? "GPS device"
+              : "—");
         const v = byVehicleMap.get(vKey) || {
           label: vLabel,
           userId: ev.armada_user_id == null ? null : Number(ev.armada_user_id),
+          trackerDeviceId: ev.tracker_device_id || null,
           price: 0,
           cost: 0,
           count: 0,
@@ -2085,6 +2127,7 @@ export async function handleMaintenanceRequest(req, res) {
             status,
             vehicle: vLabel,
             armadaUserId: ev.armada_user_id == null ? null : Number(ev.armada_user_id),
+            trackerDeviceId: ev.tracker_device_id || null,
             date: when || null,
             serviceDurationMinutes: serviceDurationMinutes(ev.started_at, ev.ended_at),
             priceTotal: hasPrice ? priceTotal : null,
