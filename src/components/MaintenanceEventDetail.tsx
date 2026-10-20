@@ -29,7 +29,7 @@ import {
 } from "../lib/maintenance";
 import { prepareImageDataUrl } from "../lib/imageUpload";
 import { formatKm } from "../lib/format";
-import { fullHref, tripsHref } from "../lib/routing";
+import { fleetLiveHref, fullHref, tripsHref } from "../lib/routing";
 import { tenantHeaders } from "../lib/tenant";
 import { CatalogLineEditor } from "./CatalogLineEditor";
 import { CatalogScanButton } from "./CatalogScanButton";
@@ -555,6 +555,12 @@ export function MaintenanceEventDetail({
               </a>
               <a className="btn-link" href={fullHref(search)}>
                 Full
+              </a>
+            </span>
+          ) : event.trackerDeviceId ? (
+            <span className="maintenance-detail-links">
+              <a className="btn-link" href={fleetLiveHref(window.location.search)}>
+                Fleet Live
               </a>
             </span>
           ) : null}

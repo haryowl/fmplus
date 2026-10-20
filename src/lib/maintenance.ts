@@ -948,7 +948,12 @@ export async function uploadMaintPhoto(eventId: string, dataUrl: string, caption
 }
 
 export function eventVehicleLabel(ev: ServiceEvent): string {
-  return ev.userDisplayName || ev.armadaUsername || (ev.armadaUserId ? `#${ev.armadaUserId}` : "—");
+  return (
+    ev.userDisplayName ||
+    ev.armadaUsername ||
+    (ev.armadaUserId ? `#${ev.armadaUserId}` : "") ||
+    (ev.trackerDeviceId ? "GPS device" : "—")
+  );
 }
 
 export function scheduleLabel(ev: ServiceEvent): string {
@@ -1081,6 +1086,7 @@ export function downloadMaintenanceExcel(events: ServiceEvent[]): void {
     "Vehicle",
     "Username",
     "User ID",
+    "Tracker device ID",
     "Notes",
     "Service point",
     "Due date",
@@ -1102,6 +1108,7 @@ export function downloadMaintenanceExcel(events: ServiceEvent[]): void {
       ev.userDisplayName,
       ev.armadaUsername,
       ev.armadaUserId ?? "",
+      ev.trackerDeviceId || "",
       ev.notes,
       ev.servicePointName || "",
       ev.remindDueAt || "",

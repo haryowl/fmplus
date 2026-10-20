@@ -37,7 +37,7 @@ import {
 import { CsvImportPanel } from "../components/CsvImportPanel";
 import { filterStatusRows, type LastStatusRow } from "../lib/lastStatus";
 import { formatKm, formatSpeed } from "../lib/format";
-import { fullHref, tripsHref, writeLocationSearch } from "../lib/routing";
+import { fleetLiveHref, fullHref, tripsHref, writeLocationSearch } from "../lib/routing";
 import {
   deviceIdByStatusRowId,
   fetchDeviceGroupScope,
@@ -1636,6 +1636,12 @@ export default function MaintenanceBoard() {
                                   </a>
                                   <a className="btn-link" href={fullHref(search)}>
                                     Full
+                                  </a>
+                                </span>
+                              ) : ev.trackerDeviceId ? (
+                                <span className="maint-row-links">
+                                  <a className="btn-link" href={fleetLiveHref(window.location.search)}>
+                                    Fleet Live
                                   </a>
                                 </span>
                               ) : null}

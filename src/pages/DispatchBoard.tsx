@@ -32,6 +32,7 @@ import { customersHref, goodsHref, navigateView, writeLocationSearch } from "../
 import {
   deviceIdByStatusRowId,
   fetchDeviceGroupScope,
+  fetchTrackerDeviceDay,
   fetchTrackerDeviceGroups,
   fetchTrackerLastStatus,
   mergeArmadaRowsWithDeviceFixes,
@@ -1162,6 +1163,34 @@ export default function DispatchBoard() {
           );
         }),
       );
+    } else if (selected.trackerDeviceId) {
+      tasks.push(
+        fetchTrackerDeviceDay(
+          { deviceId: selected.trackerDeviceId, date },
+          ac.signal,
+        )
+          .then((dayTrack) => {
+            if (cancelled) return;
+            const timed = (dayTrack.points || [])
+              .filter(
+                (p) =>
+                  Number.isFinite(Number(p.lat)) &&
+                  Number.isFinite(Number(p.lon)) &&
+                  typeof p.recordedAt === "string",
+              )
+              .map((p) => ({
+                lat: Number(p.lat),
+                lon: Number(p.lon),
+                recordedAt: p.recordedAt,
+              }));
+            setJobArmadaTrack(
+              clipTimedTrackToWindow(timed, selected.startedAt, selected.completedAt),
+            );
+          })
+          .catch(() => {
+            if (!cancelled) setJobArmadaTrack([]);
+          }),
+      );
     } else {
       setJobArmadaTrack([]);
     }
@@ -1204,6 +1233,7 @@ export default function DispatchBoard() {
     selected?.id,
     selected?.assignedFieldUserId,
     selected?.armadaUserId,
+    selected?.trackerDeviceId,
     selected?.startedAt,
     selected?.completedAt,
     activeDayDate,
@@ -4797,7 +4827,9 @@ export default function DispatchBoard() {
                 armadaTrack={jobArmadaTrack}
                 phoneLive={jobPhoneLive}
                 vehicleLive={jobVehicleLive}
-                hasVehicle={selected?.armadaUserId != null}
+                hasVehicle={
+                  selected?.armadaUserId != null || Boolean(selected?.trackerDeviceId)
+                }
                 trackStatus={jobTrackStatus}
                 routeStart={
                   selected?.routeAnchorMode === "map" || selected?.routeAnchorMode === "sequence"
