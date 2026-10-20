@@ -8,6 +8,16 @@ type Props = {
   showDevice?: boolean;
 };
 
+function formatCellValue(row: TelemetryParamRow): string {
+  if (row.value == null) return "—";
+  const text = String(row.value);
+  const unit = (row.unit || "").trim();
+  if (!unit) return text;
+  // Avoid duplicating units already baked into the label/value.
+  if (text.toLowerCase().endsWith(unit.toLowerCase())) return text;
+  return `${text} ${unit}`;
+}
+
 export function TelemetryParamTable({
   rows,
   loading = false,
@@ -38,7 +48,7 @@ export function TelemetryParamTable({
               {showDevice ? <td>{row.label || row.imei || "—"}</td> : null}
               <td title={row.paramId}>{row.paramLabel || row.paramId}</td>
               <td>
-                <strong>{row.value == null ? "—" : String(row.value)}</strong>
+                <strong>{formatCellValue(row)}</strong>
               </td>
             </tr>
           ))}

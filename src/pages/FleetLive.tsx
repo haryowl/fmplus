@@ -242,7 +242,13 @@ export default function FleetLive() {
   const [locateToken, setLocateToken] = useState("");
   const [displayPinIds, setDisplayPinIds] = useState<string[]>([]);
   const [displayPinLabels, setDisplayPinLabels] = useState<Record<string, string>>({});
-  const [selParamsOpen, setSelParamsOpen] = useState(false);
+  const [selParamsOpen, setSelParamsOpen] = useState(() => {
+    try {
+      return localStorage.getItem("fmplus.fleetLive.params") === "1";
+    } catch {
+      return false;
+    }
+  });
   const [sideNavOpen, setSideNavOpen] = useState(() => {
     try {
       const v = localStorage.getItem("fmplus.fleetLive.sideNav");
@@ -293,6 +299,14 @@ export default function FleetLive() {
       /* ignore */
     }
   }, [alertsOpen]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("fmplus.fleetLive.params", selParamsOpen ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [selParamsOpen]);
 
   const fleetModuleOk = moduleAllowed("fleetLive");
   const canViewLive =

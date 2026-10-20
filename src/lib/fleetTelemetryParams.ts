@@ -8,6 +8,7 @@ export type TelemetryParamRow = {
   paramId: string;
   paramLabel: string;
   category: string;
+  unit?: string;
   value: string | number | boolean | null;
   source: string;
   updatedAt?: string | null;

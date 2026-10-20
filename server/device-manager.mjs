@@ -529,6 +529,7 @@ export function flattenFixParamRows({
       paramId,
       paramLabel: def?.label || fallbackLabel || paramId,
       category: def?.category || category || "position",
+      unit: def?.unit || "",
       value: formatParamValue(value),
       source: "typed",
       updatedAt,
@@ -550,6 +551,7 @@ export function flattenFixParamRows({
       paramId,
       paramLabel: def?.label || protoKeys.get(paramId) || paramId,
       category: def?.category || "mapped",
+      unit: def?.unit || "",
       value: formatParamValue(value),
       source: def ? "mapped" : "mapped_extra",
       updatedAt,
@@ -574,6 +576,7 @@ export function flattenFixParamRows({
       paramId: vendorKey,
       paramLabel: def?.label || protoLabel || vendorKey,
       category: def?.category || "mapped",
+      unit: def?.unit || "",
       value: formatParamValue(value),
       source: def ? "mapped" : "mapped_extra",
       updatedAt,
@@ -593,6 +596,7 @@ export function flattenFixParamRows({
         paramId: vendorKey,
         paramLabel: vendorKey,
         category: "raw",
+        unit: "",
         value: formatParamValue(value),
         source: "raw",
         updatedAt,
@@ -706,135 +710,28 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
   const rows = [];
 
   for (const d of deviceRows.rows) {
-    const deviceIdOut = d.device_id;
-    const imei = d.imei || "";
-    const label = d.label || "";
     const protocol = d.protocol || "";
-    const updatedAt = d.last_fix_updated_at || d.recorded_at || d.last_seen_at || null;
-    const mapped =
-      d.mapped_attrs && typeof d.mapped_attrs === "object" && !Array.isArray(d.mapped_attrs)
-        ? d.mapped_attrs
-        : {};
-    const raw =
-      d.raw_attrs && typeof d.raw_attrs === "object" && !Array.isArray(d.raw_attrs) ? d.raw_attrs : {};
     const protoKeys = protocolVendors.get(protocol) || new Map();
-    /** @type {Set<string>} */
-    const emitted = new Set();
-
-    const typed = [
-      ["lat", d.lat != null ? Number(d.lat) : null, "Latitude (°)", "position"],
-      ["lon", d.lon != null ? Number(d.lon) : null, "Longitude (°)", "position"],
-      ["speed", d.speed != null ? Number(d.speed) : null, "Speed (km/h)", "position"],
-      ["heading", d.heading != null ? Number(d.heading) : null, "Heading / GPS Angle (°)", "position"],
-      ["ignition", d.ignition == null ? null : Boolean(d.ignition), "Ignition", "avl"],
-    ];
-    for (const [paramId, value, fallbackLabel, category] of typed) {
-      if (value === null) continue;
-      const def = defById.get(paramId);
-      emitted.add(paramId);
-      rows.push({
-        deviceId: deviceIdOut,
-        imei,
-        label,
+    const updatedAt = d.last_fix_updated_at || d.recorded_at || d.last_seen_at || null;
+    rows.push(
+      ...flattenFixParamRows({
+        deviceId: d.device_id,
+        imei: d.imei || "",
+        label: d.label || "",
         protocol,
-        paramId,
-        paramLabel: def?.label || fallbackLabel || paramId,
-        category: def?.category || category || "position",
-        value: formatParamValue(value),
-        source: "typed",
-        updatedAt,
-      });
-    }
-
-    for (const [paramId, value] of Object.entries(mapped)) {
-      if (value === null || value === undefined) continue;
-      // Skip nested blobs / duplicate typed mirrors when already shown.
-      if (paramId === "tags" || paramId === "io" || typeof value === "object") continue;
-      // Skip opaque AVL dumps that older gateways wrongly seeded into mapped_attrs.
-      if (
-        paramId.startsWith("io.") ||
-        paramId.startsWith("tag.") ||
-        paramId.startsWith("add.") ||
-        paramId.startsWith("avl.") ||
-        paramId.startsWith("0x")
-      ) {
-        continue;
-      }
-      if (emitted.has(paramId)) continue;
-      const def = defById.get(paramId);
-      emitted.add(paramId);
-      rows.push({
-        deviceId: deviceIdOut,
-        imei,
-        label,
-        protocol,
-        paramId,
-        paramLabel: def?.label || protoKeys.get(paramId) || paramId,
-        category: def?.category || "mapped",
-        value: formatParamValue(value),
-        source: def ? "mapped" : "mapped_extra",
-        updatedAt,
-      });
-    }
-
-    // Cooked semantic keys from raw_attrs (voltage.*, status.*, …) → mapped_extra.
-    // Do NOT promote opaque io.N / tag.0xNN / add.0xNN dumps here — those are raw AVL
-    // units (mV, etc.) and look wrong next to labels like "External Voltage".
-    // Toggle "Include raw vendor keys" to inspect io.* / tag.*.
-    for (const [vendorKey, value] of Object.entries(raw)) {
-      if (value === null || value === undefined) continue;
-      if (vendorKey === "tags" || vendorKey === "io" || typeof value === "object") continue;
-      if (emitted.has(vendorKey)) continue;
-      if (
-        vendorKey.startsWith("io.") ||
-        vendorKey.startsWith("tag.") ||
-        vendorKey.startsWith("add.") ||
-        vendorKey.startsWith("avl.") ||
-        vendorKey.startsWith("0x")
-      ) {
-        continue;
-      }
-      const def = defById.get(vendorKey);
-      const protoLabel = protoKeys.get(vendorKey);
-      const isCooked =
-        Boolean(def) ||
-        protoLabel != null ||
-        vendorKey.includes(".");
-      if (!isCooked) continue;
-      emitted.add(vendorKey);
-      rows.push({
-        deviceId: deviceIdOut,
-        imei,
-        label,
-        protocol,
-        paramId: vendorKey,
-        paramLabel: def?.label || protoLabel || vendorKey,
-        category: def?.category || "mapped",
-        value: formatParamValue(value),
-        source: def ? "mapped" : "mapped_extra",
-        updatedAt,
-      });
-    }
-
-    if (includeRaw) {
-      for (const [vendorKey, value] of Object.entries(raw)) {
-        if (value === null || value === undefined) continue;
-        if (vendorKey === "tags" || typeof value === "object") continue;
-        if (emitted.has(vendorKey)) continue;
-        rows.push({
-          deviceId: deviceIdOut,
-          imei,
-          label,
-          protocol,
-          paramId: vendorKey,
-          paramLabel: vendorKey,
-          category: "raw",
-          value: formatParamValue(value),
-          source: "raw",
-          updatedAt,
-        });
-      }
-    }
+        lat: d.lat,
+        lon: d.lon,
+        speed: d.speed,
+        heading: d.heading,
+        ignition: d.ignition,
+        recordedAt: updatedAt,
+        mappedAttrs: d.mapped_attrs,
+        rawAttrs: d.raw_attrs,
+        defById,
+        protoKeys,
+        includeRaw,
+      }),
+    );
   }
 
   return { params: paramDefs, rows };

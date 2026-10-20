@@ -8280,6 +8280,13 @@ html.onesheet-root body {
   font-size: 0.72rem;
 }
 
+.fleet-params-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
 .fleet-params-filter {
   display: block;
   min-width: 0;
@@ -8293,6 +8300,39 @@ html.onesheet-root body {
   border-radius: var(--radius-sm, 8px);
   background: var(--surface, #fff);
   font-size: 0.72rem;
+}
+
+.fleet-params-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.fleet-params-cats button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line, #eef1f4);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  color: var(--ink-faint, #6d8794);
+  font-size: 0.65rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.fleet-params-cats button em {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.fleet-params-cats button.is-active {
+  border-color: var(--accent, #0b6b62);
+  background: var(--accent-soft, #e8f7f6);
+  color: var(--accent, #0b6b62);
 }
 
 .fleet-params-wrap {
