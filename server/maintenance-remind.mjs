@@ -9,6 +9,7 @@ import { computeHoursAccrued, computeKmAccrued, publicEvent } from "./maintenanc
 import { tenantByKey } from "./tenants.mjs";
 
 const SELECT_EVENT = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
+  tracker_device_id,
   lat, lon, notification_id, started_at, ended_at, odometer_km,
   service_point_id, service_point_name, service_point_lat, service_point_lon,
   assigned_field_user_id,
@@ -341,9 +342,9 @@ export async function evaluateTenantReminders(tenantId, vaultTenant) {
       }
     }
 
-    if (ev.remindIntervalHours != null && vaultTenant?.token) {
+    if (ev.remindIntervalHours != null && (ev.trackerDeviceId || vaultTenant?.token)) {
       try {
-        const hrs = await computeHoursAccrued(ev, vaultTenant);
+        const hrs = await computeHoursAccrued(ev, vaultTenant || {}, { tenantId });
         if (hrs.hoursAccrued != null && hrs.intervalHours != null) {
           const remaining = hrs.intervalHours - hrs.hoursAccrued;
           if (remaining <= 0) {

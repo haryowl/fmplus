@@ -4,6 +4,10 @@ import { TIMEZONES } from "../lib/config";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import { writeLocationSearch } from "../lib/routing";
 import type { Group, User } from "../lib/types";
+import {
+  fetchTrackerDeviceGroups,
+  type TrackerDeviceGroup,
+} from "../lib/trackerDevices";
 import { BrandMark } from "../components/BrandMark";
 import { ExportPdfButton } from "../components/ExportPdfButton";
 import { LastStatusPanel } from "../components/LastStatusPanel";
@@ -15,17 +19,24 @@ export default function LastStatus() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [groupId, setGroupId] = useState(query.groupId);
+  const [deviceGroups, setDeviceGroups] = useState<TrackerDeviceGroup[]>([]);
+  const [deviceGroupId, setDeviceGroupId] = useState(() => {
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    return params.get("deviceGroupId") || "";
+  });
   const [timezone, setTimezone] = useState(query.tz);
   const [bootError, setBootError] = useState("");
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
+  const selectedDeviceGroup = deviceGroups.find((g) => g.id === deviceGroupId);
 
   useEffect(() => {
     writeLocationSearch({
-      groupId: groupId || null,
+      groupId: deviceGroupId ? null : groupId || null,
+      deviceGroupId: deviceGroupId || null,
       tz: timezone || null,
     });
-  }, [groupId, timezone]);
+  }, [groupId, deviceGroupId, timezone]);
 
   useEffect(() => {
     const previous = document.title;
@@ -49,12 +60,21 @@ export default function LastStatus() {
   useEffect(() => {
     if (!ready) return;
     const ac = new AbortController();
+    fetchTrackerDeviceGroups(ac.signal)
+      .then((list) => setDeviceGroups(list))
+      .catch(() => setDeviceGroups([]));
+    return () => ac.abort();
+  }, [ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const ac = new AbortController();
     fetchGroups(ac.signal)
       .then((list) => {
         const next = allowedGroupIds.length ? list.filter((g) => allowsGroup(g.id)) : list;
         setGroups(next);
         setBootError("");
-        if (!groupId && next.length === 1) setGroupId(String(next[0].id));
+        if (!groupId && !deviceGroupId && next.length === 1) setGroupId(String(next[0].id));
         if (allowedGroupIds.length === 1) {
           setGroupId(String(allowedGroupIds[0]));
         }
@@ -71,7 +91,7 @@ export default function LastStatus() {
   }, [ready]);
 
   useEffect(() => {
-    if (!selectedGroup) {
+    if (!selectedGroup || deviceGroupId) {
       setUsers([]);
       return;
     }
@@ -84,7 +104,15 @@ export default function LastStatus() {
         if (err.name !== "AbortError") setBootError(err.message);
       });
     return () => ac.abort();
-  }, [selectedGroup?.id]);
+  }, [selectedGroup?.id, deviceGroupId]);
+
+  const chipLabel = deviceGroupId
+    ? selectedDeviceGroup
+      ? `Device group · ${selectedDeviceGroup.name}`
+      : "Device group"
+    : groupId && users.length
+      ? `${users.length} devices`
+      : "All devices";
 
   return (
     <div className="app status-page">
@@ -100,29 +128,57 @@ export default function LastStatus() {
           <ViewNav current="status" />
           <ExportPdfButton />
           <div className="vehicle-chip">
-            {groupId && users.length ? `${users.length} devices` : "All devices"}
-            {selectedGroup ? ` · ${selectedGroup.name}` : ""}
+            {chipLabel}
+            {!deviceGroupId && selectedGroup ? ` · ${selectedGroup.name}` : ""}
           </div>
         </div>
       </header>
 
       <p className="print-meta">
-        {groupId && users.length ? `${users.length} devices` : "All devices"}
-        {selectedGroup ? ` · ${selectedGroup.name}` : ""}
+        {chipLabel}
+        {!deviceGroupId && selectedGroup ? ` · ${selectedGroup.name}` : ""}
         {timezone ? ` · ${timezone}` : ""}
       </p>
 
       <main className="shell">
         <section className="filters">
           <div className="field">
-            <label htmlFor="s-group">Group</label>
+            <label htmlFor="s-device-group">Device group</label>
+            <select
+              id="s-device-group"
+              value={deviceGroupId}
+              onChange={(e) => {
+                setDeviceGroupId(e.target.value);
+                if (e.target.value) setGroupId("");
+              }}
+            >
+              <option value="">
+                {deviceGroups.length ? "All device groups" : "No device groups"}
+              </option>
+              {deviceGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                  {g.memberCount != null ? ` (${g.memberCount})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="s-group">Armada group</label>
             <select
               id="s-group"
               value={groupId}
+              disabled={Boolean(deviceGroupId)}
               onChange={(e) => setGroupId(e.target.value)}
             >
               <option value="">
-                {bootError ? "Groups unavailable" : groups.length ? "All devices" : "Loading groups…"}
+                {bootError
+                  ? "Groups unavailable"
+                  : deviceGroupId
+                    ? "Using device group"
+                    : groups.length
+                      ? "All devices"
+                      : "Loading groups…"}
               </option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
@@ -151,8 +207,11 @@ export default function LastStatus() {
 
         <LastStatusPanel
           groupId={groupId}
+          deviceGroupId={deviceGroupId || undefined}
           timezone={timezone}
-          userIds={groupId && users.length ? users.map((u) => u.id) : undefined}
+          userIds={
+            !deviceGroupId && groupId && users.length ? users.map((u) => u.id) : undefined
+          }
           fill
         />
       </main>

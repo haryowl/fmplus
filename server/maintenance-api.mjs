@@ -906,11 +906,10 @@ async function spawnNextDueEvent(completed, tenantId, { vaultTenant, completionO
   if (
     (nextBaseline == null || !Number.isFinite(nextBaseline)) &&
     completed.remindIntervalKm != null &&
-    vaultTenant?.token &&
-    completed.armadaUserId
+    (completed.armadaUserId || completed.trackerDeviceId)
   ) {
     try {
-      const km = await computeKmAccrued(completed, vaultTenant, { tenantId });
+      const km = await computeKmAccrued(completed, vaultTenant || {}, { tenantId });
       if (km.currentOdoKm != null) nextBaseline = km.currentOdoKm;
     } catch {
       /* ignore */
@@ -1069,16 +1068,33 @@ async function loadDayTrackPoints(vaultTenant, userId, date, todayYmd) {
 }
 
 /**
+ * Map device-day fixes into the Armada-shaped points sumIgnitionOnHours expects.
+ * @param {Array<{ recordedAt?: string, ignition?: boolean|null }>} devicePoints
+ */
+function devicePointsToIgnitionSamples(devicePoints) {
+  return (devicePoints || []).map((p) => ({
+    utc: p.recordedAt || "",
+    variables: { ignition: p.ignition === true },
+  }));
+}
+
+/**
  * @param {object} eventRow public or DB-shaped event with camel or snake fields
  * @param {import('./tenants.mjs').Tenant} vaultTenant
+ * @param {{ tenantId?: string }} [opts]
  */
-export async function computeHoursAccrued(eventRow, vaultTenant) {
+export async function computeHoursAccrued(eventRow, vaultTenant, opts = {}) {
   const userId = Number(eventRow.armadaUserId ?? eventRow.armada_user_id);
+  const trackerDeviceId = String(
+    eventRow.trackerDeviceId || eventRow.tracker_device_id || "",
+  ).trim();
   const intervalHours = Number(eventRow.remindIntervalHours ?? eventRow.remind_interval_hours);
   let sinceAt = eventRow.remindHoursSinceAt ?? eventRow.remind_hours_since_at;
   if (!sinceAt) sinceAt = eventRow.createdAt ?? eventRow.created_at;
 
-  if (!Number.isInteger(userId) || userId < 1) {
+  const hasArmada = Number.isInteger(userId) && userId > 0;
+  const hasDevice = /^[0-9a-f-]{36}$/i.test(trackerDeviceId);
+  if (!hasArmada && !hasDevice) {
     return { hoursAccrued: null, intervalHours: null, due: false, lookbackCapped: false, reason: "no_vehicle" };
   }
   if (!Number.isFinite(intervalHours) || intervalHours <= 0) {
@@ -1104,16 +1120,42 @@ export async function computeHoursAccrued(eventRow, vaultTenant) {
   const fromYmd = new Date(windowStartMs).toISOString().slice(0, 10);
   const dates = eachDateYmd(fromYmd, todayYmd);
 
+  const tenantId = opts.tenantId || eventRow.tenantId || null;
   let hoursAccrued = 0;
   let daysLoaded = 0;
-  for (const date of dates) {
-    const points = await loadDayTrackPoints(vaultTenant, userId, date, todayYmd);
-    if (points.length) {
-      hoursAccrued += sumIgnitionOnHours(points, {
-        sinceMs: windowStartMs,
-        untilMs: null,
-      });
-      daysLoaded += 1;
+  let source = hasArmada ? "armada" : "device";
+
+  if (hasDevice && tenantId) {
+    const { listDeviceDayFixes } = await import("./tracker-devices.mjs");
+    for (const date of dates) {
+      try {
+        const day = await listDeviceDayFixes(tenantId, trackerDeviceId, { date });
+        const points = devicePointsToIgnitionSamples(day.points || []);
+        if (points.length) {
+          hoursAccrued += sumIgnitionOnHours(points, {
+            sinceMs: windowStartMs,
+            untilMs: null,
+          });
+          daysLoaded += 1;
+          source = "device";
+        }
+      } catch {
+        /* continue */
+      }
+    }
+  }
+
+  if (daysLoaded === 0 && hasArmada) {
+    for (const date of dates) {
+      const points = await loadDayTrackPoints(vaultTenant, userId, date, todayYmd);
+      if (points.length) {
+        hoursAccrued += sumIgnitionOnHours(points, {
+          sinceMs: windowStartMs,
+          untilMs: null,
+        });
+        daysLoaded += 1;
+        source = "armada";
+      }
     }
   }
 
@@ -1126,7 +1168,8 @@ export async function computeHoursAccrued(eventRow, vaultTenant) {
     daysLoaded,
     daysRequested: dates.length,
     sinceAt: new Date(sinceMs).toISOString(),
-    reason: null,
+    source,
+    reason: daysLoaded === 0 ? (hasDevice ? "no_device_tracks" : "no_tracks") : null,
   };
 }
 
@@ -2828,11 +2871,14 @@ export async function handleMaintenanceRequest(req, res) {
         return true;
       }
       const vaultTenant = tenantFromRequest(req);
-      if (!vaultTenant?.token) {
+      const pub = publicEvent(found.rows[0]);
+      if (!pub.trackerDeviceId && !vaultTenant?.token) {
         json(res, 503, { error: "No Armada token for this tenant" });
         return true;
       }
-      const result = await computeHoursAccrued(publicEvent(found.rows[0]), vaultTenant);
+      const result = await computeHoursAccrued(pub, vaultTenant || {}, {
+        tenantId: dbTenant.id,
+      });
       json(res, 200, result);
       return true;
     }
@@ -2918,9 +2964,14 @@ export async function handleMaintenanceRequest(req, res) {
       }
       const vaultTenant = tenantFromRequest(req);
       let hoursByEventId = {};
-      if (detail.remindIntervalHours && vaultTenant?.token) {
+      if (
+        detail.remindIntervalHours &&
+        (detail.trackerDeviceId || vaultTenant?.token)
+      ) {
         try {
-          const hrs = await computeHoursAccrued(detail, vaultTenant);
+          const hrs = await computeHoursAccrued(detail, vaultTenant || {}, {
+            tenantId: dbTenant.id,
+          });
           if (hrs.hoursAccrued != null) hoursByEventId = { [detail.id]: hrs.hoursAccrued };
         } catch {
           /* ignore */

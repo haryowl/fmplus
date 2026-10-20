@@ -19,6 +19,7 @@ import {
 } from "../lib/maintenance";
 import { fullHref, maintenanceHref } from "../lib/routing";
 import {
+  fetchDeviceGroupScope,
   fetchTrackerLastStatus,
   mergeArmadaRowsWithDeviceFixes,
 } from "../lib/trackerDevices";
@@ -27,6 +28,8 @@ type Props = {
   groupId: string;
   timezone: string;
   userIds?: number[];
+  /** GPS device group — when set, Armada group scoping is skipped. */
+  deviceGroupId?: string;
   dense?: boolean;
   fill?: boolean;
 };
@@ -61,7 +64,14 @@ function maintToneClass(cell: MaintStatusCell | undefined): string {
   return "";
 }
 
-export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Props) {
+export function LastStatusPanel({
+  groupId,
+  timezone,
+  userIds,
+  deviceGroupId,
+  dense,
+  fill,
+}: Props) {
   const [rows, setRows] = useState<LastStatusRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -85,18 +95,40 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
     const gid = Number(groupId);
     void Promise.all([
       fetchUsersStatus({
-        groupId: Number.isFinite(gid) && gid > 0 ? gid : undefined,
+        groupId:
+          !deviceGroupId && Number.isFinite(gid) && gid > 0 ? gid : undefined,
         signal: ac.signal,
       }).catch((err: Error) => {
         if (err.name === "AbortError") throw err;
         return [] as LastStatusRow[];
       }),
-      fetchTrackerLastStatus(ac.signal).catch((err: Error) => {
+      fetchTrackerLastStatus(ac.signal, {
+        groupIds: deviceGroupId ? [deviceGroupId] : undefined,
+      }).catch((err: Error) => {
         if (err.name === "AbortError") throw err;
         return { fixes: [], telematicsSource: "both" as const };
       }),
+      deviceGroupId
+        ? fetchDeviceGroupScope([deviceGroupId], ac.signal).catch(() => null)
+        : Promise.resolve(null),
     ])
-      .then(([armadaRows, deviceStatus]) => {
+      .then(([armadaRows, deviceStatus, scope]) => {
+        if (deviceGroupId) {
+          const allow = new Set(scope?.armadaUserIds || []);
+          const armadaScoped = allow.size
+            ? armadaRows.filter((r) => allow.has(r.id))
+            : [];
+          setRows(
+            mergeArmadaRowsWithDeviceFixes(
+              armadaScoped,
+              deviceStatus.fixes,
+              deviceStatus.telematicsSource === "armada"
+                ? "devices"
+                : deviceStatus.telematicsSource,
+            ),
+          );
+          return;
+        }
         setRows(
           mergeArmadaRowsWithDeviceFixes(
             armadaRows,
@@ -112,9 +144,12 @@ export function LastStatusPanel({ groupId, timezone, userIds, dense, fill }: Pro
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [groupId, reload]);
+  }, [groupId, deviceGroupId, reload]);
 
-  const scoped = useMemo(() => filterStatusRows(rows, userIds), [rows, userIds]);
+  const scoped = useMemo(
+    () => (deviceGroupId ? rows : filterStatusRows(rows, userIds)),
+    [rows, userIds, deviceGroupId],
+  );
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
