@@ -403,9 +403,11 @@ export default function FleetLive() {
               : holds,
           );
           setMaintUserIds(
-            groupArmadaIds
+            groupArmadaIds && groupArmadaIds.size > 0
               ? new Set([...maintIds].filter((id) => groupArmadaIds.has(id)))
-              : maintIds,
+              : groupId
+                ? new Set() // GPS-only group: maintenance badges are Armada-keyed (Phase 2)
+                : maintIds,
           );
           setNow(Date.now());
           setSelectedId((prev) => (prev != null && meta[prev] ? prev : null));

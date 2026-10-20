@@ -23,6 +23,7 @@ import {
 } from "./service-day.mjs";
 import { contributionMargin, moneyIdr } from "./dispatch-opex.mjs";
 import { tallyVisitOutcomes } from "./dispatch-sales.mjs";
+import { deviceIdsInGroups } from "./tracker-device-groups.mjs";
 import {
   armadaUserIdsInDeviceGroups,
   lastFixesByArmadaUserIds,
@@ -469,9 +470,14 @@ export async function buildDispatchLiveSnapshot(opts) {
     : [];
   /** @type {Set<number>|null} */
   let groupArmadaIds = null;
+  /** @type {string[]} */
+  let groupDeviceIds = [];
   if (deviceGroupIds.length) {
-    const uids = await armadaUserIdsInDeviceGroups(opts.tenantId, deviceGroupIds);
-    groupArmadaIds = new Set(uids);
+    groupDeviceIds = await deviceIdsInGroups(opts.tenantId, deviceGroupIds).catch(() => []);
+    const uids = await armadaUserIdsInDeviceGroups(opts.tenantId, deviceGroupIds).catch(() => []);
+    // Device-first: only filter jobs when the group has linked Armada users.
+    // Empty links must not wipe the board (GPS devices can exist without Armada).
+    if (uids.length) groupArmadaIds = new Set(uids);
   }
 
   const jobsRes = await dbQuery(
@@ -496,12 +502,14 @@ export async function buildDispatchLiveSnapshot(opts) {
      LIMIT 100`,
     [opts.tenantId, serviceDate],
   );
-  if (groupArmadaIds) {
-    // Empty membership → empty live board (explicit group scope).
+  if (groupArmadaIds && groupArmadaIds.size > 0) {
     jobsRes.rows = jobsRes.rows.filter((j) => {
       const uid = j.armada_user_id != null ? Number(j.armada_user_id) : NaN;
       return Number.isInteger(uid) && groupArmadaIds.has(uid);
     });
+  } else if (deviceGroupIds.length && !groupDeviceIds.length) {
+    // Explicit empty device group → no jobs.
+    jobsRes.rows = [];
   }
 
   const jobIds = jobsRes.rows.map((j) => j.id);

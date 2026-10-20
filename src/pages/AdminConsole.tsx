@@ -757,7 +757,7 @@ export default function AdminConsole() {
   const [tenants, setTenants] = useState<AdminTenant[]>([]);
   const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
   const [adminSection, setAdminSection] = useState<
-    "settings" | "devices" | "live" | "terminal"
+    "settings" | "deviceMgmt" | "devices" | "live" | "terminal"
   >("settings");
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const [error, setError] = useState("");
@@ -2231,6 +2231,7 @@ export default function AdminConsole() {
                   {(
                     [
                       ["settings", "Settings"],
+                      ["deviceMgmt", "Device Management"],
                       ["devices", "Device Manager"],
                       ["live", "Live values"],
                       ["terminal", "Terminal"],
@@ -3411,7 +3412,11 @@ export default function AdminConsole() {
                     <p className="muted">No safety / alarm events yet (Su Biao, Concox, JT808, …).</p>
                   )}
                 </section>
+              </>
+              )}
 
+              {selectedId !== "new" && adminSection === "deviceMgmt" && (
+              <>
                 <section className="admin-panel">
                   <header className="admin-panel-head">
                     <h3>
@@ -3419,7 +3424,8 @@ export default function AdminConsole() {
                       <span className="admin-count-badge">{deviceGroups.length}</span>
                     </h3>
                     <p className="muted">
-                      Device buckets for Fleet Live / Dispatch / Maintenance · M2M membership
+                      Device buckets for Fleet Live / Dispatch / Maintenance · membership by GPS
+                      device (Armada link optional)
                     </p>
                   </header>
                   <form className="admin-form-grid" onSubmit={(e) => void createDeviceGroup(e)}>

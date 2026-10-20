@@ -148,6 +148,7 @@ export default function MaintenanceBoard() {
     return params.get("deviceGroupId") || "";
   });
   const [deviceGroupArmadaIds, setDeviceGroupArmadaIds] = useState<Set<number> | null>(null);
+  const [deviceGroupMemberCount, setDeviceGroupMemberCount] = useState(0);
   const [statusFilter, setStatusFilter] = useState<MaintenanceStatusFilter>("open");
   const [healthFilter, setHealthFilter] = useState<"" | "upcoming" | "due" | "overdue" | "completed">(
     "",
@@ -196,8 +197,10 @@ export default function MaintenanceBoard() {
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
   const fleetUserIds = useMemo(() => {
     if (deviceGroupId) {
+      // Device-first: all vehicles in the merged group list (incl. GPS-only synthetic ids).
+      if (statusRows.length) return statusRows.map((r) => r.id);
       if (deviceGroupArmadaIds) return [...deviceGroupArmadaIds];
-      return statusRows.map((r) => r.id).filter((id) => id > 0);
+      return [];
     }
     if (users.length) return users.map((u) => u.id);
     return statusRows.map((r) => r.id);
@@ -237,15 +240,18 @@ export default function MaintenanceBoard() {
   }, [groupId, deviceGroupId, users, statusRows, statusById, vehicleQuery]);
 
   const groupScopedReminders = useMemo(() => {
-    if (!deviceGroupId || !fleetUserIds.length) return reminders;
-    const allowUsers = new Set(fleetUserIds);
+    if (!deviceGroupId) return reminders;
+    // Jobs/reminders still key off Armada ids when linked; GPS-only members stay on the vehicle list.
+    const linked = deviceGroupArmadaIds ? [...deviceGroupArmadaIds] : [];
+    if (!linked.length) return reminders.filter(() => false);
+    const allowUsers = new Set(linked);
     const allowEventIds = new Set(
       events
         .filter((ev) => ev.armadaUserId != null && allowUsers.has(Number(ev.armadaUserId)))
         .map((ev) => ev.id),
     );
     return reminders.filter((r) => r.eventId != null && allowEventIds.has(r.eventId));
-  }, [reminders, deviceGroupId, fleetUserIds, events]);
+  }, [reminders, deviceGroupId, deviceGroupArmadaIds, events]);
 
   const filteredReminders = useMemo(() => {
     if (reminderKind === "all") return groupScopedReminders;
@@ -268,9 +274,15 @@ export default function MaintenanceBoard() {
 
   const filteredEvents = useMemo(() => {
     let list = events;
-    if (deviceGroupId && fleetUserIds.length) {
-      const allow = new Set(fleetUserIds);
-      list = list.filter((ev) => ev.armadaUserId != null && allow.has(Number(ev.armadaUserId)));
+    if (deviceGroupId) {
+      const linked = deviceGroupArmadaIds ? [...deviceGroupArmadaIds] : [];
+      if (linked.length) {
+        const allow = new Set(linked);
+        list = list.filter((ev) => ev.armadaUserId != null && allow.has(Number(ev.armadaUserId)));
+      } else {
+        // Group has GPS devices only — no Armada-keyed jobs to show yet.
+        list = [];
+      }
     } else if (groupId && users.length) {
       const allow = new Set(users.map((u) => u.id));
       list = list.filter((ev) => ev.armadaUserId != null && allow.has(Number(ev.armadaUserId)));
@@ -290,7 +302,7 @@ export default function MaintenanceBoard() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [events, listQuery, deviceGroupId, fleetUserIds, groupId, users]);
+  }, [events, listQuery, deviceGroupId, deviceGroupArmadaIds, groupId, users]);
 
   const isHistoryView =
     healthFilter === "completed" ||
@@ -396,12 +408,19 @@ export default function MaintenanceBoard() {
     if (!ready) return;
     if (!deviceGroupId) {
       setDeviceGroupArmadaIds(null);
+      setDeviceGroupMemberCount(0);
       return;
     }
     const ac = new AbortController();
     fetchDeviceGroupScope([deviceGroupId], ac.signal)
-      .then((scope) => setDeviceGroupArmadaIds(new Set(scope.armadaUserIds)))
-      .catch(() => setDeviceGroupArmadaIds(new Set()));
+      .then((scope) => {
+        setDeviceGroupArmadaIds(new Set(scope.armadaUserIds));
+        setDeviceGroupMemberCount(scope.memberCount || scope.deviceIds.length);
+      })
+      .catch(() => {
+        setDeviceGroupArmadaIds(new Set());
+        setDeviceGroupMemberCount(0);
+      });
     return () => ac.abort();
   }, [ready, deviceGroupId]);
 
@@ -431,8 +450,11 @@ export default function MaintenanceBoard() {
         if (deviceGroupId) {
           const allow = new Set(scope?.armadaUserIds || []);
           setDeviceGroupArmadaIds(allow);
-          // Device-group mode: only Armada users linked to the group + group device fixes.
-          const armadaScoped = armadaRows.filter((r) => allow.has(r.id));
+          setDeviceGroupMemberCount(scope?.memberCount || scope?.deviceIds?.length || 0);
+          // Device-first: group last-status fixes are authoritative; overlay linked Armada rows.
+          const armadaScoped = allow.size
+            ? armadaRows.filter((r) => allow.has(r.id))
+            : [];
           const merged = mergeArmadaRowsWithDeviceFixes(
             armadaScoped,
             deviceStatus.fixes,
@@ -1179,10 +1201,17 @@ export default function MaintenanceBoard() {
           />
         )}
 
-        {deviceGroupId && deviceGroupArmadaIds && deviceGroupArmadaIds.size === 0 ? (
+        {deviceGroupId && deviceGroupMemberCount === 0 ? (
+          <div className="banner warn">This device group has no GPS devices yet.</div>
+        ) : null}
+        {deviceGroupId &&
+        deviceGroupMemberCount > 0 &&
+        deviceGroupArmadaIds &&
+        deviceGroupArmadaIds.size === 0 ? (
           <div className="banner warn">
-            This device group has no members linked to Armada users (`armada_user_id`). Link
-            devices in Admin → Device groups so Maintenance can filter jobs by vehicle.
+            {deviceGroupMemberCount} GPS device(s) in this group. Maintenance jobs still use Armada
+            vehicle ids when linked — optional link in Admin → Device Management. Vehicle list and
+            live status work without Armada.
           </div>
         ) : null}
         {error && <div className="banner error">{error}</div>}

@@ -292,6 +292,7 @@ export default function DispatchBoard() {
     return params.get("deviceGroupId") || "";
   });
   const [deviceGroupArmadaIds, setDeviceGroupArmadaIds] = useState<Set<number> | null>(null);
+  const [deviceGroupMemberCount, setDeviceGroupMemberCount] = useState(0);
   const [userId, setUserId] = useState(query.userId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
@@ -598,7 +599,8 @@ export default function DispatchBoard() {
 
   const deskJobs = useMemo(() => {
     let list = multiDesk ? jobs.filter((j) => jobMatchesDeskMode(j, deskMode)) : jobs;
-    if (deviceGroupArmadaIds) {
+    // Device-first: only narrow jobs when the group has linked Armada vehicles.
+    if (deviceGroupArmadaIds && deviceGroupArmadaIds.size > 0) {
       list = list.filter(
         (j) => j.armadaUserId != null && deviceGroupArmadaIds.has(Number(j.armadaUserId)),
       );
@@ -608,7 +610,7 @@ export default function DispatchBoard() {
 
   const deskOrders = useMemo(() => {
     let list = multiDesk ? orders.filter((o) => orderMatchesDeskMode(o, deskMode)) : orders;
-    if (deviceGroupArmadaIds) {
+    if (deviceGroupArmadaIds && deviceGroupArmadaIds.size > 0) {
       const jobIds = new Set(deskJobs.map((j) => j.id));
       // Keep unassigned inbox orders; hide orders already on jobs outside this device group.
       list = list.filter((o) => !o.jobId || jobIds.has(o.jobId));
@@ -806,12 +808,19 @@ export default function DispatchBoard() {
     if (!ready) return;
     if (!deviceGroupId) {
       setDeviceGroupArmadaIds(null);
+      setDeviceGroupMemberCount(0);
       return;
     }
     const ac = new AbortController();
     fetchDeviceGroupScope([deviceGroupId], ac.signal)
-      .then((scope) => setDeviceGroupArmadaIds(new Set(scope.armadaUserIds)))
-      .catch(() => setDeviceGroupArmadaIds(new Set()));
+      .then((scope) => {
+        setDeviceGroupArmadaIds(new Set(scope.armadaUserIds));
+        setDeviceGroupMemberCount(scope.memberCount || scope.deviceIds.length);
+      })
+      .catch(() => {
+        setDeviceGroupArmadaIds(new Set());
+        setDeviceGroupMemberCount(0);
+      });
     return () => ac.abort();
   }, [ready, deviceGroupId]);
 
@@ -2532,10 +2541,19 @@ export default function DispatchBoard() {
           </p>
         )}
 
-        {deviceGroupId && deviceGroupArmadaIds && deviceGroupArmadaIds.size === 0 ? (
+        {deviceGroupId && deviceGroupMemberCount === 0 ? (
           <p className="dispatch-alert" role="status">
-            This device group has no members linked to Armada users. Link `armada_user_id` on
-            devices in Admin so Dispatch can filter jobs for the group.
+            This device group has no GPS devices yet. Add members in Admin → Device Management.
+          </p>
+        ) : null}
+        {deviceGroupId &&
+        deviceGroupMemberCount > 0 &&
+        deviceGroupArmadaIds &&
+        deviceGroupArmadaIds.size === 0 ? (
+          <p className="dispatch-alert" role="status">
+            {deviceGroupMemberCount} GPS device(s) in this group. Dispatch jobs still attach to Armada
+            vehicles when linked — optional in Admin → Device Management. Group membership no longer
+            requires an Armada link.
           </p>
         ) : null}
 

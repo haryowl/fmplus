@@ -1006,7 +1006,10 @@ export async function buildTelematicsPosMap(tenantId, vaultTenant, opts = {}) {
 
   let uidFilter = null;
   if (Array.isArray(opts.groupIds) && opts.groupIds.filter(Boolean).length) {
-    uidFilter = new Set(await armadaUserIdsInDeviceGroups(tenantId, opts.groupIds));
+    const linked = await armadaUserIdsInDeviceGroups(tenantId, opts.groupIds);
+    // Device-first groups: only constrain Armada-keyed positions when links exist.
+    // An empty linked set means "no Armada overlay for this group", not "all vehicles".
+    uidFilter = new Set(linked);
   } else if (Array.isArray(opts.armadaUserIds) && opts.armadaUserIds.length) {
     uidFilter = new Set(
       opts.armadaUserIds.map(Number).filter((n) => Number.isInteger(n) && n > 0),
