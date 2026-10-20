@@ -23,9 +23,17 @@ export function FleetLiveParamsPanel(props: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [includeRaw, setIncludeRaw] = useState(false);
+  const [filter, setFilter] = useState("");
   const deviceId = props.deviceId || "";
   const recordedAt = props.mode === "fix" ? props.recordedAt || "" : "";
   const pollMs = props.mode === "live" ? props.pollMs ?? 4000 : 0;
+  const filterNorm = filter.trim().toLowerCase();
+  const visibleRows = filterNorm
+    ? rows.filter((r) => {
+        const hay = `${r.paramId} ${r.paramLabel} ${r.category} ${r.source} ${r.value ?? ""}`.toLowerCase();
+        return hay.includes(filterNorm);
+      })
+    : rows;
 
   useEffect(() => {
     if (!deviceId) {
@@ -89,14 +97,37 @@ export function FleetLiveParamsPanel(props: Props) {
           Include raw vendor keys
         </label>
         <span className="muted">
-          {loading ? "Updating…" : `${rows.length} params`}
+          {loading
+            ? "Updating…"
+            : filterNorm
+              ? `${visibleRows.length}/${rows.length} params`
+              : `${rows.length} params`}
           {props.mode === "fix" && recordedAt
             ? ` · ${new Date(recordedAt).toLocaleString()}`
             : ""}
         </span>
       </div>
+      <label className="fleet-params-filter">
+        <span className="sr-only">Filter parameters</span>
+        <input
+          type="search"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter params…"
+          autoComplete="off"
+        />
+      </label>
       {error ? <div className="banner error fleet-cc-banner">{error}</div> : null}
-      <TelemetryParamTable rows={rows} loading={loading} compact />
+      <TelemetryParamTable
+        rows={visibleRows}
+        loading={loading}
+        compact
+        emptyText={
+          filterNorm && rows.length
+            ? "No parameters match this filter."
+            : undefined
+        }
+      />
     </div>
   );
 }

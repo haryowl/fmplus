@@ -56,6 +56,11 @@ import {
   SECTION_ICONS,
 } from "../components/fleetLiveIcons";
 import { FleetLiveParamsPanel } from "../components/FleetLiveParamsPanel";
+import {
+  FLEET_DASH_PIN_COLUMNS,
+  formatDisplayPinValue,
+  readDisplayPin,
+} from "../lib/fleetTelemetryParams";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
 import {
@@ -577,6 +582,15 @@ export default function FleetLive() {
   const selected = rows.find((r) => r.id === selectedId) || null;
   const selectedMeta = selected ? fixMeta[selected.id] : null;
   const selectedCls = selected ? classifyLiveRow(selected, now) : null;
+  const selectedPins = FLEET_DASH_PIN_COLUMNS.filter(
+    (c) => c.id !== "fuel_level" && c.id !== "can.fuel_l",
+  )
+    .map((col) => {
+      const v = readDisplayPin(selectedMeta?.displayParams, col);
+      if (v == null) return null;
+      return { id: col.id, label: col.label, value: formatDisplayPinValue(v) };
+    })
+    .filter((p): p is { id: string; label: string; value: string } => p != null);
 
   // Do not include search text — refitting on every keystroke blanks/jitters the map.
   const fitKey = `${groupId}|${listTab}|${reload}`;
@@ -1079,6 +1093,16 @@ export default function FleetLive() {
                     </strong>
                   </div>
                 </div>
+                {selectedPins.length ? (
+                  <div className="fleet-cc-sel-pins" aria-label="Pinned mapper parameters">
+                    {selectedPins.map((p) => (
+                      <div key={p.id} title={p.id}>
+                        <span>{p.label}</span>
+                        <strong>{p.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="fleet-cc-sel-flags">
                   {selectedMeta && alertDeviceIds.has(selectedMeta.deviceId) ? (
                     <span className="fleet-cc-chip is-alert" title="Alert 24h">
