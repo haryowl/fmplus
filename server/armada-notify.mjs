@@ -200,11 +200,22 @@ export async function handleArmadaNotifyRequest(req, res) {
 
     if (kind === "maintenance" && notificationId) {
       const title = (ruleName && String(ruleName).trim()) || "Maintenance due";
+      let trackerDeviceId = null;
+      if (armadaUserId != null) {
+        const linked = await dbQuery(
+          `SELECT id FROM tracker_devices
+           WHERE tenant_id = $1 AND armada_user_id = $2 AND enabled = true
+           ORDER BY updated_at DESC NULLS LAST
+           LIMIT 1`,
+          [tenant.id, armadaUserId],
+        );
+        trackerDeviceId = linked.rows[0]?.id || null;
+      }
       await dbQuery(
         `INSERT INTO service_events (
            tenant_id, status, title, armada_user_id, armada_username, user_display_name,
-           lat, lon, notification_id
-         ) VALUES ($1, 'due', $2, $3, $4, $5, $6, $7, $8)
+           tracker_device_id, lat, lon, notification_id
+         ) VALUES ($1, 'due', $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (notification_id) DO NOTHING`,
         [
           tenant.id,
@@ -212,6 +223,7 @@ export async function handleArmadaNotifyRequest(req, res) {
           armadaUserId,
           armadaUsername,
           userDisplayName,
+          trackerDeviceId,
           lat,
           lon,
           notificationId,
