@@ -914,6 +914,11 @@ export default function MaintenanceBoard() {
             fleetUserIds={fleetUserIds}
             fleetDeviceIds={fleetDeviceIds}
             groups={groups}
+            deviceGroups={deviceGroups.map((g) => ({
+              id: g.id,
+              name: g.name,
+              deviceIds: g.deviceIds || [],
+            }))}
             excelOk={excelOk}
             onOpenEvent={(id) => {
               setEventId(id);

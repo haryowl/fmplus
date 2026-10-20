@@ -254,7 +254,11 @@ export async function fanOutEventReminder({
 }
 
 function vehicleLabel(ev) {
-  return ev.userDisplayName || ev.armadaUsername || (ev.armadaUserId ? `#${ev.armadaUserId}` : "Vehicle");
+  return (
+    ev.userDisplayName ||
+    ev.armadaUsername ||
+    (ev.armadaUserId ? `#${ev.armadaUserId}` : ev.trackerDeviceId ? "GPS device" : "Vehicle")
+  );
 }
 
 function hasSchedule(ev) {

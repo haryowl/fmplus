@@ -171,8 +171,14 @@ export async function fetchTrackerLastStatus(
   };
 }
 
-export async function fetchTrackerDeviceGroups(signal?: AbortSignal): Promise<TrackerDeviceGroup[]> {
-  const res = await fetch("/api/tracker/device-groups", {
+export async function fetchTrackerDeviceGroups(
+  signal?: AbortSignal,
+  opts?: { members?: boolean },
+): Promise<TrackerDeviceGroup[]> {
+  const params = new URLSearchParams();
+  if (opts?.members) params.set("members", "1");
+  const q = params.toString();
+  const res = await fetch(`/api/tracker/device-groups${q ? `?${q}` : ""}`, {
     credentials: "include",
     headers: { accept: "application/json", ...tenantHeaders() },
     signal,

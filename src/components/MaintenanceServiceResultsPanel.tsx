@@ -16,15 +16,22 @@ import {
   fetchServiceResults,
   formatServiceDuration,
   SERVICE_STATUS_LABELS,
+  type DeviceFleetGroupRef,
+  type FleetGroupOption,
   type FleetGroupRef,
   type ServiceResultsStatus,
 } from "../lib/maintenance";
+import { fetchTrackerDeviceGroups } from "../lib/trackerDevices";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 
 type Props = {
   days: number;
   groups: FleetGroupRef[];
+  /** Optional GPS device groups (with member deviceIds) for fleet labels/filter. */
+  deviceGroups?: DeviceFleetGroupRef[];
+  /** When the board already scoped a device group, constrain results to these devices. */
+  scopeDeviceIds?: string[];
   excelOk?: boolean;
   onOpenEvent?: (id: string) => void;
 };
@@ -34,13 +41,15 @@ type GroupBy = "jobs" | "vehicle" | "fleet" | "item";
 export function MaintenanceServiceResultsPanel({
   days,
   groups,
+  deviceGroups: deviceGroupsProp,
+  scopeDeviceIds,
   excelOk = true,
   onOpenEvent,
 }: Props) {
   const theme = useChartTheme();
   const [status, setStatus] = useState<ServiceResultsStatus>("all");
   const [catalogGroup, setCatalogGroup] = useState("");
-  const [fleetGroupId, setFleetGroupId] = useState("");
+  const [fleetGroupKey, setFleetGroupKey] = useState("");
   const [vehicleId, setVehicleId] = useState("");
   const [q, setQ] = useState("");
   const [qApplied, setQApplied] = useState("");
@@ -48,15 +57,52 @@ export function MaintenanceServiceResultsPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [raw, setRaw] = useState<Awaited<ReturnType<typeof fetchServiceResults>> | null>(null);
-  const [fleetGroupOptions, setFleetGroupOptions] = useState<
-    { id: number; name: string; jobVehicles: number }[]
-  >([]);
+  const [fleetGroupOptions, setFleetGroupOptions] = useState<FleetGroupOption[]>([]);
+  const [loadedDeviceGroups, setLoadedDeviceGroups] = useState<DeviceFleetGroupRef[]>([]);
 
-  const fleetFilterUserIds = useMemo(() => {
-    if (!fleetGroupId) return undefined;
-    const g = groups.find((x) => String(x.id) === fleetGroupId);
-    return g?.usersIds?.length ? g.usersIds : undefined;
-  }, [fleetGroupId, groups]);
+  useEffect(() => {
+    const propHasMembers = Boolean(
+      deviceGroupsProp?.some((g) => Array.isArray(g.deviceIds) && g.deviceIds.length > 0),
+    );
+    if (propHasMembers && deviceGroupsProp) {
+      setLoadedDeviceGroups(deviceGroupsProp);
+      return;
+    }
+    const ac = new AbortController();
+    void fetchTrackerDeviceGroups(ac.signal, { members: true })
+      .then((list) => {
+        if (!ac.signal.aborted) {
+          setLoadedDeviceGroups(
+            list.map((g) => ({ id: g.id, name: g.name, deviceIds: g.deviceIds || [] })),
+          );
+        }
+      })
+      .catch(() => {
+        if (!ac.signal.aborted) setLoadedDeviceGroups(deviceGroupsProp || []);
+      });
+    return () => ac.abort();
+  }, [deviceGroupsProp]);
+
+  const fleetFilter = useMemo(() => {
+    if (!fleetGroupKey) return { userIds: undefined as number[] | undefined, deviceIds: undefined as string[] | undefined };
+    if (fleetGroupKey.startsWith("a:")) {
+      const id = Number(fleetGroupKey.slice(2));
+      const g = groups.find((x) => x.id === id);
+      return {
+        userIds: g?.usersIds?.length ? g.usersIds : undefined,
+        deviceIds: undefined,
+      };
+    }
+    if (fleetGroupKey.startsWith("d:")) {
+      const id = fleetGroupKey.slice(2);
+      const g = loadedDeviceGroups.find((x) => x.id === id);
+      return {
+        userIds: undefined,
+        deviceIds: g?.deviceIds?.length ? g.deviceIds : undefined,
+      };
+    }
+    return { userIds: undefined, deviceIds: undefined };
+  }, [fleetGroupKey, groups, loadedDeviceGroups]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -70,6 +116,10 @@ export function MaintenanceServiceResultsPanel({
       !deviceOnly && Number.isInteger(Number(vehicleId)) && Number(vehicleId) > 0
         ? Number(vehicleId)
         : undefined;
+    const scopedDevices =
+      !vehicleId && !fleetFilter.deviceIds && scopeDeviceIds?.length
+        ? scopeDeviceIds
+        : undefined;
     void fetchServiceResults(
       {
         days,
@@ -78,7 +128,11 @@ export function MaintenanceServiceResultsPanel({
         q: qApplied || undefined,
         deviceId: deviceOnly || undefined,
         userId: armadaOnly,
-        userIds: !vehicleId && fleetFilterUserIds ? fleetFilterUserIds : undefined,
+        userIds: !vehicleId && fleetFilter.userIds ? fleetFilter.userIds : undefined,
+        deviceIds:
+          !vehicleId && !deviceOnly
+            ? fleetFilter.deviceIds || scopedDevices
+            : undefined,
       },
       ac.signal,
     )
@@ -92,18 +146,18 @@ export function MaintenanceServiceResultsPanel({
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [days, status, catalogGroup, qApplied, vehicleId, fleetFilterUserIds]);
+  }, [days, status, catalogGroup, qApplied, vehicleId, fleetFilter, scopeDeviceIds]);
 
   const enriched = useMemo(
-    () => (raw ? enrichServiceResultsWithFleetGroups(raw, groups) : null),
-    [raw, groups],
+    () => (raw ? enrichServiceResultsWithFleetGroups(raw, groups, loadedDeviceGroups) : null),
+    [raw, groups, loadedDeviceGroups],
   );
 
   useEffect(() => {
-    if (enriched && !fleetGroupId) {
+    if (enriched && !fleetGroupKey) {
       setFleetGroupOptions(enriched.fleetGroupOptions);
     }
-  }, [enriched, fleetGroupId]);
+  }, [enriched, fleetGroupKey]);
 
   const vehicleOptions = useMemo(() => {
     if (!enriched) return [];
@@ -218,16 +272,17 @@ export function MaintenanceServiceResultsPanel({
         <label>
           Fleet group
           <select
-            value={fleetGroupId}
+            value={fleetGroupKey}
             onChange={(e) => {
-              setFleetGroupId(e.target.value);
+              setFleetGroupKey(e.target.value);
               setVehicleId("");
             }}
           >
             <option value="">All with jobs</option>
             {fleetGroupOptions.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name} ({g.jobVehicles})
+              <option key={g.key} value={g.key}>
+                {g.name}
+                {g.kind === "device" ? " · GPS" : ""} ({g.jobVehicles})
               </option>
             ))}
           </select>

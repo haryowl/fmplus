@@ -650,7 +650,7 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
         tenantKey: opts.tenantKey || opts.vaultTenant?.key || "",
         event,
         kind: "assigned",
-        title: `Job assigned · ${event.userDisplayName || event.armadaUsername || "Vehicle"}`,
+        title: `Job assigned · ${event.userDisplayName || event.armadaUsername || (event.trackerDeviceId ? "GPS device" : "Vehicle")}`,
         body: `${event.title} was assigned to you.`,
         payload: { assignedFieldUserId },
       });
@@ -684,7 +684,7 @@ export async function applyEventPatch(current, body, tenantId, opts = {}) {
               tenantKey: opts.tenantKey || opts.vaultTenant?.key || "",
               event: nextEvent,
               kind: "next_due",
-              title: `Next maintenance scheduled · ${nextEvent.userDisplayName || nextEvent.armadaUsername || "Vehicle"}`,
+              title: `Next maintenance scheduled · ${nextEvent.userDisplayName || nextEvent.armadaUsername || (nextEvent.trackerDeviceId ? "GPS device" : "Vehicle")}`,
               body: `${nextEvent.title} created after completion.${dueLabel} Assign when the window opens.`,
               payload: { parentEventId: event.id },
             });
@@ -2869,7 +2869,7 @@ export async function handleMaintenanceRequest(req, res) {
                 tenantKey: dbTenant.key || "",
                 event,
                 kind: "assigned",
-                title: `Job assigned · ${event.userDisplayName || event.armadaUsername || "Vehicle"}`,
+                title: `Job assigned · ${event.userDisplayName || event.armadaUsername || (event.trackerDeviceId ? "GPS device" : "Vehicle")}`,
                 body: `${event.title} was assigned to you.`,
                 payload: { assignedFieldUserId },
               });

@@ -57,12 +57,17 @@ async function wablasCreds(tenantRow) {
 }
 
 function vehicleLabel(job) {
+  const deviceId = job.trackerDeviceId || job.tracker_device_id || null;
   return (
     job.userDisplayName ||
     job.user_display_name ||
     job.armadaUsername ||
     job.armada_username ||
-    (job.armadaUserId || job.armada_user_id ? `#${job.armadaUserId || job.armada_user_id}` : "Vehicle")
+    (job.armadaUserId || job.armada_user_id
+      ? `#${job.armadaUserId || job.armada_user_id}`
+      : deviceId
+        ? "GPS device"
+        : "Vehicle")
   );
 }
 

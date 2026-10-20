@@ -14,6 +14,7 @@ import { Bar, Line } from "react-chartjs-2";
 import { chartFonts, useChartTheme } from "./chartTheme";
 import {
   downloadAnalyzeReportExcel,
+  buildDeviceFleetGroupMap,
   buildUserFleetGroupMap,
   fetchAnalyzeSummary,
   fetchCostDashboard,
@@ -21,10 +22,12 @@ import {
   formatServiceDuration,
   type AnalyzeSummary,
   type CostDashboard,
+  type DeviceFleetGroupRef,
+  type FleetGroupRef,
 } from "../lib/maintenance";
 import { MaintenanceServiceResultsPanel } from "./MaintenanceServiceResultsPanel";
 import { MaintenanceScheduleCharts } from "./MaintenanceScheduleCharts";
-import type { FleetGroupRef } from "../lib/maintenance";
+import { fetchTrackerDeviceGroups } from "../lib/trackerDevices";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip);
 
@@ -33,6 +36,7 @@ type Props = {
   /** GPS tracker device UUIDs in the current group (device-native / unlinked). */
   fleetDeviceIds?: string[];
   groups?: FleetGroupRef[];
+  deviceGroups?: DeviceFleetGroupRef[];
   excelOk?: boolean;
   onOpenEvent?: (id: string) => void;
   onJumpToJobs?: (opts: {
@@ -50,6 +54,7 @@ export function MaintenanceAnalyzeReport({
   fleetUserIds = [],
   fleetDeviceIds = [],
   groups = [],
+  deviceGroups: deviceGroupsProp,
   excelOk = true,
   onOpenEvent,
   onJumpToJobs,
@@ -64,6 +69,28 @@ export function MaintenanceAnalyzeReport({
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deviceGroups, setDeviceGroups] = useState<DeviceFleetGroupRef[]>(deviceGroupsProp || []);
+
+  useEffect(() => {
+    const propHasMembers = Boolean(
+      deviceGroupsProp?.some((g) => Array.isArray(g.deviceIds) && g.deviceIds.length > 0),
+    );
+    if (propHasMembers && deviceGroupsProp) {
+      setDeviceGroups(deviceGroupsProp);
+      return;
+    }
+    const ac = new AbortController();
+    void fetchTrackerDeviceGroups(ac.signal, { members: true })
+      .then((list) => {
+        if (!ac.signal.aborted) {
+          setDeviceGroups(list.map((g) => ({ id: g.id, name: g.name, deviceIds: g.deviceIds || [] })));
+        }
+      })
+      .catch(() => {
+        if (!ac.signal.aborted) setDeviceGroups(deviceGroupsProp || []);
+      });
+    return () => ac.abort();
+  }, [deviceGroupsProp]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -187,6 +214,25 @@ export function MaintenanceAnalyzeReport({
 
   const vehicleRows = (cost?.byVehicle || []).slice(0, 12);
   const userFleetGroups = useMemo(() => buildUserFleetGroupMap(groups), [groups]);
+  const deviceFleetGroups = useMemo(() => buildDeviceFleetGroupMap(deviceGroups), [deviceGroups]);
+
+  function fleetGroupNames(opts: {
+    armadaUserId?: number | null;
+    trackerDeviceId?: string | null;
+  }): string[] {
+    const names: string[] = [];
+    if (opts.armadaUserId != null) {
+      for (const n of userFleetGroups.get(opts.armadaUserId) || []) {
+        if (!names.includes(n)) names.push(n);
+      }
+    }
+    if (opts.trackerDeviceId) {
+      for (const n of deviceFleetGroups.get(opts.trackerDeviceId) || []) {
+        if (!names.includes(n)) names.push(n);
+      }
+    }
+    return names;
+  }
   const vehicleData: ChartData<"bar"> = {
     labels: vehicleRows.map((v) => v.label),
     datasets: [
@@ -520,10 +566,12 @@ export function MaintenanceAnalyzeReport({
                     </thead>
                     <tbody>
                       {(cost.byVehicle || []).slice(0, 25).map((v) => {
-                        const fg =
-                          v.userId != null ? userFleetGroups.get(v.userId) || [] : [];
+                        const fg = fleetGroupNames({
+                          armadaUserId: v.userId,
+                          trackerDeviceId: v.trackerDeviceId,
+                        });
                         return (
-                          <tr key={`${v.userId ?? v.label}`}>
+                          <tr key={v.userId != null ? `u:${v.userId}` : `d:${v.trackerDeviceId || v.label}`}>
                             <td>{v.label}</td>
                             <td>{fg.length ? fg.join(", ") : "—"}</td>
                             <td className="num">{v.count}</td>
@@ -574,10 +622,10 @@ export function MaintenanceAnalyzeReport({
                       </tr>
                     ) : (
                       cost.table.slice(0, 40).map((row) => {
-                        const fg =
-                          row.armadaUserId != null
-                            ? userFleetGroups.get(row.armadaUserId) || []
-                            : [];
+                        const fg = fleetGroupNames({
+                          armadaUserId: row.armadaUserId,
+                          trackerDeviceId: row.trackerDeviceId,
+                        });
                         return (
                         <tr key={row.id}>
                           <td>{row.vehicle}</td>
@@ -608,6 +656,8 @@ export function MaintenanceAnalyzeReport({
           <MaintenanceServiceResultsPanel
             days={days}
             groups={groups}
+            deviceGroups={deviceGroups}
+            scopeDeviceIds={fleetDeviceIds.length ? fleetDeviceIds : undefined}
             excelOk={excelOk}
             onOpenEvent={onOpenEvent}
           />

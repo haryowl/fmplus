@@ -443,6 +443,9 @@ export type ServiceResults = {
 
 export type FleetGroupRef = { id: number; name: string; usersIds: number[] };
 
+/** GPS device group (Armada-independent). */
+export type DeviceFleetGroupRef = { id: string; name: string; deviceIds?: string[] };
+
 /** Map Armada user id → fleet group names (only groups that contain the user). */
 export function buildUserFleetGroupMap(groups: FleetGroupRef[]): Map<number, string[]> {
   const map = new Map<number, string[]>();
@@ -456,36 +459,76 @@ export function buildUserFleetGroupMap(groups: FleetGroupRef[]): Map<number, str
   return map;
 }
 
+/** Map tracker device UUID → device group names. */
+export function buildDeviceFleetGroupMap(groups: DeviceFleetGroupRef[]): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  for (const g of groups) {
+    for (const did of g.deviceIds || []) {
+      const id = String(did || "").trim();
+      if (!/^[0-9a-f-]{36}$/i.test(id)) continue;
+      const list = map.get(id) || [];
+      if (!list.includes(g.name)) list.push(g.name);
+      map.set(id, list);
+    }
+  }
+  return map;
+}
+
+function mergeGroupNames(...lists: (string[] | undefined)[]): string[] {
+  const out: string[] = [];
+  for (const list of lists) {
+    for (const name of list || []) {
+      if (name && !out.includes(name)) out.push(name);
+    }
+  }
+  return out;
+}
+
+export type FleetGroupOption = {
+  key: string;
+  id: number | string | null;
+  name: string;
+  jobVehicles: number;
+  kind: "armada" | "device";
+};
+
 export function enrichServiceResultsWithFleetGroups(
   data: ServiceResults,
   groups: FleetGroupRef[],
+  deviceGroups: DeviceFleetGroupRef[] = [],
 ): ServiceResults & {
-  byFleetGroup: { id: number | null; name: string; price: number; cost: number; count: number; margin: number }[];
-  fleetGroupOptions: { id: number; name: string; jobVehicles: number }[];
+  byFleetGroup: { id: number | string | null; name: string; price: number; cost: number; count: number; margin: number }[];
+  fleetGroupOptions: FleetGroupOption[];
 } {
   const userGroups = buildUserFleetGroupMap(groups);
+  const deviceGroupMap = buildDeviceFleetGroupMap(deviceGroups);
   const rows = data.rows.map((r) => ({
     ...r,
-    fleetGroups: r.armadaUserId != null ? userGroups.get(r.armadaUserId) || [] : [],
+    fleetGroups: mergeGroupNames(
+      r.armadaUserId != null ? userGroups.get(r.armadaUserId) : undefined,
+      r.trackerDeviceId ? deviceGroupMap.get(r.trackerDeviceId) : undefined,
+    ),
   }));
   const byVehicle = data.byVehicle.map((v) => ({
     ...v,
-    fleetGroups: v.userId != null ? userGroups.get(v.userId) || [] : [],
+    fleetGroups: mergeGroupNames(
+      v.userId != null ? userGroups.get(v.userId) : undefined,
+      v.trackerDeviceId ? deviceGroupMap.get(v.trackerDeviceId) : undefined,
+    ),
   }));
 
   const fleetAgg = new Map<
     string,
-    { id: number | null; name: string; price: number; cost: number; count: number; vehicles: Set<number> }
+    { id: number | string | null; name: string; price: number; cost: number; count: number }
   >();
   for (const v of byVehicle) {
     const names =
       v.fleetGroups && v.fleetGroups.length
         ? v.fleetGroups
-        : v.userId != null
+        : v.userId != null || v.trackerDeviceId
           ? []
           : ["Unassigned group"];
-    if (!names.length && v.userId != null) {
-      // Vehicle has jobs but is not in any loaded Armada group
+    if (!names.length && (v.userId != null || v.trackerDeviceId)) {
       const key = "__ungrouped__";
       const cur = fleetAgg.get(key) || {
         id: null,
@@ -493,30 +536,31 @@ export function enrichServiceResultsWithFleetGroups(
         price: 0,
         cost: 0,
         count: 0,
-        vehicles: new Set<number>(),
       };
       cur.price += v.price;
       cur.cost += v.cost;
       cur.count += v.count;
-      if (v.userId != null) cur.vehicles.add(v.userId);
       fleetAgg.set(key, cur);
       continue;
     }
     for (const name of names) {
-      const g = groups.find((x) => x.name === name);
-      const key = g ? `id:${g.id}` : `n:${name}`;
+      const armadaG = groups.find((x) => x.name === name);
+      const deviceG = deviceGroups.find((x) => x.name === name);
+      const key = armadaG
+        ? `a:${armadaG.id}`
+        : deviceG
+          ? `d:${deviceG.id}`
+          : `n:${name}`;
       const cur = fleetAgg.get(key) || {
-        id: g?.id ?? null,
+        id: armadaG?.id ?? deviceG?.id ?? null,
         name,
         price: 0,
         cost: 0,
         count: 0,
-        vehicles: new Set<number>(),
       };
       cur.price += v.price;
       cur.cost += v.cost;
       cur.count += v.count;
-      if (v.userId != null) cur.vehicles.add(v.userId);
       fleetAgg.set(key, cur);
     }
   }
@@ -532,14 +576,33 @@ export function enrichServiceResultsWithFleetGroups(
     }))
     .sort((a, b) => b.cost - a.cost || b.price - a.price);
 
-  // Only fleet groups that already have jobs (vehicles with jobs)
-  const fleetGroupOptions = groups
-    .map((g) => {
+  const fleetGroupOptions: FleetGroupOption[] = [
+    ...groups.map((g) => {
       const jobVehicles = (g.usersIds || []).filter((uid) =>
         byVehicle.some((v) => v.userId === uid),
       ).length;
-      return { id: g.id, name: g.name, jobVehicles };
-    })
+      return {
+        key: `a:${g.id}`,
+        id: g.id,
+        name: g.name,
+        jobVehicles,
+        kind: "armada" as const,
+      };
+    }),
+    ...deviceGroups.map((g) => {
+      const ids = new Set((g.deviceIds || []).map(String));
+      const jobVehicles = byVehicle.filter(
+        (v) => v.trackerDeviceId && ids.has(v.trackerDeviceId),
+      ).length;
+      return {
+        key: `d:${g.id}`,
+        id: g.id,
+        name: g.name,
+        jobVehicles,
+        kind: "device" as const,
+      };
+    }),
+  ]
     .filter((g) => g.jobVehicles > 0)
     .sort((a, b) => a.name.localeCompare(b.name));
 

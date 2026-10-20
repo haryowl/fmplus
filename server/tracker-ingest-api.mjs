@@ -153,7 +153,10 @@ export async function handleTrackerIngestRequest(req, res) {
         return true;
       }
       const { listDeviceGroups } = await import("./tracker-device-groups.mjs");
-      const groups = await listDeviceGroups(dbTenant.id);
+      const includeMembers =
+        url.searchParams.get("members") === "1" ||
+        url.searchParams.get("includeMembers") === "1";
+      const groups = await listDeviceGroups(dbTenant.id, { includeMembers });
       json(res, 200, { groups });
       return true;
     } catch (err) {
