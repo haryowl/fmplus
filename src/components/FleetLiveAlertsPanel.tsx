@@ -10,6 +10,8 @@ import {
   deleteAlertRule,
   fetchAlertRules,
   fetchRuleEvents,
+  fetchRuleHolds,
+  formatHoldClock,
   isMappedField,
   resolveRuleEvent,
   RULE_CMPS,
@@ -18,12 +20,14 @@ import {
   type AlertCondition,
   type FleetAlertRule,
   type FleetRuleEvent,
+  type FleetRuleHold,
 } from "../lib/fleetAlertRules";
 import type { FleetTripDeviceOption } from "./FleetLiveTripsPanel";
 import type { TrackerDeviceGroup } from "../lib/trackerDevices";
 import { FleetLiveSectionHead } from "./FleetLiveSectionHead";
 import {
   IcoAlerts,
+  IcoAttention,
   IcoCalendar,
   IcoDevice,
   IcoMail,
@@ -91,6 +95,7 @@ export function FleetLiveAlertsPanel({
   const [safety, setSafety] = useState<FleetMediaEvent[]>([]);
   const [ruleEvents, setRuleEvents] = useState<FleetRuleEvent[]>([]);
   const [rules, setRules] = useState<FleetAlertRule[]>([]);
+  const [holds, setHolds] = useState<FleetRuleHold[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -109,8 +114,14 @@ export function FleetLiveAlertsPanel({
   const [editId, setEditId] = useState<string | null>(null);
 
   const reloadRules = () =>
-    fetchAlertRules()
-      .then(setRules)
+    Promise.all([
+      fetchAlertRules(),
+      fetchRuleHolds({ limit: 40 }).catch(() => [] as FleetRuleHold[]),
+    ])
+      .then(([list, holdList]) => {
+        setRules(list);
+        setHolds(holdList);
+      })
       .catch((err: Error) => setError(err.message || "Failed to load rules"));
 
   useEffect(() => {
@@ -132,10 +143,12 @@ export function FleetLiveAlertsPanel({
         ac.signal,
       ),
       fetchRuleEvents({ limit: 80 }, ac.signal).catch(() => [] as FleetRuleEvent[]),
+      fetchRuleHolds({ limit: 20 }, ac.signal).catch(() => [] as FleetRuleHold[]),
     ])
-      .then(([s, r]) => {
+      .then(([s, r, h]) => {
         setSafety(s);
         setRuleEvents(r);
+        setHolds(h);
       })
       .catch((err: Error) => {
         if (err.name !== "AbortError") {
@@ -548,6 +561,46 @@ export function FleetLiveAlertsPanel({
           <section className="fleet-dash-card">
             <header className="fleet-dash-card-head">
               <h3>
+                <IcoAttention /> Holding now
+              </h3>
+              <em className="fleet-dash-pill">{holds.length}</em>
+            </header>
+            {holds.length === 0 ? (
+              <p className="muted fleet-dash-empty">No active duration holds.</p>
+            ) : (
+              <ul className="fleet-holds-list">
+                {holds.map((h) => (
+                  <li key={`${h.ruleId}:${h.deviceId}`}>
+                    <div>
+                      <strong>{h.ruleName}</strong>
+                      <span className="muted">
+                        {" "}
+                        · {h.deviceLabel || "device"}
+                      </span>
+                      <div className="fleet-hold-bar" aria-hidden>
+                        <span style={{ width: `${h.progress}%` }} />
+                      </div>
+                      <div className="muted">
+                        {formatHoldClock(h.heldSec)} / {formatHoldClock(h.durationSec)}
+                        {h.phase === "holding"
+                          ? " · accumulating"
+                          : h.phase === "cooldown"
+                            ? " · cooldown"
+                            : " · ready to fire"}
+                      </div>
+                    </div>
+                    <em className={`fleet-dash-pill is-${h.phase === "holding" ? "warn" : h.phase === "ready" ? "bad" : "ok"}`}>
+                      {h.phase}
+                    </em>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="fleet-dash-card">
+            <header className="fleet-dash-card-head">
+              <h3>
                 <IcoRules /> Rules
               </h3>
               <em className="fleet-dash-pill">{rules.length}</em>
@@ -685,8 +738,43 @@ export function FleetLiveAlertsPanel({
                   {ruleEvents.filter((e) => e.status === "open").length} open
                 </em>
               </span>
+              {holds.length ? (
+                <span title="Active holds">
+                  <IcoAttention /> <strong>{holds.length}</strong> holding
+                </span>
+              ) : null}
             </div>
           </div>
+
+          {holds.length ? (
+            <section className="fleet-dash-card fleet-holds-compact">
+              <header className="fleet-dash-card-head">
+                <h3>
+                  <IcoAttention /> Holding
+                </h3>
+                <em className="fleet-dash-pill is-warn">{holds.length}</em>
+              </header>
+              <ul className="fleet-holds-list">
+                {holds.slice(0, 6).map((h) => (
+                  <li key={`${h.ruleId}:${h.deviceId}`}>
+                    <div>
+                      <strong>{h.ruleName}</strong>
+                      <span className="muted"> · {h.deviceLabel || "device"}</span>
+                      <div className="fleet-hold-bar" aria-hidden>
+                        <span style={{ width: `${h.progress}%` }} />
+                      </div>
+                      <div className="muted">
+                        {formatHoldClock(h.heldSec)} / {formatHoldClock(h.durationSec)} · {h.phase}
+                      </div>
+                    </div>
+                    <em className={`fleet-dash-pill is-${h.phase === "holding" ? "warn" : "ok"}`}>
+                      {h.progress}%
+                    </em>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           <div className="fleet-alerts-body">
             <section className="fleet-dash-card">

@@ -5877,6 +5877,84 @@ html.onesheet-root body {
   color: var(--gps, #0d9488);
 }
 
+.fleet-holds-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.fleet-holds-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line, #eef1f4);
+  font-size: 0.8rem;
+}
+
+.fleet-holds-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.fleet-holds-list li > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.fleet-hold-bar {
+  height: 4px;
+  margin: 6px 0 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink, #17212b) 8%, transparent);
+  overflow: hidden;
+}
+
+.fleet-hold-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--idle, #f59e0b);
+  transition: width 0.3s ease;
+}
+
+.fleet-cc-holds {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line, #eef1f4);
+}
+
+.fleet-cc-holds ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fleet-cc-holds li {
+  display: flex;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line, #eef1f4);
+  font-size: 0.78rem;
+}
+
+.fleet-cc-holds li:last-child {
+  border-bottom: 0;
+}
+
+.fleet-cc-holds li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.fleet-cc-active-pill.is-hold {
+  background: color-mix(in srgb, var(--idle, #f59e0b) 16%, transparent);
+  color: #b45309;
+}
+
 .fleet-rules-cond-row select,
 .fleet-rules-cond-row input {
   height: 34px;

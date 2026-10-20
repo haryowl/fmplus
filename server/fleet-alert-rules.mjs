@@ -318,6 +318,58 @@ export async function listFleetAlertEvents(tenantId, { limit = 80, status } = {}
   }));
 }
 
+/**
+ * Active duration holds: condition true, waiting to meet durationSec (or ready/cooldown).
+ */
+export async function listFleetAlertRuleHolds(tenantId, { limit = 40 } = {}) {
+  const lim = Math.min(100, Math.max(1, Number(limit) || 40));
+  const rows = await dbQuery(
+    `SELECT s.rule_id, s.device_id, s.true_since, s.last_eval_at, s.last_fired_at,
+            r.name AS rule_name, r.severity, r.formula, r.cooldown_sec,
+            d.label AS device_label, d.imei
+     FROM fleet_alert_rule_state s
+     JOIN fleet_alert_rules r ON r.id = s.rule_id AND r.tenant_id = s.tenant_id
+     LEFT JOIN tracker_devices d ON d.id = s.device_id
+     WHERE s.tenant_id = $1
+       AND s.true_since IS NOT NULL
+       AND r.enabled = true
+       AND COALESCE((r.formula->>'durationSec')::int, 0) > 0
+     ORDER BY s.true_since ASC
+     LIMIT $2`,
+    [tenantId, lim],
+  );
+  const now = Date.now();
+  return rows.rows.map((r) => {
+    const formula = r.formula && typeof r.formula === "object" ? r.formula : {};
+    const durationSec = Math.max(0, Number(formula.durationSec) || 0);
+    const trueSinceMs = r.true_since ? new Date(r.true_since).getTime() : now;
+    const heldSec = Math.max(0, Math.round((now - trueSinceMs) / 1000));
+    const cooldownSec = Number(r.cooldown_sec) || 300;
+    const lastFiredMs = r.last_fired_at ? new Date(r.last_fired_at).getTime() : null;
+    const inCooldown =
+      lastFiredMs != null && Number.isFinite(lastFiredMs) && now - lastFiredMs < cooldownSec * 1000;
+    const progress =
+      durationSec > 0 ? Math.min(100, Math.round((heldSec / durationSec) * 100)) : 100;
+    let phase = "holding";
+    if (heldSec >= durationSec) phase = inCooldown ? "cooldown" : "ready";
+    return {
+      ruleId: r.rule_id,
+      ruleName: r.rule_name || "",
+      deviceId: r.device_id,
+      deviceLabel: r.device_label || r.imei || "",
+      severity: r.severity,
+      trueSince: r.true_since,
+      heldSec,
+      durationSec,
+      progress,
+      phase,
+      cooldownSec,
+      lastEvalAt: r.last_eval_at,
+      lastFiredAt: r.last_fired_at,
+    };
+  });
+}
+
 export async function ackFleetAlertEvent(tenantId, eventId) {
   const rows = await dbQuery(
     `UPDATE fleet_alert_events

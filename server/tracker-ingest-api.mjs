@@ -363,6 +363,23 @@ export async function handleTrackerIngestRequest(req, res) {
     }
   }
 
+  if (url.pathname === "/api/tracker/alert-holds" && req.method === "GET") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      const { listFleetAlertRuleHolds } = await import("./fleet-alert-rules.mjs");
+      const limit = Number(url.searchParams.get("limit")) || 40;
+      json(res, 200, { holds: await listFleetAlertRuleHolds(dbTenant.id, { limit }) });
+      return true;
+    } catch (err) {
+      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
   if (url.pathname === "/api/tracker/alert-events" && req.method === "GET") {
     try {
       const dbTenant = await resolveDbTenant(req);

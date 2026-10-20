@@ -41,6 +41,22 @@ export type FleetRuleEvent = {
   notifyWhatsappSent?: boolean;
 };
 
+export type FleetRuleHold = {
+  ruleId: string;
+  ruleName: string;
+  deviceId: string;
+  deviceLabel: string;
+  severity: string;
+  trueSince: string;
+  heldSec: number;
+  durationSec: number;
+  progress: number;
+  phase: "holding" | "cooldown" | "ready";
+  cooldownSec: number;
+  lastEvalAt?: string;
+  lastFiredAt?: string | null;
+};
+
 export const RULE_FIELDS = [
   { value: "speed", label: "Speed (km/h)" },
   { value: "ignition", label: "Ignition" },
@@ -116,6 +132,31 @@ export async function fetchRuleEvents(
   const data = await parseJson(res);
   if (!res.ok) throw new Error(String(data.error || `Events ${res.status}`));
   return Array.isArray(data.events) ? (data.events as FleetRuleEvent[]) : [];
+}
+
+export async function fetchRuleHolds(
+  opts?: { limit?: number },
+  signal?: AbortSignal,
+): Promise<FleetRuleHold[]> {
+  const q = new URLSearchParams();
+  if (opts?.limit) q.set("limit", String(opts.limit));
+  const res = await fetch(`/api/tracker/alert-holds?${q}`, {
+    credentials: "include",
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = await parseJson(res);
+  if (!res.ok) throw new Error(String(data.error || `Holds ${res.status}`));
+  return Array.isArray(data.holds) ? (data.holds as FleetRuleHold[]) : [];
+}
+
+export function formatHoldClock(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
 }
 
 export async function ackRuleEvent(id: string): Promise<void> {

@@ -59,8 +59,11 @@ import { ViewNav } from "../components/ViewNav";
 import {
   ackRuleEvent,
   fetchRuleEvents,
+  fetchRuleHolds,
+  formatHoldClock,
   resolveRuleEvent,
   type FleetRuleEvent,
+  type FleetRuleHold,
 } from "../lib/fleetAlertRules";
 
 type ListTab = "all" | LiveOpsClass | "alert" | "maintenance";
@@ -207,6 +210,7 @@ export default function FleetLive() {
   const [fixMeta, setFixMeta] = useState<Record<number, FixMeta>>({});
   const [alerts, setAlerts] = useState<SafetyEvent[]>([]);
   const [ruleFires, setRuleFires] = useState<FleetRuleEvent[]>([]);
+  const [ruleHolds, setRuleHolds] = useState<FleetRuleHold[]>([]);
   const [maintUserIds, setMaintUserIds] = useState<Set<number>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
@@ -321,9 +325,10 @@ export default function FleetLive() {
         fetchRuleEvents({ status: "open", limit: 40 }, ac.signal).catch(
           () => [] as FleetRuleEvent[],
         ),
+        fetchRuleHolds({ limit: 20 }, ac.signal).catch(() => [] as FleetRuleHold[]),
         fetchOpenMaintenanceUserIds(ac.signal).catch(() => new Set<number>()),
       ])
-        .then(([deviceStatus, safety, openRules, maintIds]) => {
+        .then(([deviceStatus, safety, openRules, holds, maintIds]) => {
           if (ac.signal.aborted) return;
           const nextRows: LastStatusRow[] = [];
           const meta: Record<number, FixMeta> = {};
@@ -344,6 +349,7 @@ export default function FleetLive() {
           setFixMeta(meta);
           setAlerts(safety);
           setRuleFires(openRules);
+          setRuleHolds(holds);
           setMaintUserIds(maintIds);
           setNow(Date.now());
           setSelectedId((prev) => (prev != null && meta[prev] ? prev : null));
@@ -1244,6 +1250,14 @@ export default function FleetLive() {
                 <span className="muted">rules</span>
               </>
             ) : null}
+            {ruleHolds.length > 0 ? (
+              <>
+                <span className="fleet-cc-drawer-sep" />
+                <IcoAttention />
+                <strong>{ruleHolds.length}</strong>
+                <span className="muted">holding</span>
+              </>
+            ) : null}
             {!alertsOpen && onlineCount > 0 ? (
               <>
                 <span className="fleet-cc-drawer-sep" />
@@ -1271,6 +1285,33 @@ export default function FleetLive() {
                   View all
                 </button>
               </header>
+              {ruleHolds.length ? (
+                <div className="fleet-cc-holds">
+                  <header className="fleet-cc-panel-head">
+                    <h3>
+                      <IcoAttention /> Holding <span className="muted">{ruleHolds.length}</span>
+                    </h3>
+                  </header>
+                  <ul>
+                    {ruleHolds.slice(0, 5).map((h) => (
+                      <li key={`${h.ruleId}:${h.deviceId}`}>
+                        <div>
+                          <strong>{h.ruleName}</strong>
+                          <span className="muted"> · {h.deviceLabel || "device"}</span>
+                          <div className="fleet-hold-bar" aria-hidden>
+                            <span style={{ width: `${h.progress}%` }} />
+                          </div>
+                          <div className="muted">
+                            {formatHoldClock(h.heldSec)} / {formatHoldClock(h.durationSec)} ·{" "}
+                            {h.phase}
+                          </div>
+                        </div>
+                        <em className="fleet-cc-active-pill is-hold">{h.progress}%</em>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               {drawerFeed.length === 0 ? (
                 <p className="muted">No recent safety or rule events.</p>
               ) : (
