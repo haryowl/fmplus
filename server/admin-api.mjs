@@ -381,6 +381,12 @@ export async function handleAdminRequest(req, res) {
           const body = await readJson(req);
           const param = await createParamDef(tenantId, body);
           await writeAudit(admin.id, "tracker_param_def.create", { tenantId, paramId: param.id });
+          try {
+            const { invalidateFleetLiveDisplayPinMeta } = await import("./tracker-devices.mjs");
+            invalidateFleetLiveDisplayPinMeta(tenantId);
+          } catch {
+            /* ignore */
+          }
           json(res, 201, { param });
         } catch (err) {
           json(res, err.status || 500, { error: err.message || "Create param failed" });
@@ -403,6 +409,12 @@ export async function handleAdminRequest(req, res) {
           const body = await readJson(req);
           const param = await updateParamDef(tenantId, paramId, body);
           await writeAudit(admin.id, "tracker_param_def.update", { tenantId, paramId });
+          try {
+            const { invalidateFleetLiveDisplayPinMeta } = await import("./tracker-devices.mjs");
+            invalidateFleetLiveDisplayPinMeta(tenantId);
+          } catch {
+            /* ignore */
+          }
           json(res, 200, { param });
         } catch (err) {
           json(res, err.status || 500, { error: err.message || "Update param failed" });
@@ -413,6 +425,12 @@ export async function handleAdminRequest(req, res) {
         try {
           await deleteParamDef(tenantId, paramId);
           await writeAudit(admin.id, "tracker_param_def.delete", { tenantId, paramId });
+          try {
+            const { invalidateFleetLiveDisplayPinMeta } = await import("./tracker-devices.mjs");
+            invalidateFleetLiveDisplayPinMeta(tenantId);
+          } catch {
+            /* ignore */
+          }
           json(res, 200, { ok: true });
         } catch (err) {
           json(res, err.status || 500, { error: err.message || "Delete param failed" });
@@ -1342,6 +1360,12 @@ export async function handleAdminRequest(req, res) {
           tokenRotated: Boolean(body.token && String(body.token).trim()),
         });
         await initTenantVault();
+        try {
+          const { invalidateFleetLiveDisplayPinMeta } = await import("./tracker-devices.mjs");
+          invalidateFleetLiveDisplayPinMeta(id);
+        } catch {
+          /* ignore */
+        }
         json(res, 200, { tenant: publicTenantRow(updated.rows[0]) });
         return true;
       }
@@ -1354,6 +1378,12 @@ export async function handleAdminRequest(req, res) {
         }
         await writeAudit(admin.id, "tenant.delete", { id, key: deleted.rows[0].key });
         await initTenantVault();
+        try {
+          const { invalidateFleetLiveDisplayPinMeta } = await import("./tracker-devices.mjs");
+          invalidateFleetLiveDisplayPinMeta(id);
+        } catch {
+          /* ignore */
+        }
         json(res, 200, { ok: true });
         return true;
       }

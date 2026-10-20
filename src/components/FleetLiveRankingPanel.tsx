@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
 import { formatKm, formatSpeed } from "../lib/format";
+import {
+  extraDisplayPinColumns,
+  formatDisplayPinValue,
+  readDisplayPin,
+} from "../lib/fleetTelemetryParams";
 import { ageLabel, ageTone, type LastStatusRow } from "../lib/lastStatus";
 import {
   classifyLiveRow,
@@ -30,6 +35,8 @@ type Props = {
   maintUserIds: Set<number>;
   now: number;
   loading: boolean;
+  displayPinIds?: string[];
+  displayPinLabels?: Record<string, string>;
   onOpenLive: (vehicleId: number) => void;
 };
 
@@ -49,10 +56,16 @@ export function FleetLiveRankingPanel({
   maintUserIds,
   now,
   loading,
+  displayPinIds,
+  displayPinLabels,
   onOpenLive,
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("odometer");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const pinColumns = useMemo(
+    () => extraDisplayPinColumns(displayPinIds, displayPinLabels),
+    [displayPinIds, displayPinLabels],
+  );
 
   const ranked = useMemo(() => {
     const items = rows.map((row) => {
@@ -277,6 +290,11 @@ export function FleetLiveRankingPanel({
                   <IcoFuel /> {sortIcon("fuel")}
                 </button>
               </th>
+              {pinColumns.map((col) => (
+                <th key={col.id} title={`Mapper pin · ${col.id}`}>
+                  {col.label}
+                </th>
+              ))}
               <th>
                 <button
                   type="button"
@@ -302,7 +320,7 @@ export function FleetLiveRankingPanel({
           <tbody>
             {ranked.length === 0 ? (
               <tr>
-                <td colSpan={8} className="muted">
+                <td colSpan={8 + pinColumns.length} className="muted">
                   {loading ? "Loading…" : "No devices in this group."}
                 </td>
               </tr>
@@ -315,6 +333,7 @@ export function FleetLiveRankingPanel({
                     : tone === "live"
                       ? "ok"
                       : "warn";
+                const pins = item.meta?.displayParams;
                 return (
                   <tr key={item.row.id} className={item.inAlert ? "is-alert" : ""}>
                     <td className="fleet-rank-pos">{idx + 1}</td>
@@ -352,6 +371,11 @@ export function FleetLiveRankingPanel({
                     </td>
                     <td>{item.odo != null ? formatKm(item.odo) : "—"}</td>
                     <td>{item.fuel != null ? `${Math.round(item.fuel)}%` : "—"}</td>
+                    {pinColumns.map((col) => (
+                      <td key={col.id} className="fleet-dash-pin" title={col.id}>
+                        {formatDisplayPinValue(readDisplayPin(pins, col))}
+                      </td>
+                    ))}
                     <td>
                       <strong className={item.alerts > 0 ? "fleet-rank-alert-n" : ""}>
                         {item.alerts}

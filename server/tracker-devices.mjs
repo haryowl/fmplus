@@ -792,12 +792,26 @@ const FLEET_DISPLAY_PIN_LABELS = {
   "gps.valid": "GPS",
 };
 
+/** @type {Map<string, { expires: number, value: { displayPinIds: string[], displayPinLabels: Record<string, string> } }>} */
+const displayPinMetaCache = new Map();
+const DISPLAY_PIN_META_TTL_MS = 60_000;
+
 /**
- * Resolve pin ids + labels (param defs preferred) for Fleet Live Dashboard/Live.
+ * Resolve pin ids + labels for Fleet Live Dashboard/Live/Ranking.
+ * Prefer short built-in labels for known pins; otherwise use param-def labels.
+ * Cached briefly so last-status polls do not re-query param defs every time.
  * @param {string} tenantId
  * @returns {Promise<{ displayPinIds: string[], displayPinLabels: Record<string, string> }>}
  */
 export async function tenantFleetLiveDisplayPinMeta(tenantId) {
+  const cached = displayPinMetaCache.get(tenantId);
+  if (cached && cached.expires > Date.now()) {
+    return {
+      displayPinIds: cached.value.displayPinIds.slice(),
+      displayPinLabels: { ...cached.value.displayPinLabels },
+    };
+  }
+
   const displayPinIds = await tenantFleetLiveDisplayPins(tenantId);
   /** @type {Record<string, string>} */
   const displayPinLabels = {};
@@ -807,14 +821,28 @@ export async function tenantFleetLiveDisplayPinMeta(tenantId) {
     const byId = new Map(defs.map((d) => [d.id, d.label]));
     for (const id of displayPinIds) {
       displayPinLabels[id] =
-        byId.get(id) || FLEET_DISPLAY_PIN_LABELS[id] || id;
+        FLEET_DISPLAY_PIN_LABELS[id] || byId.get(id) || id;
     }
   } catch {
     for (const id of displayPinIds) {
       displayPinLabels[id] = FLEET_DISPLAY_PIN_LABELS[id] || id;
     }
   }
-  return { displayPinIds, displayPinLabels };
+  const value = { displayPinIds, displayPinLabels };
+  displayPinMetaCache.set(tenantId, {
+    expires: Date.now() + DISPLAY_PIN_META_TTL_MS,
+    value,
+  });
+  return {
+    displayPinIds: displayPinIds.slice(),
+    displayPinLabels: { ...displayPinLabels },
+  };
+}
+
+/** Drop cached pin meta (e.g. after Admin tenant save). */
+export function invalidateFleetLiveDisplayPinMeta(tenantId) {
+  if (tenantId) displayPinMetaCache.delete(tenantId);
+  else displayPinMetaCache.clear();
 }
 
 /**

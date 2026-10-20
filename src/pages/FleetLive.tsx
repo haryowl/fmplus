@@ -903,6 +903,8 @@ export default function FleetLive() {
           maintUserIds={maintUserIds}
           now={now}
           loading={loading}
+          displayPinIds={displayPinIds}
+          displayPinLabels={displayPinLabels}
           onOpenLive={openLiveVehicle}
         />
       ) : null}
