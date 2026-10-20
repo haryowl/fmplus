@@ -38,6 +38,7 @@ import { filterStatusRows, type LastStatusRow } from "../lib/lastStatus";
 import { formatKm, formatSpeed } from "../lib/format";
 import { fullHref, tripsHref, writeLocationSearch } from "../lib/routing";
 import {
+  fetchDeviceGroupScope,
   fetchTrackerDeviceGroups,
   fetchTrackerLastStatus,
   mergeArmadaRowsWithDeviceFixes,
@@ -146,6 +147,7 @@ export default function MaintenanceBoard() {
     const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
     return params.get("deviceGroupId") || "";
   });
+  const [deviceGroupArmadaIds, setDeviceGroupArmadaIds] = useState<Set<number> | null>(null);
   const [statusFilter, setStatusFilter] = useState<MaintenanceStatusFilter>("open");
   const [healthFilter, setHealthFilter] = useState<"" | "upcoming" | "due" | "overdue" | "completed">(
     "",
@@ -193,10 +195,13 @@ export default function MaintenanceBoard() {
   const deleteOk = entitlements.features.deleteMaintenance === true;
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
   const fleetUserIds = useMemo(() => {
-    if (deviceGroupId) return statusRows.map((r) => r.id).filter((id) => id > 0);
+    if (deviceGroupId) {
+      if (deviceGroupArmadaIds) return [...deviceGroupArmadaIds];
+      return statusRows.map((r) => r.id).filter((id) => id > 0);
+    }
     if (users.length) return users.map((u) => u.id);
     return statusRows.map((r) => r.id);
-  }, [users, statusRows, deviceGroupId]);
+  }, [users, statusRows, deviceGroupId, deviceGroupArmadaIds]);
 
   const statusById = useMemo(() => {
     const map = new Map<number, LastStatusRow>();
@@ -231,18 +236,35 @@ export default function MaintenanceBoard() {
     );
   }, [groupId, deviceGroupId, users, statusRows, statusById, vehicleQuery]);
 
+  const groupScopedReminders = useMemo(() => {
+    if (!deviceGroupId || !fleetUserIds.length) return reminders;
+    const allowUsers = new Set(fleetUserIds);
+    const allowEventIds = new Set(
+      events
+        .filter((ev) => ev.armadaUserId != null && allowUsers.has(Number(ev.armadaUserId)))
+        .map((ev) => ev.id),
+    );
+    return reminders.filter((r) => r.eventId != null && allowEventIds.has(r.eventId));
+  }, [reminders, deviceGroupId, fleetUserIds, events]);
+
   const filteredReminders = useMemo(() => {
-    if (reminderKind === "all") return reminders;
-    return reminders.filter((r) => r.kind === reminderKind);
-  }, [reminders, reminderKind]);
+    if (reminderKind === "all") return groupScopedReminders;
+    return groupScopedReminders.filter((r) => r.kind === reminderKind);
+  }, [groupScopedReminders, reminderKind]);
 
   const reminderCounts = useMemo(() => {
-    const counts = { all: reminders.length, overdue: 0, due_soon: 0, next_due: 0, assigned: 0 };
-    for (const r of reminders) {
+    const counts = {
+      all: groupScopedReminders.length,
+      overdue: 0,
+      due_soon: 0,
+      next_due: 0,
+      assigned: 0,
+    };
+    for (const r of groupScopedReminders) {
       if (r.kind in counts) counts[r.kind as keyof typeof counts] += 1;
     }
     return counts;
-  }, [reminders]);
+  }, [groupScopedReminders]);
 
   const filteredEvents = useMemo(() => {
     let list = events;
@@ -372,6 +394,19 @@ export default function MaintenanceBoard() {
 
   useEffect(() => {
     if (!ready) return;
+    if (!deviceGroupId) {
+      setDeviceGroupArmadaIds(null);
+      return;
+    }
+    const ac = new AbortController();
+    fetchDeviceGroupScope([deviceGroupId], ac.signal)
+      .then((scope) => setDeviceGroupArmadaIds(new Set(scope.armadaUserIds)))
+      .catch(() => setDeviceGroupArmadaIds(new Set()));
+    return () => ac.abort();
+  }, [ready, deviceGroupId]);
+
+  useEffect(() => {
+    if (!ready) return;
     const ac = new AbortController();
     const gid = Number(groupId);
     void Promise.all([
@@ -388,21 +423,35 @@ export default function MaintenanceBoard() {
         if (err.name === "AbortError") throw err;
         return { fixes: [], telematicsSource: "both" as const };
       }),
+      deviceGroupId
+        ? fetchDeviceGroupScope([deviceGroupId], ac.signal).catch(() => null)
+        : Promise.resolve(null),
     ])
-      .then(([armadaRows, deviceStatus]) => {
+      .then(([armadaRows, deviceStatus, scope]) => {
+        if (deviceGroupId) {
+          const allow = new Set(scope?.armadaUserIds || []);
+          setDeviceGroupArmadaIds(allow);
+          // Device-group mode: only Armada users linked to the group + group device fixes.
+          const armadaScoped = armadaRows.filter((r) => allow.has(r.id));
+          const merged = mergeArmadaRowsWithDeviceFixes(
+            armadaScoped,
+            deviceStatus.fixes,
+            deviceStatus.telematicsSource === "armada" ? "devices" : deviceStatus.telematicsSource,
+          );
+          setStatusRows(merged);
+          return;
+        }
         const merged = mergeArmadaRowsWithDeviceFixes(
           armadaRows,
           deviceStatus.fixes,
           deviceStatus.telematicsSource,
         );
         const scopeIds =
-          deviceGroupId
-            ? undefined
-            : groupId && users.length
-              ? users.map((u) => u.id)
-              : allowedUserIds.length
-                ? allowedUserIds
-                : undefined;
+          groupId && users.length
+            ? users.map((u) => u.id)
+            : allowedUserIds.length
+              ? allowedUserIds
+              : undefined;
         setStatusRows(filterStatusRows(merged, scopeIds));
       })
       .catch(() => {
@@ -608,7 +657,9 @@ export default function MaintenanceBoard() {
         </div>
         <div className="topbar-actions">
           <ViewNav current="maintenance" />
-          <div className="vehicle-chip">{loading ? "Loading…" : `${events.length} events`}</div>
+          <div className="vehicle-chip">
+            {loading ? "Loading…" : `${filteredEvents.length} events`}
+          </div>
         </div>
       </header>
 
@@ -619,6 +670,7 @@ export default function MaintenanceBoard() {
             <select
               id="maint-device-group"
               value={deviceGroupId}
+              title="Filter vehicles, jobs, and reminders by tracker device group"
               onChange={(e) => {
                 setDeviceGroupId(e.target.value);
                 if (e.target.value) setGroupId("");
@@ -1127,6 +1179,12 @@ export default function MaintenanceBoard() {
           />
         )}
 
+        {deviceGroupId && deviceGroupArmadaIds && deviceGroupArmadaIds.size === 0 ? (
+          <div className="banner warn">
+            This device group has no members linked to Armada users (`armada_user_id`). Link
+            devices in Admin → Device groups so Maintenance can filter jobs by vehicle.
+          </div>
+        ) : null}
         {error && <div className="banner error">{error}</div>}
 
         {!eventId && boardPanel === "jobs" && (
@@ -1140,12 +1198,12 @@ export default function MaintenanceBoard() {
               >
                 <span className="maintenance-inbox-title">
                   Inbox
-                  <span className="maint-count">{reminders.length}</span>
+                  <span className="maint-count">{groupScopedReminders.length}</span>
                 </span>
                 <span className="muted">{remindersOpen ? "Hide" : "Show"}</span>
               </button>
               <div className="maintenance-inbox-tools">
-                {reminders.length > 0 && (
+                {groupScopedReminders.length > 0 && (
                   <button
                     type="button"
                     className="btn-ghost"
@@ -1200,8 +1258,10 @@ export default function MaintenanceBoard() {
                 </div>
                 {filteredReminders.length === 0 ? (
                   <p className="muted maintenance-inbox-empty">
-                    {reminders.length === 0
-                      ? "No open reminders. Check to evaluate schedules."
+                    {groupScopedReminders.length === 0
+                      ? deviceGroupId
+                        ? "No reminders for this device group."
+                        : "No open reminders. Check to evaluate schedules."
                       : "No reminders in this filter."}
                   </p>
                 ) : (

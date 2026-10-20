@@ -21,6 +21,7 @@ import { useDeskSession } from "../lib/deskSession";
 import { deskCanWrite } from "../lib/deskPrivileges";
 import { tenantHeaders } from "../lib/tenant";
 import {
+  fetchDeviceGroupScope,
   fetchTrackerDeviceGroups,
   fetchTrackerLastStatus,
   trackerFixToStatusRow,
@@ -130,8 +131,13 @@ function vehicleSearch(userId: number): string {
   return q ? `?${q}` : "";
 }
 
-async function fetchSafetyEvents(signal?: AbortSignal): Promise<SafetyEvent[]> {
-  const res = await fetch("/api/tracker/safety-events?limit=40", {
+async function fetchSafetyEvents(
+  signal?: AbortSignal,
+  opts?: { groupId?: string },
+): Promise<SafetyEvent[]> {
+  const q = new URLSearchParams({ limit: "40" });
+  if (opts?.groupId) q.set("groupId", opts.groupId);
+  const res = await fetch(`/api/tracker/safety-events?${q}`, {
     credentials: "include",
     headers: { accept: "application/json", ...tenantHeaders() },
     signal,
@@ -321,17 +327,28 @@ export default function FleetLive() {
       setFetchError("");
       return Promise.all([
         fetchTrackerLastStatus(ac.signal, { groupIds: groupId ? [groupId] : undefined }),
-        fetchSafetyEvents(ac.signal).catch(() => [] as SafetyEvent[]),
+        fetchSafetyEvents(ac.signal, { groupId: groupId || undefined }).catch(
+          () => [] as SafetyEvent[],
+        ),
         fetchRuleEvents({ status: "open", limit: 40 }, ac.signal).catch(
           () => [] as FleetRuleEvent[],
         ),
         fetchRuleHolds({ limit: 20 }, ac.signal).catch(() => [] as FleetRuleHold[]),
         fetchOpenMaintenanceUserIds(ac.signal).catch(() => new Set<number>()),
+        groupId
+          ? fetchDeviceGroupScope([groupId], ac.signal).catch(() => null)
+          : Promise.resolve(null),
       ])
-        .then(([deviceStatus, safety, openRules, holds, maintIds]) => {
+        .then(([deviceStatus, safety, openRules, holds, maintIds, groupScope]) => {
           if (ac.signal.aborted) return;
           const nextRows: LastStatusRow[] = [];
           const meta: Record<number, FixMeta> = {};
+          const groupDeviceIds = groupScope
+            ? new Set(groupScope.deviceIds)
+            : null;
+          const groupArmadaIds = groupScope
+            ? new Set(groupScope.armadaUserIds)
+            : null;
           for (const fix of deviceStatus.fixes as TrackerLastFix[]) {
             const row = trackerFixToStatusRow(fix);
             nextRows.push(row);
@@ -348,9 +365,21 @@ export default function FleetLive() {
           setRows(nextRows);
           setFixMeta(meta);
           setAlerts(safety);
-          setRuleFires(openRules);
-          setRuleHolds(holds);
-          setMaintUserIds(maintIds);
+          setRuleFires(
+            groupDeviceIds
+              ? openRules.filter((e) => !e.deviceId || groupDeviceIds.has(e.deviceId))
+              : openRules,
+          );
+          setRuleHolds(
+            groupDeviceIds
+              ? holds.filter((h) => groupDeviceIds.has(h.deviceId))
+              : holds,
+          );
+          setMaintUserIds(
+            groupArmadaIds
+              ? new Set([...maintIds].filter((id) => groupArmadaIds.has(id)))
+              : maintIds,
+          );
           setNow(Date.now());
           setSelectedId((prev) => (prev != null && meta[prev] ? prev : null));
           if (deviceStatus.telematicsSource === "armada") {

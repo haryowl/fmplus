@@ -157,6 +157,43 @@ export async function fetchTrackerDeviceGroups(signal?: AbortSignal): Promise<Tr
   return data.groups || [];
 }
 
+export type DeviceGroupScope = {
+  groupIds: string[];
+  deviceIds: string[];
+  armadaUserIds: number[];
+  memberCount: number;
+  linkedArmadaCount: number;
+};
+
+/** Resolve device group membership to device UUIDs + linked Armada user ids (DB, not last-fix). */
+export async function fetchDeviceGroupScope(
+  groupIds: string[],
+  signal?: AbortSignal,
+): Promise<DeviceGroupScope> {
+  const q = new URLSearchParams();
+  for (const id of groupIds) {
+    if (id) q.append("groupId", id);
+  }
+  const res = await fetch(`/api/tracker/device-group-scope?${q}`, {
+    credentials: "include",
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as Partial<DeviceGroupScope> & {
+    error?: string;
+  };
+  if (!res.ok) throw new Error(data.error || `Device group scope ${res.status}`);
+  return {
+    groupIds: Array.isArray(data.groupIds) ? data.groupIds : groupIds,
+    deviceIds: Array.isArray(data.deviceIds) ? data.deviceIds : [],
+    armadaUserIds: Array.isArray(data.armadaUserIds)
+      ? data.armadaUserIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+      : [],
+    memberCount: Number(data.memberCount) || 0,
+    linkedArmadaCount: Number(data.linkedArmadaCount) || 0,
+  };
+}
+
 export type TrackerDayPoint = {
   lat: number;
   lon: number;

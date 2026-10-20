@@ -150,6 +150,44 @@ export async function handleTrackerIngestRequest(req, res) {
     }
   }
 
+  /** Resolve tracker device group(s) → device ids + linked Armada user ids (for Dispatch/Maintenance filters). */
+  if (url.pathname === "/api/tracker/device-group-scope" && req.method === "GET") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      const groupIds = [
+        ...url.searchParams.getAll("groupId"),
+        ...url.searchParams.getAll("deviceGroupId"),
+        ...String(url.searchParams.get("groupIds") || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ].filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+      if (!groupIds.length) {
+        json(res, 400, { error: "groupId required" });
+        return true;
+      }
+      const { deviceIdsInGroups } = await import("./tracker-device-groups.mjs");
+      const { armadaUserIdsInDeviceGroups } = await import("./tracker-devices.mjs");
+      const deviceIds = await deviceIdsInGroups(dbTenant.id, groupIds);
+      const armadaUserIds = await armadaUserIdsInDeviceGroups(dbTenant.id, groupIds);
+      json(res, 200, {
+        groupIds,
+        deviceIds,
+        armadaUserIds,
+        memberCount: deviceIds.length,
+        linkedArmadaCount: armadaUserIds.length,
+      });
+      return true;
+    } catch (err) {
+      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
   if (url.pathname === "/api/tracker/device-day" && req.method === "GET") {
     try {
       const dbTenant = await resolveDbTenant(req);

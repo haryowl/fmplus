@@ -23,8 +23,8 @@ import { deskCanWrite } from "../lib/deskPrivileges";
 import { isNativeDispatchApp } from "../lib/nativeField";
 import { customersHref, goodsHref, navigateView, writeLocationSearch } from "../lib/routing";
 import {
+  fetchDeviceGroupScope,
   fetchTrackerDeviceGroups,
-  fetchTrackerLastStatus,
   type TrackerDeviceGroup,
 } from "../lib/trackerDevices";
 import { nextDatedCode } from "../lib/datedCode";
@@ -596,11 +596,6 @@ export default function DispatchBoard() {
 
   const multiDesk = deskModes.length > 1;
 
-  const deskOrders = useMemo(() => {
-    if (!multiDesk) return orders;
-    return orders.filter((o) => orderMatchesDeskMode(o, deskMode));
-  }, [orders, deskMode, multiDesk]);
-
   const deskJobs = useMemo(() => {
     let list = multiDesk ? jobs.filter((j) => jobMatchesDeskMode(j, deskMode)) : jobs;
     if (deviceGroupArmadaIds) {
@@ -610,6 +605,16 @@ export default function DispatchBoard() {
     }
     return list;
   }, [jobs, deskMode, multiDesk, deviceGroupArmadaIds]);
+
+  const deskOrders = useMemo(() => {
+    let list = multiDesk ? orders.filter((o) => orderMatchesDeskMode(o, deskMode)) : orders;
+    if (deviceGroupArmadaIds) {
+      const jobIds = new Set(deskJobs.map((j) => j.id));
+      // Keep unassigned inbox orders; hide orders already on jobs outside this device group.
+      list = list.filter((o) => !o.jobId || jobIds.has(o.jobId));
+    }
+    return list;
+  }, [orders, deskMode, multiDesk, deviceGroupArmadaIds, deskJobs]);
 
   const planDayJobs = useMemo(
     () =>
@@ -804,14 +809,8 @@ export default function DispatchBoard() {
       return;
     }
     const ac = new AbortController();
-    fetchTrackerLastStatus(ac.signal, { groupIds: [deviceGroupId] })
-      .then(({ fixes }) => {
-        const ids = new Set<number>();
-        for (const f of fixes) {
-          if (f.armadaUserId != null && f.armadaUserId > 0) ids.add(f.armadaUserId);
-        }
-        setDeviceGroupArmadaIds(ids);
-      })
+    fetchDeviceGroupScope([deviceGroupId], ac.signal)
+      .then((scope) => setDeviceGroupArmadaIds(new Set(scope.armadaUserIds)))
       .catch(() => setDeviceGroupArmadaIds(new Set()));
     return () => ac.abort();
   }, [ready, deviceGroupId]);
@@ -2389,7 +2388,7 @@ export default function DispatchBoard() {
             <select
               value={deviceGroupId}
               onChange={(e) => setDeviceGroupId(e.target.value)}
-              title="Filter jobs by tracker device group"
+              title="Filter jobs and assigned orders by tracker device group"
             >
               <option value="">{deviceGroups.length ? "All device groups" : "No device groups"}</option>
               {deviceGroups.map((g) => (
@@ -2532,6 +2531,13 @@ export default function DispatchBoard() {
             {error || bootError}
           </p>
         )}
+
+        {deviceGroupId && deviceGroupArmadaIds && deviceGroupArmadaIds.size === 0 ? (
+          <p className="dispatch-alert" role="status">
+            This device group has no members linked to Armada users. Link `armada_user_id` on
+            devices in Admin so Dispatch can filter jobs for the group.
+          </p>
+        ) : null}
 
         {isPassenger ? (
           <section className="dispatch-rail dispatch-create">
