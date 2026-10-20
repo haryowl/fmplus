@@ -63,6 +63,8 @@ export default function ExceptionsInbox() {
   const [now, setNow] = useState(() => Date.now());
   const [showDerived, setShowDerived] = useState(true);
   const [queryText, setQueryText] = useState("");
+  const [deviceIdByUserId, setDeviceIdByUserId] = useState<Map<number, string>>(() => new Map());
+  const [telematicsSource, setTelematicsSource] = useState<"armada" | "devices" | "both">("both");
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
   const excelOk = entitlements.features.excel !== false;
@@ -155,6 +157,36 @@ export default function ExceptionsInbox() {
     return () => ac.abort();
   }, [ready, query.tenantKey, statusFilter, reload]);
 
+  // Always load device↔user map so notifier Trips/Full can deep-link without derived stale.
+  useEffect(() => {
+    if (!ready) return;
+    const ac = new AbortController();
+    void Promise.all([
+      fetchTrackerLastStatus(ac.signal, {
+        groupIds: deviceGroupId ? [deviceGroupId] : undefined,
+      }).catch((err: Error) => {
+        if (err.name === "AbortError") throw err;
+        return { fixes: [], telematicsSource: "both" as const };
+      }),
+      deviceGroupId
+        ? fetchDeviceGroupScope([deviceGroupId], ac.signal).catch(() => null)
+        : Promise.resolve(null),
+    ])
+      .then(([deviceStatus, scope]) => {
+        if (ac.signal.aborted) return;
+        setDeviceIdByUserId(deviceIdByStatusRowId(deviceStatus.fixes));
+        setTelematicsSource(deviceStatus.telematicsSource || "both");
+        setDeviceGroupDeviceIds(deviceGroupId ? scope?.deviceIds || [] : undefined);
+        setDeviceGroupArmadaIds(deviceGroupId ? scope?.armadaUserIds || [] : undefined);
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") {
+          /* optional enrichment */
+        }
+      });
+    return () => ac.abort();
+  }, [ready, deviceGroupId, reload]);
+
   useEffect(() => {
     if (!ready || !showDerived || statusFilter === "acked") {
       setDerived([]);
@@ -183,6 +215,8 @@ export default function ExceptionsInbox() {
     ])
       .then(([armadaRows, deviceStatus, scope]) => {
         const byDevice = deviceIdByStatusRowId(deviceStatus.fixes);
+        setDeviceIdByUserId(byDevice);
+        setTelematicsSource(deviceStatus.telematicsSource || "both");
         setDeviceGroupDeviceIds(deviceGroupId ? scope?.deviceIds || [] : undefined);
         setDeviceGroupArmadaIds(deviceGroupId ? scope?.armadaUserIds || [] : undefined);
         let merged: LastStatusRow[];
@@ -441,8 +475,12 @@ export default function ExceptionsInbox() {
           {list.map((item) => {
             const uid = exceptionUserId(item);
             const rowId = item.userId != null && item.userId !== 0 ? item.userId : uid;
-            const deviceId = item.trackerDeviceId || null;
-            const canLink = (rowId != null && rowId > 0) || Boolean(deviceId);
+            const deviceId =
+              item.trackerDeviceId ||
+              (uid != null ? deviceIdByUserId.get(uid) : null) ||
+              (rowId != null && rowId < 0 ? deviceIdByUserId.get(rowId) : null) ||
+              null;
+            const canLink = (rowId != null && rowId !== 0) || Boolean(deviceId);
             return (
               <li key={item.id} className={item.ackedAt ? "acked" : "open"}>
                 <div className="exceptions-row-main">
@@ -467,6 +505,7 @@ export default function ExceptionsInbox() {
                           rowId: rowId || 0,
                           deviceId,
                           kind: "trips",
+                          telematicsSource,
                         })}
                       >
                         Trips
@@ -477,6 +516,7 @@ export default function ExceptionsInbox() {
                           rowId: rowId || 0,
                           deviceId,
                           kind: "full",
+                          telematicsSource,
                         })}
                       >
                         Full

@@ -37,7 +37,7 @@ import {
 import { CsvImportPanel } from "../components/CsvImportPanel";
 import { filterStatusRows, type LastStatusRow } from "../lib/lastStatus";
 import { formatKm, formatSpeed } from "../lib/format";
-import { fleetLiveHref, fullHref, tripsHref, writeLocationSearch } from "../lib/routing";
+import { vehicleTrackHref, writeLocationSearch } from "../lib/routing";
 import {
   deviceIdByStatusRowId,
   fetchDeviceGroupScope,
@@ -107,14 +107,6 @@ function groupNeedsAttention(g: VehicleGroup): boolean {
   );
 }
 
-function vehicleSearch(userId: number): string {
-  const params = new URLSearchParams(window.location.search);
-  params.set("userId", String(userId));
-  params.delete("userIds");
-  const q = params.toString();
-  return q ? `?${q}` : "";
-}
-
 function defaultTitle(): string {
   return `Service · ${new Date().toISOString().slice(0, 10)}`;
 }
@@ -170,11 +162,18 @@ export default function MaintenanceBoard() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [showCreate, setShowCreate] = useState(
-    () => Boolean(query.userId) || new URLSearchParams(window.location.search).get("open") === "1",
+    () =>
+      Boolean(query.userId) ||
+      new URLSearchParams(window.location.search).get("open") === "1" ||
+      Boolean(new URLSearchParams(window.location.search).get("deviceId")),
   );
   const [title, setTitle] = useState(defaultTitle);
   const [notes, setNotes] = useState("");
   const [selectedUserId, setSelectedUserId] = useState(query.userId || "");
+  const [pendingDeviceId] = useState(
+    () => new URLSearchParams(window.location.search).get("deviceId") || "",
+  );
+  const [telematicsSource, setTelematicsSource] = useState<"armada" | "devices" | "both">("both");
   const [vehicleQuery, setVehicleQuery] = useState("");
   const [remindDueAt, setRemindDueAt] = useState("");
   const [remindIntervalDays, setRemindIntervalDays] = useState("");
@@ -365,14 +364,20 @@ export default function MaintenanceBoard() {
   }, [statusFilter, healthFilter]);
 
   useEffect(() => {
+    const uid = Number(selectedUserId);
+    const selectedDeviceId =
+      (Number.isInteger(uid) && uid !== 0 ? deviceIdByRowId.get(uid) : null) ||
+      pendingDeviceId ||
+      null;
     writeLocationSearch({
       groupId: groupId || null,
       deviceGroupId: deviceGroupId || null,
       tz: timezone || null,
-      userId: selectedUserId || null,
+      userId: selectedUserId && Number(selectedUserId) > 0 ? selectedUserId : null,
+      deviceId: selectedDeviceId || null,
       eventId: eventId || null,
     });
-  }, [groupId, deviceGroupId, timezone, selectedUserId, eventId]);
+  }, [groupId, deviceGroupId, timezone, selectedUserId, eventId, deviceIdByRowId, pendingDeviceId]);
 
   useEffect(() => {
     const onPop = () => {
@@ -484,7 +489,18 @@ export default function MaintenanceBoard() {
         : Promise.resolve(null),
     ])
       .then(([armadaRows, deviceStatus, scope]) => {
-        setDeviceIdByRowId(deviceIdByStatusRowId(deviceStatus.fixes));
+        const byDevice = deviceIdByStatusRowId(deviceStatus.fixes);
+        setDeviceIdByRowId(byDevice);
+        setTelematicsSource(deviceStatus.telematicsSource || "both");
+        if (pendingDeviceId && !selectedUserId) {
+          for (const [rowId, did] of byDevice) {
+            if (did === pendingDeviceId) {
+              setSelectedUserId(String(rowId));
+              setShowCreate(true);
+              break;
+            }
+          }
+        }
         if (deviceGroupId) {
           const allow = new Set(scope?.armadaUserIds || []);
           setDeviceGroupArmadaIds(allow);
@@ -1621,7 +1637,6 @@ export default function MaintenanceBoard() {
                   {!collapsed ? (
                     <ul className="maintenance-list">
                       {visible.map((ev) => {
-                        const search = ev.armadaUserId ? vehicleSearch(ev.armadaUserId) : "";
                         const health =
                           ev.scheduleHealth &&
                           ev.scheduleHealth !== "none" &&
@@ -1669,19 +1684,29 @@ export default function MaintenanceBoard() {
                               </span>
                             </button>
                             <div className="maintenance-row-actions">
-                              {ev.armadaUserId ? (
+                              {ev.armadaUserId || ev.trackerDeviceId ? (
                                 <span className="maint-row-links">
-                                  <a className="btn-link" href={tripsHref(search)}>
+                                  <a
+                                    className="btn-link"
+                                    href={vehicleTrackHref({
+                                      rowId: ev.armadaUserId || 0,
+                                      deviceId: ev.trackerDeviceId,
+                                      kind: "trips",
+                                      telematicsSource,
+                                    })}
+                                  >
                                     Trips
                                   </a>
-                                  <a className="btn-link" href={fullHref(search)}>
+                                  <a
+                                    className="btn-link"
+                                    href={vehicleTrackHref({
+                                      rowId: ev.armadaUserId || 0,
+                                      deviceId: ev.trackerDeviceId,
+                                      kind: "full",
+                                      telematicsSource,
+                                    })}
+                                  >
                                     Full
-                                  </a>
-                                </span>
-                              ) : ev.trackerDeviceId ? (
-                                <span className="maint-row-links">
-                                  <a className="btn-link" href={fleetLiveHref(window.location.search)}>
-                                    Fleet Live
                                   </a>
                                 </span>
                               ) : null}

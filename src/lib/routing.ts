@@ -118,33 +118,38 @@ export function fleetLiveHref(search: string): string {
 
 /**
  * History deep link for a status-row vehicle.
- * Armada-linked (rowId > 0) → /trips or /full; GPS-only → Fleet Live with deviceId.
+ * Armada-linked (rowId > 0) → /trips or /full unless telematics is devices-only
+ * (then Fleet Live with deviceId). GPS-only synthetic rows always use Fleet Live.
  */
 export function vehicleTrackHref(opts: {
   rowId: number;
   deviceId?: string | null;
   /** trips → Trips panel; history/full → Full / Fleet History */
   kind?: "trips" | "full" | "history";
+  /** When "devices", prefer Fleet Live even if rowId > 0 (linked Armada id). */
+  telematicsSource?: "armada" | "devices" | "both" | null;
 }): string {
   const params = new URLSearchParams(
     typeof window !== "undefined" ? window.location.search : "",
   );
   const deviceId = String(opts.deviceId || "").trim();
   const kind = opts.kind || "full";
-  if (opts.rowId > 0) {
-    params.set("userId", String(opts.rowId));
-    params.delete("userIds");
-    params.delete("deviceId");
-    const q = params.toString();
-    return kind === "trips" ? tripsHref(q ? `?${q}` : "") : fullHref(q ? `?${q}` : "");
-  }
-  if (deviceId) {
+  const preferFleetLive =
+    Boolean(deviceId) && (opts.rowId <= 0 || opts.telematicsSource === "devices");
+  if (preferFleetLive) {
     params.set("deviceId", deviceId);
     params.delete("userId");
     params.delete("userIds");
     params.set("section", kind === "trips" ? "trips" : "history");
     const q = params.toString();
     return fleetLiveHref(q ? `?${q}` : "");
+  }
+  if (opts.rowId > 0) {
+    params.set("userId", String(opts.rowId));
+    params.delete("userIds");
+    params.delete("deviceId");
+    const q = params.toString();
+    return kind === "trips" ? tripsHref(q ? `?${q}` : "") : fullHref(q ? `?${q}` : "");
   }
   return fleetLiveHref(params.toString() ? `?${params}` : "");
 }

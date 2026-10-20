@@ -3,6 +3,7 @@ import {
   compactHref,
   fleetCompactHref,
   fleetHref,
+  fleetLiveHref,
   fullHref,
   isCompactPath,
   statusHref,
@@ -16,6 +17,7 @@ import {
   goodsHref,
   customersHref,
   dispatchLiveHref,
+  vehicleTrackHref,
   viewFromPath,
   withSearch,
 } from "./routing";
@@ -80,6 +82,37 @@ describe("isCompactPath", () => {
     expect(isCompactPath("/fleet/compact")).toBe(false);
     expect(isCompactPath("/status")).toBe(false);
     expect(isCompactPath("/trips")).toBe(false);
+  });
+});
+
+describe("vehicleTrackHref", () => {
+  it("uses Armada trips/full for positive row ids", () => {
+    expect(vehicleTrackHref({ rowId: 42, kind: "trips" })).toContain("/trips");
+    expect(vehicleTrackHref({ rowId: 42, kind: "full" })).toContain("/full");
+    expect(vehicleTrackHref({ rowId: 42, kind: "trips" })).toContain("userId=42");
+  });
+
+  it("uses Fleet Live for GPS-only rows with deviceId", () => {
+    const href = vehicleTrackHref({
+      rowId: -9,
+      deviceId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      kind: "trips",
+    });
+    expect(href.startsWith(fleetLiveHref(""))).toBe(true);
+    expect(href).toContain("deviceId=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    expect(href).toContain("section=trips");
+  });
+
+  it("prefers Fleet Live for devices-only telematics when linked", () => {
+    const href = vehicleTrackHref({
+      rowId: 7,
+      deviceId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      kind: "full",
+      telematicsSource: "devices",
+    });
+    expect(href).toContain("/fleet-live");
+    expect(href).toContain("section=history");
+    expect(href).not.toContain("userId=");
   });
 });
 

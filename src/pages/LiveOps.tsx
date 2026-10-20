@@ -23,6 +23,7 @@ import {
   fetchTrackerDeviceGroups,
   fetchTrackerLastStatus,
   mergeArmadaRowsWithDeviceFixes,
+  type TelematicsSource,
   type TrackerDeviceGroup,
 } from "../lib/trackerDevices";
 import { BrandMark } from "../components/BrandMark";
@@ -69,6 +70,7 @@ export default function LiveOps() {
   const [bootError, setBootError] = useState("");
   const [rows, setRows] = useState<LastStatusRow[]>([]);
   const [deviceIdByRowId, setDeviceIdByRowId] = useState<Map<number, string>>(() => new Map());
+  const [telematicsSource, setTelematicsSource] = useState<TelematicsSource>("both");
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
   const [reload, setReload] = useState(0);
@@ -177,6 +179,7 @@ export default function LiveOps() {
       ])
         .then(([armadaRows, deviceStatus, scope]) => {
           setDeviceIdByRowId(deviceIdByStatusRowId(deviceStatus.fixes));
+          setTelematicsSource(deviceStatus.telematicsSource || "both");
           if (deviceGroupId) {
             const allow = new Set(scope?.armadaUserIds || []);
             const armadaScoped = allow.size
@@ -439,6 +442,8 @@ export default function LiveOps() {
               fitKey={fitKey}
               selectedId={selectedId}
               onSelect={onSelect}
+              deviceIdByRowId={deviceIdByRowId}
+              telematicsSource={telematicsSource}
             />
           </div>
           <aside className="live-ops-list">
@@ -472,6 +477,7 @@ export default function LiveOps() {
                             rowId: row.id,
                             deviceId: deviceIdByRowId.get(row.id),
                             kind: "trips",
+                            telematicsSource,
                           })}
                         >
                           Trips
@@ -481,6 +487,7 @@ export default function LiveOps() {
                             rowId: row.id,
                             deviceId: deviceIdByRowId.get(row.id),
                             kind: "full",
+                            telematicsSource,
                           })}
                         >
                           Full

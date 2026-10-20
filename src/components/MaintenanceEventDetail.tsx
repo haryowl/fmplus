@@ -29,7 +29,7 @@ import {
 } from "../lib/maintenance";
 import { prepareImageDataUrl } from "../lib/imageUpload";
 import { formatKm } from "../lib/format";
-import { fleetLiveHref, fullHref, tripsHref } from "../lib/routing";
+import { vehicleTrackHref } from "../lib/routing";
 import { tenantHeaders } from "../lib/tenant";
 import { CatalogLineEditor } from "./CatalogLineEditor";
 import { CatalogScanButton } from "./CatalogScanButton";
@@ -72,14 +72,6 @@ function fromLocalDateInput(value: string): string | null {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
-function vehicleSearch(userId: number): string {
-  const params = new URLSearchParams(window.location.search);
-  params.set("userId", String(userId));
-  params.delete("userIds");
-  params.delete("eventId");
-  const q = params.toString();
-  return q ? `?${q}` : "";
-}
 
 export function MaintenanceEventDetail({
   eventId,
@@ -538,7 +530,6 @@ export function MaintenanceEventDetail({
     );
   }
 
-  const search = event.armadaUserId ? vehicleSearch(event.armadaUserId) : "";
   const locked = event.status === "approved";
 
   return (
@@ -548,19 +539,27 @@ export function MaintenanceEventDetail({
           <button type="button" className="btn-secondary" onClick={onClose}>
             ← Board
           </button>
-          {event.armadaUserId ? (
+          {event.armadaUserId || event.trackerDeviceId ? (
             <span className="maintenance-detail-links">
-              <a className="btn-link" href={tripsHref(search)}>
+              <a
+                className="btn-link"
+                href={vehicleTrackHref({
+                  rowId: event.armadaUserId || 0,
+                  deviceId: event.trackerDeviceId,
+                  kind: "trips",
+                })}
+              >
                 Trips
               </a>
-              <a className="btn-link" href={fullHref(search)}>
+              <a
+                className="btn-link"
+                href={vehicleTrackHref({
+                  rowId: event.armadaUserId || 0,
+                  deviceId: event.trackerDeviceId,
+                  kind: "full",
+                })}
+              >
                 Full
-              </a>
-            </span>
-          ) : event.trackerDeviceId ? (
-            <span className="maintenance-detail-links">
-              <a className="btn-link" href={fleetLiveHref(window.location.search)}>
-                Fleet Live
               </a>
             </span>
           ) : null}

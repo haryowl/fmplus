@@ -35,8 +35,12 @@ type Props = {
   fill?: boolean;
 };
 
-function vehicleHref(rowId: number, deviceId?: string | null): string {
-  return vehicleTrackHref({ rowId, deviceId, kind: "full" });
+function vehicleHref(
+  rowId: number,
+  deviceId?: string | null,
+  telematicsSource?: "armada" | "devices" | "both" | null,
+): string {
+  return vehicleTrackHref({ rowId, deviceId, kind: "full", telematicsSource });
 }
 
 function maintenanceOpenHref(
@@ -91,6 +95,7 @@ export function LastStatusPanel({
   const [now, setNow] = useState(() => Date.now());
   const [maintByUser, setMaintByUser] = useState<Record<string, MaintStatusCell>>({});
   const [deviceIdByRowId, setDeviceIdByRowId] = useState<Map<number, string>>(() => new Map());
+  const [telematicsSource, setTelematicsSource] = useState<"armada" | "devices" | "both">("both");
   const [driversByUser, setDriversByUser] = useState<Record<number, string>>({});
 
   useEffect(() => {
@@ -124,6 +129,7 @@ export function LastStatusPanel({
     ])
       .then(([armadaRows, deviceStatus, scope]) => {
         setDeviceIdByRowId(deviceIdByStatusRowId(deviceStatus.fixes));
+        setTelematicsSource(deviceStatus.telematicsSource || "both");
         if (deviceGroupId) {
           const allow = new Set(scope?.armadaUserIds || []);
           const armadaScoped = allow.size
@@ -351,7 +357,11 @@ export function LastStatusPanel({
                     <td>
                       <a
                         className="status-vehicle"
-                        href={vehicleHref(row.id, deviceIdByRowId.get(row.id))}
+                        href={vehicleHref(
+                          row.id,
+                          deviceIdByRowId.get(row.id),
+                          telematicsSource,
+                        )}
                       >
                         {row.name}
                       </a>

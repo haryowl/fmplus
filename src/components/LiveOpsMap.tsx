@@ -11,7 +11,8 @@ import {
   LIVE_OPS_LABELS,
   type LiveOpsClass,
 } from "../lib/liveOps";
-import { fullHref, tripsHref } from "../lib/routing";
+import { vehicleTrackHref } from "../lib/routing";
+import type { TelematicsSource } from "../lib/trackerDevices";
 
 type Props = {
   rows: LastStatusRow[];
@@ -22,6 +23,9 @@ type Props = {
   onSelect: (id: number | null) => void;
   /** Bump (`id:n`) to pan/zoom onto a vehicle without changing fitKey. */
   locateToken?: string;
+  /** Status-row id → GPS device UUID for popup history links. */
+  deviceIdByRowId?: Map<number, string>;
+  telematicsSource?: TelematicsSource | null;
 };
 
 type MarkerMeta = {
@@ -39,15 +43,6 @@ function escapeHtml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-}
-
-function vehicleLinks(userId: number): { trips: string; full: string } {
-  const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
-  params.set("userId", String(userId));
-  params.delete("userIds");
-  const q = params.toString();
-  const search = q ? `?${q}` : "";
-  return { trips: tripsHref(search), full: fullHref(search) };
 }
 
 const iconCache = new Map<string, L.DivIcon>();
@@ -77,8 +72,25 @@ function markerIcon(
   return icon;
 }
 
-function popupHtml(row: LastStatusRow, opsClass: LiveOpsClass, now: number): string {
-  const links = vehicleLinks(row.id);
+function popupHtml(
+  row: LastStatusRow,
+  opsClass: LiveOpsClass,
+  now: number,
+  deviceId?: string | null,
+  telematicsSource?: TelematicsSource | null,
+): string {
+  const trips = vehicleTrackHref({
+    rowId: row.id,
+    deviceId,
+    kind: "trips",
+    telematicsSource,
+  });
+  const full = vehicleTrackHref({
+    rowId: row.id,
+    deviceId,
+    kind: "full",
+    telematicsSource,
+  });
   const ign = row.ignition === true ? "On" : row.ignition === false ? "Off" : "—";
   return `<div class="live-ops-popup">
     <strong>${escapeHtml(row.name)}</strong>
@@ -87,8 +99,8 @@ function popupHtml(row: LastStatusRow, opsClass: LiveOpsClass, now: number): str
       row.speedKmh === null ? "—" : `${escapeHtml(formatSpeed(row.speedKmh))} km/h`
     } · Ign ${ign}</div>
     <div class="live-ops-popup-links">
-      <a href="${escapeHtml(links.trips)}">Trips</a>
-      <a href="${escapeHtml(links.full)}">Full</a>
+      <a href="${escapeHtml(trips)}">Trips</a>
+      <a href="${escapeHtml(full)}">Full</a>
     </div>
   </div>`;
 }
@@ -131,7 +143,16 @@ function focusMapOnBounds(map: L.Map, points: Array<[number, number]>) {
  * Incremental Leaflet map. Re-focuses whenever the set of device positions for
  * the current fitKey changes (group switch → new ids → zoom to those vehicles).
  */
-export function LiveOpsMap({ rows, now, fitKey, selectedId, onSelect, locateToken }: Props) {
+export function LiveOpsMap({
+  rows,
+  now,
+  fitKey,
+  selectedId,
+  onSelect,
+  locateToken,
+  deviceIdByRowId,
+  telematicsSource,
+}: Props) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
@@ -141,9 +162,13 @@ export function LiveOpsMap({ rows, now, fitKey, selectedId, onSelect, locateToke
   const onSelectRef = useRef(onSelect);
   const nowRef = useRef(now);
   const rowsByIdRef = useRef(new Map<number, LastStatusRow>());
+  const deviceIdByRowIdRef = useRef(deviceIdByRowId);
+  const telematicsSourceRef = useRef(telematicsSource);
 
   onSelectRef.current = onSelect;
   nowRef.current = now;
+  deviceIdByRowIdRef.current = deviceIdByRowId;
+  telematicsSourceRef.current = telematicsSource;
 
   useEffect(() => {
     const el = elRef.current;
@@ -218,7 +243,13 @@ export function LiveOpsMap({ rows, now, fitKey, selectedId, onSelect, locateToke
         marker.bindPopup(() => {
           const latest = rowsByIdRef.current.get(row.id) || row;
           const cls = classifyLiveRow(latest, nowRef.current);
-          return popupHtml(latest, cls, nowRef.current);
+          return popupHtml(
+            latest,
+            cls,
+            nowRef.current,
+            deviceIdByRowIdRef.current?.get(latest.id),
+            telematicsSourceRef.current,
+          );
         });
         marker.addTo(layer);
         markersRef.current.set(row.id, {

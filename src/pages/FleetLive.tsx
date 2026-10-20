@@ -13,7 +13,7 @@ import {
 import {
   liveHref,
   maintenanceHref,
-  tripsHref,
+  vehicleTrackHref,
   writeLocationSearch,
 } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
@@ -25,6 +25,7 @@ import {
   fetchTrackerDeviceGroups,
   fetchTrackerLastStatus,
   trackerFixToStatusRow,
+  type TelematicsSource,
   type TrackerDeviceGroup,
   type TrackerLastFix,
 } from "../lib/trackerDevices";
@@ -130,14 +131,6 @@ const LIST_TABS: { id: ListTab; label: string; short: string }[] = [
   { id: "maintenance", label: "Open maintenance", short: "Maint" },
 ];
 
-function vehicleSearch(userId: number): string {
-  const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
-  params.set("userId", String(userId));
-  params.delete("userIds");
-  const q = params.toString();
-  return q ? `?${q}` : "";
-}
-
 async function fetchSafetyEvents(
   signal?: AbortSignal,
   opts?: { groupId?: string },
@@ -228,6 +221,7 @@ export default function FleetLive() {
   const [bootError, setBootError] = useState("");
   const [rows, setRows] = useState<LastStatusRow[]>([]);
   const [fixMeta, setFixMeta] = useState<Record<number, FixMeta>>({});
+  const [telematicsSource, setTelematicsSource] = useState<TelematicsSource>("both");
   const [alerts, setAlerts] = useState<SafetyEvent[]>([]);
   const [ruleFires, setRuleFires] = useState<FleetRuleEvent[]>([]);
   const [ruleHolds, setRuleHolds] = useState<FleetRuleHold[]>([]);
@@ -410,6 +404,7 @@ export default function FleetLive() {
           }
           setDisplayPinIds(deviceStatus.displayPinIds || []);
           setDisplayPinLabels(deviceStatus.displayPinLabels || {});
+          setTelematicsSource(deviceStatus.telematicsSource || "both");
           setRows(nextRows);
           setFixMeta(meta);
           setAlerts(safety);
@@ -648,6 +643,13 @@ export default function FleetLive() {
 
   const selected = rows.find((r) => r.id === selectedId) || null;
   const selectedMeta = selected ? fixMeta[selected.id] : null;
+  const deviceIdByRowId = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const [id, meta] of Object.entries(fixMeta)) {
+      if (meta.deviceId) map.set(Number(id), meta.deviceId);
+    }
+    return map;
+  }, [fixMeta]);
   const selectedCls = selected ? classifyLiveRow(selected, now) : null;
   const pinColumns = extraDisplayPinColumns(displayPinIds, displayPinLabels);
   const selectedPins = pinColumns
@@ -1090,6 +1092,8 @@ export default function FleetLive() {
               selectedId={selectedId}
               onSelect={onSelect}
               locateToken={locateToken}
+              deviceIdByRowId={deviceIdByRowId}
+              telematicsSource={telematicsSource}
             />
             {liveInsights.length ? (
               <div className="fleet-cc-map-insights">
@@ -1206,8 +1210,16 @@ export default function FleetLive() {
                   >
                     {selParamsOpen ? "Hide params" : "Params"}
                   </button>
-                  {selected.id > 0 ? (
-                    <a className="fleet-cc-icon-btn" href={tripsHref(vehicleSearch(selected.id))}>
+                  {selectedMeta?.deviceId || selected.id > 0 ? (
+                    <a
+                      className="fleet-cc-icon-btn"
+                      href={vehicleTrackHref({
+                        rowId: selected.id,
+                        deviceId: selectedMeta?.deviceId,
+                        kind: "trips",
+                        telematicsSource,
+                      })}
+                    >
                       Trips
                     </a>
                   ) : null}
