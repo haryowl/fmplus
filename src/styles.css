@@ -8188,6 +8188,121 @@ html.onesheet-root body {
   font-size: 0.68rem;
 }
 
+.fleet-params-panel {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line, #eef1f4);
+  max-height: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fleet-params-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.72rem;
+}
+
+.fleet-params-wrap {
+  overflow: auto;
+  max-height: 180px;
+  border: 1px solid var(--line, #eef1f4);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-2, #f6fbfa);
+}
+
+.fleet-params-wrap.is-compact {
+  max-height: 160px;
+}
+
+.fleet-params-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.fleet-params-table th,
+.fleet-params-table td {
+  padding: 5px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--line, #eef1f4);
+  vertical-align: top;
+}
+
+.fleet-params-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface, #fff);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-faint, #6d8794);
+  z-index: 1;
+}
+
+.fleet-params-table code {
+  font-size: 0.68rem;
+}
+
+.fleet-params-src {
+  font-style: normal;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-faint, #6d8794);
+}
+
+.fleet-params-src.is-mapped,
+.fleet-params-src.is-typed {
+  color: var(--gps, #0d9488);
+}
+
+.fleet-params-src.is-raw {
+  color: #b45309;
+}
+
+.fleet-params-empty {
+  margin: 6px 0 0;
+  font-size: 0.75rem;
+}
+
+.fleet-hist-params {
+  margin-top: 10px;
+}
+
+.fleet-hist-params .fleet-params-panel {
+  max-height: 280px;
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.fleet-hist-params .fleet-params-wrap {
+  max-height: 220px;
+}
+
+.fleet-dash-pin {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fleet-cc-icon-btn.is-active {
+  border-color: var(--accent, #0b6b62);
+  color: var(--accent, #0b6b62);
+  background: var(--accent-soft, #e8f7f6);
+}
+
+.fleet-cc-sel-card {
+  max-height: min(70%, 520px);
+  overflow: auto;
+}
+
 .fleet-cc-mix-grid {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

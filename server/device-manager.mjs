@@ -458,7 +458,7 @@ export async function listTerminalEvents(tenantId, { deviceId, limit = 40 } = {}
   return merged;
 }
 
-function formatParamValue(v) {
+export function formatParamValue(v) {
   if (v === null || v === undefined) return null;
   if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v;
   try {
@@ -466,6 +466,207 @@ function formatParamValue(v) {
   } catch {
     return String(v);
   }
+}
+
+/** Opaque AVL dumps — never promote into mapper “live values” unless includeRaw. */
+function isOpaqueVendorKey(key) {
+  const k = String(key || "");
+  return (
+    k.startsWith("io.") ||
+    k.startsWith("tag.") ||
+    k.startsWith("add.") ||
+    k.startsWith("avl.") ||
+    k.startsWith("0x")
+  );
+}
+
+/**
+ * Flatten one fix’s typed + mapped (+ optional raw) into Admin/Fleet Live param rows.
+ * Same filter rules as listDeviceParamValues.
+ */
+export function flattenFixParamRows({
+  deviceId,
+  imei = "",
+  label = "",
+  protocol = "",
+  lat = null,
+  lon = null,
+  speed = null,
+  heading = null,
+  ignition = null,
+  recordedAt = null,
+  mappedAttrs = {},
+  rawAttrs = {},
+  defById = new Map(),
+  protoKeys = new Map(),
+  includeRaw = false,
+}) {
+  /** @type {Array<Record<string, unknown>>} */
+  const rows = [];
+  /** @type {Set<string>} */
+  const emitted = new Set();
+  const updatedAt = recordedAt;
+  const mapped =
+    mappedAttrs && typeof mappedAttrs === "object" && !Array.isArray(mappedAttrs) ? mappedAttrs : {};
+  const raw = rawAttrs && typeof rawAttrs === "object" && !Array.isArray(rawAttrs) ? rawAttrs : {};
+
+  const typed = [
+    ["lat", lat != null ? Number(lat) : null, "Latitude (°)", "position"],
+    ["lon", lon != null ? Number(lon) : null, "Longitude (°)", "position"],
+    ["speed", speed != null ? Number(speed) : null, "Speed (km/h)", "position"],
+    ["heading", heading != null ? Number(heading) : null, "Heading / GPS Angle (°)", "position"],
+    ["ignition", ignition == null ? null : Boolean(ignition), "Ignition", "avl"],
+  ];
+  for (const [paramId, value, fallbackLabel, category] of typed) {
+    if (value === null) continue;
+    const def = defById.get(paramId);
+    emitted.add(paramId);
+    rows.push({
+      deviceId,
+      imei,
+      label,
+      protocol,
+      paramId,
+      paramLabel: def?.label || fallbackLabel || paramId,
+      category: def?.category || category || "position",
+      value: formatParamValue(value),
+      source: "typed",
+      updatedAt,
+    });
+  }
+
+  for (const [paramId, value] of Object.entries(mapped)) {
+    if (value === null || value === undefined) continue;
+    if (paramId === "tags" || paramId === "io" || typeof value === "object") continue;
+    if (isOpaqueVendorKey(paramId)) continue;
+    if (emitted.has(paramId)) continue;
+    const def = defById.get(paramId);
+    emitted.add(paramId);
+    rows.push({
+      deviceId,
+      imei,
+      label,
+      protocol,
+      paramId,
+      paramLabel: def?.label || protoKeys.get(paramId) || paramId,
+      category: def?.category || "mapped",
+      value: formatParamValue(value),
+      source: def ? "mapped" : "mapped_extra",
+      updatedAt,
+    });
+  }
+
+  for (const [vendorKey, value] of Object.entries(raw)) {
+    if (value === null || value === undefined) continue;
+    if (vendorKey === "tags" || vendorKey === "io" || typeof value === "object") continue;
+    if (emitted.has(vendorKey)) continue;
+    if (isOpaqueVendorKey(vendorKey)) continue;
+    const def = defById.get(vendorKey);
+    const protoLabel = protoKeys.get(vendorKey);
+    const isCooked = Boolean(def) || protoLabel != null || vendorKey.includes(".");
+    if (!isCooked) continue;
+    emitted.add(vendorKey);
+    rows.push({
+      deviceId,
+      imei,
+      label,
+      protocol,
+      paramId: vendorKey,
+      paramLabel: def?.label || protoLabel || vendorKey,
+      category: def?.category || "mapped",
+      value: formatParamValue(value),
+      source: def ? "mapped" : "mapped_extra",
+      updatedAt,
+    });
+  }
+
+  if (includeRaw) {
+    for (const [vendorKey, value] of Object.entries(raw)) {
+      if (value === null || value === undefined) continue;
+      if (vendorKey === "tags" || typeof value === "object") continue;
+      if (emitted.has(vendorKey)) continue;
+      rows.push({
+        deviceId,
+        imei,
+        label,
+        protocol,
+        paramId: vendorKey,
+        paramLabel: vendorKey,
+        category: "raw",
+        value: formatParamValue(value),
+        source: "raw",
+        updatedAt,
+      });
+    }
+  }
+
+  return rows;
+}
+
+/**
+ * Params for one historical vehicle_fixes row (Fleet Live History click).
+ */
+export async function listFixParamValues(tenantId, { deviceId, recordedAt, includeRaw = false } = {}) {
+  if (!deviceId || !recordedAt) {
+    const err = new Error("deviceId and recordedAt required");
+    err.status = 400;
+    throw err;
+  }
+  const at = new Date(recordedAt);
+  if (Number.isNaN(at.getTime())) {
+    const err = new Error("Invalid recordedAt");
+    err.status = 400;
+    throw err;
+  }
+  const [fixRows, paramDefs, protocolParamRows] = await Promise.all([
+    dbQuery(
+      `SELECT d.id::text AS device_id, d.imei, d.label, d.protocol,
+              vf.lat, vf.lon, vf.speed, vf.heading, vf.ignition, vf.recorded_at,
+              vf.raw_attrs, vf.mapped_attrs
+       FROM tracker_devices d
+       JOIN vehicle_fixes vf ON vf.device_id = d.id
+       WHERE d.tenant_id = $1 AND d.id = $2::uuid
+         AND vf.recorded_at >= $3::timestamptz - interval '2 seconds'
+         AND vf.recorded_at <= $3::timestamptz + interval '2 seconds'
+       ORDER BY abs(extract(epoch from (vf.recorded_at - $3::timestamptz))) ASC
+       LIMIT 1`,
+      [tenantId, deviceId, at.toISOString()],
+    ),
+    listParamDefs(tenantId),
+    dbQuery(`SELECT protocol, vendor_key, label FROM tracker_protocol_params`),
+  ]);
+  const row = fixRows.rows[0];
+  if (!row) {
+    return { params: paramDefs, rows: [], recordedAt: null };
+  }
+  const defById = new Map(paramDefs.map((p) => [p.id, p]));
+  const protoKeys = new Map();
+  for (const r of protocolParamRows.rows) {
+    if (String(r.protocol || "") !== String(row.protocol || "")) continue;
+    protoKeys.set(String(r.vendor_key), String(r.label || r.vendor_key));
+  }
+  const recorded = row.recorded_at ? new Date(row.recorded_at).toISOString() : null;
+  return {
+    params: paramDefs,
+    recordedAt: recorded,
+    rows: flattenFixParamRows({
+      deviceId: row.device_id,
+      imei: row.imei || "",
+      label: row.label || "",
+      protocol: row.protocol || "",
+      lat: row.lat,
+      lon: row.lon,
+      speed: row.speed,
+      heading: row.heading,
+      ignition: row.ignition,
+      recordedAt: recorded,
+      mappedAttrs: row.mapped_attrs,
+      rawAttrs: row.raw_attrs,
+      defById,
+      protoKeys,
+      includeRaw,
+    }),
+  };
 }
 
 /**

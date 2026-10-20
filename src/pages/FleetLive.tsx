@@ -55,6 +55,7 @@ import {
   IcoZone,
   SECTION_ICONS,
 } from "../components/fleetLiveIcons";
+import { FleetLiveParamsPanel } from "../components/FleetLiveParamsPanel";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
 import {
@@ -111,6 +112,7 @@ type FixMeta = {
   fuelLiters: number | null;
   groups: string;
   protocol: string;
+  displayParams: Record<string, string | number | boolean>;
 };
 
 const LIST_TABS: { id: ListTab; label: string; short: string }[] = [
@@ -233,6 +235,7 @@ export default function FleetLive() {
     }
   });
   const [locateToken, setLocateToken] = useState("");
+  const [selParamsOpen, setSelParamsOpen] = useState(false);
   const [sideNavOpen, setSideNavOpen] = useState(() => {
     try {
       const v = localStorage.getItem("fmplus.fleetLive.sideNav");
@@ -360,6 +363,7 @@ export default function FleetLive() {
               fuelLiters: fix.fuelLiters ?? null,
               groups: (fix.groups || []).map((g) => g.name).join(", "),
               protocol: fix.protocol || fix.sourceProtocol || "",
+              displayParams: fix.displayParams || {},
             };
           }
           setRows(nextRows);
@@ -1097,6 +1101,14 @@ export default function FleetLive() {
                   </button>
                   <button
                     type="button"
+                    className={`fleet-cc-icon-btn${selParamsOpen ? " is-active" : ""}`}
+                    onClick={() => setSelParamsOpen((v) => !v)}
+                    title="Device mapper parameters"
+                  >
+                    Params
+                  </button>
+                  <button
+                    type="button"
                     className="fleet-cc-icon-btn"
                     onClick={() =>
                       setLocateToken(`${selected.id}:${Date.now()}`)
@@ -1111,6 +1123,9 @@ export default function FleetLive() {
                     </a>
                   ) : null}
                 </div>
+                {selParamsOpen && selectedMeta?.deviceId ? (
+                  <FleetLiveParamsPanel mode="live" deviceId={selectedMeta.deviceId} />
+                ) : null}
               </aside>
             ) : null}
           </div>

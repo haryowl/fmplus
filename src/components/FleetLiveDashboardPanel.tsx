@@ -9,6 +9,11 @@ import {
   LIVE_OPS_LABELS,
   type LiveOpsClass,
 } from "../lib/liveOps";
+import {
+  FLEET_DASH_PIN_COLUMNS,
+  formatDisplayPinValue,
+  readDisplayPin,
+} from "../lib/fleetTelemetryParams";
 import { FleetLiveSectionHead } from "./FleetLiveSectionHead";
 import {
   IcoAlerts,
@@ -32,6 +37,7 @@ export type FleetDashFixMeta = {
   fuelLiters: number | null;
   groups: string;
   protocol: string;
+  displayParams?: Record<string, string | number | boolean>;
 };
 
 export type FleetDashAlert = {
@@ -671,13 +677,20 @@ export function FleetLiveDashboardPanel({
                 <th>
                   <IcoOdo /> Odo
                 </th>
+                {FLEET_DASH_PIN_COLUMNS.filter((c) => c.id !== "fuel_level" && c.id !== "can.fuel_l").map(
+                  (col) => (
+                    <th key={col.id} title={`Mapper pin · ${col.id}`}>
+                      {col.label}
+                    </th>
+                  ),
+                )}
                 <th>Alert</th>
               </tr>
             </thead>
             <tbody>
               {snapRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="muted">
+                  <td colSpan={6 + FLEET_DASH_PIN_COLUMNS.filter((c) => c.id !== "fuel_level" && c.id !== "can.fuel_l").length} className="muted">
                     {loading ? "Loading…" : "No devices match this filter."}
                   </td>
                 </tr>
@@ -695,6 +708,7 @@ export function FleetLiveDashboardPanel({
                       : tone === "live"
                         ? "ok"
                         : "warn";
+                  const pins = meta?.displayParams;
                   return (
                     <tr key={row.id}>
                       <td>
@@ -718,11 +732,20 @@ export function FleetLiveDashboardPanel({
                         <span className={`fleet-dash-age is-${ageClass}`}>{age}</span>
                       </td>
                       <td>
-                        {meta?.fuelLevel != null ? `${Math.round(meta.fuelLevel)}%` : "—"}
+                        {meta?.fuelLevel != null
+                          ? `${Math.round(meta.fuelLevel)}%`
+                          : formatDisplayPinValue(readDisplayPin(pins, { id: "fuel_level" }))}
                       </td>
                       <td>
                         {meta?.odometerKm != null ? `${formatKm(meta.odometerKm)} km` : "—"}
                       </td>
+                      {FLEET_DASH_PIN_COLUMNS.filter(
+                        (c) => c.id !== "fuel_level" && c.id !== "can.fuel_l",
+                      ).map((col) => (
+                        <td key={col.id} className="fleet-dash-pin" title={col.id}>
+                          {formatDisplayPinValue(readDisplayPin(pins, col))}
+                        </td>
+                      ))}
                       <td className="fleet-dash-flags">
                         {inAlert ? (
                           <span className="fleet-cc-chip is-alert" title="Alert 24h">

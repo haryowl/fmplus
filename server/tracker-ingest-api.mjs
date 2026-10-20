@@ -151,6 +151,51 @@ export async function handleTrackerIngestRequest(req, res) {
   }
 
   /** Resolve tracker device group(s) → device ids + linked Armada user ids (for Dispatch/Maintenance filters). */
+  if (url.pathname === "/api/tracker/param-values" && req.method === "GET") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      const deviceId = String(url.searchParams.get("deviceId") || "").trim();
+      if (!deviceId) {
+        json(res, 400, { error: "deviceId required" });
+        return true;
+      }
+      const includeRaw =
+        url.searchParams.get("raw") === "1" || url.searchParams.get("includeRaw") === "1";
+      const { listDeviceParamValues } = await import("./device-manager.mjs");
+      const data = await listDeviceParamValues(dbTenant.id, { deviceId, includeRaw });
+      json(res, 200, data);
+      return true;
+    } catch (err) {
+      json(res, err.status || 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
+  if (url.pathname === "/api/tracker/fix-params" && req.method === "GET") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      const deviceId = String(url.searchParams.get("deviceId") || "").trim();
+      const recordedAt = String(url.searchParams.get("recordedAt") || "").trim();
+      const includeRaw =
+        url.searchParams.get("raw") === "1" || url.searchParams.get("includeRaw") === "1";
+      const { listFixParamValues } = await import("./device-manager.mjs");
+      const data = await listFixParamValues(dbTenant.id, { deviceId, recordedAt, includeRaw });
+      json(res, 200, data);
+      return true;
+    } catch (err) {
+      json(res, err.status || 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
   if (url.pathname === "/api/tracker/device-group-scope" && req.method === "GET") {
     try {
       const dbTenant = await resolveDbTenant(req);

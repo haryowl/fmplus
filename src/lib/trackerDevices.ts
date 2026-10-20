@@ -17,6 +17,7 @@ export type TrackerLastFix = {
   heading: number | null;
   ignition: boolean | null;
   sourceProtocol: string;
+  displayParams?: Record<string, string | number | boolean>;
   odometerKm?: number | null;
   fuelLevel?: number | null;
   fuelLiters?: number | null;

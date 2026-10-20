@@ -739,6 +739,32 @@ export async function ingestVehicleFix(deviceRow, fix) {
 }
 
 /** Pull odometer km + fuel from last-fix columns / mapped_attrs. */
+/** Default Dashboard/Live pin ids from device-mapper app params (present values only). */
+export const FLEET_DISPLAY_PIN_IDS = [
+  "fuel_level",
+  "can.fuel_l",
+  "ext_voltage",
+  "voltage.ext",
+  "battery_voltage",
+  "voltage.batt",
+  "pcb.temp",
+  "gps.valid",
+];
+
+export function pickDisplayParams(mappedAttrs) {
+  const mapped =
+    mappedAttrs && typeof mappedAttrs === "object" && !Array.isArray(mappedAttrs) ? mappedAttrs : {};
+  /** @type {Record<string, string | number | boolean>} */
+  const out = {};
+  for (const id of FLEET_DISPLAY_PIN_IDS) {
+    const v = mapped[id];
+    if (v === null || v === undefined) continue;
+    if (typeof v === "object") continue;
+    out[id] = v;
+  }
+  return out;
+}
+
 export function enrichFixTelemetry(row) {
   const mapped =
     row.mapped_attrs && typeof row.mapped_attrs === "object" && !Array.isArray(row.mapped_attrs)
@@ -755,7 +781,12 @@ export function enrichFixTelemetry(row) {
   let fuelLiters = null;
   const liters = Number(mapped.fuel_liters ?? mapped["can.fuel_l"]);
   if (Number.isFinite(liters)) fuelLiters = liters;
-  return { odometerKm, fuelLevel, fuelLiters };
+  return {
+    odometerKm,
+    fuelLevel,
+    fuelLiters,
+    displayParams: pickDisplayParams(mapped),
+  };
 }
 
 /**
@@ -1004,6 +1035,7 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
       odometerKm: tel.odometerKm,
       fuelLevel: tel.fuelLevel,
       fuelLiters: tel.fuelLiters,
+      displayParams: tel.displayParams || {},
       groups,
     };
   });

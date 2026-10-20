@@ -8,6 +8,7 @@ import {
   type TrackerDayPoint,
 } from "../lib/trackerDevices";
 import { FleetDayTrailMap } from "./FleetDayTrailMap";
+import { FleetLiveParamsPanel } from "./FleetLiveParamsPanel";
 import { FleetLiveSectionHead } from "./FleetLiveSectionHead";
 import type { FleetTripDeviceOption } from "./FleetLiveTripsPanel";
 import {
@@ -196,6 +197,12 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
     return n ? sum / n : null;
   }, [points]);
 
+  const focusFix = useMemo(() => {
+    if (focusMs == null) return null;
+    const hit = timeline.find((item) => item.kind === "fix" && item.ms === focusMs);
+    return hit && hit.kind === "fix" ? hit.point : null;
+  }, [focusMs, timeline]);
+
   return (
     <div className="fleet-sec fleet-hist">
       <FleetLiveSectionHead
@@ -380,6 +387,23 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
         </div>
         <div className="fleet-trips-map-pane">
           <FleetDayTrailMap path={focusPath} />
+          {focusFix ? (
+            <section className="fleet-dash-card fleet-hist-params">
+              <header className="fleet-dash-card-head">
+                <h3>
+                  <IcoFix /> Fix parameters
+                </h3>
+                <em className="fleet-dash-pill">MAPPER</em>
+              </header>
+              <FleetLiveParamsPanel
+                mode="fix"
+                deviceId={deviceId}
+                recordedAt={focusFix.recordedAt}
+              />
+            </section>
+          ) : (
+            <p className="muted fleet-params-empty">Select a fix on the timeline to inspect mapper parameters.</p>
+          )}
         </div>
       </div>
     </div>
