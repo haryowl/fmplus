@@ -120,3 +120,13 @@ export async function ackRuleEvent(id: string): Promise<void> {
   const data = await parseJson(res);
   if (!res.ok) throw new Error(String(data.error || `Ack ${res.status}`));
 }
+
+export async function resolveRuleEvent(id: string): Promise<void> {
+  const res = await fetch(`/api/tracker/alert-events/${id}/resolve`, {
+    method: "POST",
+    credentials: "include",
+    headers: { accept: "application/json", ...tenantHeaders() },
+  });
+  const data = await parseJson(res);
+  if (!res.ok) throw new Error(String(data.error || `Resolve ${res.status}`));
+}

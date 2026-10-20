@@ -47,6 +47,7 @@ import {
   IcoLive,
   IcoMenu,
   IcoRefresh,
+  IcoRules,
   IcoSearch,
   IcoUtil,
   IcoWrench,
@@ -55,6 +56,7 @@ import {
 } from "../components/fleetLiveIcons";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
+import { fetchRuleEvents, type FleetRuleEvent } from "../lib/fleetAlertRules";
 
 type ListTab = "all" | LiveOpsClass | "alert" | "maintenance";
 type FleetSection = "live" | "dashboard" | "ranking" | "trips" | "history" | "media" | "alerts";
@@ -199,6 +201,7 @@ export default function FleetLive() {
   const [rows, setRows] = useState<LastStatusRow[]>([]);
   const [fixMeta, setFixMeta] = useState<Record<number, FixMeta>>({});
   const [alerts, setAlerts] = useState<SafetyEvent[]>([]);
+  const [ruleFires, setRuleFires] = useState<FleetRuleEvent[]>([]);
   const [maintUserIds, setMaintUserIds] = useState<Set<number>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
@@ -310,9 +313,12 @@ export default function FleetLive() {
       return Promise.all([
         fetchTrackerLastStatus(ac.signal, { groupIds: groupId ? [groupId] : undefined }),
         fetchSafetyEvents(ac.signal).catch(() => [] as SafetyEvent[]),
+        fetchRuleEvents({ status: "open", limit: 40 }, ac.signal).catch(
+          () => [] as FleetRuleEvent[],
+        ),
         fetchOpenMaintenanceUserIds(ac.signal).catch(() => new Set<number>()),
       ])
-        .then(([deviceStatus, safety, maintIds]) => {
+        .then(([deviceStatus, safety, openRules, maintIds]) => {
           if (ac.signal.aborted) return;
           const nextRows: LastStatusRow[] = [];
           const meta: Record<number, FixMeta> = {};
@@ -332,6 +338,7 @@ export default function FleetLive() {
           setRows(nextRows);
           setFixMeta(meta);
           setAlerts(safety);
+          setRuleFires(openRules);
           setMaintUserIds(maintIds);
           setNow(Date.now());
           setSelectedId((prev) => (prev != null && meta[prev] ? prev : null));
@@ -377,8 +384,55 @@ export default function FleetLive() {
       const t = Date.parse(a.recordedAt);
       if (Number.isFinite(t) && t >= recent) set.add(a.deviceId);
     }
+    for (const r of ruleFires) {
+      if (r.deviceId) set.add(r.deviceId);
+    }
     return set;
-  }, [alerts]);
+  }, [alerts, ruleFires]);
+
+  const drawerAlertCount = alerts.length + ruleFires.length;
+
+  const drawerFeed = useMemo(() => {
+    type Item = {
+      key: string;
+      kind: "safety" | "rule";
+      title: string;
+      device: string;
+      atMs: number;
+      atLabel: string;
+      level: number;
+      pill: string;
+    };
+    const items: Item[] = [];
+    for (const a of alerts) {
+      const atMs = Date.parse(a.recordedAt);
+      items.push({
+        key: `s-${a.id}`,
+        kind: "safety",
+        title: alarmLabel(a.alarmType),
+        device: a.deviceLabel || a.imei || a.deviceId.slice(0, 8),
+        atMs: Number.isFinite(atMs) ? atMs : 0,
+        atLabel: a.recordedAt ? new Date(a.recordedAt).toLocaleString() : "—",
+        level: Math.min(3, Math.max(0, a.alarmLevel || 0)),
+        pill: "Safety",
+      });
+    }
+    for (const r of ruleFires) {
+      const atMs = Date.parse(r.firedAt);
+      items.push({
+        key: `r-${r.id}`,
+        kind: "rule",
+        title: r.title,
+        device: r.deviceLabel || "device",
+        atMs: Number.isFinite(atMs) ? atMs : 0,
+        atLabel: r.firedAt ? new Date(r.firedAt).toLocaleString() : "—",
+        level: r.severity === "critical" ? 3 : r.severity === "warning" ? 2 : 1,
+        pill: "Open",
+      });
+    }
+    items.sort((a, b) => b.atMs - a.atMs);
+    return items.slice(0, 12);
+  }, [alerts, ruleFires]);
 
   const alertCounts24h = useMemo(() => {
     const recent = Date.now() - 24 * 60 * 60 * 1000;
@@ -878,7 +932,7 @@ export default function FleetLive() {
               setListTab("alert");
             }}
           >
-            <IcoAlerts /> {alerts.length} alerts
+            <IcoAlerts /> {drawerAlertCount} alerts
           </button>
           {kpi.idle > 0 ? (
             <button
@@ -1173,8 +1227,16 @@ export default function FleetLive() {
         >
           <span className="fleet-cc-drawer-title">
             <IcoAlerts />
-            <strong>{alerts.length}</strong>
+            <strong>{drawerAlertCount}</strong>
             <span className="muted">alerts</span>
+            {ruleFires.length > 0 ? (
+              <>
+                <span className="fleet-cc-drawer-sep" />
+                <IcoRules />
+                <strong>{ruleFires.length}</strong>
+                <span className="muted">rules</span>
+              </>
+            ) : null}
             {!alertsOpen && onlineCount > 0 ? (
               <>
                 <span className="fleet-cc-drawer-sep" />
@@ -1192,7 +1254,7 @@ export default function FleetLive() {
             <div className="fleet-cc-alerts">
               <header className="fleet-cc-panel-head">
                 <h3>
-                  <IcoAlerts /> Alerts <span className="muted">{alerts.length}</span>
+                  <IcoAlerts /> Alerts <span className="muted">{drawerAlertCount}</span>
                 </h3>
                 <button
                   type="button"
@@ -1202,26 +1264,29 @@ export default function FleetLive() {
                   View all
                 </button>
               </header>
-              {alerts.length === 0 ? (
-                <p className="muted">No recent safety events.</p>
+              {drawerFeed.length === 0 ? (
+                <p className="muted">No recent safety or rule events.</p>
               ) : (
                 <ul>
-                  {alerts.slice(0, 12).map((a) => (
-                    <li key={a.id}>
-                      <span
-                        className={`fleet-cc-alert-lvl is-l${Math.min(3, Math.max(0, a.alarmLevel || 0))}`}
-                      />
+                  {drawerFeed.map((item) => (
+                    <li key={item.key}>
+                      <span className={`fleet-cc-alert-lvl is-l${item.level}`} />
                       <div>
-                        <strong>{alarmLabel(a.alarmType)}</strong>
-                        <span className="muted">
-                          {" "}
-                          · {a.deviceLabel || a.imei || a.deviceId.slice(0, 8)}
-                        </span>
-                        <div className="muted">
-                          {a.recordedAt ? new Date(a.recordedAt).toLocaleString() : "—"}
-                        </div>
+                        <strong>
+                          {item.kind === "rule" ? <IcoRules /> : null}
+                          {item.kind === "rule" ? " " : null}
+                          {item.title}
+                        </strong>
+                        <span className="muted"> · {item.device}</span>
+                        <div className="muted">{item.atLabel}</div>
                       </div>
-                      <em className="fleet-cc-active-pill">Active</em>
+                      <em
+                        className={`fleet-cc-active-pill${
+                          item.kind === "rule" ? " is-rule" : " is-safety"
+                        }`}
+                      >
+                        {item.pill}
+                      </em>
                     </li>
                   ))}
                 </ul>

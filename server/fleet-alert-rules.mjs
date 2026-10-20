@@ -327,6 +327,19 @@ export async function ackFleetAlertEvent(tenantId, eventId) {
   return Boolean(rows.rows[0]);
 }
 
+export async function resolveFleetAlertEvent(tenantId, eventId) {
+  const rows = await dbQuery(
+    `UPDATE fleet_alert_events
+     SET status = 'resolved',
+         resolved_at = now(),
+         acked_at = COALESCE(acked_at, now())
+     WHERE tenant_id = $1 AND id = $2::uuid AND status IN ('open', 'acked')
+     RETURNING id`,
+    [tenantId, eventId],
+  );
+  return Boolean(rows.rows[0]);
+}
+
 async function deviceInScope(tenantId, rule, deviceId) {
   if (rule.scopeKind === "all") return true;
   if (rule.scopeKind === "devices") return rule.scopeDeviceIds.includes(deviceId);

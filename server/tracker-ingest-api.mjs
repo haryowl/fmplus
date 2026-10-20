@@ -400,6 +400,25 @@ export async function handleTrackerIngestRequest(req, res) {
     }
   }
 
+  const resolveMatch = /^\/api\/tracker\/alert-events\/([0-9a-f-]{36})\/resolve$/i.exec(url.pathname);
+  if (resolveMatch && req.method === "POST") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "ackFleetAlerts"))) return true;
+      const { resolveFleetAlertEvent } = await import("./fleet-alert-rules.mjs");
+      const ok = await resolveFleetAlertEvent(dbTenant.id, resolveMatch[1]);
+      json(res, ok ? 200 : 404, ok ? { ok: true } : { error: "Event not found" });
+      return true;
+    } catch (err) {
+      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
   if (url.pathname === "/api/tracker/ingest/v1/fix" && req.method === "POST") {
     try {
       const token = bearerToken(req);

@@ -10,6 +10,7 @@ import {
   deleteAlertRule,
   fetchAlertRules,
   fetchRuleEvents,
+  resolveRuleEvent,
   RULE_CMPS,
   RULE_FIELDS,
   saveAlertRule,
@@ -709,24 +710,49 @@ export function FleetLiveAlertsPanel({
                         <div className="muted">{e.detail}</div>
                         <div className="muted">{formatWhen(e.firedAt, timezone)}</div>
                       </div>
-                      {e.status === "open" && canAckAlerts ? (
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-compact"
-                          onClick={() =>
-                            void ackRuleEvent(e.id)
-                              .then(() =>
-                                setRuleEvents((prev) =>
-                                  prev.map((x) => (x.id === e.id ? { ...x, status: "acked" } : x)),
-                                ),
-                              )
-                              .catch((err: Error) => setError(err.message))
-                          }
-                        >
-                          Ack
-                        </button>
+                      {canAckAlerts && (e.status === "open" || e.status === "acked") ? (
+                        <div className="fleet-rules-row-actions">
+                          {e.status === "open" ? (
+                            <button
+                              type="button"
+                              className="fleet-cc-icon-btn"
+                              onClick={() =>
+                                void ackRuleEvent(e.id)
+                                  .then(() =>
+                                    setRuleEvents((prev) =>
+                                      prev.map((x) =>
+                                        x.id === e.id ? { ...x, status: "acked" } : x,
+                                      ),
+                                    ),
+                                  )
+                                  .catch((err: Error) => setError(err.message))
+                              }
+                            >
+                              Ack
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-compact"
+                            onClick={() =>
+                              void resolveRuleEvent(e.id)
+                                .then(() =>
+                                  setRuleEvents((prev) =>
+                                    prev.map((x) =>
+                                      x.id === e.id ? { ...x, status: "resolved" } : x,
+                                    ),
+                                  ),
+                                )
+                                .catch((err: Error) => setError(err.message))
+                            }
+                          >
+                            Resolve
+                          </button>
+                        </div>
                       ) : (
-                        <em className={`fleet-sev is-${e.severity}`}>{e.severity}</em>
+                        <em className={`fleet-sev is-${e.severity}`}>
+                          {e.status === "resolved" ? "resolved" : e.severity}
+                        </em>
                       )}
                     </li>
                   ))}

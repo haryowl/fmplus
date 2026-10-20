@@ -8051,6 +8051,21 @@ html.onesheet-root body {
   align-self: center;
 }
 
+.fleet-cc-active-pill.is-safety {
+  background: color-mix(in srgb, #2563eb 14%, transparent);
+  color: #1d4ed8;
+}
+
+.fleet-cc-active-pill.is-rule {
+  background: color-mix(in srgb, var(--danger, #dc2626) 14%, transparent);
+  color: var(--danger, #dc2626);
+}
+
+.fleet-cc-alerts li strong .fleet-ico {
+  vertical-align: -0.15em;
+  margin-right: 2px;
+}
+
 .fleet-cc-mix-grid {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
