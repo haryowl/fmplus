@@ -5819,6 +5819,23 @@ html.onesheet-root body {
   font: inherit;
 }
 
+.fleet-rules-op-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.fleet-rules-op-row h4 {
+  margin: 0;
+}
+
+.fleet-rules-op {
+  min-width: 140px;
+}
+
 .fleet-rules-conditions {
   display: grid;
   gap: 8px;

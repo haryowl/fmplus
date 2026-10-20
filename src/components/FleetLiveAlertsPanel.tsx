@@ -102,6 +102,7 @@ export function FleetLiveAlertsPanel({
   const [draftCooldownMin, setDraftCooldownMin] = useState(5);
   const [draftEmail, setDraftEmail] = useState(false);
   const [draftWa, setDraftWa] = useState(false);
+  const [draftOp, setDraftOp] = useState<"and" | "or">("and");
   const [draftConditions, setDraftConditions] = useState<AlertCondition[]>([emptyCondition()]);
   const [editId, setEditId] = useState<string | null>(null);
 
@@ -175,6 +176,7 @@ export function FleetLiveAlertsPanel({
     setDraftCooldownMin(Math.max(1, Math.round((rule.cooldownSec || 300) / 60)));
     setDraftEmail(rule.notifyEmail);
     setDraftWa(rule.notifyWhatsapp);
+    setDraftOp(rule.formula.op === "or" ? "or" : "and");
     setDraftConditions(
       rule.formula.conditions.length ? rule.formula.conditions.map((c) => ({ ...c })) : [emptyCondition()],
     );
@@ -191,6 +193,7 @@ export function FleetLiveAlertsPanel({
     setDraftCooldownMin(5);
     setDraftEmail(false);
     setDraftWa(false);
+    setDraftOp("and");
     setDraftConditions([emptyCondition()]);
   };
 
@@ -219,7 +222,7 @@ export function FleetLiveAlertsPanel({
           scopeGroupId: draftScope === "group" ? draftGroupId || null : null,
           scopeDeviceIds: draftScope === "devices" ? draftDeviceIds : [],
           formula: {
-            op: "and",
+            op: draftOp,
             conditions: draftConditions.map((c) => {
               let value: string | number | boolean = c.value;
               if (c.field === "ignition") {
@@ -378,7 +381,19 @@ export function FleetLiveAlertsPanel({
             </div>
 
             <div className="fleet-rules-conditions">
-              <h4>When all of these are true</h4>
+              <div className="fleet-rules-op-row">
+                <h4>{draftOp === "or" ? "When any of these are true" : "When all of these are true"}</h4>
+                <label className="fleet-cc-field fleet-rules-op">
+                  <span>Match</span>
+                  <select
+                    value={draftOp}
+                    onChange={(e) => setDraftOp(e.target.value === "or" ? "or" : "and")}
+                  >
+                    <option value="and">All (AND)</option>
+                    <option value="or">Any (OR)</option>
+                  </select>
+                </label>
+              </div>
               {draftConditions.map((c, idx) => (
                 <div key={idx} className="fleet-rules-cond-row">
                   <select
@@ -529,7 +544,7 @@ export function FleetLiveAlertsPanel({
                       <div className="muted">
                         {r.formula.conditions
                           .map((c) => `${c.field} ${c.cmp} ${JSON.stringify(c.value)}`)
-                          .join(" AND ")}
+                          .join(r.formula.op === "or" ? " OR " : " AND ")}
                         {r.formula.durationSec
                           ? ` · hold ${Math.round(r.formula.durationSec / 60)}m`
                           : ""}
