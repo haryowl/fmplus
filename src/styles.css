@@ -3408,6 +3408,19 @@ html.onesheet-root body {
   gap: 6px;
 }
 
+.admin-pin-field textarea {
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 8px;
+  border: 1px solid var(--admin-line, #d8dee4);
+  border-radius: 6px;
+  background: var(--surface, #fff);
+  color: var(--admin-ink, #17323d);
+  font-size: 0.78rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
 .admin-scan-matrix-wrap {
   overflow-x: auto;
   margin-top: 6px;
