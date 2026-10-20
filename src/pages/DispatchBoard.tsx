@@ -5285,6 +5285,14 @@ export default function DispatchBoard() {
                       name={dispatchVehicleLabel(selected)}
                       disabled={busy || selected.status === "done" || selected.status === "cancelled"}
                     />
+                  ) : selected.trackerDeviceId ? (
+                    <CatalogCodesEditor
+                      kind="vehicle"
+                      itemId={selected.trackerDeviceId}
+                      sku={selected.trackerDeviceId}
+                      name={dispatchVehicleLabel(selected)}
+                      disabled={busy || selected.status === "done" || selected.status === "cancelled"}
+                    />
                   ) : null}
                 </div>
                 ) : null}

@@ -721,6 +721,31 @@ export async function buildReplanRemainingPreview(tenantId, opts = {}) {
   let posMap = new Map();
   if (opts.posMap instanceof Map) posMap = opts.posMap;
 
+  /** @type {Map<string, { lat: number, lon: number }>} */
+  let devicePosMap = opts.devicePosMap instanceof Map ? opts.devicePosMap : new Map();
+  if (!devicePosMap.size) {
+    const deviceIds = [
+      ...new Set(
+        jobsRes.rows
+          .map((j) => String(j.tracker_device_id || "").trim())
+          .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+      ),
+    ];
+    if (deviceIds.length) {
+      try {
+        const { lastFixesByDeviceIds } = await import("./tracker-devices.mjs");
+        const fixes = await lastFixesByDeviceIds(tenantId, deviceIds);
+        for (const [id, fix] of fixes) {
+          if (fix && Number.isFinite(fix.lat) && Number.isFinite(fix.lon)) {
+            devicePosMap.set(id, { lat: fix.lat, lon: fix.lon });
+          }
+        }
+      } catch {
+        /* keep empty — depot/start fallback */
+      }
+    }
+  }
+
   /** @type {any[]} */
   const suggestions = [];
 
@@ -761,7 +786,11 @@ export async function buildReplanRemainingPreview(tenantId, opts = {}) {
     );
 
     const uid = job.armada_user_id != null ? Number(job.armada_user_id) : null;
-    const live = uid != null && Number.isFinite(uid) ? posMap.get(uid) : null;
+    const deviceId = String(job.tracker_device_id || "").trim();
+    const liveArmada = uid != null && Number.isFinite(uid) ? posMap.get(uid) : null;
+    const liveDevice =
+      /^[0-9a-f-]{36}$/i.test(deviceId) ? devicePosMap.get(deviceId) : null;
+    const live = liveArmada || liveDevice || null;
     const start =
       live?.lat != null && live?.lon != null
         ? { lat: Number(live.lat), lon: Number(live.lon), source: "gps" }

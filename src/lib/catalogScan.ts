@@ -12,8 +12,15 @@ export type ScanContext = "dispatch_cargo" | "maint_part" | "vehicle" | "locatio
 export type VehicleScanItem = {
   id: string;
   armadaUserId: number;
+  /** GPS tracker device UUID when the scan target is device-native. */
+  trackerDeviceId?: string | null;
   label?: string;
   plateParity?: string;
+};
+
+export type VehicleScanRef = {
+  armadaUserId?: number | null;
+  trackerDeviceId?: string | null;
 };
 
 export type LocationScanItem = {
@@ -157,26 +164,78 @@ export function jobRequireScanReason(opts: {
   return null;
 }
 
+function isTrackerDeviceId(id: unknown): boolean {
+  return /^[0-9a-f-]{36}$/i.test(String(id || "").trim());
+}
+
 /** Vehicle tag on + job has a truck → Field must confirm that plate before work. */
 export function vehicleScanBlocks(opts: {
   vehicleOpen?: boolean;
   armadaUserId?: number | null;
+  trackerDeviceId?: string | null;
   vehicleConfirmed?: boolean;
   action?: "start" | "stop" | "complete";
 }): string | null {
   if (opts.vehicleOpen !== true) return null;
   const uid = Number(opts.armadaUserId);
-  if (!Number.isFinite(uid) || uid <= 0) return null;
+  const hasArmada = Number.isFinite(uid) && uid > 0;
+  const hasDevice = isTrackerDeviceId(opts.trackerDeviceId);
+  if (!hasArmada && !hasDevice) return null;
   if (opts.vehicleConfirmed) return null;
   if (opts.action === "start") return "Scan the vehicle before starting this route";
   if (opts.action === "stop") return "Scan the vehicle before opening this order";
   return "Scan the vehicle before completing this job";
 }
 
-export function vehicleIdFromScan(item: { id?: string; armadaUserId?: number } | undefined): number | null {
+export function vehicleIdFromScan(
+  item: { id?: string; armadaUserId?: number; trackerDeviceId?: string | null } | undefined,
+): number | null {
   if (!item) return null;
-  const n = Number(item.armadaUserId ?? item.id);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  const n = Number(item.armadaUserId);
+  if (Number.isFinite(n) && n > 0) return n;
+  // Device-only scans use UUID id — do not coerce to a fake Armada user id.
+  if (isTrackerDeviceId(item.trackerDeviceId || item.id)) return null;
+  const fallback = Number(item.id);
+  return Number.isFinite(fallback) && fallback > 0 ? fallback : null;
+}
+
+export function vehicleDeviceIdFromScan(
+  item: { id?: string; trackerDeviceId?: string | null } | undefined,
+): string | null {
+  if (!item) return null;
+  const did = String(item.trackerDeviceId || "").trim();
+  if (isTrackerDeviceId(did)) return did;
+  const id = String(item.id || "").trim();
+  return isTrackerDeviceId(id) ? id : null;
+}
+
+export function vehicleRefFromScan(
+  item: { id?: string; armadaUserId?: number; trackerDeviceId?: string | null } | undefined,
+): VehicleScanRef | null {
+  if (!item) return null;
+  const armadaUserId = vehicleIdFromScan(item);
+  const trackerDeviceId = vehicleDeviceIdFromScan(item);
+  if (!armadaUserId && !trackerDeviceId) return null;
+  return { armadaUserId, trackerDeviceId };
+}
+
+function jobMatchesVehicleRef(
+  job: { armadaUserId?: number | null; trackerDeviceId?: string | null },
+  ref: VehicleScanRef,
+): boolean {
+  const did = String(ref.trackerDeviceId || "").trim();
+  if (isTrackerDeviceId(did) && String(job.trackerDeviceId || "").trim() === did) return true;
+  const uid = Number(ref.armadaUserId);
+  if (Number.isFinite(uid) && uid > 0 && Number(job.armadaUserId) === uid) return true;
+  return false;
+}
+
+function jobHasVehicle(
+  job: { armadaUserId?: number | null; trackerDeviceId?: string | null } | undefined,
+): boolean {
+  if (!job) return false;
+  const uid = Number(job.armadaUserId);
+  return (Number.isFinite(uid) && uid > 0) || isTrackerDeviceId(job.trackerDeviceId);
 }
 
 export function locationNameFromScan(item: { id?: string; name?: string } | undefined): string {
@@ -187,23 +246,39 @@ function isClosedJobStatus(status?: string): boolean {
   return status === "done" || status === "cancelled" || status === "skipped" || status === "approved";
 }
 
-export function resolveVehicleJobOpen<T extends { id: string; armadaUserId?: number | null; status?: string }>(
+export function resolveVehicleJobOpen<
+  T extends {
+    id: string;
+    armadaUserId?: number | null;
+    trackerDeviceId?: string | null;
+    status?: string;
+  },
+>(
   jobs: T[],
-  vehicleUserId: number,
+  vehicleUserId: number | VehicleScanRef,
   selectedId?: string | null,
 ): { jobId: string; notice: string } | { error: string } {
+  const ref: VehicleScanRef =
+    typeof vehicleUserId === "number"
+      ? { armadaUserId: vehicleUserId }
+      : vehicleUserId || {};
+  const hasRef =
+    (Number.isFinite(Number(ref.armadaUserId)) && Number(ref.armadaUserId) > 0) ||
+    isTrackerDeviceId(ref.trackerDeviceId);
+  if (!hasRef) return { error: "No open job for this vehicle" };
+
   const selected = selectedId ? jobs.find((j) => j.id === selectedId) : undefined;
-  if (selected && Number(selected.armadaUserId) === vehicleUserId) {
+  if (selected && jobMatchesVehicleRef(selected, ref)) {
     return { jobId: selected.id, notice: "Vehicle confirmed" };
   }
-  const match = jobs.find((j) => Number(j.armadaUserId) === vehicleUserId && !isClosedJobStatus(j.status));
+  const match = jobs.find((j) => jobMatchesVehicleRef(j, ref) && !isClosedJobStatus(j.status));
   if (match) {
     return {
       jobId: match.id,
       notice: selected && selected.id !== match.id ? "Opened job for this vehicle" : "Vehicle confirmed",
     };
   }
-  if (selected && selected.armadaUserId && Number(selected.armadaUserId) !== vehicleUserId) {
+  if (selected && jobHasVehicle(selected) && !jobMatchesVehicleRef(selected, ref)) {
     return { error: "Wrong vehicle" };
   }
   return { error: "No open job for this vehicle" };

@@ -182,8 +182,39 @@ async function hydrateMatch(tenantId, row) {
   };
 }
 
+async function hydrateTrackerDevice(tenantId, targetId) {
+  const id = String(targetId || "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const found = await dbQuery(
+    `SELECT id, imei, label, armada_user_id
+     FROM tracker_devices
+     WHERE tenant_id = $1 AND id = $2::uuid AND enabled = true`,
+    [tenantId, id],
+  );
+  const row = found.rows[0];
+  if (!row) return null;
+  const armadaUserId =
+    row.armada_user_id != null && Number(row.armada_user_id) > 0
+      ? Number(row.armada_user_id)
+      : 0;
+  return {
+    kind: "vehicle",
+    item: {
+      id: String(row.id),
+      armadaUserId,
+      trackerDeviceId: String(row.id),
+      label: row.label || row.imei || "",
+      plateParity: "",
+    },
+  };
+}
+
 async function hydrateVehicle(tenantId, targetId) {
-  const uid = Number(targetId);
+  const raw = String(targetId || "").trim();
+  const device = await hydrateTrackerDevice(tenantId, raw);
+  if (device) return device;
+
+  const uid = Number(raw);
   const found = await dbQuery(
     `SELECT armada_user_id, label, plate_parity
      FROM vehicle_capacities
@@ -196,19 +227,67 @@ async function hydrateVehicle(tenantId, targetId) {
     item: {
       id: String(targetId),
       armadaUserId: Number.isFinite(uid) ? uid : 0,
+      trackerDeviceId: null,
       label: cap?.label || "",
       plateParity: cap?.plate_parity || "",
     },
   };
 }
 
-/** Versioned payload, or bare Armada id when Field Scan vehicle is open. */
+/** Versioned payload, or bare Armada id / device UUID when Field Scan vehicle is open. */
 async function tryImplicitVehicle(tenantId, parsed, context) {
   if (!contextAllowsKind(context, "vehicle")) return null;
   if (parsed.targetKind && parsed.targetKind !== "vehicle") return null;
-  const uid = Number(parsed.code);
-  if (!Number.isFinite(uid) || uid <= 0) return null;
   if (!parsed.targetKind && context !== "vehicle") return null;
+
+  const code = String(parsed.code || "").trim();
+  if (/^[0-9a-f-]{36}$/i.test(code)) {
+    const implicit = await hydrateTrackerDevice(tenantId, code);
+    if (!implicit) return null;
+    return {
+      match: "vehicle",
+      code: parsed.code,
+      raw: parsed.raw,
+      codeFormat: "sku",
+      payload: formatScanPayload("vehicle", code),
+      item: implicit.item,
+    };
+  }
+
+  // Bare IMEI (digits) when Field context is vehicle.
+  if (/^\d{8,20}$/.test(code)) {
+    const found = await dbQuery(
+      `SELECT id, imei, label, armada_user_id
+       FROM tracker_devices
+       WHERE tenant_id = $1 AND imei = $2 AND enabled = true
+       LIMIT 1`,
+      [tenantId, code],
+    );
+    const row = found.rows[0];
+    if (row) {
+      const armadaUserId =
+        row.armada_user_id != null && Number(row.armada_user_id) > 0
+          ? Number(row.armada_user_id)
+          : 0;
+      return {
+        match: "vehicle",
+        code: parsed.code,
+        raw: parsed.raw,
+        codeFormat: "sku",
+        payload: formatScanPayload("vehicle", String(row.id)),
+        item: {
+          id: String(row.id),
+          armadaUserId,
+          trackerDeviceId: String(row.id),
+          label: row.label || row.imei || "",
+          plateParity: "",
+        },
+      };
+    }
+  }
+
+  const uid = Number(code);
+  if (!Number.isFinite(uid) || uid <= 0) return null;
   const implicit = await hydrateVehicle(tenantId, String(uid));
   if (!(implicit.item.armadaUserId > 0)) return null;
   return {

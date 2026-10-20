@@ -203,6 +203,26 @@ describe("vehicle and location scan helpers", () => {
     expect(resolveVehicleJobOpen(jobs, 99, null)).toEqual({ error: "No open job for this vehicle" });
   });
 
+  it("matches GPS-only jobs by trackerDeviceId", () => {
+    const deviceId = "11111111-1111-4111-8111-111111111111";
+    const jobs = [
+      { id: "d1", trackerDeviceId: deviceId, status: "assigned" },
+      { id: "d2", armadaUserId: 11, status: "en_route" },
+    ];
+    expect(
+      resolveVehicleJobOpen(jobs, { trackerDeviceId: deviceId }, null),
+    ).toEqual({ jobId: "d1", notice: "Vehicle confirmed" });
+    expect(
+      resolveVehicleJobOpen(jobs, { trackerDeviceId: deviceId }, "d2"),
+    ).toEqual({
+      jobId: "d1",
+      notice: "Opened job for this vehicle",
+    });
+    expect(
+      resolveVehicleJobOpen(jobs, { trackerDeviceId: "22222222-2222-4222-8222-222222222222" }, "d1"),
+    ).toEqual({ error: "Wrong vehicle" });
+  });
+
   it("blocks Start / orders / Complete until the vehicle tag is confirmed", () => {
     expect(
       vehicleScanBlocks({
@@ -233,6 +253,22 @@ describe("vehicle and location scan helpers", () => {
         vehicleOpen: false,
         armadaUserId: 1855,
         vehicleConfirmed: false,
+        action: "complete",
+      }),
+    ).toBeNull();
+    expect(
+      vehicleScanBlocks({
+        vehicleOpen: true,
+        trackerDeviceId: "11111111-1111-4111-8111-111111111111",
+        vehicleConfirmed: false,
+        action: "start",
+      }),
+    ).toMatch(/before starting/);
+    expect(
+      vehicleScanBlocks({
+        vehicleOpen: true,
+        trackerDeviceId: "11111111-1111-4111-8111-111111111111",
+        vehicleConfirmed: true,
         action: "complete",
       }),
     ).toBeNull();

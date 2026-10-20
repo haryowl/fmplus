@@ -12,7 +12,7 @@ import {
   jobRequireScanReason,
   lookupCatalogScan,
   resolveVehicleJobOpen,
-  vehicleIdFromScan,
+  vehicleRefFromScan,
   vehicleScanBlocks,
 } from "../lib/catalogScan";
 import { fieldScanCanPart, fieldScanCanVehicle, type FieldScanCapabilities } from "../lib/scanCapabilities";
@@ -349,12 +349,14 @@ export default function ManagerMaintenance() {
           setError(`Not in catalog: ${res.raw || code}`);
           return;
         }
-        const uid = vehicleIdFromScan(res.item);
-        if (!uid) {
+        const ref = vehicleRefFromScan(
+          res.item as { id?: string; armadaUserId?: number; trackerDeviceId?: string | null },
+        );
+        if (!ref) {
           setError(`Not in catalog: ${res.raw || code}`);
           return;
         }
-        const result = resolveVehicleJobOpen(jobs, uid, selectedId);
+        const result = resolveVehicleJobOpen(jobs, ref, selectedId);
         if ("error" in result) {
           setError(result.error);
           return;
@@ -373,6 +375,7 @@ export default function ManagerMaintenance() {
       const vehicleGate = vehicleScanBlocks({
         vehicleOpen: scan?.vehicleOpen === true,
         armadaUserId: detail?.armadaUserId,
+        trackerDeviceId: detail?.trackerDeviceId,
         vehicleConfirmed: vehicleConfirmedJobId === selectedId,
         action: extra.status === "in_progress" ? "start" : "complete",
       });
@@ -623,7 +626,7 @@ export default function ManagerMaintenance() {
                   />
                   {vehicleConfirmedJobId === selectedId ? (
                     <span className="field-pill">Vehicle confirmed</span>
-                  ) : detail.armadaUserId ? (
+                  ) : detail.armadaUserId || detail.trackerDeviceId ? (
                     <span className="muted">Scan this vehicle before Start / Done</span>
                   ) : null}
                 </div>

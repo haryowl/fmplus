@@ -24,7 +24,7 @@ import {
   lookupCatalogScan,
   resolveVehicleJobOpen,
   stopRequireScanBlocks,
-  vehicleIdFromScan,
+  vehicleRefFromScan,
   vehicleScanBlocks,
 } from "../lib/catalogScan";
 import {
@@ -190,12 +190,12 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
           onErrorRef.current(`Not in catalog: ${res.raw || code}`);
           return;
         }
-        const uid = vehicleIdFromScan(res.item);
-        if (!uid) {
+        const ref = vehicleRefFromScan(res.item as { id?: string; armadaUserId?: number; trackerDeviceId?: string | null });
+        if (!ref) {
           onErrorRef.current(`Not in catalog: ${res.raw || code}`);
           return;
         }
-        const result = resolveVehicleJobOpen(jobs, uid, selectedId);
+        const result = resolveVehicleJobOpen(jobs, ref, selectedId);
         if ("error" in result) {
           onErrorRef.current(result.error);
           return;
@@ -415,6 +415,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
     const vehicleGate = vehicleScanBlocks({
       vehicleOpen: scan?.vehicleOpen === true,
       armadaUserId: selected.armadaUserId,
+      trackerDeviceId: selected.trackerDeviceId,
       vehicleConfirmed: vehicleConfirmedJobId === selected.id,
       action: "stop",
     });
@@ -1220,7 +1221,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
                   />
                   {vehicleConfirmedJobId === selected.id ? (
                     <span className="field-pill">Vehicle confirmed</span>
-                  ) : selected.armadaUserId ? (
+                  ) : selected.armadaUserId || selected.trackerDeviceId ? (
                     <span className="muted">Scan this vehicle before Start / orders</span>
                   ) : null}
                 </>
@@ -1234,6 +1235,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
                     const vehicleGate = vehicleScanBlocks({
                       vehicleOpen: scan?.vehicleOpen === true,
                       armadaUserId: selected.armadaUserId,
+                      trackerDeviceId: selected.trackerDeviceId,
                       vehicleConfirmed: vehicleConfirmedJobId === selected.id,
                       action: "start",
                     });
@@ -1263,6 +1265,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
                     const vehicleGate = vehicleScanBlocks({
                       vehicleOpen: scan?.vehicleOpen === true,
                       armadaUserId: selected.armadaUserId,
+                      trackerDeviceId: selected.trackerDeviceId,
                       vehicleConfirmed: vehicleConfirmedJobId === selected.id,
                       action: "complete",
                     });
