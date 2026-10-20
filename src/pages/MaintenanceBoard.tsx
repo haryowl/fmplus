@@ -301,7 +301,16 @@ export default function MaintenanceBoard() {
       });
     } else if (groupId && users.length) {
       const allow = new Set(users.map((u) => u.id));
-      list = list.filter((ev) => ev.armadaUserId != null && allow.has(Number(ev.armadaUserId)));
+      const allowDevices = new Set<string>();
+      for (const uid of allow) {
+        const did = deviceIdByRowId.get(uid);
+        if (did) allowDevices.add(did);
+      }
+      list = list.filter((ev) => {
+        if (ev.armadaUserId != null && allow.has(Number(ev.armadaUserId))) return true;
+        if (ev.trackerDeviceId && allowDevices.has(ev.trackerDeviceId)) return true;
+        return false;
+      });
     }
     const q = listQuery.trim().toLowerCase();
     if (!q) return list;
@@ -318,7 +327,16 @@ export default function MaintenanceBoard() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [events, listQuery, deviceGroupId, deviceGroupArmadaIds, deviceGroupDeviceIds, groupId, users]);
+  }, [
+    events,
+    listQuery,
+    deviceGroupId,
+    deviceGroupArmadaIds,
+    deviceGroupDeviceIds,
+    groupId,
+    users,
+    deviceIdByRowId,
+  ]);
 
   const isHistoryView =
     healthFilter === "completed" ||

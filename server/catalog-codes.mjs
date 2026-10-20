@@ -293,14 +293,50 @@ async function tryImplicitVehicle(tenantId, parsed, context) {
 
   const uid = Number(code);
   if (!Number.isFinite(uid) || uid <= 0) return null;
+  // Prefer a tracker linked to this Armada user id (devices-only / both tenants).
+  const linked = await dbQuery(
+    `SELECT id, imei, label, armada_user_id
+     FROM tracker_devices
+     WHERE tenant_id = $1 AND armada_user_id = $2 AND enabled = true
+     ORDER BY updated_at DESC NULLS LAST
+     LIMIT 1`,
+    [tenantId, uid],
+  );
+  if (linked.rows[0]) {
+    const row = linked.rows[0];
+    const cap = await dbQuery(
+      `SELECT label, plate_parity FROM vehicle_capacities
+       WHERE tenant_id = $1 AND (tracker_device_id = $2::uuid OR armada_user_id = $3)
+       ORDER BY tracker_device_id NULLS LAST
+       LIMIT 1`,
+      [tenantId, row.id, uid],
+    );
+    return {
+      match: "vehicle",
+      code: parsed.code,
+      raw: parsed.raw,
+      codeFormat: "sku",
+      payload: formatScanPayload("vehicle", String(row.id)),
+      item: {
+        id: String(row.id),
+        armadaUserId: uid,
+        trackerDeviceId: String(row.id),
+        label: cap.rows[0]?.label || row.label || row.imei || "",
+        plateParity: cap.rows[0]?.plate_parity || "",
+      },
+    };
+  }
   const implicit = await hydrateVehicle(tenantId, String(uid));
-  if (!(implicit.item.armadaUserId > 0)) return null;
+  if (!(implicit.item.armadaUserId > 0) && !implicit.item.trackerDeviceId) return null;
   return {
     match: "vehicle",
     code: parsed.code,
     raw: parsed.raw,
     codeFormat: "sku",
-    payload: formatScanPayload("vehicle", String(uid)),
+    payload: formatScanPayload(
+      "vehicle",
+      implicit.item.trackerDeviceId || String(uid),
+    ),
     item: implicit.item,
   };
 }

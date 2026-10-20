@@ -2077,7 +2077,14 @@ export async function handleMaintenanceRequest(req, res) {
         vehicleClause = ` AND e.tracker_device_id = ANY($${params.length}::uuid[])`;
       } else if (userIdsRaw.length) {
         params.push(userIdsRaw);
-        vehicleClause = ` AND e.armada_user_id = ANY($${params.length}::int[])`;
+        // Include device-native events whose GPS unit is linked to any of these Armada users.
+        vehicleClause = ` AND (
+          e.armada_user_id = ANY($${params.length}::int[])
+          OR e.tracker_device_id IN (
+            SELECT id FROM tracker_devices
+            WHERE tenant_id = $1 AND armada_user_id = ANY($${params.length}::int[])
+          )
+        )`;
       }
 
       const events = await dbQuery(

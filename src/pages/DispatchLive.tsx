@@ -317,10 +317,12 @@ export default function DispatchLive() {
       .join(",");
   }, [snapshot?.drivers]);
 
+  // Always load device-day crumbs when a job has trackerDeviceId — including jobs that
+  // also carry a linked armadaUserId (tokenless / devices-first tenants still need GPS tracks).
   const deviceNativeTrackKey = useMemo(() => {
     if (!snapshot?.drivers?.length) return "";
     return snapshot.drivers
-      .filter((d) => d.trackerDeviceId && !(d.armadaUserId != null && d.armadaUserId > 0))
+      .filter((d) => Boolean(d.trackerDeviceId))
       .map((d) => String(d.trackerDeviceId))
       .sort()
       .join(",");
@@ -521,9 +523,10 @@ export default function DispatchLive() {
         : [];
       const phoneTrail = phoneTrailOrCrumbs(fromFetch.length >= 2 ? fromFetch : d.phoneTrail, d);
 
+      const nativeKey = d.trackerDeviceId ? `d:${d.trackerDeviceId}|${serviceDate}` : "";
+      const nativeTimed = nativeKey ? deviceNativeTracks.get(nativeKey) || [] : [];
+
       if (d.armadaUserId == null) {
-        const nativeKey = d.trackerDeviceId ? `d:${d.trackerDeviceId}|${serviceDate}` : "";
-        const nativeTimed = nativeKey ? deviceNativeTracks.get(nativeKey) || [] : [];
         let track = nativeTimed.length
           ? clipTimedTrackToWindow(nativeTimed, d.startedAt, d.completedAt, now)
           : [];
@@ -552,8 +555,13 @@ export default function DispatchLive() {
       const key = `${d.armadaUserId}|${serviceDate}`;
       const deviceTimed = deviceTracks.get(key) || [];
       const armadaTimed = armadaTracks.get(key) || [];
-      // Prefer direct-tracker breadcrumb when present; fall back to Armada day track.
-      const timed = deviceTimed.length >= 2 ? deviceTimed : armadaTimed;
+      // Prefer device-id day track, then Armada-linked device trail, then Armada day track.
+      const timed =
+        nativeTimed.length >= 2
+          ? nativeTimed
+          : deviceTimed.length >= 2
+            ? deviceTimed
+            : armadaTimed;
       let track = timed.length
         ? clipTimedTrackToWindow(timed, d.startedAt, d.completedAt, now)
         : [];
