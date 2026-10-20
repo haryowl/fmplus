@@ -849,6 +849,28 @@ export async function endOpenMaintenanceForVehicle(armadaUserId, tenantId, opts 
   return { ...result, armadaUserId: uid };
 }
 
+/** End every open job attached to a GPS tracker device (device-native / unlinked). */
+export async function endOpenMaintenanceForDevice(trackerDeviceId, tenantId, opts = {}) {
+  const deviceId = String(trackerDeviceId || "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(deviceId)) {
+    const err = new Error("trackerDeviceId required");
+    err.status = 400;
+    throw err;
+  }
+  const open = await dbQuery(
+    `SELECT id FROM service_events
+     WHERE tenant_id = $1 AND tracker_device_id = $2 AND status IN ('due', 'in_progress')
+     ORDER BY created_at ASC`,
+    [tenantId, deviceId],
+  );
+  const result = await endOpenMaintenanceJobs(
+    open.rows.map((r) => r.id),
+    tenantId,
+    { reason: opts.reason || "Device maintenance stopped" },
+  );
+  return { ...result, trackerDeviceId: deviceId };
+}
+
 /**
  * Create the next scheduled due job after completion.
  * @returns {Promise<{ event: object, created: boolean } | null>}
@@ -2926,6 +2948,23 @@ export async function handleMaintenanceRequest(req, res) {
       json(res, 200, {
         ok: true,
         armadaUserId: result.armadaUserId,
+        endedIds: result.endedIds,
+        ended: result.ended,
+        count: result.endedIds.length,
+      });
+      return true;
+    }
+
+    const endDeviceMatch =
+      /^\/api\/maintenance\/devices\/([0-9a-f-]{36})\/end-open$/i.exec(url.pathname);
+    if (endDeviceMatch && req.method === "POST") {
+      const body = await readJson(req);
+      const result = await endOpenMaintenanceForDevice(endDeviceMatch[1], dbTenant.id, {
+        reason: body.reason || "Device maintenance stopped",
+      });
+      json(res, 200, {
+        ok: true,
+        trackerDeviceId: result.trackerDeviceId,
         endedIds: result.endedIds,
         ended: result.ended,
         count: result.endedIds.length,

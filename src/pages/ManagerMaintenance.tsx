@@ -468,7 +468,7 @@ export default function ManagerMaintenance() {
   }
 
   async function endVehicleOpen() {
-    if (!detail?.armadaUserId) return;
+    if (!detail?.armadaUserId && !detail?.trackerDeviceId) return;
     if (
       !window.confirm(
         `Stop all open maintenance for ${eventVehicleLabel(detail)}? Every due / in-progress job will be skipped.`,
@@ -480,10 +480,19 @@ export default function ManagerMaintenance() {
     setError("");
     setNotice("");
     try {
-      const result = await api<{ count: number }>(
-        `/api/manager/maintenance/vehicles/${detail.armadaUserId}/end-open`,
-        { method: "POST", body: JSON.stringify({ reason: "Vehicle maintenance stopped" }) },
-      );
+      const path =
+        detail.armadaUserId != null
+          ? `/api/manager/maintenance/vehicles/${detail.armadaUserId}/end-open`
+          : `/api/manager/maintenance/devices/${encodeURIComponent(String(detail.trackerDeviceId))}/end-open`;
+      const result = await api<{ count: number }>(path, {
+        method: "POST",
+        body: JSON.stringify({
+          reason:
+            detail.armadaUserId != null
+              ? "Vehicle maintenance stopped"
+              : "Device maintenance stopped",
+        }),
+      });
       setNotice(
         result.count
           ? `Stopped ${result.count} open job${result.count === 1 ? "" : "s"} for this vehicle.`
@@ -886,7 +895,7 @@ export default function ManagerMaintenance() {
                   End series
                 </button>
               )}
-              {detail.armadaUserId != null ? (
+              {detail.armadaUserId != null || detail.trackerDeviceId ? (
                 <button
                   type="button"
                   className="btn-secondary"

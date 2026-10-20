@@ -5,6 +5,7 @@ import {
   createServiceEvent,
   deleteServiceEvent,
   downloadMaintenanceExcel,
+  endOpenMaintenanceForDevice,
   endOpenMaintenanceForVehicle,
   eventVehicleLabel,
   eventWhen,
@@ -1227,8 +1228,7 @@ export default function MaintenanceBoard() {
         deviceGroupArmadaIds &&
         deviceGroupArmadaIds.size === 0 ? (
           <div className="banner warn">
-            {deviceGroupMemberCount} GPS device(s) in this group — create jobs directly on devices
-            (Armada link optional in Admin → Device Management).
+            {deviceGroupMemberCount} GPS device(s) in this group — create jobs directly on devices.
           </div>
         ) : null}
         {error && <div className="banner error">{error}</div>}
@@ -1525,18 +1525,24 @@ export default function MaintenanceBoard() {
                       {doneCount ? ` · ${doneCount} done` : ""}
                     </span>
                   </button>
-                  {openCount > 0 && group.events.some((e) => e.armadaUserId != null) ? (
+                  {openCount > 0 &&
+                  group.events.some((e) => e.armadaUserId != null || e.trackerDeviceId) ? (
                     <button
                       type="button"
                       className="btn-ghost maint-vehicle-stop"
                       disabled={Boolean(
                         busyId &&
                           String(busyId).startsWith("stop-vehicle-") &&
-                          group.events.some((e) => busyId === `stop-vehicle-${e.armadaUserId}`),
+                          group.events.some(
+                            (e) =>
+                              busyId === `stop-vehicle-${e.armadaUserId ?? e.trackerDeviceId}`,
+                          ),
                       )}
                       onClick={() => {
-                        const uid = group.events.find((e) => e.armadaUserId != null)?.armadaUserId;
-                        if (uid == null) return;
+                        const sample = group.events.find(
+                          (e) => e.armadaUserId != null || e.trackerDeviceId,
+                        );
+                        if (!sample) return;
                         if (
                           !window.confirm(
                             `Stop all ${openCount} open job${openCount === 1 ? "" : "s"} for ${group.label}? Intervals will be cleared.`,
@@ -1544,8 +1550,19 @@ export default function MaintenanceBoard() {
                         ) {
                           return;
                         }
-                        setBusyId(`stop-vehicle-${uid}`);
-                        void endOpenMaintenanceForVehicle(uid, "Vehicle maintenance stopped")
+                        const stopKey = sample.armadaUserId ?? sample.trackerDeviceId;
+                        setBusyId(`stop-vehicle-${stopKey}`);
+                        const stopPromise =
+                          sample.armadaUserId != null
+                            ? endOpenMaintenanceForVehicle(
+                                sample.armadaUserId,
+                                "Vehicle maintenance stopped",
+                              )
+                            : endOpenMaintenanceForDevice(
+                                String(sample.trackerDeviceId),
+                                "Device maintenance stopped",
+                              );
+                        void stopPromise
                           .then((result) => {
                             setError("");
                             setReload((n) => n + 1);

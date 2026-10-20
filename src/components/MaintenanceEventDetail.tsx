@@ -2,6 +2,7 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   emptyLine,
   endMaintenanceSeries,
+  endOpenMaintenanceForDevice,
   endOpenMaintenanceForVehicle,
   eventIsScheduled,
   eventVehicleLabel,
@@ -463,7 +464,7 @@ export function MaintenanceEventDetail({
   }
 
   async function onEndVehicleOpen() {
-    if (!event?.armadaUserId) return;
+    if (!event?.armadaUserId && !event?.trackerDeviceId) return;
     const label = eventVehicleLabel(event);
     if (
       !window.confirm(
@@ -476,10 +477,12 @@ export function MaintenanceEventDetail({
     setError("");
     setNotice("");
     try {
-      const result = await endOpenMaintenanceForVehicle(
-        event.armadaUserId,
-        "Vehicle maintenance stopped",
-      );
+      const result = event.armadaUserId != null
+        ? await endOpenMaintenanceForVehicle(event.armadaUserId, "Vehicle maintenance stopped")
+        : await endOpenMaintenanceForDevice(
+            String(event.trackerDeviceId),
+            "Device maintenance stopped",
+          );
       setNotice(
         result.count
           ? `Stopped ${result.count} open job${result.count === 1 ? "" : "s"} for this vehicle.`
@@ -1089,7 +1092,7 @@ export function MaintenanceEventDetail({
               End series
             </button>
           )}
-          {event.armadaUserId != null ? (
+          {event.armadaUserId != null || event.trackerDeviceId ? (
             <button type="button" className="btn-secondary" disabled={busy} onClick={() => void onEndVehicleOpen()}>
               Stop all open for vehicle
             </button>

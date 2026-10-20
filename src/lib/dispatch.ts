@@ -457,7 +457,12 @@ export const DISPATCH_STATUS_LABELS: Record<DispatchStatus, string> = {
 };
 
 export function dispatchVehicleLabel(job: DispatchJob): string {
-  return job.userDisplayName || job.armadaUsername || (job.armadaUserId ? `#${job.armadaUserId}` : "—");
+  return (
+    job.userDisplayName ||
+    job.armadaUsername ||
+    (job.armadaUserId ? `#${job.armadaUserId}` : "") ||
+    (job.trackerDeviceId ? "GPS device" : "—")
+  );
 }
 
 export function dispatchAssigneeLabel(job: DispatchJob): string {

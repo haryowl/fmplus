@@ -770,6 +770,7 @@ export type EndSeriesResult = {
   ended: ServiceEvent[];
   rootId?: string;
   armadaUserId?: number;
+  trackerDeviceId?: string;
 };
 
 export async function endMaintenanceSeries(
@@ -797,6 +798,23 @@ export async function endOpenMaintenanceForVehicle(
   });
   const data = (await res.json().catch(() => ({}))) as EndSeriesResult & { error?: string };
   if (!res.ok) throw new Error(data.error || `End vehicle open ${res.status}`);
+  return data;
+}
+
+export async function endOpenMaintenanceForDevice(
+  trackerDeviceId: string,
+  reason = "Device maintenance stopped",
+): Promise<EndSeriesResult> {
+  const res = await fetch(
+    `/api/maintenance/devices/${encodeURIComponent(trackerDeviceId)}/end-open`,
+    {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+      body: JSON.stringify({ reason }),
+    },
+  );
+  const data = (await res.json().catch(() => ({}))) as EndSeriesResult & { error?: string };
+  if (!res.ok) throw new Error(data.error || `End device open ${res.status}`);
   return data;
 }
 

@@ -1162,7 +1162,11 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
               <p className="muted">
                 {stopsLeft} order{stopsLeft === 1 ? "" : "s"} left
                 {selectedDayCount > 1 ? " today" : ""} · {dispatchVehicleLabel(selected)}
-                {!selected.armadaUserId ? " · phone GPS" : ""}
+                {!selected.armadaUserId
+                  ? selected.trackerDeviceId
+                    ? " · device GPS"
+                    : " · phone GPS"
+                  : ""}
               </p>
             </div>
             <span className={`field-status dispatch-status-${selected.status}`}>

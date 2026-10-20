@@ -2607,8 +2607,7 @@ export default function DispatchBoard() {
         deviceGroupArmadaIds &&
         deviceGroupArmadaIds.size === 0 ? (
           <p className="dispatch-alert" role="status">
-            {deviceGroupMemberCount} GPS device(s) in this group — New job can assign a device
-            directly (Armada link optional in Admin → Device Management).
+            {deviceGroupMemberCount} GPS device(s) in this group — New job assigns devices directly.
           </p>
         ) : null}
 

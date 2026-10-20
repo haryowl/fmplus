@@ -8,6 +8,7 @@ import { mergeEntitlements } from "./entitlements.mjs";
 import {
   applyEventPatch,
   endMaintenanceSeries,
+  endOpenMaintenanceForDevice,
   endOpenMaintenanceForVehicle,
   loadEventDetail,
   loadPhotoBytes,
@@ -20,6 +21,7 @@ import { securityHeaders } from "./proxy-lt.mjs";
 import { tenantByKey } from "./tenants.mjs";
 
 const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
+  tracker_device_id,
   lat, lon, notification_id, started_at, ended_at, odometer_km,
   service_point_id, service_point_name, service_point_lat, service_point_lon,
   assigned_field_user_id,
@@ -279,6 +281,23 @@ export async function handleManagerRequest(req, res) {
       json(res, 200, {
         ok: true,
         armadaUserId: result.armadaUserId,
+        endedIds: result.endedIds,
+        ended: result.ended.map((e) => withManagerPhotoUrls(e)),
+        count: result.endedIds.length,
+      });
+      return true;
+    }
+
+    const endDeviceMatch =
+      /^\/api\/manager\/maintenance\/devices\/([0-9a-f-]{36})\/end-open$/i.exec(url.pathname);
+    if (endDeviceMatch && req.method === "POST") {
+      const body = await readJson(req);
+      const result = await endOpenMaintenanceForDevice(endDeviceMatch[1], user.tenantId, {
+        reason: body.reason || "Device maintenance stopped",
+      });
+      json(res, 200, {
+        ok: true,
+        trackerDeviceId: result.trackerDeviceId,
         endedIds: result.endedIds,
         ended: result.ended.map((e) => withManagerPhotoUrls(e)),
         count: result.endedIds.length,
