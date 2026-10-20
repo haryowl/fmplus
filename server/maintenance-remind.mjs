@@ -372,7 +372,7 @@ export async function evaluateTenantReminders(tenantId, vaultTenant) {
     const body = `${ev.title} — ${bits.join("; ")}`;
     const results = await fanOutEventReminder({
       tenantId,
-      tenantKey: vaultTenant.key,
+      tenantKey: vaultTenant?.key || "",
       event: ev,
       kind,
       title,
@@ -389,8 +389,8 @@ export async function evaluateAllTenantReminders() {
   const tenants = await dbQuery(`SELECT id, key FROM tenants WHERE enabled = true`);
   let emitted = 0;
   for (const t of tenants.rows) {
-    const vault = tenantByKey(t.key);
-    if (!vault?.token) continue;
+    // Tokenless tenants still get calendar + GPS-device km/hours reminders.
+    const vault = tenantByKey(t.key) || { key: t.key };
     const r = await evaluateTenantReminders(t.id, vault);
     emitted += r.emitted;
   }

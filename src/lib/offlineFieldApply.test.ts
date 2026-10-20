@@ -99,6 +99,37 @@ describe("offline field snapshot", () => {
     expect(hit.json).toMatchObject({ match: "goods", item: { sku: "OIL-01" } });
   });
 
+  it("matches a GPS device UUID from cached dispatch jobs", () => {
+    const deviceId = "11111111-1111-4111-8111-111111111111";
+    const saved = rememberOfflineGet(
+      emptyOfflineSnap(),
+      "/api/field/dispatch/jobs?date=2026-10-02",
+      {
+        jobs: [
+          {
+            id: "job-d1",
+            status: "assigned",
+            trackerDeviceId: deviceId,
+            armadaUsername: "860123456789012",
+            userDisplayName: "Truck GPS",
+          },
+        ],
+        serviceDate: "2026-10-02",
+      },
+      "2026-10-02T01:00:00.000Z",
+    );
+    const byUuid = offlineCatalogScan(saved, `am1:v1:vehicle:${deviceId}`, "vehicle");
+    expect(byUuid.json).toMatchObject({
+      match: "vehicle",
+      item: { trackerDeviceId: deviceId, label: "Truck GPS" },
+    });
+    const byImei = offlineCatalogScan(saved, "860123456789012", "vehicle");
+    expect(byImei.json).toMatchObject({
+      match: "vehicle",
+      item: { trackerDeviceId: deviceId },
+    });
+  });
+
   it("rejects offline cargo saves that drop assigned lines", () => {
     const saved = rememberOfflineGet(
       emptyOfflineSnap(),

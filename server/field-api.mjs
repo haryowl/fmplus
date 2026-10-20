@@ -64,6 +64,7 @@ import {
 } from "./dispatch-sales.mjs";
 
 const SELECT_COLS = `id, status, title, notes, armada_user_id, armada_username, user_display_name,
+  tracker_device_id,
   lat, lon, notification_id, started_at, ended_at, odometer_km,
   service_point_id, service_point_name, service_point_lat, service_point_lon,
   assigned_field_user_id,
@@ -332,6 +333,7 @@ function publicDispatchJob(row, stops = [], requestedDate = "") {
     armadaUserId: row.armada_user_id == null ? null : Number(row.armada_user_id),
     armadaUsername: row.armada_username || "",
     userDisplayName: row.user_display_name || "",
+    trackerDeviceId: row.tracker_device_id || null,
     assignedFieldUserId: row.assigned_field_user_id || null,
     assignedAt: row.assigned_at || null,
     startedAt: row.started_at || null,

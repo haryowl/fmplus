@@ -2936,11 +2936,8 @@ export async function handleMaintenanceRequest(req, res) {
     }
 
     if (url.pathname === "/api/maintenance/reminders/evaluate" && req.method === "POST") {
-      const vaultTenant = tenantFromRequest(req);
-      if (!vaultTenant?.token) {
-        json(res, 503, { error: "No Armada token for this tenant" });
-        return true;
-      }
+      // Date + device km/hours work without an Armada token; Armada odo is skipped when absent.
+      const vaultTenant = tenantFromRequest(req) || { key: dbTenant.key || "" };
       const { evaluateTenantReminders } = await import("./maintenance-remind.mjs");
       const result = await evaluateTenantReminders(dbTenant.id, vaultTenant);
       json(res, 200, result);

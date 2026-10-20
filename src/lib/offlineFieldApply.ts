@@ -18,6 +18,9 @@ export type Job = {
   status?: string;
   fieldNote?: string | null;
   armadaUserId?: number | null;
+  trackerDeviceId?: string | null;
+  armadaUsername?: string | null;
+  userDisplayName?: string | null;
   startedAt?: string | null;
   arrivedAt?: string | null;
   completedAt?: string | null;
@@ -48,6 +51,9 @@ export type EventRow = {
   startedAt?: string | null;
   endedAt?: string | null;
   armadaUserId?: number | null;
+  trackerDeviceId?: string | null;
+  armadaUsername?: string | null;
+  userDisplayName?: string | null;
 };
 
 export type GoodsItem = {
@@ -463,6 +469,76 @@ export function offlineCatalogScan(snap: OfflineSnap, rawCode: string, context: 
           item: { id: String(uid), armadaUserId: uid },
         },
       };
+    }
+    const uuidMatch = code.match(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+    const jobs = Object.values(snap.dispatchByDate || {}).flatMap((d) => d.jobs || []);
+    const events = [
+      ...(snap.events || []),
+      ...Object.values(snap.eventDetails || {}),
+    ];
+    if (uuidMatch) {
+      const deviceId = uuidMatch[0];
+      const hitJob = jobs.find(
+        (j) => String(j.trackerDeviceId || "").toLowerCase() === deviceId.toLowerCase(),
+      );
+      const hitEv = events.find(
+        (e) => String(e.trackerDeviceId || "").toLowerCase() === deviceId.toLowerCase(),
+      );
+      if (hitJob || hitEv) {
+        const armadaUserId =
+          hitJob?.armadaUserId ?? hitEv?.armadaUserId ?? null;
+        return {
+          status: 200,
+          json: {
+            match: "vehicle",
+            code,
+            raw: rawCode,
+            codeFormat: "sku",
+            item: {
+              id: deviceId,
+              armadaUserId: armadaUserId && armadaUserId > 0 ? armadaUserId : 0,
+              trackerDeviceId: deviceId,
+              label:
+                hitJob?.userDisplayName ||
+                hitEv?.userDisplayName ||
+                hitJob?.armadaUsername ||
+                hitEv?.armadaUsername ||
+                "",
+            },
+          },
+        };
+      }
+    }
+    // Bare IMEI often stored as armadaUsername on device-native jobs.
+    if (/^\d{8,20}$/.test(code)) {
+      const hitJob = jobs.find((j) => norm(String(j.armadaUsername || "")) === code);
+      const hitEv = events.find((e) => norm(String(e.armadaUsername || "")) === code);
+      const deviceId = hitJob?.trackerDeviceId || hitEv?.trackerDeviceId || null;
+      if (deviceId || hitJob || hitEv) {
+        const armadaUserId = hitJob?.armadaUserId ?? hitEv?.armadaUserId ?? null;
+        return {
+          status: 200,
+          json: {
+            match: "vehicle",
+            code,
+            raw: rawCode,
+            codeFormat: "sku",
+            item: {
+              id: deviceId || code,
+              armadaUserId: armadaUserId && armadaUserId > 0 ? armadaUserId : 0,
+              trackerDeviceId: deviceId,
+              label:
+                hitJob?.userDisplayName ||
+                hitEv?.userDisplayName ||
+                hitJob?.armadaUsername ||
+                hitEv?.armadaUsername ||
+                "",
+            },
+          },
+        };
+      }
     }
   }
   return { status: 200, json: { match: "none", reason: "unknown", code, raw: rawCode } };
