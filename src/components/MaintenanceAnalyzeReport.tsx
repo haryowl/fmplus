@@ -91,7 +91,7 @@ export function MaintenanceAnalyzeReport({
     }
     const ac = new AbortController();
     void fetchMaintStatusSummary(fleetUserIds, ac.signal)
-      .then((byUserId) => {
+      .then(({ byUserId }) => {
         if (ac.signal.aborted) return;
         let withOpen = 0;
         let withOverdue = 0;

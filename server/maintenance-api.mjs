@@ -1424,93 +1424,152 @@ export async function handleMaintenanceRequest(req, res) {
         .split(",")
         .map((s) => Number(s.trim()))
         .filter((n) => Number.isInteger(n) && n > 0);
+      const rawDeviceIds = [
+        ...new Set(
+          String(url.searchParams.get("deviceIds") || "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+        ),
+      ];
       const byUserId = {};
-      if (rawIds.length === 0) {
-        json(res, 200, { byUserId });
+      const byDeviceId = {};
+      if (rawIds.length === 0 && rawDeviceIds.length === 0) {
+        json(res, 200, { byUserId, byDeviceId });
         return true;
       }
+
+      const cellFromOpen = (open) => {
+        let label = "Due";
+        let health = open.scheduleHealth || "due";
+        if (open.status === "in_progress") {
+          label = "In progress";
+          health = "in_progress";
+        } else if (health === "overdue") label = "Overdue";
+        else if (health === "upcoming") label = "Upcoming";
+        else if (health === "ok" || health === "none") label = "Due";
+        return {
+          label,
+          status: open.status,
+          health,
+          eventId: open.id,
+          title: open.title,
+        };
+      };
+      const cellFromClosed = (closed) => ({
+        label: closed.status === "approved" ? "Approved" : "Done",
+        status: closed.status,
+        health: closed.status === "approved" ? "approved" : "done",
+        eventId: closed.id,
+        title: closed.title,
+      });
+      const emptyCell = () => ({
+        label: "—",
+        status: null,
+        health: "none",
+        eventId: null,
+        title: "",
+      });
+      const preferOpen = (prev, ev) => {
+        if (!prev) return ev;
+        if (ev.status === "in_progress" && prev.status !== "in_progress") return ev;
+        if (ev.status === prev.status && (ev.scheduleUrgency ?? 0) > (prev.scheduleUrgency ?? 0)) {
+          return ev;
+        }
+        return prev;
+      };
+
       const { enrichEventsWithSchedule } = await import("./maintenance-schedule.mjs");
       const vaultTenant = tenantFromRequest(req);
-      const openRows = await dbQuery(
-        `SELECT ${SELECT_COLS} FROM service_events
-         WHERE tenant_id = $1 AND armada_user_id = ANY($2::int[])
-           AND status IN ('due', 'in_progress')
-           AND (parent_event_id IS NULL OR assigned_field_user_id IS NOT NULL)
-         ORDER BY updated_at DESC`,
-        [dbTenant.id, rawIds],
-      );
-      const closedRows = await dbQuery(
-        `SELECT DISTINCT ON (armada_user_id) ${SELECT_COLS}
-         FROM service_events
-         WHERE tenant_id = $1 AND armada_user_id = ANY($2::int[])
-           AND status IN ('done', 'approved')
-         ORDER BY armada_user_id, COALESCE(ended_at, updated_at) DESC NULLS LAST`,
-        [dbTenant.id, rawIds],
-      );
-      const openEnriched = await enrichEventsWithSchedule(
-        openRows.rows.map((r) => publicEvent(r)),
-        vaultTenant || null,
-      );
-      const openByUser = new Map();
-      for (const ev of openEnriched) {
-        const uid = ev.armadaUserId;
-        if (uid == null) continue;
-        const prev = openByUser.get(uid);
-        if (!prev) {
-          openByUser.set(uid, ev);
-          continue;
+
+      if (rawIds.length) {
+        const openRows = await dbQuery(
+          `SELECT ${SELECT_COLS} FROM service_events
+           WHERE tenant_id = $1 AND armada_user_id = ANY($2::int[])
+             AND status IN ('due', 'in_progress')
+             AND (parent_event_id IS NULL OR assigned_field_user_id IS NOT NULL)
+           ORDER BY updated_at DESC`,
+          [dbTenant.id, rawIds],
+        );
+        const closedRows = await dbQuery(
+          `SELECT DISTINCT ON (armada_user_id) ${SELECT_COLS}
+           FROM service_events
+           WHERE tenant_id = $1 AND armada_user_id = ANY($2::int[])
+             AND status IN ('done', 'approved')
+           ORDER BY armada_user_id, COALESCE(ended_at, updated_at) DESC NULLS LAST`,
+          [dbTenant.id, rawIds],
+        );
+        const openEnriched = await enrichEventsWithSchedule(
+          openRows.rows.map((r) => publicEvent(r)),
+          vaultTenant || null,
+          { tenantId: dbTenant.id },
+        );
+        const openByUser = new Map();
+        for (const ev of openEnriched) {
+          const uid = ev.armadaUserId;
+          if (uid == null) continue;
+          openByUser.set(uid, preferOpen(openByUser.get(uid), ev));
         }
-        // Prefer in_progress, then higher urgency
-        if (ev.status === "in_progress" && prev.status !== "in_progress") {
-          openByUser.set(uid, ev);
-        } else if (ev.status === prev.status && (ev.scheduleUrgency ?? 0) > (prev.scheduleUrgency ?? 0)) {
-          openByUser.set(uid, ev);
+        const closedByUser = new Map();
+        for (const r of closedRows.rows) {
+          if (r.armada_user_id != null) closedByUser.set(Number(r.armada_user_id), publicEvent(r));
         }
-      }
-      const closedByUser = new Map();
-      for (const r of closedRows.rows) {
-        if (r.armada_user_id != null) closedByUser.set(Number(r.armada_user_id), publicEvent(r));
-      }
-      for (const uid of rawIds) {
-        const open = openByUser.get(uid);
-        if (open) {
-          let label = "Due";
-          let health = open.scheduleHealth || "due";
-          if (open.status === "in_progress") {
-            label = "In progress";
-            health = "in_progress";
-          } else if (health === "overdue") label = "Overdue";
-          else if (health === "upcoming") label = "Upcoming";
-          else if (health === "ok" || health === "none") label = "Due";
-          byUserId[String(uid)] = {
-            label,
-            status: open.status,
-            health,
-            eventId: open.id,
-            title: open.title,
-          };
-          continue;
-        }
-        const closed = closedByUser.get(uid);
-        if (closed) {
-          byUserId[String(uid)] = {
-            label: closed.status === "approved" ? "Approved" : "Done",
-            status: closed.status,
-            health: closed.status === "approved" ? "approved" : "done",
-            eventId: closed.id,
-            title: closed.title,
-          };
-        } else {
-          byUserId[String(uid)] = {
-            label: "—",
-            status: null,
-            health: "none",
-            eventId: null,
-            title: "",
-          };
+        for (const uid of rawIds) {
+          const open = openByUser.get(uid);
+          if (open) {
+            byUserId[String(uid)] = cellFromOpen(open);
+            continue;
+          }
+          const closed = closedByUser.get(uid);
+          byUserId[String(uid)] = closed ? cellFromClosed(closed) : emptyCell();
         }
       }
-      json(res, 200, { byUserId });
+
+      if (rawDeviceIds.length) {
+        const openRows = await dbQuery(
+          `SELECT ${SELECT_COLS} FROM service_events
+           WHERE tenant_id = $1 AND tracker_device_id = ANY($2::uuid[])
+             AND status IN ('due', 'in_progress')
+             AND (parent_event_id IS NULL OR assigned_field_user_id IS NOT NULL)
+           ORDER BY updated_at DESC`,
+          [dbTenant.id, rawDeviceIds],
+        );
+        const closedRows = await dbQuery(
+          `SELECT DISTINCT ON (tracker_device_id) ${SELECT_COLS}
+           FROM service_events
+           WHERE tenant_id = $1 AND tracker_device_id = ANY($2::uuid[])
+             AND status IN ('done', 'approved')
+           ORDER BY tracker_device_id, COALESCE(ended_at, updated_at) DESC NULLS LAST`,
+          [dbTenant.id, rawDeviceIds],
+        );
+        const openEnriched = await enrichEventsWithSchedule(
+          openRows.rows.map((r) => publicEvent(r)),
+          vaultTenant || null,
+          { tenantId: dbTenant.id },
+        );
+        const openByDevice = new Map();
+        for (const ev of openEnriched) {
+          const did = String(ev.trackerDeviceId || "").trim();
+          if (!did) continue;
+          openByDevice.set(did, preferOpen(openByDevice.get(did), ev));
+        }
+        const closedByDevice = new Map();
+        for (const r of closedRows.rows) {
+          const did = r.tracker_device_id;
+          if (did) closedByDevice.set(String(did), publicEvent(r));
+        }
+        for (const did of rawDeviceIds) {
+          const open = openByDevice.get(did);
+          if (open) {
+            byDeviceId[did] = cellFromOpen(open);
+            continue;
+          }
+          const closed = closedByDevice.get(did);
+          byDeviceId[did] = closed ? cellFromClosed(closed) : emptyCell();
+        }
+      }
+
+      json(res, 200, { byUserId, byDeviceId });
       return true;
     }
 
@@ -1687,6 +1746,7 @@ export async function handleMaintenanceRequest(req, res) {
       const enriched = await enrichEventsWithSchedule(
         openRows.rows.map((r) => publicEvent(r)),
         vaultTenant || null,
+        { tenantId: dbTenant.id },
       );
       const schedule = summarizeSchedule(enriched);
 
@@ -2400,7 +2460,9 @@ export async function handleMaintenanceRequest(req, res) {
       let events = rows.rows.map((r) => publicEvent(r));
       const vaultTenant = tenantFromRequest(req);
       const { enrichEventsWithSchedule, summarizeSchedule } = await import("./maintenance-schedule.mjs");
-      events = await enrichEventsWithSchedule(events, vaultTenant || null);
+      events = await enrichEventsWithSchedule(events, vaultTenant || null, {
+        tenantId: dbTenant.id,
+      });
       const summary = summarizeSchedule(events);
       if (healthFilter && ["upcoming", "due", "overdue", "ok", "none"].includes(healthFilter)) {
         events = events.filter((e) => e.scheduleHealth === healthFilter);
@@ -2435,6 +2497,7 @@ export async function handleMaintenanceRequest(req, res) {
       const enriched = await enrichEventsWithSchedule(
         openRows.rows.map((r) => publicEvent(r)),
         vaultTenant || null,
+        { tenantId: dbTenant.id },
       );
       const summary = summarizeSchedule(enriched);
       summary.completed = doneCount.rows[0]?.n || 0;
@@ -2980,6 +3043,7 @@ export async function handleMaintenanceRequest(req, res) {
       const { enrichEventsWithSchedule } = await import("./maintenance-schedule.mjs");
       const [enriched] = await enrichEventsWithSchedule([detail], vaultTenant || null, {
         hoursByEventId,
+        tenantId: dbTenant.id,
       });
       json(res, 200, { event: { ...detail, ...enriched } });
       return true;

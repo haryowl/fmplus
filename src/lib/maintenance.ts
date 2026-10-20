@@ -640,22 +640,44 @@ export async function fetchAnalyzeSummary(
   return data;
 }
 
+export type MaintStatusSummary = {
+  byUserId: Record<string, MaintStatusCell>;
+  byDeviceId: Record<string, MaintStatusCell>;
+};
+
 export async function fetchMaintStatusSummary(
   userIds: number[],
   signal?: AbortSignal,
-): Promise<Record<string, MaintStatusCell>> {
-  if (!userIds.length) return {};
-  const params = new URLSearchParams({ userIds: userIds.join(",") });
+  opts?: { deviceIds?: string[] },
+): Promise<MaintStatusSummary> {
+  const deviceIds = [
+    ...new Set(
+      (opts?.deviceIds || [])
+        .map((id) => String(id || "").trim())
+        .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+    ),
+  ];
+  const armadaIds = userIds.filter((n) => Number.isInteger(n) && n > 0);
+  if (!armadaIds.length && !deviceIds.length) {
+    return { byUserId: {}, byDeviceId: {} };
+  }
+  const params = new URLSearchParams();
+  if (armadaIds.length) params.set("userIds", armadaIds.join(","));
+  if (deviceIds.length) params.set("deviceIds", deviceIds.join(","));
   const res = await fetch(`/api/maintenance/status-summary?${params}`, {
     headers: { accept: "application/json", ...tenantHeaders() },
     signal,
   });
   const data = (await res.json().catch(() => ({}))) as {
     byUserId?: Record<string, MaintStatusCell>;
+    byDeviceId?: Record<string, MaintStatusCell>;
     error?: string;
   };
   if (!res.ok) throw new Error(data.error || `Status summary ${res.status}`);
-  return data.byUserId || {};
+  return {
+    byUserId: data.byUserId || {},
+    byDeviceId: data.byDeviceId || {},
+  };
 }
 
 export function normalizeLineKindUi(kind: string): "part" | "service" | "other" {

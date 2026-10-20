@@ -111,27 +111,77 @@ export function computeScheduleHealth(ev, meters = {}) {
 }
 
 /**
- * Batch-enrich public events with scheduleHealth using one usersstatus fetch for km.
+ * Batch-enrich public events with scheduleHealth.
+ * Prefers tracker device odometer when trackerDeviceId is set; Armada usersstatus as fallback.
  * Hours are optional (pass hoursByEventId) — skipped on list by default for speed.
  * @param {object[]} events
  * @param {{ appId: number, token: string }|null|undefined} vaultTenant
- * @param {{ hoursByEventId?: Record<string, number>, now?: number }} opts
+ * @param {{ hoursByEventId?: Record<string, number>, now?: number, tenantId?: string }} opts
  */
 export async function enrichEventsWithSchedule(events, vaultTenant, opts = {}) {
   const now = opts.now ?? Date.now();
   const hoursByEventId = opts.hoursByEventId || {};
+  const tenantId = opts.tenantId || null;
   /** @type {Map<number, number>} */
   const odoByUser = new Map();
+  /** @type {Map<string, number>} */
+  const odoByDevice = new Map();
 
-  const needKm = events.some(
+  const openKmEvents = events.filter(
     (e) =>
       e.remindIntervalKm != null &&
       e.remindIntervalKm > 0 &&
-      e.armadaUserId &&
       (e.status === "due" || e.status === "in_progress"),
   );
+  const deviceIds = [
+    ...new Set(
+      openKmEvents
+        .map((e) => String(e.trackerDeviceId || "").trim())
+        .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+    ),
+  ];
+  const armadaIds = [
+    ...new Set(
+      openKmEvents
+        .map((e) => Number(e.armadaUserId))
+        .filter((n) => Number.isInteger(n) && n > 0),
+    ),
+  ];
 
-  if (needKm && vaultTenant?.token && vaultTenant.appId) {
+  if (tenantId && (deviceIds.length || armadaIds.length)) {
+    try {
+      const {
+        lastFixesByDeviceIds,
+        lastFixesByArmadaUserIds,
+        telematicsUsesDevices,
+        tenantTelematicsSource,
+      } = await import("./tracker-devices.mjs");
+      const source = await tenantTelematicsSource(tenantId).catch(() => "both");
+      if (telematicsUsesDevices(source)) {
+        if (deviceIds.length) {
+          const map = await lastFixesByDeviceIds(tenantId, deviceIds);
+          for (const [id, fix] of map) {
+            if (fix?.odometerKm != null && Number.isFinite(fix.odometerKm)) {
+              odoByDevice.set(id, fix.odometerKm);
+            }
+          }
+        }
+        if (armadaIds.length) {
+          const map = await lastFixesByArmadaUserIds(tenantId, armadaIds);
+          for (const [uid, fix] of map) {
+            if (fix?.odometerKm != null && Number.isFinite(fix.odometerKm)) {
+              odoByUser.set(uid, fix.odometerKm);
+            }
+          }
+        }
+      }
+    } catch {
+      /* ignore — fall through to Armada */
+    }
+  }
+
+  const needArmadaKm = armadaIds.some((uid) => !odoByUser.has(uid));
+  if (needArmadaKm && vaultTenant?.token && vaultTenant.appId) {
     try {
       const { armadaFetch } = await import("./proxy-lt.mjs");
       const { findOdometerKmInStatus } = await import("./odometer-status.mjs");
@@ -143,9 +193,8 @@ export async function enrichEventsWithSchedule(events, vaultTenant, opts = {}) {
       });
       if (res.ok) {
         const raw = await res.json();
-        for (const ev of events) {
-          const uid = Number(ev.armadaUserId);
-          if (!uid || odoByUser.has(uid)) continue;
+        for (const uid of armadaIds) {
+          if (odoByUser.has(uid)) continue;
           const odo = findOdometerKmInStatus(raw, uid);
           if (odo != null) odoByUser.set(uid, odo);
         }
@@ -164,9 +213,14 @@ export async function enrichEventsWithSchedule(events, vaultTenant, opts = {}) {
       };
     }
     const uid = Number(ev.armadaUserId);
+    const deviceId = String(ev.trackerDeviceId || "").trim();
+    const currentOdoKm =
+      (deviceId && odoByDevice.get(deviceId)) ||
+      (uid ? odoByUser.get(uid) : null) ||
+      null;
     const { health, bits, urgency } = computeScheduleHealth(ev, {
       now,
-      currentOdoKm: uid ? odoByUser.get(uid) ?? null : null,
+      currentOdoKm,
       hoursAccrued: hoursByEventId[ev.id] ?? null,
     });
     return { ...ev, scheduleHealth: health, scheduleBits: bits, scheduleUrgency: urgency };

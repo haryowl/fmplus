@@ -19,6 +19,7 @@ import {
 } from "../lib/maintenance";
 import { fullHref, maintenanceHref } from "../lib/routing";
 import {
+  deviceIdByStatusRowId,
   fetchDeviceGroupScope,
   fetchTrackerLastStatus,
   mergeArmadaRowsWithDeviceFixes,
@@ -81,6 +82,7 @@ export function LastStatusPanel({
   const [reload, setReload] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [maintByUser, setMaintByUser] = useState<Record<string, MaintStatusCell>>({});
+  const [deviceIdByRowId, setDeviceIdByRowId] = useState<Map<number, string>>(() => new Map());
   const [driversByUser, setDriversByUser] = useState<Record<number, string>>({});
 
   useEffect(() => {
@@ -113,6 +115,7 @@ export function LastStatusPanel({
         : Promise.resolve(null),
     ])
       .then(([armadaRows, deviceStatus, scope]) => {
+        setDeviceIdByRowId(deviceIdByStatusRowId(deviceStatus.fixes));
         if (deviceGroupId) {
           const allow = new Set(scope?.armadaUserIds || []);
           const armadaScoped = allow.size
@@ -191,23 +194,43 @@ export function LastStatusPanel({
   const visibleIdsKey = useMemo(() => visible.map((r) => r.id).join(","), [visible]);
 
   useEffect(() => {
-    const ids = visibleIdsKey
-      ? visibleIdsKey.split(",").map((s) => Number(s)).filter((n) => Number.isInteger(n) && n > 0)
+    const rowIds = visibleIdsKey
+      ? visibleIdsKey
+          .split(",")
+          .map((s) => Number(s))
+          .filter((n) => Number.isInteger(n) && n !== 0)
       : [];
-    if (!ids.length) {
+    const armadaIds = rowIds.filter((n) => n > 0);
+    const deviceIds = [
+      ...new Set(
+        rowIds
+          .map((id) => deviceIdByRowId.get(id))
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (!armadaIds.length && !deviceIds.length) {
       setMaintByUser({});
       return;
     }
     const ac = new AbortController();
-    void fetchMaintStatusSummary(ids, ac.signal)
-      .then((by) => {
-        if (!ac.signal.aborted) setMaintByUser(by);
+    void fetchMaintStatusSummary(armadaIds, ac.signal, { deviceIds })
+      .then(({ byUserId, byDeviceId }) => {
+        if (ac.signal.aborted) return;
+        const merged: Record<string, MaintStatusCell> = { ...byUserId };
+        for (const rowId of rowIds) {
+          const key = String(rowId);
+          if (merged[key]?.status) continue;
+          const deviceId = deviceIdByRowId.get(rowId);
+          const cell = deviceId ? byDeviceId[deviceId] : undefined;
+          if (cell) merged[key] = cell;
+        }
+        setMaintByUser(merged);
       })
       .catch(() => {
         if (!ac.signal.aborted) setMaintByUser({});
       });
     return () => ac.abort();
-  }, [visibleIdsKey, reload]);
+  }, [visibleIdsKey, reload, deviceIdByRowId]);
 
   function toggle(id: LastStatusSortId) {
     if (sortId === id) setDir((d) => (d === "desc" ? "asc" : "desc"));
