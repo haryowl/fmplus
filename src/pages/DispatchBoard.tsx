@@ -821,44 +821,60 @@ export default function DispatchBoard() {
 
   useEffect(() => {
     if (!ready) return;
-    if (!deviceGroupId) {
-      setDeviceGroupArmadaIds(null);
-      setDeviceGroupDeviceIds(null);
-      setDeviceGroupMemberCount(0);
-      setDeviceStatusRows([]);
-      setDeviceIdByRowId(new Map());
-      return;
-    }
     const ac = new AbortController();
     Promise.all([
-      fetchDeviceGroupScope([deviceGroupId], ac.signal),
-      fetchTrackerLastStatus(ac.signal, { groupIds: [deviceGroupId] }).catch(() => ({
+      deviceGroupId
+        ? fetchDeviceGroupScope([deviceGroupId], ac.signal).catch(() => null)
+        : Promise.resolve(null),
+      fetchTrackerLastStatus(ac.signal, {
+        groupIds: deviceGroupId ? [deviceGroupId] : undefined,
+      }).catch(() => ({
         fixes: [],
-        telematicsSource: "devices" as const,
+        telematicsSource: "both" as const,
         displayPinIds: [] as string[],
         displayPinLabels: {} as Record<string, string>,
       })),
       fetchUsersStatus({ signal: ac.signal }).catch(() => [] as LastStatusRow[]),
     ])
       .then(([scope, deviceStatus, armadaRows]) => {
-        setDeviceGroupArmadaIds(new Set(scope.armadaUserIds));
-        setDeviceGroupDeviceIds(new Set(scope.deviceIds));
-        setDeviceGroupMemberCount(scope.memberCount || scope.deviceIds.length);
+        if (deviceGroupId) {
+          setDeviceGroupArmadaIds(new Set(scope?.armadaUserIds || []));
+          setDeviceGroupDeviceIds(new Set(scope?.deviceIds || []));
+          setDeviceGroupMemberCount(scope?.memberCount || scope?.deviceIds?.length || 0);
+          const allow = new Set(scope?.armadaUserIds || []);
+          const armadaScoped = allow.size ? armadaRows.filter((r) => allow.has(r.id)) : [];
+          setDeviceIdByRowId(deviceIdByStatusRowId(deviceStatus.fixes));
+          setDeviceStatusRows(
+            mergeArmadaRowsWithDeviceFixes(
+              armadaScoped,
+              deviceStatus.fixes,
+              deviceStatus.telematicsSource === "armada" ? "devices" : deviceStatus.telematicsSource,
+            ),
+          );
+          return;
+        }
+        setDeviceGroupArmadaIds(null);
+        setDeviceGroupDeviceIds(null);
+        setDeviceGroupMemberCount(0);
         setDeviceIdByRowId(deviceIdByStatusRowId(deviceStatus.fixes));
-        const allow = new Set(scope.armadaUserIds);
-        const armadaScoped = allow.size ? armadaRows.filter((r) => allow.has(r.id)) : [];
         setDeviceStatusRows(
           mergeArmadaRowsWithDeviceFixes(
-            armadaScoped,
+            armadaRows,
             deviceStatus.fixes,
-            deviceStatus.telematicsSource === "armada" ? "devices" : deviceStatus.telematicsSource,
+            deviceStatus.telematicsSource,
           ),
         );
       })
       .catch(() => {
-        setDeviceGroupArmadaIds(new Set());
-        setDeviceGroupDeviceIds(new Set());
-        setDeviceGroupMemberCount(0);
+        if (deviceGroupId) {
+          setDeviceGroupArmadaIds(new Set());
+          setDeviceGroupDeviceIds(new Set());
+          setDeviceGroupMemberCount(0);
+        } else {
+          setDeviceGroupArmadaIds(null);
+          setDeviceGroupDeviceIds(null);
+          setDeviceGroupMemberCount(0);
+        }
         setDeviceStatusRows([]);
         setDeviceIdByRowId(new Map());
       });
@@ -2030,12 +2046,15 @@ export default function DispatchBoard() {
       const vol = Number(jobVolCap);
       const wt = Number(jobWtCap);
       const deviceRow =
-        !isSales && deviceGroupId && userId
+        !isSales && userId
           ? deviceStatusRows.find((r) => String(r.id) === userId)
           : undefined;
       const trackerDeviceId =
         !isSales && userId ? deviceIdByRowId.get(Number(userId)) || null : null;
-      const armadaFromUser = !isSales && selectedUser ? Number(selectedUser.id) : null;
+      const armadaFromUser =
+        !isSales && selectedUser && String(selectedUser.id) === userId
+          ? Number(selectedUser.id)
+          : null;
       const armadaFromDevice =
         deviceRow && deviceRow.id > 0 ? deviceRow.id : null;
       const job = await createDispatchJob({
@@ -3508,7 +3527,7 @@ export default function DispatchBoard() {
               </label>
               {!isSales ? (
                 <>
-                  {deviceGroupId ? (
+                  {deviceStatusRows.length ? (
                     <label className="field">
                       Device / vehicle
                       <select value={userId} onChange={(e) => setUserId(e.target.value)}>
@@ -4956,7 +4975,7 @@ export default function DispatchBoard() {
                   ) : null}
                 </p>
 
-                {!isSales && deviceGroupId ? (
+                {!isSales && deviceStatusRows.length ? (
                   <label className="field" style={{ marginBottom: 12 }}>
                     Device / vehicle
                     <select

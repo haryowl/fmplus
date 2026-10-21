@@ -21,7 +21,7 @@ import {
   type FleetVehicleRow,
 } from "./fleet";
 import { defaultFleetUserIds, parseUserIdsSearch, writeFleetSelection } from "./lastUsed";
-import { writeLocationSearch } from "./routing";
+import { armadaTripViewRedirectHref, writeLocationSearch } from "./routing";
 import { computePeriodMetrics, sumMetrics } from "./metrics";
 import { addDays, todayKeyInOffset } from "./time";
 import type { Group, LoadProgress, Period, Trip, User } from "./types";
@@ -67,6 +67,11 @@ export function useFleetDashboard() {
   allowsGroupRef.current = allowsGroup;
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
+
+  useEffect(() => {
+    const href = armadaTripViewRedirectHref();
+    if (href) window.location.replace(href);
+  }, []);
 
   const vehicles: FleetVehicleRow[] = useMemo(() => {
     return userIds.map((id, index) => {

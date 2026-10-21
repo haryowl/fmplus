@@ -236,7 +236,7 @@ export function DispatchLiveMap({ drivers, focusJobId, fitKey, onSelectJob }: Pr
             d.livePosition?.source === "device"
               ? "Device live"
               : d.armadaUserId != null
-                ? "Armada live"
+                ? "Vehicle GPS live"
                 : "Vehicle live";
           L.marker(vehicleLive, {
             icon: liveDotIcon(LIVE_MAP_COLORS.armada, focused),
@@ -278,7 +278,7 @@ export function DispatchLiveMap({ drivers, focusJobId, fitKey, onSelectJob }: Pr
           <i style={{ background: LIVE_MAP_COLORS.phone }} /> Phone actual
         </li>
         <li>
-          <i style={{ background: LIVE_MAP_COLORS.armada }} /> Armada actual
+          <i style={{ background: LIVE_MAP_COLORS.armada }} /> Vehicle GPS
         </li>
         <li>
           <span className="dispatch-live-map-legend-s">S</span> Start ·{" "}

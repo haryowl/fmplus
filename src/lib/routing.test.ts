@@ -18,6 +18,7 @@ import {
   customersHref,
   dispatchLiveHref,
   vehicleTrackHref,
+  armadaTripViewRedirectHref,
   viewFromPath,
   withSearch,
 } from "./routing";
@@ -101,6 +102,15 @@ describe("vehicleTrackHref", () => {
     expect(href.startsWith(fleetLiveHref(""))).toBe(true);
     expect(href).toContain("deviceId=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
     expect(href).toContain("section=trips");
+  });
+
+  it("redirects Armada trip views that carry a deviceId", () => {
+    const href = armadaTripViewRedirectHref(
+      "?k=tenant&userId=7&deviceId=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    );
+    expect(href).toContain("/fleet-live");
+    expect(href).toContain("deviceId=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    expect(armadaTripViewRedirectHref("?userId=7")).toBeNull();
   });
 
   it("prefers Fleet Live for devices-only telematics when linked", () => {

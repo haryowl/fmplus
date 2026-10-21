@@ -925,7 +925,7 @@ export default function DispatchLive() {
               hint={
                 armadaTracksLoading
                   ? "Loading vehicle tracks…"
-                  : "Plan · phone · Armada (clipped to each job)"
+                  : "Plan · phone · vehicle GPS (clipped to each job)"
               }
             >
               {fetchError ? <div className="dispatch-alert">{fetchError}</div> : null}
@@ -1380,7 +1380,7 @@ export default function DispatchLive() {
                     ? "Loading vehicle tracks…"
                     : focusJobId
                       ? "Focused job"
-                      : "Plan · phone · Armada"
+                      : "Plan · phone · vehicle GPS"
                 }
               >
                 {drivers.length === 0 ? (

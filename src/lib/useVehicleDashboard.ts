@@ -17,7 +17,7 @@ import { addDays, todayKeyInOffset } from "./time";
 import type { Group, LoadProgress, Period, Trip, User } from "./types";
 import { EMBED_READY, embedOriginAllowlist, parseHostMessage, type EmbedConfig } from "./embed";
 import { writeLastVehicle } from "./lastUsed";
-import { writeLocationSearch } from "./routing";
+import { armadaTripViewRedirectHref, writeLocationSearch } from "./routing";
 import { useEmbedTenant } from "./useEmbedTenant";
 
 export function useVehicleDashboard() {
@@ -59,6 +59,11 @@ export function useVehicleDashboard() {
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
   const selectedUser = users.find((u) => String(u.id) === userId);
+
+  useEffect(() => {
+    const href = armadaTripViewRedirectHref();
+    if (href) window.location.replace(href);
+  }, []);
 
   useEffect(() => {
     if (groupId && userId) writeLastVehicle(groupId, userId);

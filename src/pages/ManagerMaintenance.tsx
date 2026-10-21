@@ -29,7 +29,7 @@ import {
   type ServiceLine,
   type ServicePhoto,
 } from "../lib/maintenance";
-import { fieldHref } from "../lib/routing";
+import { fieldHref, vehicleTrackHref } from "../lib/routing";
 
 type ManagerUser = {
   id: string;
@@ -614,6 +614,30 @@ export default function ManagerMaintenance() {
               </div>
               <h2>{detail.title}</h2>
               <p className="field-vehicle">{eventVehicleLabel(detail)}</p>
+              {detail.armadaUserId || detail.trackerDeviceId ? (
+                <p className="field-action-row">
+                  <a
+                    className="btn-link"
+                    href={vehicleTrackHref({
+                      rowId: detail.armadaUserId || 0,
+                      deviceId: detail.trackerDeviceId,
+                      kind: "trips",
+                    })}
+                  >
+                    Trips
+                  </a>
+                  <a
+                    className="btn-link"
+                    href={vehicleTrackHref({
+                      rowId: detail.armadaUserId || 0,
+                      deviceId: detail.trackerDeviceId,
+                      kind: "full",
+                    })}
+                  >
+                    Full
+                  </a>
+                </p>
+              ) : null}
               {fieldScanCanVehicle(scan) && !locked ? (
                 <div className="field-action-row">
                   <CatalogScanButton

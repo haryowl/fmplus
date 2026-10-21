@@ -19,7 +19,7 @@ import { formatHours, formatKm, formatLiters, formatRpm, formatSpeed } from "../
 import { describeLoadProgress } from "../lib/dayTracks";
 import { writeLastVehicle } from "../lib/lastUsed";
 import { pickDriverFromCustomFields } from "../lib/driverFields";
-import { writeLocationSearch } from "../lib/routing";
+import { armadaTripViewRedirectHref, writeLocationSearch } from "../lib/routing";
 import {
   addressAt,
   coordsFromSegments,
@@ -137,6 +137,11 @@ export default function TripDetail() {
   const selectedUser = users.find((u) => String(u.id) === userId);
   const dayCount = inclusiveDayCount(dateFrom, dateTo);
   const rangeTooLong = dayCount > TRIP_DETAIL_MAX_DAYS;
+
+  useEffect(() => {
+    const href = armadaTripViewRedirectHref();
+    if (href) window.location.replace(href);
+  }, []);
 
   const selectedCustomFields = customFields.filter((cf) => columns.customFieldNames.includes(cf.name));
   const driverName = useMemo(() => pickDriverFromCustomFields(customFields), [customFields]);

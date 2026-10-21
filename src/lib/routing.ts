@@ -154,6 +154,30 @@ export function vehicleTrackHref(opts: {
   return fleetLiveHref(params.toString() ? `?${params}` : "");
 }
 
+/**
+ * When an Armada trip/full view is opened with a GPS device (or synthetic row id),
+ * send the browser to Fleet Live instead of an empty Armada embed.
+ */
+export function armadaTripViewRedirectHref(
+  search = typeof window !== "undefined" ? window.location.search : "",
+): string | null {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const deviceId = String(params.get("deviceId") || "").trim();
+  const uid = Number(params.get("userId"));
+  if (/^[0-9a-f-]{36}$/i.test(deviceId)) {
+    return vehicleTrackHref({
+      rowId: Number.isInteger(uid) ? uid : 0,
+      deviceId,
+      kind: "trips",
+      telematicsSource: "devices",
+    });
+  }
+  if (Number.isInteger(uid) && uid < 0) {
+    return vehicleTrackHref({ rowId: uid, deviceId: null, kind: "trips" });
+  }
+  return null;
+}
+
 export function exceptionsHref(search: string): string {
   return withSearch("/exceptions", search);
 }
