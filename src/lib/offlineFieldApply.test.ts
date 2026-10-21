@@ -128,6 +128,11 @@ describe("offline field snapshot", () => {
       match: "vehicle",
       item: { trackerDeviceId: deviceId },
     });
+    const byUserId = offlineCatalogScan(saved, "am1:v1:vehicle:42", "vehicle");
+    expect(byUserId.json).toMatchObject({
+      match: "vehicle",
+      item: { armadaUserId: 42 },
+    });
   });
 
   it("rejects offline cargo saves that drop assigned lines", () => {

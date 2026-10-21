@@ -458,7 +458,10 @@ export function offlineCatalogScan(snap: OfflineSnap, rawCode: string, context: 
   }
   if ((context === "vehicle" || context === "any") && (parsed.kind === "vehicle" || (!parsed.kind && context === "vehicle"))) {
     const uid = Number(code);
-    if (Number.isFinite(uid) && uid > 0) {
+    const looksLikeImei = /^\d{8,20}$/.test(code);
+    // Short numeric tokens are Armada user ids. 8–20 digit strings are IMEIs
+    // (and would overflow a realistic user id if parsed first).
+    if (!looksLikeImei && Number.isInteger(uid) && uid > 0) {
       return {
         status: 200,
         json: {
