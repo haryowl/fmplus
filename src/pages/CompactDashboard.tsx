@@ -139,7 +139,7 @@ export default function CompactDashboard() {
               }}
             >
               <option value="">
-                {bootError ? "Groups unavailable" : groups.length ? "Select a group" : "Loading groups…"}
+                {groups.length ? "Select a group" : "No Armada groups"}
               </option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>

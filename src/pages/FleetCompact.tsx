@@ -118,7 +118,7 @@ export default function FleetCompact() {
               onChange={(e) => d.changeGroup(e.target.value)}
             >
               <option value="">
-                {d.bootError ? "Groups unavailable" : d.groups.length ? "Select a group" : "Loading groups…"}
+                {d.groups.length ? "Select a group" : "No Armada groups"}
               </option>
               {d.groups.map((group) => (
                 <option key={group.id} value={group.id}>

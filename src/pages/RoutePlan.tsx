@@ -126,7 +126,8 @@ export default function RoutePlanPage() {
         if (allowedGroupIds.length === 1) setGroupId(String(allowedGroupIds[0]));
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setBootError(err.message);
+        if (err.name === "AbortError") return;
+        setGroups([]);
       });
     return () => ac.abort();
   }, [ready]);
@@ -142,7 +143,7 @@ export default function RoutePlanPage() {
         setUsers(allowedUserIds.length ? list.filter((u) => allowsUser(u.id)) : list);
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setBootError(err.message);
+        if (err.name !== "AbortError") setUsers([]);
       });
     return () => ac.abort();
   }, [selectedGroup?.id]);
@@ -389,7 +390,7 @@ export default function RoutePlanPage() {
                   ? "Using device group"
                   : groups.length
                     ? "Select group"
-                    : "Loading…"}
+                    : "No Armada groups"}
               </option>
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>

@@ -3004,10 +3004,6 @@ export async function handleMaintenanceRequest(req, res) {
       }
       const vaultTenant = tenantFromRequest(req);
       const pub = publicEvent(found.rows[0]);
-      if (!pub.trackerDeviceId && !vaultTenant?.token) {
-        json(res, 503, { error: "No Armada token for this tenant" });
-        return true;
-      }
       const result = await computeHoursAccrued(pub, vaultTenant || {}, {
         tenantId: dbTenant.id,
       });

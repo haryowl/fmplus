@@ -1017,6 +1017,24 @@ export async function evaluateMaintReminders(): Promise<{ checked: number; emitt
   return { checked: data.checked || 0, emitted: data.emitted || 0 };
 }
 
+export async function createServicePoint(body: {
+  name: string;
+  lat?: number | null;
+  lon?: number | null;
+  notes?: string;
+  pointType?: string;
+}): Promise<ServicePoint> {
+  const res = await fetch("/api/maintenance/service-points", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as { point?: ServicePoint; error?: string };
+  if (!res.ok) throw new Error(data.error || `Create point ${res.status}`);
+  if (!data.point) throw new Error("Create failed");
+  return data.point;
+}
+
 export async function fetchServicePoints(q = "", signal?: AbortSignal): Promise<ServicePoint[]> {
   const res = await fetch(`/api/maintenance/service-points?q=${encodeURIComponent(q)}`, {
     headers: { accept: "application/json", ...tenantHeaders() },

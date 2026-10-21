@@ -237,7 +237,7 @@ export default function TripDetail() {
       })
       .catch((err: Error) => {
         if (err.name === "AbortError") return;
-        setBootError(err.message);
+        setGroups([]);
       });
     return () => ac.abort();
   }, [ready]);
@@ -255,7 +255,7 @@ export default function TripDetail() {
         if (userId && !next.some((u) => String(u.id) === userId)) setUserId("");
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setBootError(err.message);
+        if (err.name !== "AbortError") setUsers([]);
       });
     return () => ac.abort();
   }, [selectedGroup?.id]);
@@ -393,7 +393,7 @@ export default function TripDetail() {
               }}
             >
               <option value="">
-                {bootError ? "Groups unavailable" : groups.length ? "Select a group" : "Loading groups…"}
+                {groups.length ? "Select a group" : "No Armada groups"}
               </option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>

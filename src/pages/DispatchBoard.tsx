@@ -805,7 +805,8 @@ export default function DispatchBoard() {
         if (allowedGroupIds.length === 1) setGroupId(String(allowedGroupIds[0]));
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setBootError(err.message);
+        if (err.name === "AbortError") return;
+        setGroups([]);
       });
     return () => ac.abort();
   }, [ready]);

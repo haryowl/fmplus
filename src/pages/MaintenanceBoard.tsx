@@ -414,7 +414,8 @@ export default function MaintenanceBoard() {
         if (allowedGroupIds.length === 1) setGroupId(String(allowedGroupIds[0]));
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setError(err.message);
+        if (err.name === "AbortError") return;
+        setGroups([]);
       });
     return () => ac.abort();
   }, [ready]);
@@ -439,7 +440,7 @@ export default function MaintenanceBoard() {
         setUsers(allowedUserIds.length ? list.filter((u) => allowsUser(u.id)) : list);
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setError(err.message);
+        if (err.name !== "AbortError") setUsers([]);
       });
     return () => ac.abort();
   }, [selectedGroup?.id, deviceGroupId]);
@@ -779,7 +780,7 @@ export default function MaintenanceBoard() {
               disabled={Boolean(deviceGroupId)}
               onChange={(e) => setGroupId(e.target.value)}
             >
-              <option value="">{groups.length ? "All Armada groups" : "Loading groups…"}</option>
+              <option value="">{groups.length ? "All Armada groups" : "No Armada groups"}</option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
                   {groupOptionLabel(group)}

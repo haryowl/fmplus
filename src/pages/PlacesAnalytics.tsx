@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { ViewNav } from "../components/ViewNav";
 import {
+  createServicePoint,
   fetchServicePoints,
   patchServicePoint,
   type ServicePoint,
@@ -34,6 +35,12 @@ export default function PlacesAnalytics() {
   const [linkPoiId, setLinkPoiId] = useState("");
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkMsg, setLinkMsg] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newLat, setNewLat] = useState("");
+  const [newLon, setNewLon] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createMsg, setCreateMsg] = useState("");
 
   useEffect(() => {
     document.title = "Places · ARMADA M.1";
@@ -91,6 +98,41 @@ export default function PlacesAnalytics() {
       });
     return () => ac.abort();
   }, [ready, query.tenantKey, reload]);
+
+  async function onCreatePoint() {
+    const name = newName.trim();
+    if (!name) return;
+    const lat = newLat.trim() === "" ? null : Number(newLat);
+    const lon = newLon.trim() === "" ? null : Number(newLon);
+    if (newLat.trim() && !Number.isFinite(lat)) {
+      setCreateMsg("Latitude must be a number");
+      return;
+    }
+    if (newLon.trim() && !Number.isFinite(lon)) {
+      setCreateMsg("Longitude must be a number");
+      return;
+    }
+    setCreateBusy(true);
+    setCreateMsg("");
+    try {
+      const point = await createServicePoint({
+        name,
+        lat,
+        lon,
+        notes: newNotes.trim(),
+      });
+      setPoints((prev) => [point, ...prev.filter((p) => p.id !== point.id)]);
+      setNewName("");
+      setNewLat("");
+      setNewLon("");
+      setNewNotes("");
+      setCreateMsg(`Added ${point.name}`);
+    } catch (err) {
+      setCreateMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreateBusy(false);
+    }
+  }
 
   async function onLinkPoi() {
     if (!linkPointId || !linkPoiId) return;
@@ -329,7 +371,42 @@ export default function PlacesAnalytics() {
         ) : null}
 
         <section className="places-panel">
-          <h2>Service points ↔ Armada POI</h2>
+          <h2>Service points</h2>
+          <p className="muted">
+            Workshops, depots, and yards stored in ARMADA M.1. Used by Maintenance and Dispatch search.
+          </p>
+          <div className="places-link-form">
+            <label>
+              Name
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Depot A"
+              />
+            </label>
+            <label>
+              Lat
+              <input value={newLat} onChange={(e) => setNewLat(e.target.value)} placeholder="-6.2" />
+            </label>
+            <label>
+              Lon
+              <input value={newLon} onChange={(e) => setNewLon(e.target.value)} placeholder="106.8" />
+            </label>
+            <label>
+              Notes
+              <input value={newNotes} onChange={(e) => setNewNotes(e.target.value)} placeholder="optional" />
+            </label>
+            <button
+              type="button"
+              className="btn"
+              disabled={createBusy || !newName.trim()}
+              onClick={() => void onCreatePoint()}
+            >
+              Add point
+            </button>
+          </div>
+          {createMsg ? <p className="muted">{createMsg}</p> : null}
+          <h3>Armada POI link</h3>
           <p className="muted">
             Optional link for workshop / depot points. POI catalog stays in Armada; ARMADA M.1 stores the id
             only.
@@ -411,7 +488,7 @@ export default function PlacesAnalytics() {
               </table>
             </div>
           ) : (
-            <p className="muted">No service points yet (create them from Maintenance).</p>
+            <p className="muted">No service points yet — add one above.</p>
           )}
         </section>
       </main>

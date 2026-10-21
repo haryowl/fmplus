@@ -179,11 +179,7 @@ export function useFleetDashboard() {
       })
       .catch((err: Error) => {
         if (err.name === "AbortError") return;
-        setBootError(
-          err.message.includes("401") || err.message.includes("403")
-            ? "Could not reach Armada. Auth is injected on the server (ARMADA_AUTH_HEADER), not in this page."
-            : err.message,
-        );
+        setGroups([]);
       });
     return () => ac.abort();
   }, [ready]);
@@ -215,7 +211,7 @@ export function useFleetDashboard() {
         });
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setLoadError(err.message);
+        if (err.name !== "AbortError") setUsers([]);
       });
     return () => ac.abort();
   }, [selectedGroup?.id]);

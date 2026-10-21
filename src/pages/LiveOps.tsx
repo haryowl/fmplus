@@ -128,11 +128,7 @@ export default function LiveOps() {
       })
       .catch((err: Error) => {
         if (err.name === "AbortError") return;
-        setBootError(
-          err.message.includes("401") || err.message.includes("403")
-            ? "Could not reach Armada. Auth is injected on the server, not in this page."
-            : err.message,
-        );
+        setGroups([]);
       });
     return () => ac.abort();
   }, [ready]);
@@ -148,7 +144,7 @@ export default function LiveOps() {
         setUsers(allowedUserIds.length ? list.filter((u) => allowsUser(u.id)) : list);
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setBootError(err.message);
+        if (err.name !== "AbortError") setUsers([]);
       });
     return () => ac.abort();
   }, [selectedGroup?.id]);
@@ -350,13 +346,11 @@ export default function LiveOps() {
               onChange={(e) => setGroupId(e.target.value)}
             >
               <option value="">
-                {bootError
-                  ? "Groups unavailable"
-                  : deviceGroupId
-                    ? "Using device group"
-                    : groups.length
-                      ? "All devices"
-                      : "Loading groups…"}
+                {deviceGroupId
+                  ? "Using device group"
+                  : groups.length
+                    ? "All devices"
+                    : "No Armada groups"}
               </option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
