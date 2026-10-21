@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addressAt,
   clearReverseGeocodeCache,
+  formatOsmAddress,
   geocodeCacheKey,
   parseReverseGeocodeAddress,
   resolveAddressesForCoords,
@@ -10,6 +11,28 @@ import {
 describe("reverseGeocode", () => {
   it("rounds cache keys", () => {
     expect(geocodeCacheKey(-6.1753921, 106.8271539)).toBe("-6.17539,106.82715");
+  });
+
+  it("formats OSM Nominatim address parts", () => {
+    expect(
+      formatOsmAddress(
+        {
+          house_number: "12",
+          road: "Jalan Sudirman",
+          suburb: "Menteng",
+          city: "Jakarta",
+          state: "DKI Jakarta",
+        },
+        "12 Jalan Sudirman, Menteng, Jakarta, DKI Jakarta, Indonesia",
+      ),
+    ).toEqual({
+      label: "12 Jalan Sudirman, Menteng, Jakarta, DKI Jakarta, Indonesia",
+      short: "12 Jalan Sudirman, Menteng, Jakarta, DKI Jakarta",
+    });
+    expect(formatOsmAddress(null, "Only display")).toEqual({
+      label: "Only display",
+      short: "Only display",
+    });
   });
 
   it("parses common response shapes", () => {

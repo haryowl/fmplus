@@ -6,6 +6,8 @@ export type GeocodeResult = {
   label: string;
   lat: number;
   lon: number;
+  short?: string;
+  source?: string;
 };
 
 export type PlaceSearchSource = "poi" | "service_point" | "address";
@@ -52,11 +54,33 @@ export async function reverseAddress(
   });
   const data = (await res.json().catch(() => ({}))) as GeocodeResult & { error?: string };
   if (!res.ok) throw new Error(data.error || `Geocode reverse ${res.status}`);
+  const label = data.label || `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  const short = String(data.short || label).trim();
   return {
-    label: data.label || `${lat.toFixed(5)}, ${lon.toFixed(5)}`,
+    label,
+    short: short || label,
+    source: data.source,
     lat: Number.isFinite(data.lat) ? data.lat : lat,
     lon: Number.isFinite(data.lon) ? data.lon : lon,
   };
+}
+
+/** Reverse geocode for live maps. Empty when the geocoder only echoed coordinates. */
+export async function fetchLiveReverseAddress(
+  lat: number,
+  lon: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  try {
+    const result = await reverseAddress(lat, lon, signal);
+    const coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+    const text = (result.short || result.label || "").trim();
+    if (!text || text === coords) return "";
+    return text;
+  } catch (err) {
+    if ((err as Error).name === "AbortError") throw err;
+    return "";
+  }
 }
 
 function hasCoords(lat: number | null | undefined, lon: number | null | undefined): boolean {

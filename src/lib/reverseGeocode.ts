@@ -5,6 +5,24 @@ export function geocodeCacheKey(lat: number, lon: number): string {
   return `${lat.toFixed(5)},${lon.toFixed(5)}`;
 }
 
+/** Short street-first line from an OSM Nominatim `address` object. */
+export function formatOsmAddress(
+  address: Record<string, unknown> | null | undefined,
+  displayName = "",
+): { label: string; short: string } {
+  const display = String(displayName || "").trim();
+  const a = address && typeof address === "object" ? address : {};
+  const str = (key: string) => (typeof a[key] === "string" ? String(a[key]).trim() : "");
+  const road = str("road") || str("pedestrian") || str("residential") || str("footway") || str("highway");
+  const house = str("house_number");
+  const street = [house, road].filter(Boolean).join(" ").trim();
+  const locality = str("suburb") || str("neighbourhood") || str("village") || str("hamlet") || str("quarter");
+  const city = str("city") || str("town") || str("municipality") || str("county");
+  const state = str("state");
+  const short = [...new Set([street, locality, city, state].filter(Boolean))].join(", ");
+  return { label: display || short, short: short || display };
+}
+
 function asTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }

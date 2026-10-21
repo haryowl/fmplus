@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { formatKm, formatSpeed } from "../lib/format";
 import { slimDayPoints } from "../lib/deviceDayTrips";
 import { todayKeyInOffset } from "../lib/time";
+import { fetchLiveReverseAddress } from "../lib/geocode";
+import { addressAt, resolveAddressesForCoords } from "../lib/reverseGeocode";
 import { tenantHeaders } from "../lib/tenant";
 import {
   fetchTrackerDeviceDay,
@@ -105,6 +107,7 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [focusMs, setFocusMs] = useState<number | null>(null);
+  const [addresses, setAddresses] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!deviceId && devices[0]?.deviceId) setDeviceId(devices[0].deviceId);
@@ -202,6 +205,25 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
     const hit = timeline.find((item) => item.kind === "fix" && item.ms === focusMs);
     return hit && hit.kind === "fix" ? hit.point : null;
   }, [focusMs, timeline]);
+
+  useEffect(() => {
+    if (!focusFix) return;
+    const ac = new AbortController();
+    void resolveAddressesForCoords(
+      [{ lat: focusFix.lat, lon: focusFix.lon }],
+      fetchLiveReverseAddress,
+      { concurrency: 1, signal: ac.signal },
+    )
+      .then((map) => {
+        if (!ac.signal.aborted) setAddresses((prev) => ({ ...prev, ...map }));
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") {
+          /* keep last */
+        }
+      });
+    return () => ac.abort();
+  }, [focusFix]);
 
   return (
     <div className="fleet-sec fleet-hist">
@@ -358,6 +380,9 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
                           </strong>
                           <span className="muted fleet-hist-detail">
                             {item.point.lat.toFixed(5)}, {item.point.lon.toFixed(5)}
+                            {addressAt(addresses, item.point.lat, item.point.lon)
+                              ? ` · ${addressAt(addresses, item.point.lat, item.point.lon)}`
+                              : ""}
                             {item.point.odometerKm != null ? (
                               <>
                                 {" · "}

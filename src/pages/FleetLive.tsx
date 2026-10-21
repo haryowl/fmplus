@@ -62,8 +62,10 @@ import {
   formatDisplayPinValue,
   readDisplayPin,
 } from "../lib/fleetTelemetryParams";
+import { fetchLiveReverseAddress } from "../lib/geocode";
 import { fetchServicePoints, type ServicePoint } from "../lib/maintenance";
 import { fetchNativeGeofences, type NativeGeofence } from "../lib/places";
+import { addressAt, geocodeCacheKey, resolveAddressesForCoords } from "../lib/reverseGeocode";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
 import {
@@ -226,6 +228,7 @@ export default function FleetLive() {
   const [telematicsSource, setTelematicsSource] = useState<TelematicsSource>("both");
   const [geofences, setGeofences] = useState<NativeGeofence[]>([]);
   const [servicePoints, setServicePoints] = useState<ServicePoint[]>([]);
+  const [addresses, setAddresses] = useState<Record<string, string>>({});
   const [alerts, setAlerts] = useState<SafetyEvent[]>([]);
   const [ruleFires, setRuleFires] = useState<FleetRuleEvent[]>([]);
   const [ruleHolds, setRuleHolds] = useState<FleetRuleHold[]>([]);
@@ -659,6 +662,42 @@ export default function FleetLive() {
     [filtered],
   );
 
+  const addressCoordKey = useMemo(() => {
+    const keys = mapped
+      .filter((r) => r.lat != null && r.lon != null)
+      .map((r) => geocodeCacheKey(r.lat as number, r.lon as number));
+    keys.sort();
+    return keys.join("|");
+  }, [mapped]);
+
+  useEffect(() => {
+    if (!ready || !mapped.length) return;
+    const coords: Array<{ lat: number; lon: number }> = [];
+    const selectedRow = mapped.find((r) => r.id === selectedId);
+    if (selectedRow?.lat != null && selectedRow.lon != null) {
+      coords.push({ lat: selectedRow.lat, lon: selectedRow.lon });
+    }
+    for (const row of mapped) {
+      if (row.id === selectedId) continue;
+      if (row.lat == null || row.lon == null) continue;
+      coords.push({ lat: row.lat, lon: row.lon });
+    }
+    const ac = new AbortController();
+    void resolveAddressesForCoords(coords, fetchLiveReverseAddress, {
+      concurrency: 1,
+      signal: ac.signal,
+    })
+      .then((map) => {
+        if (!ac.signal.aborted) setAddresses((prev) => ({ ...prev, ...map }));
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") {
+          /* keep last known addresses */
+        }
+      });
+    return () => ac.abort();
+  }, [ready, addressCoordKey, selectedId]);
+
   const selected = rows.find((r) => r.id === selectedId) || null;
   const selectedMeta = selected ? fixMeta[selected.id] : null;
   const deviceIdByRowId = useMemo(() => {
@@ -669,6 +708,11 @@ export default function FleetLive() {
     return map;
   }, [fixMeta]);
   const selectedCls = selected ? classifyLiveRow(selected, now) : null;
+  const selectedAddress = selected ? addressAt(addresses, selected.lat, selected.lon) : "";
+  let selectedAddrPending = false;
+  if (selected && selected.lat != null && selected.lon != null) {
+    selectedAddrPending = !(geocodeCacheKey(selected.lat, selected.lon) in addresses);
+  }
   const pinColumns = extraDisplayPinColumns(displayPinIds, displayPinLabels);
   const selectedPins = pinColumns
     .map((col) => {
@@ -1114,6 +1158,7 @@ export default function FleetLive() {
               telematicsSource={telematicsSource}
               geofences={geofences}
               servicePoints={servicePoints}
+              addresses={addresses}
             />
             {liveInsights.length ? (
               <div className="fleet-cc-map-insights">
@@ -1165,6 +1210,12 @@ export default function FleetLive() {
                     <IcoClose />
                   </button>
                 </header>
+                <p className="fleet-cc-sel-addr" title={selectedAddress || undefined}>
+                  {selected.lat != null && selected.lon != null
+                    ? `${selected.lat.toFixed(5)}, ${selected.lon.toFixed(5)}`
+                    : "No position"}
+                  {selectedAddress ? ` · ${selectedAddress}` : selectedAddrPending ? " · looking up address…" : ""}
+                </p>
                 <div className="fleet-cc-sel-metrics">
                   <div>
                     <span>Speed</span>
@@ -1359,6 +1410,20 @@ export default function FleetLive() {
                           <span>{ageLabel(row.lastMs, now)}</span>
                           {fuel != null ? <span>{Math.round(fuel)}% fuel</span> : null}
                         </span>
+                        {row.lat != null && row.lon != null ? (
+                          <span
+                            className="muted fleet-cc-vaddr"
+                            title={
+                              addressAt(addresses, row.lat, row.lon) ||
+                              `${row.lat.toFixed(5)}, ${row.lon.toFixed(5)}`
+                            }
+                          >
+                            {row.lat.toFixed(5)}, {row.lon.toFixed(5)}
+                            {addressAt(addresses, row.lat, row.lon)
+                              ? ` · ${addressAt(addresses, row.lat, row.lon)}`
+                              : ""}
+                          </span>
+                        ) : null}
                         {fuel != null ? (
                           <span className="fleet-cc-fuelbar" title={`Fuel ${Math.round(fuel)}%`}>
                             <span style={{ width: `${Math.max(0, Math.min(100, fuel))}%` }} />

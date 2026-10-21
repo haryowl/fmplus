@@ -8089,6 +8089,23 @@ html.onesheet-root body {
   gap: 6px 10px;
 }
 
+.fleet-cc-vaddr {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.fleet-cc-sel-addr {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--ink-soft, #5c6770);
+}
+
 .fleet-cc-vodo {
   display: flex;
   flex-direction: column;
@@ -8801,6 +8818,17 @@ html.onesheet-root body {
 .live-ops-popup {
   font-size: 0.85rem;
   line-height: 1.35;
+}
+
+.live-ops-popup-coords {
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-ops-popup-addr {
+  margin-top: 2px;
+  max-width: 260px;
+  line-height: 1.3;
 }
 
 .live-ops-popup-links {

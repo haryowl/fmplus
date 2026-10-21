@@ -14,6 +14,7 @@ import {
 import { vehicleTrackHref } from "../lib/routing";
 import type { TelematicsSource } from "../lib/trackerDevices";
 import type { NativeGeofence } from "../lib/places";
+import { geocodeCacheKey } from "../lib/reverseGeocode";
 
 export type LiveOpsPlace = {
   id: string;
@@ -36,6 +37,8 @@ type Props = {
   telematicsSource?: TelematicsSource | null;
   geofences?: NativeGeofence[];
   servicePoints?: LiveOpsPlace[];
+  /** Cache-key (`lat.toFixed(5),lon.toFixed(5)`) → reverse-geocoded address. */
+  addresses?: Record<string, string>;
 };
 
 type MarkerMeta = {
@@ -88,6 +91,7 @@ function popupHtml(
   now: number,
   deviceId?: string | null,
   telematicsSource?: TelematicsSource | null,
+  address?: string,
 ): string {
   const trips = vehicleTrackHref({
     rowId: row.id,
@@ -102,12 +106,17 @@ function popupHtml(
     telematicsSource,
   });
   const ign = row.ignition === true ? "On" : row.ignition === false ? "Off" : "—";
+  const coords =
+    row.lat != null && row.lon != null ? `${row.lat.toFixed(5)}, ${row.lon.toFixed(5)}` : "";
+  const addr = (address || "").trim();
   return `<div class="live-ops-popup">
     <strong>${escapeHtml(row.name)}</strong>
     <div class="muted">${escapeHtml(LIVE_OPS_LABELS[opsClass])} · ${escapeHtml(ageLabel(row.lastMs, now))}</div>
     <div>Speed ${
       row.speedKmh === null ? "—" : `${escapeHtml(formatSpeed(row.speedKmh))} km/h`
     } · Ign ${ign}</div>
+    ${coords ? `<div class="muted live-ops-popup-coords">${escapeHtml(coords)}</div>` : ""}
+    ${addr ? `<div class="live-ops-popup-addr" title="${escapeHtml(addr)}">${escapeHtml(addr)}</div>` : ""}
     <div class="live-ops-popup-links">
       <a href="${escapeHtml(trips)}">Trips</a>
       <a href="${escapeHtml(full)}">Full</a>
@@ -164,6 +173,7 @@ export function LiveOpsMap({
   telematicsSource,
   geofences,
   servicePoints,
+  addresses,
 }: Props) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -177,12 +187,14 @@ export function LiveOpsMap({
   const rowsByIdRef = useRef(new Map<number, LastStatusRow>());
   const deviceIdByRowIdRef = useRef(deviceIdByRowId);
   const telematicsSourceRef = useRef(telematicsSource);
+  const addressesRef = useRef(addresses);
   const [mapReady, setMapReady] = useState(false);
 
   onSelectRef.current = onSelect;
   nowRef.current = now;
   deviceIdByRowIdRef.current = deviceIdByRowId;
   telematicsSourceRef.current = telematicsSource;
+  addressesRef.current = addresses;
 
   useEffect(() => {
     const el = elRef.current;
@@ -310,12 +322,17 @@ export function LiveOpsMap({
         marker.bindPopup(() => {
           const latest = rowsByIdRef.current.get(row.id) || row;
           const cls = classifyLiveRow(latest, nowRef.current);
+          const addr =
+            latest.lat != null && latest.lon != null
+              ? addressesRef.current?.[geocodeCacheKey(latest.lat, latest.lon)] || ""
+              : "";
           return popupHtml(
             latest,
             cls,
             nowRef.current,
             deviceIdByRowIdRef.current?.get(latest.id),
             telematicsSourceRef.current,
+            addr,
           );
         });
         marker.addTo(layer);
