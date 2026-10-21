@@ -9001,6 +9001,46 @@ html.onesheet-root body {
   font-size: 0.88rem;
 }
 
+.places-fence-map {
+  height: 360px;
+  width: 100%;
+  border: 1px solid #d5cbb9;
+  background: #e8e4dc;
+  z-index: 0;
+}
+
+.places-fence-draw {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 2px;
+  width: min(16rem, 100%);
+  border: 1px solid #d5cbb9;
+  background: var(--surface);
+}
+
+.places-fence-draw button {
+  border: 0;
+  background: transparent;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #6b6256;
+  cursor: pointer;
+}
+
+.places-fence-draw button.is-active {
+  background: #efe8db;
+  color: #2b261f;
+}
+
+.places-fence-hint {
+  margin: 0;
+  align-self: center;
+  min-width: 10rem;
+}
+
 .places-link-form {
   display: flex;
   flex-wrap: wrap;

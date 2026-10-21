@@ -139,15 +139,17 @@ export async function fetchNativeGeofences(signal?: AbortSignal): Promise<Native
 
 export async function createNativeGeofence(body: {
   name: string;
-  lat: number;
-  lon: number;
-  radiusM: number;
+  kind?: "circle" | "polygon";
+  lat?: number | null;
+  lon?: number | null;
+  radiusM?: number | null;
+  ring?: Array<[number, number]>;
   color?: string;
 }): Promise<NativeGeofence> {
   const res = await fetch("/api/places/geofences", {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
-    body: JSON.stringify({ kind: "circle", ...body }),
+    body: JSON.stringify({ kind: body.kind || "circle", ...body }),
   });
   const data = (await res.json().catch(() => ({}))) as { geofence?: NativeGeofence; error?: string };
   if (!res.ok) throw new Error(data.error || `Create geofence ${res.status}`);

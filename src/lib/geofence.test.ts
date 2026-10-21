@@ -37,4 +37,20 @@ describe("tenant geofences", () => {
     ]);
     expect(hits.map((f) => f.name)).toEqual(["Depot"]);
   });
+
+  it("detects a point inside a polygon ring", () => {
+    const yard = {
+      name: "Yard",
+      kind: "polygon",
+      ring: [
+        [-6.201, 106.799],
+        [-6.201, 106.801],
+        [-6.199, 106.801],
+        [-6.199, 106.799],
+      ] as Array<[number, number]>,
+      enabled: true,
+    };
+    expect(fencesContaining(-6.2, 106.8, [yard]).map((f) => f.name)).toEqual(["Yard"]);
+    expect(fencesContaining(-6.21, 106.8, [yard])).toEqual([]);
+  });
 });

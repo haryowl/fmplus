@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BrandMark } from "../components/BrandMark";
+import { PlacesGeofenceMap } from "../components/PlacesGeofenceMap";
 import { ViewNav } from "../components/ViewNav";
 import {
   createServicePoint,
@@ -45,9 +46,11 @@ export default function PlacesAnalytics() {
   const [createBusy, setCreateBusy] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
   const [fenceName, setFenceName] = useState("");
+  const [fenceKind, setFenceKind] = useState<"circle" | "polygon">("circle");
   const [fenceLat, setFenceLat] = useState("");
   const [fenceLon, setFenceLon] = useState("");
   const [fenceRadius, setFenceRadius] = useState("200");
+  const [fenceRing, setFenceRing] = useState<Array<[number, number]>>([]);
   const [fenceBusy, setFenceBusy] = useState(false);
   const [fenceMsg, setFenceMsg] = useState("");
   const [nativeFences, setNativeFences] = useState<NativeGeofence[]>([]);
@@ -110,20 +113,52 @@ export default function PlacesAnalytics() {
     return () => ac.abort();
   }, [ready, query.tenantKey, reload]);
 
+  function setDrawKind(kind: "circle" | "polygon") {
+    setFenceKind(kind);
+    setFenceRing([]);
+    setFenceMsg("");
+  }
+
+  function onPickCircle(lat: number, lon: number) {
+    setFenceLat(lat.toFixed(6));
+    setFenceLon(lon.toFixed(6));
+    setFenceRing([[lat, lon]]);
+  }
+
   async function onCreateFence() {
     const name = fenceName.trim();
+    if (!name) return;
+    if (fenceKind === "polygon") {
+      if (fenceRing.length < 3) {
+        setFenceMsg("Click the map to add at least 3 vertices");
+        return;
+      }
+      setFenceBusy(true);
+      setFenceMsg("");
+      try {
+        const fence = await createNativeGeofence({ name, kind: "polygon", ring: fenceRing });
+        setNativeFences((prev) => [fence, ...prev.filter((f) => f.id !== fence.id)]);
+        setFenceName("");
+        setFenceRing([]);
+        setFenceMsg(`Added ${fence.name}`);
+      } catch (err) {
+        setFenceMsg(err instanceof Error ? err.message : String(err));
+      } finally {
+        setFenceBusy(false);
+      }
+      return;
+    }
     const lat = Number(fenceLat);
     const lon = Number(fenceLon);
     const radiusM = Number(fenceRadius);
-    if (!name) return;
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(radiusM) || radiusM <= 0) {
-      setFenceMsg("Circle geofence needs lat, lon, and radius in meters");
+      setFenceMsg("Click the map for a center, or enter lat, lon, and radius in meters");
       return;
     }
     setFenceBusy(true);
     setFenceMsg("");
     try {
-      const fence = await createNativeGeofence({ name, lat, lon, radiusM });
+      const fence = await createNativeGeofence({ name, kind: "circle", lat, lon, radiusM });
       setNativeFences((prev) => [fence, ...prev.filter((f) => f.id !== fence.id)]);
       setFenceName("");
       setFenceMsg(`Added ${fence.name}`);
@@ -342,9 +377,42 @@ export default function PlacesAnalytics() {
             <section className="places-panel">
               <h2>Native geofences</h2>
               <p className="muted">
-                Circles stored in ARMADA M.1. They draw on Fleet Live / Live and can fire alert rules
+                Circles and polygons stored in ARMADA M.1. Click the map to set a circle center or drop
+                polygon vertices. They draw on Fleet Live / Live and can fire alert rules
                 (`inside_geofence`, `geofence_name`).
               </p>
+              <div className="places-fence-draw" role="group" aria-label="Geofence shape">
+                <button
+                  type="button"
+                  className={fenceKind === "circle" ? "is-active" : undefined}
+                  onClick={() => setDrawKind("circle")}
+                >
+                  Circle
+                </button>
+                <button
+                  type="button"
+                  className={fenceKind === "polygon" ? "is-active" : undefined}
+                  onClick={() => setDrawKind("polygon")}
+                >
+                  Polygon
+                </button>
+              </div>
+              <PlacesGeofenceMap
+                fences={nativeFences}
+                mode={fenceKind}
+                radiusM={Number(fenceRadius) || 0}
+                ring={
+                  fenceKind === "circle" &&
+                  fenceLat.trim() !== "" &&
+                  fenceLon.trim() !== "" &&
+                  Number.isFinite(Number(fenceLat)) &&
+                  Number.isFinite(Number(fenceLon))
+                    ? [[Number(fenceLat), Number(fenceLon)]]
+                    : fenceRing
+                }
+                onPickCircle={onPickCircle}
+                onRingChange={setFenceRing}
+              />
               <div className="places-link-form">
                 <label>
                   Name
@@ -354,29 +422,71 @@ export default function PlacesAnalytics() {
                     placeholder="Depot ring"
                   />
                 </label>
-                <label>
-                  Lat
-                  <input value={fenceLat} onChange={(e) => setFenceLat(e.target.value)} placeholder="-6.2" />
-                </label>
-                <label>
-                  Lon
-                  <input value={fenceLon} onChange={(e) => setFenceLon(e.target.value)} placeholder="106.8" />
-                </label>
-                <label>
-                  Radius (m)
-                  <input
-                    value={fenceRadius}
-                    onChange={(e) => setFenceRadius(e.target.value)}
-                    placeholder="200"
-                  />
-                </label>
+                {fenceKind === "circle" ? (
+                  <>
+                    <label>
+                      Lat
+                      <input
+                        value={fenceLat}
+                        onChange={(e) => setFenceLat(e.target.value)}
+                        placeholder="-6.2"
+                      />
+                    </label>
+                    <label>
+                      Lon
+                      <input
+                        value={fenceLon}
+                        onChange={(e) => setFenceLon(e.target.value)}
+                        placeholder="106.8"
+                      />
+                    </label>
+                    <label>
+                      Radius (m)
+                      <input
+                        value={fenceRadius}
+                        onChange={(e) => setFenceRadius(e.target.value)}
+                        placeholder="200"
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <p className="muted places-fence-hint">
+                    {fenceRing.length === 0
+                      ? "Click the map to add vertices."
+                      : `${fenceRing.length} vertex${fenceRing.length === 1 ? "" : "es"}`}
+                  </p>
+                )}
+                {fenceKind === "polygon" ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={fenceRing.length === 0}
+                      onClick={() => setFenceRing((prev) => prev.slice(0, -1))}
+                    >
+                      Undo last
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={fenceRing.length === 0}
+                      onClick={() => setFenceRing([])}
+                    >
+                      Clear
+                    </button>
+                  </>
+                ) : null}
                 <button
                   type="button"
                   className="btn"
-                  disabled={fenceBusy || !fenceName.trim()}
+                  disabled={
+                    fenceBusy ||
+                    !fenceName.trim() ||
+                    (fenceKind === "polygon" && fenceRing.length < 3)
+                  }
                   onClick={() => void onCreateFence()}
                 >
-                  Add circle
+                  {fenceKind === "polygon" ? "Add polygon" : "Add circle"}
                 </button>
               </div>
               {fenceMsg ? <p className="muted">{fenceMsg}</p> : null}
@@ -390,7 +500,7 @@ export default function PlacesAnalytics() {
                         <th>Name</th>
                         <th>Kind</th>
                         <th>Center</th>
-                        <th>Radius</th>
+                        <th>Size</th>
                         <th />
                       </tr>
                     </thead>
@@ -404,7 +514,13 @@ export default function PlacesAnalytics() {
                               ? `${f.lat.toFixed(5)}, ${f.lon.toFixed(5)}`
                               : "—"}
                           </td>
-                          <td>{f.radiusM != null ? `${Math.round(f.radiusM)} m` : "—"}</td>
+                          <td>
+                            {f.kind === "polygon"
+                              ? `${f.ring.length} vertices`
+                              : f.radiusM != null
+                                ? `${Math.round(f.radiusM)} m`
+                                : "—"}
+                          </td>
                           <td>
                             <button
                               type="button"
@@ -427,8 +543,8 @@ export default function PlacesAnalytics() {
               <h2>Fence hits by name</h2>
               <p className="muted">
                 {skipArmada
-                  ? "Aggregated from Fleet Live geofence alerts and notifier rows (not polygon dwell)."
-                  : "Aggregated from Command notifier rows (not polygon dwell). Edit fences in Armada."}
+                  ? "Aggregated from Fleet Live geofence alerts and notifier rows."
+                  : "Aggregated from Command notifier rows. Native polygons also fire inside_geofence on Fleet Live."}
               </p>
               {summary.fenceHits.length === 0 ? (
                 <p className="muted">
