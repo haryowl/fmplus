@@ -129,6 +129,9 @@ export default function PlacesAnalytics() {
 
   const fenceHitTotal = summary?.fenceHits.reduce((n, f) => n + f.hits, 0) ?? 0;
   const search = typeof window !== "undefined" ? window.location.search : "";
+  const skipArmada = Boolean(
+    summary?.telematicsSource === "devices" || summary?.armada.geofences.skipped,
+  );
 
   return (
     <div className="app places-page">
@@ -137,7 +140,11 @@ export default function PlacesAnalytics() {
           <BrandMark />
           <div>
             <h1>Places</h1>
-            <p>Geofence analytics from notifier · Armada fences &amp; POI (read-only)</p>
+            <p>
+              {skipArmada
+                ? "Geofence analytics from Fleet Live alerts and notifier"
+                : "Geofence analytics from notifier · Armada fences & POI (read-only)"}
+            </p>
           </div>
         </div>
         <div className="topbar-actions">
@@ -188,8 +195,8 @@ export default function PlacesAnalytics() {
                 <strong>{summary.geofenceGroups.length}</strong>
               </div>
               <div>
-                <span className="muted">Armada fences</span>
-                <strong>{summary.geofences.length}</strong>
+                <span className="muted">Catalog fences</span>
+                <strong>{skipArmada ? "—" : summary.geofences.length}</strong>
               </div>
               <div>
                 <span className="muted">Fence hits ({days}d)</span>
@@ -199,14 +206,17 @@ export default function PlacesAnalytics() {
                 <span className="muted">Named fences hit</span>
                 <strong>{summary.fenceHits.length}</strong>
               </div>
-              <div>
-                <span className="muted">Reports / templates</span>
-                <strong>
-                  {summary.armada.reports.count ?? 0} / {summary.armada.reports.templates ?? 0}
-                </strong>
-              </div>
+              {skipArmada ? null : (
+                <div>
+                  <span className="muted">Reports / templates</span>
+                  <strong>
+                    {summary.armada.reports.count ?? 0} / {summary.armada.reports.templates ?? 0}
+                  </strong>
+                </div>
+              )}
             </section>
 
+            {skipArmada ? null : (
             <section className="places-panel places-access">
               <h2>Armada access (this token)</h2>
               <p className="muted">
@@ -231,16 +241,20 @@ export default function PlacesAnalytics() {
                 </p>
               ) : null}
             </section>
+            )}
 
             <section className="places-panel">
               <h2>Fence hits by name</h2>
               <p className="muted">
-                Aggregated from Command notifier rows (not polygon dwell). Edit fences in Armada.
+                {skipArmada
+                  ? "Aggregated from Fleet Live geofence alerts and notifier rows (not polygon dwell)."
+                  : "Aggregated from Command notifier rows (not polygon dwell). Edit fences in Armada."}
               </p>
               {summary.fenceHits.length === 0 ? (
                 <p className="muted">
-                  No geofence-named notifier events in this window. When an Exception includes a fence
-                  name, it will appear here.
+                  {skipArmada
+                    ? "No geofence-named Fleet Live alerts or notifier events in this window."
+                    : "No geofence-named notifier events in this window. When an Exception includes a fence name, it will appear here."}
                 </p>
               ) : (
                 <div className="table-wrap">
@@ -320,7 +334,9 @@ export default function PlacesAnalytics() {
             Optional link for workshop / depot points. POI catalog stays in Armada; ARMADA M.1 stores the id
             only.
           </p>
-          {!poiAvailable ? (
+          {skipArmada ? (
+            <p className="muted">POI linking is Armada-only and is hidden on devices-only tenants.</p>
+          ) : !poiAvailable ? (
             <div className="banner warn">
               {poiError ||
                 "POI picker dormant until Armada allows poicategories on this token."}

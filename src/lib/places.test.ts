@@ -26,4 +26,18 @@ describe("placesAccessRows", () => {
     expect(rows.find((r) => r.label === "Geofences")?.ok).toBe(false);
     expect(rows.find((r) => r.label === "POI categories")?.ok).toBe(false);
   });
+
+  it("treats skipped Armada catalogs as unused, not denied", () => {
+    const skipped = { ok: true, skipped: true, status: 0, error: null, count: 0, available: false };
+    const rows = placesAccessRows(
+      summary({
+        geofenceGroups: skipped,
+        geofences: skipped,
+        pois: skipped,
+        reports: skipped,
+      }),
+    );
+    expect(rows.every((r) => r.ok)).toBe(true);
+    expect(rows.find((r) => r.label === "Geofences")?.detail).toMatch(/not used/i);
+  });
 });

@@ -119,6 +119,17 @@ export function exceptionUserId(item: ExceptionItem): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+/** GPS device UUID from the inbox row or notifier payload. */
+export function exceptionTrackerDeviceId(item: ExceptionItem): string | null {
+  const direct = String(item.trackerDeviceId || "").trim();
+  if (/^[0-9a-f-]{36}$/i.test(direct)) return direct;
+  const p = item.payload || {};
+  const raw = String(
+    p.DEVICE_ID ?? p.deviceId ?? p.trackerDeviceId ?? p.TRACKER_DEVICE_ID ?? "",
+  ).trim();
+  return /^[0-9a-f-]{36}$/i.test(raw) ? raw : null;
+}
+
 /** Scope notifier/derived rows to a group (or tenant allowlist). */
 export function filterExceptionsByGroup(
   items: ExceptionItem[],
@@ -135,7 +146,9 @@ export function filterExceptionsByGroup(
   return items.filter((item) => {
     const uid = exceptionUserId(item);
     if (uid != null && ids?.has(uid)) return true;
-    const did = String(item.trackerDeviceId || "").trim().toLowerCase();
+    const did = String(exceptionTrackerDeviceId(item) || item.trackerDeviceId || "")
+      .trim()
+      .toLowerCase();
     if (did && devices?.has(did)) return true;
     // GPS-only derived rows use synthetic negative userId — keep when device scope is open-ended.
     if (item.source === "derived" && item.userId != null && item.userId < 0 && !devices && !ids) {

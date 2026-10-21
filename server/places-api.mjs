@@ -5,8 +5,10 @@
  */
 import { databaseUrlConfigured, dbQuery } from "./db.mjs";
 import { tenantFromRequest } from "./tenants.mjs";
+import { resolveDbTenant } from "./maintenance-api.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 import { armadaFetch } from "./armada-fetch.mjs";
+import { tenantTelematicsSource } from "./tracker-devices.mjs";
 
 function send(res, status, headers, body) {
   res.writeHead(status, securityHeaders(headers));
@@ -120,6 +122,19 @@ async function armadaJson(vaultTenant, pathAndQuery) {
   }
 }
 
+function skippedArmadaStatus() {
+  return {
+    ok: true,
+    skipped: true,
+    status: 0,
+    error: null,
+    count: 0,
+    available: false,
+    categoryCount: 0,
+    templates: 0,
+  };
+}
+
 function fenceNameFromPayload(payload, ruleName) {
   const p = payload && typeof payload === "object" ? payload : {};
   const fromPayload = String(
@@ -144,31 +159,33 @@ export async function handlePlacesRequest(req, res) {
       json(res, 503, { error: "Database not configured" });
       return true;
     }
-    const vaultTenant = tenantFromRequest(req);
-    if (!vaultTenant?.key) {
+    const dbTenant = await resolveDbTenant(req);
+    if (!dbTenant) {
       json(res, 401, { error: "Tenant key required (k=)" });
       return true;
     }
-    const found = await dbQuery(
-      `SELECT id, key FROM tenants WHERE key = $1 AND enabled = true`,
-      [vaultTenant.key],
-    );
-    if (!found.rows[0]) {
-      json(res, 404, { error: "Tenant not found" });
-      return true;
-    }
-    const dbTenant = found.rows[0];
+    const vaultTenant = tenantFromRequest(req);
+    const telematicsSource = await tenantTelematicsSource(dbTenant.id).catch(() => "both");
+    const useArmada = Boolean(vaultTenant?.token) && telematicsSource !== "devices";
 
     if (url.pathname === "/api/places/summary" && req.method === "GET") {
       const days = Math.min(90, Math.max(1, Number(url.searchParams.get("days")) || 30));
 
-      const [groupsRes, fencesRes, poiCatRes, reportsRes, templatesRes] = await Promise.all([
-        armadaJson(vaultTenant, "/geofencegroups?FromIndex=0&PageSize=200"),
-        armadaJson(vaultTenant, "/geofences?FromIndex=0&PageSize=500"),
-        armadaJson(vaultTenant, "/poicategories?FromIndex=0&PageSize=50"),
-        armadaJson(vaultTenant, "/reports?FromIndex=0&PageSize=50"),
-        armadaJson(vaultTenant, "/reporttemplates?FromIndex=0&PageSize=50"),
-      ]);
+      const emptyArmada = {
+        ok: true,
+        status: 0,
+        error: null,
+        rows: [],
+      };
+      const [groupsRes, fencesRes, poiCatRes, reportsRes, templatesRes] = useArmada
+        ? await Promise.all([
+            armadaJson(vaultTenant, "/geofencegroups?FromIndex=0&PageSize=200"),
+            armadaJson(vaultTenant, "/geofences?FromIndex=0&PageSize=500"),
+            armadaJson(vaultTenant, "/poicategories?FromIndex=0&PageSize=50"),
+            armadaJson(vaultTenant, "/reports?FromIndex=0&PageSize=50"),
+            armadaJson(vaultTenant, "/reporttemplates?FromIndex=0&PageSize=50"),
+          ])
+        : [emptyArmada, emptyArmada, emptyArmada, emptyArmada, emptyArmada];
 
       const geofenceGroups = groupsRes.rows.map((r) => ({
         id: pickId(r),
@@ -192,9 +209,8 @@ export async function handlePlacesRequest(req, res) {
 
       const byFence = new Map();
       const recent = [];
-      for (const row of hits.rows) {
-        const fenceName = fenceNameFromPayload(row.payload, row.rule_name);
-        if (!fenceName) continue;
+      const addFenceHit = (fenceName, vehicle, username, at, ruleName) => {
+        if (!fenceName) return;
         const key = fenceName.toLowerCase();
         const cur = byFence.get(key) || {
           name: fenceName,
@@ -203,20 +219,60 @@ export async function handlePlacesRequest(req, res) {
           lastAt: null,
         };
         cur.hits += 1;
-        const vehicle = row.user_display_name || row.armada_username || "";
         if (vehicle) cur.vehicles.add(vehicle);
-        const at = row.event_time || row.created_at;
         if (at && (!cur.lastAt || String(at) > String(cur.lastAt))) cur.lastAt = at;
         byFence.set(key, cur);
         if (recent.length < 40) {
           recent.push({
             fenceName,
-            ruleName: row.rule_name || "",
+            ruleName: ruleName || "",
             vehicle: vehicle || "—",
-            username: row.armada_username || "",
+            username: username || "",
             at: at || null,
           });
         }
+      };
+      for (const row of hits.rows) {
+        addFenceHit(
+          fenceNameFromPayload(row.payload, row.rule_name),
+          row.user_display_name || row.armada_username || "",
+          row.armada_username || "",
+          row.event_time || row.created_at,
+          row.rule_name || "",
+        );
+      }
+      try {
+        const fleetHits = await dbQuery(
+          `SELECT e.title, e.detail, e.fired_at, e.payload, d.label, d.imei
+           FROM fleet_alert_events e
+           LEFT JOIN tracker_devices d ON d.id = e.device_id
+           WHERE e.tenant_id = $1
+             AND e.fired_at >= (CURRENT_DATE - ($2::int - 1))::timestamptz
+             AND (
+               e.title ~* 'geofence|geo.?fence|\\bfence\\b'
+               OR e.detail ~* 'geofence|geo.?fence|\\bfence\\b'
+               OR COALESCE(
+                 e.payload->>'GEOFENCE_NAME',
+                 e.payload->>'geofenceName',
+                 e.payload->>'FenceName',
+                 ''
+               ) <> ''
+             )
+           ORDER BY e.fired_at DESC
+           LIMIT 500`,
+          [dbTenant.id, days],
+        );
+        for (const row of fleetHits.rows) {
+          addFenceHit(
+            fenceNameFromPayload(row.payload, row.title || row.detail),
+            row.label || row.imei || "",
+            row.imei || "",
+            row.fired_at,
+            row.title || "",
+          );
+        }
+      } catch {
+        /* fleet_alert_events may be absent on older DBs */
       }
 
       const fenceHits = [...byFence.values()]
@@ -235,44 +291,62 @@ export async function handlePlacesRequest(req, res) {
 
       json(res, 200, {
         days,
+        telematicsSource,
         geofenceGroups,
         geofences,
         fenceHits,
         recentFenceEvents: recent,
         reports,
-        armada: {
-          geofenceGroups: {
-            ok: groupsRes.ok,
-            status: groupsRes.status,
-            error: groupsRes.error,
-            count: geofenceGroups.length,
-          },
-          geofences: {
-            ok: fencesRes.ok,
-            status: fencesRes.status,
-            error: fencesRes.error,
-            count: geofences.length,
-          },
-          pois: {
-            ok: poiCatRes.ok,
-            status: poiCatRes.status,
-            error: poiCatRes.error,
-            available: poiCatRes.ok,
-            categoryCount: poiCatRes.rows.length,
-          },
-          reports: {
-            ok: reportsRes.ok,
-            status: reportsRes.status,
-            error: reportsRes.error,
-            count: reportsRes.rows.length,
-            templates: templatesRes.ok ? templatesRes.rows.length : 0,
-          },
-        },
+        armada: useArmada
+          ? {
+              geofenceGroups: {
+                ok: groupsRes.ok,
+                status: groupsRes.status,
+                error: groupsRes.error,
+                count: geofenceGroups.length,
+              },
+              geofences: {
+                ok: fencesRes.ok,
+                status: fencesRes.status,
+                error: fencesRes.error,
+                count: geofences.length,
+              },
+              pois: {
+                ok: poiCatRes.ok,
+                status: poiCatRes.status,
+                error: poiCatRes.error,
+                available: poiCatRes.ok,
+                categoryCount: poiCatRes.rows.length,
+              },
+              reports: {
+                ok: reportsRes.ok,
+                status: reportsRes.status,
+                error: reportsRes.error,
+                count: reportsRes.rows.length,
+                templates: templatesRes.ok ? templatesRes.rows.length : 0,
+              },
+            }
+          : {
+              geofenceGroups: skippedArmadaStatus(),
+              geofences: skippedArmadaStatus(),
+              pois: skippedArmadaStatus(),
+              reports: skippedArmadaStatus(),
+            },
       });
       return true;
     }
 
     if (url.pathname === "/api/places/pois" && req.method === "GET") {
+      if (!useArmada) {
+        json(res, 200, {
+          available: false,
+          skipped: true,
+          status: 0,
+          error: "Armada POI is not used on devices-only tenants",
+          pois: [],
+        });
+        return true;
+      }
       const q = String(url.searchParams.get("q") || "").trim().toLowerCase();
       const cats = await armadaJson(vaultTenant, "/poicategories?FromIndex=0&PageSize=100");
       if (!cats.ok) {

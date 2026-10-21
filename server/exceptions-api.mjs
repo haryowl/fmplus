@@ -4,7 +4,7 @@
  * POST /api/exceptions/:id/ack  body: { note? }
  */
 import { databaseUrlConfigured, dbQuery } from "./db.mjs";
-import { tenantFromRequest } from "./tenants.mjs";
+import { resolveDbTenant } from "./maintenance-api.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 
 function send(res, status, headers, body) {
@@ -49,28 +49,98 @@ async function readJson(req) {
   return JSON.parse(raw);
 }
 
-/**
- * @param {import('node:http').IncomingMessage} req
- * @returns {Promise<{ id: string, key: string, userIds: number[] } | null>}
- */
-async function resolveDbTenant(req) {
-  const tenant = tenantFromRequest(req);
-  if (!tenant || !tenant.key) return null;
-  if (!databaseUrlConfigured()) return null;
-  const found = await dbQuery(
-    `SELECT id, key, user_ids FROM tenants WHERE key = $1 AND enabled = true`,
-    [tenant.key],
-  );
-  const row = found.rows[0];
-  if (!row) return null;
-  return {
-    id: row.id,
-    key: row.key,
-    userIds: Array.isArray(row.user_ids) ? row.user_ids.map(Number) : [],
-  };
+const DEVICE_UUID_RE = /^[0-9a-f-]{36}$/i;
+
+function payloadObject(row) {
+  return row?.payload && typeof row.payload === "object" && !Array.isArray(row.payload)
+    ? row.payload
+    : {};
 }
 
-function publicException(row) {
+function payloadUserId(payload) {
+  const n = Number(payload?.USER_ID ?? payload?.userId ?? payload?.UserId);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function payloadDeviceHint(payload) {
+  return String(
+    payload?.DEVICE_ID ??
+      payload?.deviceId ??
+      payload?.trackerDeviceId ??
+      payload?.TRACKER_DEVICE_ID ??
+      payload?.IMEI ??
+      payload?.imei ??
+      "",
+  ).trim();
+}
+
+/**
+ * Map notifier rows to linked GPS devices (Armada user id, IMEI, or device UUID).
+ * @param {string} tenantId
+ * @param {object[]} rows
+ * @returns {Promise<Map<string, string>>} notification id → tracker device id
+ */
+async function trackerDeviceIdsForNotifications(tenantId, rows) {
+  const userIds = [];
+  const imeis = [];
+  const uuids = [];
+  for (const row of rows) {
+    const payload = payloadObject(row);
+    const uid = payloadUserId(payload);
+    if (uid) userIds.push(uid);
+    const hint = payloadDeviceHint(payload);
+    if (DEVICE_UUID_RE.test(hint)) uuids.push(hint.toLowerCase());
+    else if (hint) imeis.push(hint.toLowerCase());
+  }
+  /** @type {Map<string, string>} */
+  const byRowId = new Map();
+  if (!userIds.length && !imeis.length && !uuids.length) return byRowId;
+
+  const found = await dbQuery(
+    `SELECT id::text AS id, armada_user_id, lower(imei) AS imei
+     FROM tracker_devices
+     WHERE tenant_id = $1 AND enabled = true
+       AND (
+         (cardinality($2::int[]) > 0 AND armada_user_id = ANY($2::int[]))
+         OR (cardinality($3::text[]) > 0 AND lower(imei) = ANY($3::text[]))
+         OR (cardinality($4::uuid[]) > 0 AND id = ANY($4::uuid[]))
+       )`,
+    [tenantId, userIds, imeis, uuids],
+  );
+  const byUserId = new Map();
+  const byImei = new Map();
+  const byUuid = new Set();
+  for (const d of found.rows) {
+    byUuid.add(String(d.id).toLowerCase());
+    if (d.armada_user_id != null) byUserId.set(Number(d.armada_user_id), d.id);
+    if (d.imei) byImei.set(d.imei, d.id);
+  }
+  for (const row of rows) {
+    const payload = payloadObject(row);
+    const hint = payloadDeviceHint(payload);
+    if (DEVICE_UUID_RE.test(hint) && byUuid.has(hint.toLowerCase())) {
+      byRowId.set(row.id, hint.toLowerCase());
+      continue;
+    }
+    if (hint && byImei.has(hint.toLowerCase())) {
+      byRowId.set(row.id, byImei.get(hint.toLowerCase()));
+      continue;
+    }
+    const uid = payloadUserId(payload);
+    if (uid != null && byUserId.has(uid)) byRowId.set(row.id, byUserId.get(uid));
+  }
+  return byRowId;
+}
+
+function publicException(row, trackerDeviceId = null) {
+  const payload = payloadObject(row);
+  const userId = payloadUserId(payload);
+  const hint = payloadDeviceHint(payload);
+  const deviceId =
+    (trackerDeviceId && DEVICE_UUID_RE.test(String(trackerDeviceId))
+      ? String(trackerDeviceId)
+      : null) ||
+    (DEVICE_UUID_RE.test(hint) ? hint : null);
   return {
     id: row.id,
     kind: row.kind,
@@ -80,11 +150,13 @@ function publicException(row) {
     userDisplayName: row.user_display_name || "",
     lat: row.lat == null ? null : Number(row.lat),
     lon: row.lon == null ? null : Number(row.lon),
-    payload: row.payload && typeof row.payload === "object" ? row.payload : {},
+    payload,
     createdAt: row.created_at,
     ackedAt: row.acked_at || null,
     ackedNote: row.acked_note || "",
     source: "notify",
+    userId,
+    trackerDeviceId: deviceId,
   };
 }
 
@@ -115,11 +187,6 @@ export async function handleExceptionsRequest(req, res) {
       else if (status === "acked") clauses.push("acked_at IS NOT NULL");
       // status=all → no acked filter
 
-      if (dbTenant.userIds.length) {
-        // Prefer USER_USERNAME match is hard without Armada id map; filter by payload userId if present later.
-        // Keep all for now when allowlist set — UI may still deep-link.
-      }
-
       params.push(limit);
       const rows = await dbQuery(
         `SELECT id, kind, rule_name, event_time, armada_username, user_display_name,
@@ -130,7 +197,10 @@ export async function handleExceptionsRequest(req, res) {
          LIMIT $${params.length}`,
         params,
       );
-      json(res, 200, { exceptions: rows.rows.map(publicException) });
+      const deviceById = await trackerDeviceIdsForNotifications(dbTenant.id, rows.rows);
+      json(res, 200, {
+        exceptions: rows.rows.map((row) => publicException(row, deviceById.get(row.id) || null)),
+      });
       return true;
     }
 
@@ -152,7 +222,10 @@ export async function handleExceptionsRequest(req, res) {
         json(res, 404, { error: "Exception not found" });
         return true;
       }
-      json(res, 200, { exception: publicException(updated.rows[0]) });
+      const deviceById = await trackerDeviceIdsForNotifications(dbTenant.id, updated.rows);
+      json(res, 200, {
+        exception: publicException(updated.rows[0], deviceById.get(updated.rows[0].id) || null),
+      });
       return true;
     }
 
@@ -171,7 +244,10 @@ export async function handleExceptionsRequest(req, res) {
         json(res, 404, { error: "Exception not found" });
         return true;
       }
-      json(res, 200, { exception: publicException(updated.rows[0]) });
+      const deviceById = await trackerDeviceIdsForNotifications(dbTenant.id, updated.rows);
+      json(res, 200, {
+        exception: publicException(updated.rows[0], deviceById.get(updated.rows[0].id) || null),
+      });
       return true;
     }
 

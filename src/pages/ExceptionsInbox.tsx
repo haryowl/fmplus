@@ -7,6 +7,7 @@ import {
   downloadExceptionsExcel,
   exceptionGeofenceName,
   exceptionTitle,
+  exceptionTrackerDeviceId,
   exceptionUserId,
   exceptionWhen,
   fetchExceptions,
@@ -476,7 +477,7 @@ export default function ExceptionsInbox() {
             const uid = exceptionUserId(item);
             const rowId = item.userId != null && item.userId !== 0 ? item.userId : uid;
             const deviceId =
-              item.trackerDeviceId ||
+              exceptionTrackerDeviceId(item) ||
               (uid != null ? deviceIdByUserId.get(uid) : null) ||
               (rowId != null && rowId < 0 ? deviceIdByUserId.get(rowId) : null) ||
               null;

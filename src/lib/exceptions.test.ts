@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   derivedStaleExceptions,
   exceptionGeofenceName,
+  exceptionTrackerDeviceId,
   exceptionUserId,
   filterExceptionsByGroup,
   type ExceptionItem,
@@ -77,6 +78,20 @@ describe("filterExceptionsByGroup", () => {
     expect(out.map((x) => x.id).sort()).toEqual(["a", "b"]);
   });
 
+  it("keeps notifier rows matching device id", () => {
+    const items = [
+      notify({
+        id: "n1",
+        trackerDeviceId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      }),
+      notify({ id: "n2", payload: { DEVICE_ID: "bbbbbbbb-cccc-dddd-eeee-ffffffffffff" } }),
+    ];
+    const out = filterExceptionsByGroup(items, {
+      deviceIds: ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+    });
+    expect(out.map((x) => x.id)).toEqual(["n1"]);
+  });
+
   it("keeps derived rows matching device id", () => {
     const items = [
       notify({
@@ -95,6 +110,27 @@ describe("filterExceptionsByGroup", () => {
 
   it("resolves user id from payload", () => {
     expect(exceptionUserId(notify({ id: "x", payload: { USER_ID: "42" } }))).toBe(42);
+  });
+});
+
+describe("exceptionTrackerDeviceId", () => {
+  it("prefers the row field, then payload UUID", () => {
+    expect(
+      exceptionTrackerDeviceId(
+        notify({
+          id: "t1",
+          trackerDeviceId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        }),
+      ),
+    ).toBe("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    expect(
+      exceptionTrackerDeviceId(
+        notify({
+          id: "t2",
+          payload: { DEVICE_ID: "bbbbbbbb-cccc-dddd-eeee-ffffffffffff" },
+        }),
+      ),
+    ).toBe("bbbbbbbb-cccc-dddd-eeee-ffffffffffff");
   });
 });
 

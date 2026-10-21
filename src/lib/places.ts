@@ -23,10 +23,12 @@ export type PlacesArmadaStatus = {
   available?: boolean;
   categoryCount?: number;
   templates?: number;
+  skipped?: boolean;
 };
 
 export type PlacesSummary = {
   days: number;
+  telematicsSource?: "armada" | "devices" | "both";
   geofenceGroups: { id: number | null; name: string }[];
   geofences: { id: number | null; name: string; groupId: number | null }[];
   fenceHits: PlacesFenceHit[];
@@ -49,31 +51,39 @@ export function placesAccessRows(summary: PlacesSummary): {
   return [
     {
       label: "Geofence groups",
-      ok: armada.geofenceGroups.ok,
-      detail: armada.geofenceGroups.ok
-        ? `${armada.geofenceGroups.count ?? summary.geofenceGroups.length} groups`
-        : armada.geofenceGroups.error || `HTTP ${armada.geofenceGroups.status}`,
+      ok: Boolean(armada.geofenceGroups.ok || armada.geofenceGroups.skipped),
+      detail: armada.geofenceGroups.skipped
+        ? "Not used on this tenant"
+        : armada.geofenceGroups.ok
+          ? `${armada.geofenceGroups.count ?? summary.geofenceGroups.length} groups`
+          : armada.geofenceGroups.error || `HTTP ${armada.geofenceGroups.status}`,
     },
     {
       label: "Geofences",
-      ok: armada.geofences.ok,
-      detail: armada.geofences.ok
-        ? `${armada.geofences.count ?? summary.geofences.length} fences`
-        : armada.geofences.error || `HTTP ${armada.geofences.status}`,
+      ok: Boolean(armada.geofences.ok || armada.geofences.skipped),
+      detail: armada.geofences.skipped
+        ? "Not used on this tenant"
+        : armada.geofences.ok
+          ? `${armada.geofences.count ?? summary.geofences.length} fences`
+          : armada.geofences.error || `HTTP ${armada.geofences.status}`,
     },
     {
       label: "POI categories",
-      ok: Boolean(armada.pois.available ?? armada.pois.ok),
-      detail: armada.pois.available || armada.pois.ok
-        ? `${armada.pois.categoryCount ?? 0} categories`
-        : armada.pois.error || `HTTP ${armada.pois.status}`,
+      ok: Boolean(armada.pois.skipped || armada.pois.available || armada.pois.ok),
+      detail: armada.pois.skipped
+        ? "Not used on this tenant"
+        : armada.pois.available || armada.pois.ok
+          ? `${armada.pois.categoryCount ?? 0} categories`
+          : armada.pois.error || `HTTP ${armada.pois.status}`,
     },
     {
       label: "Reports",
-      ok: armada.reports.ok,
-      detail: armada.reports.ok
-        ? `${armada.reports.count ?? 0} reports · ${armada.reports.templates ?? 0} templates`
-        : armada.reports.error || `HTTP ${armada.reports.status}`,
+      ok: Boolean(armada.reports.ok || armada.reports.skipped),
+      detail: armada.reports.skipped
+        ? "Not used on this tenant"
+        : armada.reports.ok
+          ? `${armada.reports.count ?? 0} reports · ${armada.reports.templates ?? 0} templates`
+          : armada.reports.error || `HTTP ${armada.reports.status}`,
     },
   ];
 }
