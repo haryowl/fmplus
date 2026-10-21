@@ -64,6 +64,8 @@ export const RULE_FIELDS = [
   { value: "fuel_level", label: "Fuel level %" },
   { value: "odometer_km", label: "Odometer km" },
   { value: "heading", label: "Heading" },
+  { value: "inside_geofence", label: "Inside geofence" },
+  { value: "geofence_name", label: "Geofence name" },
 ] as const;
 
 export const RULE_CMPS = [">", ">=", "<", "<=", "==", "!=", "in", "contains"] as const;

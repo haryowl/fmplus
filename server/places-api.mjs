@@ -2,6 +2,8 @@
  * Phase C — Places analytics (geofence groups + notifier fence hits + soft POI/reports).
  * GET /api/places/summary?days=
  * GET /api/places/pois?q=
+ * GET/POST /api/places/geofences
+ * PATCH/DELETE /api/places/geofences/:id
  */
 import { databaseUrlConfigured, dbQuery } from "./db.mjs";
 import { tenantFromRequest } from "./tenants.mjs";
@@ -9,10 +11,40 @@ import { resolveDbTenant } from "./maintenance-api.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 import { armadaFetch } from "./armada-fetch.mjs";
 import { tenantTelematicsSource } from "./tracker-devices.mjs";
+import {
+  createTenantGeofence,
+  deleteTenantGeofence,
+  listTenantGeofences,
+  updateTenantGeofence,
+} from "./tenant-geofences.mjs";
 
 function send(res, status, headers, body) {
   res.writeHead(status, securityHeaders(headers));
   res.end(body);
+}
+
+function readBody(req, limit = 64_000) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(Object.assign(new Error("Body too large"), { status: 413 }));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+async function readJson(req) {
+  const raw = await readBody(req);
+  if (!raw.trim()) return {};
+  return JSON.parse(raw);
 }
 
 function json(res, status, obj) {
@@ -289,11 +321,14 @@ export async function handlePlacesRequest(req, res) {
         name: pickName(r) || (pickId(r) != null ? `Report ${pickId(r)}` : "Report"),
       }));
 
+      const nativeGeofences = await listTenantGeofences(dbTenant.id).catch(() => []);
+
       json(res, 200, {
         days,
         telematicsSource,
         geofenceGroups,
         geofences,
+        nativeGeofences,
         fenceHits,
         recentFenceEvents: recent,
         reports,
@@ -388,12 +423,49 @@ export async function handlePlacesRequest(req, res) {
       return true;
     }
 
+    if (url.pathname === "/api/places/geofences" && req.method === "GET") {
+      const fences = await listTenantGeofences(dbTenant.id);
+      json(res, 200, { geofences: fences });
+      return true;
+    }
+
+    if (url.pathname === "/api/places/geofences" && req.method === "POST") {
+      const body = await readJson(req);
+      const fence = await createTenantGeofence(dbTenant.id, body);
+      json(res, 201, { geofence: fence });
+      return true;
+    }
+
+    const fenceMatch = /^\/api\/places\/geofences\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (fenceMatch && req.method === "PATCH") {
+      const body = await readJson(req);
+      const fence = await updateTenantGeofence(dbTenant.id, fenceMatch[1], body);
+      if (!fence) {
+        json(res, 404, { error: "Geofence not found" });
+        return true;
+      }
+      json(res, 200, { geofence: fence });
+      return true;
+    }
+    if (fenceMatch && req.method === "DELETE") {
+      const ok = await deleteTenantGeofence(dbTenant.id, fenceMatch[1]);
+      if (!ok) {
+        json(res, 404, { error: "Geofence not found" });
+        return true;
+      }
+      json(res, 200, { ok: true });
+      return true;
+    }
+
     json(res, 404, { error: "Not found" });
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("[places]", message);
-    json(res, 500, { error: message });
+    const status = Number(err?.status);
+    if (!Number.isInteger(status) || status < 400 || status >= 500) {
+      console.error("[places]", message);
+    }
+    json(res, status >= 400 && status < 600 ? status : 500, { error: message });
     return true;
   }
 }

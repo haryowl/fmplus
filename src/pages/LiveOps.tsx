@@ -27,6 +27,7 @@ import {
   type TrackerDeviceGroup,
 } from "../lib/trackerDevices";
 import { BrandMark } from "../components/BrandMark";
+import { fetchNativeGeofences, type NativeGeofence } from "../lib/places";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
 
@@ -71,6 +72,7 @@ export default function LiveOps() {
   const [rows, setRows] = useState<LastStatusRow[]>([]);
   const [deviceIdByRowId, setDeviceIdByRowId] = useState<Map<number, string>>(() => new Map());
   const [telematicsSource, setTelematicsSource] = useState<TelematicsSource>("both");
+  const [geofences, setGeofences] = useState<NativeGeofence[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
   const [reload, setReload] = useState(0);
@@ -97,6 +99,13 @@ export default function LiveOps() {
     fetchTrackerDeviceGroups(ac.signal)
       .then((list) => setDeviceGroups(list))
       .catch(() => setDeviceGroups([]));
+    void fetchNativeGeofences(ac.signal)
+      .then((list) => {
+        if (!ac.signal.aborted) setGeofences(list);
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") setGeofences([]);
+      });
     return () => ac.abort();
   }, [ready]);
 
@@ -438,6 +447,7 @@ export default function LiveOps() {
               onSelect={onSelect}
               deviceIdByRowId={deviceIdByRowId}
               telematicsSource={telematicsSource}
+              geofences={geofences}
             />
           </div>
           <aside className="live-ops-list">

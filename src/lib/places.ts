@@ -26,11 +26,24 @@ export type PlacesArmadaStatus = {
   skipped?: boolean;
 };
 
+export type NativeGeofence = {
+  id: string;
+  name: string;
+  kind: "circle" | "polygon";
+  lat: number | null;
+  lon: number | null;
+  radiusM: number | null;
+  ring: Array<[number, number]>;
+  color: string;
+  enabled: boolean;
+};
+
 export type PlacesSummary = {
   days: number;
   telematicsSource?: "armada" | "devices" | "both";
   geofenceGroups: { id: number | null; name: string }[];
   geofences: { id: number | null; name: string; groupId: number | null }[];
+  nativeGeofences?: NativeGeofence[];
   fenceHits: PlacesFenceHit[];
   recentFenceEvents: PlacesRecentFenceEvent[];
   reports?: { id: number | null; name: string }[];
@@ -112,6 +125,43 @@ export async function fetchPlacesSummary(days = 30, signal?: AbortSignal): Promi
   const data = (await res.json().catch(() => ({}))) as PlacesSummary & { error?: string };
   if (!res.ok) throw new Error(data.error || `Places ${res.status}`);
   return data;
+}
+
+export async function fetchNativeGeofences(signal?: AbortSignal): Promise<NativeGeofence[]> {
+  const res = await fetch("/api/places/geofences", {
+    headers: { accept: "application/json", ...tenantHeaders() },
+    signal,
+  });
+  const data = (await res.json().catch(() => ({}))) as { geofences?: NativeGeofence[]; error?: string };
+  if (!res.ok) throw new Error(data.error || `Geofences ${res.status}`);
+  return data.geofences || [];
+}
+
+export async function createNativeGeofence(body: {
+  name: string;
+  lat: number;
+  lon: number;
+  radiusM: number;
+  color?: string;
+}): Promise<NativeGeofence> {
+  const res = await fetch("/api/places/geofences", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", ...tenantHeaders() },
+    body: JSON.stringify({ kind: "circle", ...body }),
+  });
+  const data = (await res.json().catch(() => ({}))) as { geofence?: NativeGeofence; error?: string };
+  if (!res.ok) throw new Error(data.error || `Create geofence ${res.status}`);
+  if (!data.geofence) throw new Error("Create failed");
+  return data.geofence;
+}
+
+export async function deleteNativeGeofence(id: string): Promise<void> {
+  const res = await fetch(`/api/places/geofences/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { accept: "application/json", ...tenantHeaders() },
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(data.error || `Delete geofence ${res.status}`);
 }
 
 export async function fetchPlacesPois(q = "", signal?: AbortSignal): Promise<PlacesPoisResponse> {

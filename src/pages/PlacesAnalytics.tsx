@@ -8,11 +8,14 @@ import {
   type ServicePoint,
 } from "../lib/maintenance";
 import {
+  createNativeGeofence,
+  deleteNativeGeofence,
   fetchPlacesPois,
   fetchPlacesSummary,
   formatPlacesWhen,
   placesAccessRows,
   type ArmadaPoi,
+  type NativeGeofence,
   type PlacesSummary,
 } from "../lib/places";
 import { exceptionsHref, writeLocationSearch } from "../lib/routing";
@@ -41,6 +44,13 @@ export default function PlacesAnalytics() {
   const [newNotes, setNewNotes] = useState("");
   const [createBusy, setCreateBusy] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
+  const [fenceName, setFenceName] = useState("");
+  const [fenceLat, setFenceLat] = useState("");
+  const [fenceLon, setFenceLon] = useState("");
+  const [fenceRadius, setFenceRadius] = useState("200");
+  const [fenceBusy, setFenceBusy] = useState(false);
+  const [fenceMsg, setFenceMsg] = useState("");
+  const [nativeFences, setNativeFences] = useState<NativeGeofence[]>([]);
 
   useEffect(() => {
     document.title = "Places · ARMADA M.1";
@@ -67,6 +77,7 @@ export default function PlacesAnalytics() {
     fetchPlacesSummary(days, ac.signal)
       .then((data) => {
         setSummary(data);
+        setNativeFences(data.nativeGeofences || []);
         setBootError("");
       })
       .catch((err: Error) => {
@@ -98,6 +109,45 @@ export default function PlacesAnalytics() {
       });
     return () => ac.abort();
   }, [ready, query.tenantKey, reload]);
+
+  async function onCreateFence() {
+    const name = fenceName.trim();
+    const lat = Number(fenceLat);
+    const lon = Number(fenceLon);
+    const radiusM = Number(fenceRadius);
+    if (!name) return;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(radiusM) || radiusM <= 0) {
+      setFenceMsg("Circle geofence needs lat, lon, and radius in meters");
+      return;
+    }
+    setFenceBusy(true);
+    setFenceMsg("");
+    try {
+      const fence = await createNativeGeofence({ name, lat, lon, radiusM });
+      setNativeFences((prev) => [fence, ...prev.filter((f) => f.id !== fence.id)]);
+      setFenceName("");
+      setFenceMsg(`Added ${fence.name}`);
+    } catch (err) {
+      setFenceMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFenceBusy(false);
+    }
+  }
+
+  async function onDeleteFence(id: string, name: string) {
+    if (!window.confirm(`Delete geofence “${name}”?`)) return;
+    setFenceBusy(true);
+    setFenceMsg("");
+    try {
+      await deleteNativeGeofence(id);
+      setNativeFences((prev) => prev.filter((f) => f.id !== id));
+      setFenceMsg(`Deleted ${name}`);
+    } catch (err) {
+      setFenceMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFenceBusy(false);
+    }
+  }
 
   async function onCreatePoint() {
     const name = newName.trim();
@@ -184,8 +234,8 @@ export default function PlacesAnalytics() {
             <h1>Places</h1>
             <p>
               {skipArmada
-                ? "Geofence analytics from Fleet Live alerts and notifier"
-                : "Geofence analytics from notifier · Armada fences & POI (read-only)"}
+                ? "Native geofences, Fleet Live alerts, and notifier hits"
+                : "Native geofences · notifier hits · Armada fences & POI (read-only)"}
             </p>
           </div>
         </div>
@@ -237,6 +287,10 @@ export default function PlacesAnalytics() {
                 <strong>{summary.geofenceGroups.length}</strong>
               </div>
               <div>
+                <span className="muted">Native fences</span>
+                <strong>{nativeFences.length}</strong>
+              </div>
+              <div>
                 <span className="muted">Catalog fences</span>
                 <strong>{skipArmada ? "—" : summary.geofences.length}</strong>
               </div>
@@ -284,6 +338,90 @@ export default function PlacesAnalytics() {
               ) : null}
             </section>
             )}
+
+            <section className="places-panel">
+              <h2>Native geofences</h2>
+              <p className="muted">
+                Circles stored in ARMADA M.1. They draw on Fleet Live / Live and can fire alert rules
+                (`inside_geofence`, `geofence_name`).
+              </p>
+              <div className="places-link-form">
+                <label>
+                  Name
+                  <input
+                    value={fenceName}
+                    onChange={(e) => setFenceName(e.target.value)}
+                    placeholder="Depot ring"
+                  />
+                </label>
+                <label>
+                  Lat
+                  <input value={fenceLat} onChange={(e) => setFenceLat(e.target.value)} placeholder="-6.2" />
+                </label>
+                <label>
+                  Lon
+                  <input value={fenceLon} onChange={(e) => setFenceLon(e.target.value)} placeholder="106.8" />
+                </label>
+                <label>
+                  Radius (m)
+                  <input
+                    value={fenceRadius}
+                    onChange={(e) => setFenceRadius(e.target.value)}
+                    placeholder="200"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={fenceBusy || !fenceName.trim()}
+                  onClick={() => void onCreateFence()}
+                >
+                  Add circle
+                </button>
+              </div>
+              {fenceMsg ? <p className="muted">{fenceMsg}</p> : null}
+              {nativeFences.length === 0 ? (
+                <p className="muted">No native geofences yet.</p>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Kind</th>
+                        <th>Center</th>
+                        <th>Radius</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {nativeFences.map((f) => (
+                        <tr key={f.id}>
+                          <td>{f.name}</td>
+                          <td>{f.kind}</td>
+                          <td>
+                            {f.lat != null && f.lon != null
+                              ? `${f.lat.toFixed(5)}, ${f.lon.toFixed(5)}`
+                              : "—"}
+                          </td>
+                          <td>{f.radiusM != null ? `${Math.round(f.radiusM)} m` : "—"}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn-ghost"
+                              disabled={fenceBusy}
+                              onClick={() => void onDeleteFence(f.id, f.name)}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
 
             <section className="places-panel">
               <h2>Fence hits by name</h2>

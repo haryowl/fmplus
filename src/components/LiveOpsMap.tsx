@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { STREET_TILE, streetTileOptions } from "../lib/mapTiles";
@@ -13,6 +13,7 @@ import {
 } from "../lib/liveOps";
 import { vehicleTrackHref } from "../lib/routing";
 import type { TelematicsSource } from "../lib/trackerDevices";
+import type { NativeGeofence } from "../lib/places";
 
 type Props = {
   rows: LastStatusRow[];
@@ -26,6 +27,7 @@ type Props = {
   /** Status-row id → GPS device UUID for popup history links. */
   deviceIdByRowId?: Map<number, string>;
   telematicsSource?: TelematicsSource | null;
+  geofences?: NativeGeofence[];
 };
 
 type MarkerMeta = {
@@ -152,10 +154,12 @@ export function LiveOpsMap({
   locateToken,
   deviceIdByRowId,
   telematicsSource,
+  geofences,
 }: Props) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
+  const fencesRef = useRef<L.LayerGroup | null>(null);
   const markersRef = useRef(new Map<number, MarkerMeta>());
   const lastFocusTokenRef = useRef("");
   const lastLocateRef = useRef("");
@@ -164,6 +168,7 @@ export function LiveOpsMap({
   const rowsByIdRef = useRef(new Map<number, LastStatusRow>());
   const deviceIdByRowIdRef = useRef(deviceIdByRowId);
   const telematicsSourceRef = useRef(telematicsSource);
+  const [mapReady, setMapReady] = useState(false);
 
   onSelectRef.current = onSelect;
   nowRef.current = now;
@@ -186,7 +191,9 @@ export function LiveOpsMap({
       keepBuffer: 2,
     }).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
+    fencesRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
+    setMapReady(true);
 
     const invalidate = () => map.invalidateSize({ animate: false });
     requestAnimationFrame(invalidate);
@@ -207,8 +214,46 @@ export function LiveOpsMap({
       map.remove();
       mapRef.current = null;
       layerRef.current = null;
+      fencesRef.current = null;
+      setMapReady(false);
     };
   }, []);
+
+  useEffect(() => {
+    const group = fencesRef.current;
+    if (!mapReady || !group) return;
+    group.clearLayers();
+    for (const fence of geofences || []) {
+      if (fence.enabled === false) continue;
+      const color = fence.color || "#2563eb";
+      if (
+        fence.kind === "circle" &&
+        fence.lat != null &&
+        fence.lon != null &&
+        fence.radiusM != null &&
+        fence.radiusM > 0
+      ) {
+        L.circle([fence.lat, fence.lon], {
+          radius: fence.radiusM,
+          color,
+          weight: 2,
+          fillColor: color,
+          fillOpacity: 0.12,
+        })
+          .bindTooltip(fence.name, { sticky: true })
+          .addTo(group);
+        continue;
+      }
+      if (fence.kind === "polygon" && fence.ring.length >= 3) {
+        L.polygon(
+          fence.ring.map(([lat, lon]) => [lat, lon] as [number, number]),
+          { color, weight: 2, fillColor: color, fillOpacity: 0.12 },
+        )
+          .bindTooltip(fence.name, { sticky: true })
+          .addTo(group);
+      }
+    }
+  }, [geofences, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;

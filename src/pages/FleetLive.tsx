@@ -62,6 +62,7 @@ import {
   formatDisplayPinValue,
   readDisplayPin,
 } from "../lib/fleetTelemetryParams";
+import { fetchNativeGeofences, type NativeGeofence } from "../lib/places";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
 import {
@@ -222,6 +223,7 @@ export default function FleetLive() {
   const [rows, setRows] = useState<LastStatusRow[]>([]);
   const [fixMeta, setFixMeta] = useState<Record<number, FixMeta>>({});
   const [telematicsSource, setTelematicsSource] = useState<TelematicsSource>("both");
+  const [geofences, setGeofences] = useState<NativeGeofence[]>([]);
   const [alerts, setAlerts] = useState<SafetyEvent[]>([]);
   const [ruleFires, setRuleFires] = useState<FleetRuleEvent[]>([]);
   const [ruleHolds, setRuleHolds] = useState<FleetRuleHold[]>([]);
@@ -346,6 +348,13 @@ export default function FleetLive() {
       })
       .catch((err: Error) => {
         if (err.name !== "AbortError") setDeviceGroups([]);
+      });
+    void fetchNativeGeofences(ac.signal)
+      .then((list) => {
+        if (!ac.signal.aborted) setGeofences(list);
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") setGeofences([]);
       });
     return () => ac.abort();
   }, [ready, reload]);
@@ -1094,6 +1103,7 @@ export default function FleetLive() {
               locateToken={locateToken}
               deviceIdByRowId={deviceIdByRowId}
               telematicsSource={telematicsSource}
+              geofences={geofences}
             />
             {liveInsights.length ? (
               <div className="fleet-cc-map-insights">

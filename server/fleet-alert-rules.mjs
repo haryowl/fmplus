@@ -4,6 +4,7 @@
 import { dbQuery } from "./db.mjs";
 import { decryptSecret } from "./crypto-secrets.mjs";
 import { parseRecipientList, sendWablasMessage } from "./wablas.mjs";
+import { geofenceSnapFields, listTenantGeofences } from "./tenant-geofences.mjs";
 
 const CMP = new Set([">", ">=", "<", "<=", "==", "!=", "in", "contains"]);
 
@@ -472,6 +473,8 @@ export async function evaluateRulesForDevice(tenantId, deviceRow, fixRow) {
   if (!enabled.length) return;
 
   const snap = cookedSnapshot(deviceRow, fixRow);
+  const fences = await listTenantGeofences(tenantId, { enabledOnly: true }).catch(() => []);
+  Object.assign(snap, geofenceSnapFields(snap.lat, snap.lon, fences));
   const now = new Date();
 
   for (const rule of enabled) {
@@ -536,7 +539,11 @@ export async function evaluateRulesForDevice(tenantId, deviceRow, fixRow) {
           fingerprint,
           notified.email,
           notified.whatsapp,
-          JSON.stringify({ snap, formula: rule.formula }),
+          JSON.stringify({
+            snap,
+            formula: rule.formula,
+            GEOFENCE_NAME: snap.geofence_name || "",
+          }),
         ],
       );
       await dbQuery(
