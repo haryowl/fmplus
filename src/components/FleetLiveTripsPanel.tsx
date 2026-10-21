@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatKm, formatSpeed } from "../lib/format";
 import { buildDeviceTrips, type DeviceTrip } from "../lib/deviceDayTrips";
+import { fetchLiveReverseAddress } from "../lib/geocode";
+import { addressAt, geocodeCacheKey, resolveAddressesForCoords } from "../lib/reverseGeocode";
 import { todayKeyInOffset } from "../lib/time";
 import {
   fetchTrackerDeviceDay,
@@ -39,6 +41,10 @@ function formatDur(ms: number): string {
   if (min < 60) return `${min}m ${sec % 60}s`;
   const h = Math.floor(min / 60);
   return `${h}h ${min % 60}m`;
+}
+
+function coordsLabel(lat: number, lon: number): string {
+  return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
 }
 
 function formatTime(ms: number, tz: string): string {
@@ -111,6 +117,7 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
   const [detailOpen, setDetailOpen] = useState(true);
   const [replayT, setReplayT] = useState<number | null>(null);
   const [replaying, setReplaying] = useState(false);
+  const [addresses, setAddresses] = useState<Record<string, string>>({});
   const replayTimer = useRef<number | null>(null);
   const loadedAt = useRef<number | null>(null);
 
@@ -166,6 +173,45 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
   const selected = trips.find((t) => t.id === selectedId) || null;
   const mapPath = selected?.path || [];
   const deviceLabel = devices.find((d) => d.deviceId === deviceId)?.label || "Device";
+
+  const tripPlaceKey = useMemo(
+    () =>
+      trips
+        .map(
+          (t) =>
+            `${geocodeCacheKey(t.startLat, t.startLon)}|${geocodeCacheKey(t.endLat, t.endLon)}`,
+        )
+        .join(";"),
+    [trips],
+  );
+
+  useEffect(() => {
+    if (!trips.length) return;
+    const coords: Array<{ lat: number; lon: number }> = [];
+    const selectedTrip = trips.find((t) => t.id === selectedId);
+    if (selectedTrip) {
+      coords.push({ lat: selectedTrip.startLat, lon: selectedTrip.startLon });
+      coords.push({ lat: selectedTrip.endLat, lon: selectedTrip.endLon });
+    }
+    for (const t of trips) {
+      coords.push({ lat: t.startLat, lon: t.startLon });
+      coords.push({ lat: t.endLat, lon: t.endLon });
+    }
+    const ac = new AbortController();
+    void resolveAddressesForCoords(coords, fetchLiveReverseAddress, {
+      concurrency: 1,
+      signal: ac.signal,
+    })
+      .then((map) => {
+        if (!ac.signal.aborted) setAddresses((prev) => ({ ...prev, ...map }));
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") {
+          /* keep last known addresses */
+        }
+      });
+    return () => ac.abort();
+  }, [tripPlaceKey, trips, selectedId]);
 
   const totals = useMemo(() => {
     let distanceKm = 0;
@@ -392,6 +438,28 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
                         </span>
                         {isSel ? <span className="fleet-trips-moving">Moving</span> : null}
                       </span>
+                      <span className="fleet-trips-places">
+                        <span
+                          title={
+                            addressAt(addresses, t.startLat, t.startLon) ||
+                            coordsLabel(t.startLat, t.startLon)
+                          }
+                        >
+                          <em>Start</em>{" "}
+                          {addressAt(addresses, t.startLat, t.startLon) ||
+                            coordsLabel(t.startLat, t.startLon)}
+                        </span>
+                        <span
+                          title={
+                            addressAt(addresses, t.endLat, t.endLon) ||
+                            coordsLabel(t.endLat, t.endLon)
+                          }
+                        >
+                          <em>Stop</em>{" "}
+                          {addressAt(addresses, t.endLat, t.endLon) ||
+                            coordsLabel(t.endLat, t.endLon)}
+                        </span>
+                      </span>
                       <span className="fleet-trips-meta">
                         <span title="Distance">
                           <IcoOdo /> {formatKm(t.distanceKm)} km
@@ -443,6 +511,31 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
                   <IcoClose />
                 </button>
               </header>
+
+              <div className="fleet-trips-ends">
+                <div>
+                  <span>Start</span>
+                  <strong>{formatTime(selected.startMs, timezone)}</strong>
+                  <p className="muted">{coordsLabel(selected.startLat, selected.startLon)}</p>
+                  <p className="fleet-trips-end-addr">
+                    {addressAt(addresses, selected.startLat, selected.startLon) ||
+                      (!(geocodeCacheKey(selected.startLat, selected.startLon) in addresses)
+                        ? "Looking up address…"
+                        : "—")}
+                  </p>
+                </div>
+                <div>
+                  <span>Stop</span>
+                  <strong>{formatTime(selected.endMs, timezone)}</strong>
+                  <p className="muted">{coordsLabel(selected.endLat, selected.endLon)}</p>
+                  <p className="fleet-trips-end-addr">
+                    {addressAt(addresses, selected.endLat, selected.endLon) ||
+                      (!(geocodeCacheKey(selected.endLat, selected.endLon) in addresses)
+                        ? "Looking up address…"
+                        : "—")}
+                  </p>
+                </div>
+              </div>
 
               <div className="fleet-trips-detail-metrics">
                 <div>
