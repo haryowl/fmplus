@@ -209,7 +209,7 @@ export default function RoutePlanPage() {
         .filter((r) => r.lat != null && r.lon != null)
         .map((r) => ({
           id: String(r.id),
-          label: r.name || r.username || `Vehicle ${r.id}`,
+          label: r.name || r.username || `Asset ${r.id}`,
           rowId: r.id,
         }));
     }
@@ -230,7 +230,7 @@ export default function RoutePlanPage() {
       .filter((r) => r.lat != null && r.lon != null)
       .map((r) => ({
         id: String(r.id),
-        label: r.name || r.username || `Vehicle ${r.id}`,
+        label: r.name || r.username || `Asset ${r.id}`,
         rowId: r.id,
       }));
   }, [users, statusRows, allowedUserIds, deviceGroupId]);
@@ -254,7 +254,7 @@ export default function RoutePlanPage() {
     setStart({
       lat: row.lat,
       lon: row.lon,
-      label: row.name || `Vehicle ${id}`,
+      label: row.name || `Asset ${id}`,
       id: String(id),
     });
     setResult(null);
@@ -400,7 +400,7 @@ export default function RoutePlanPage() {
             </select>
           </div>
           <div className="field">
-            <label htmlFor="rp-user">Vehicle (start)</label>
+            <label htmlFor="rp-user">Asset (start)</label>
             <select
               id="rp-user"
               value={userId}

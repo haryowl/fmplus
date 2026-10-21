@@ -27,6 +27,7 @@ import { isNativeDispatchApp } from "./lib/nativeField";
 import { bootOfflineFieldPath, installOfflineField, offlineFieldEnabled } from "./lib/offlineField";
 import { VIEW_CHANGE, viewFromPath, type AppView } from "./lib/routing";
 import { DeskSessionProvider } from "./lib/deskSession";
+import { UnitSystemProvider } from "./lib/unitSystem";
 import { bootTenantFromSearch } from "./lib/tenant";
 import { bootTheme } from "./lib/theme";
 import "./styles.css";
@@ -90,7 +91,9 @@ function Root() {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <DeskSessionProvider>
-      <Root />
+      <UnitSystemProvider>
+        <Root />
+      </UnitSystemProvider>
     </DeskSessionProvider>
   </StrictMode>,
 );

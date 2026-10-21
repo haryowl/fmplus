@@ -159,7 +159,7 @@ export function jobRequireScanReason(opts: {
     return `Scan every expected item before completing this job (${cargoPending.length} pending)`;
   }
   if (opts.requireVehicle && !opts.vehicleConfirmed) {
-    return "Scan the vehicle before completing this job";
+    return "Scan the asset before completing this job";
   }
   return null;
 }
@@ -182,9 +182,9 @@ export function vehicleScanBlocks(opts: {
   const hasDevice = isTrackerDeviceId(opts.trackerDeviceId);
   if (!hasArmada && !hasDevice) return null;
   if (opts.vehicleConfirmed) return null;
-  if (opts.action === "start") return "Scan the vehicle before starting this route";
-  if (opts.action === "stop") return "Scan the vehicle before opening this order";
-  return "Scan the vehicle before completing this job";
+  if (opts.action === "start") return "Scan the asset before starting this route";
+  if (opts.action === "stop") return "Scan the asset before opening this order";
+  return "Scan the asset before completing this job";
 }
 
 export function vehicleIdFromScan(
@@ -265,23 +265,23 @@ export function resolveVehicleJobOpen<
   const hasRef =
     (Number.isFinite(Number(ref.armadaUserId)) && Number(ref.armadaUserId) > 0) ||
     isTrackerDeviceId(ref.trackerDeviceId);
-  if (!hasRef) return { error: "No open job for this vehicle" };
+  if (!hasRef) return { error: "No open job for this asset" };
 
   const selected = selectedId ? jobs.find((j) => j.id === selectedId) : undefined;
   if (selected && jobMatchesVehicleRef(selected, ref)) {
-    return { jobId: selected.id, notice: "Vehicle confirmed" };
+    return { jobId: selected.id, notice: "Asset confirmed" };
   }
   const match = jobs.find((j) => jobMatchesVehicleRef(j, ref) && !isClosedJobStatus(j.status));
   if (match) {
     return {
       jobId: match.id,
-      notice: selected && selected.id !== match.id ? "Opened job for this vehicle" : "Vehicle confirmed",
+      notice: selected && selected.id !== match.id ? "Opened job for this asset" : "Asset confirmed",
     };
   }
   if (selected && jobHasVehicle(selected) && !jobMatchesVehicleRef(selected, ref)) {
-    return { error: "Wrong vehicle" };
+    return { error: "Wrong asset" };
   }
-  return { error: "No open job for this vehicle" };
+  return { error: "No open job for this asset" };
 }
 
 export function formatOnHand(

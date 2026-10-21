@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatKm, formatSpeed } from "../lib/format";
 import { buildDeviceTrips, type DeviceTrip } from "../lib/deviceDayTrips";
+import { useUnitSystem } from "../lib/unitSystem";
+import type { TripMode } from "../lib/tripMode";
 import { fetchLiveReverseAddress } from "../lib/geocode";
 import { addressAt, geocodeCacheKey, resolveAddressesForCoords } from "../lib/reverseGeocode";
 import { todayKeyInOffset } from "../lib/time";
@@ -24,6 +25,9 @@ import {
 export type FleetTripDeviceOption = {
   deviceId: string;
   label: string;
+  tripMode?: TripMode;
+  tripMinSpeedKmh?: number;
+  tripBreakMin?: number;
 };
 
 type Props = {
@@ -43,9 +47,6 @@ function formatDur(ms: number): string {
   return `${h}h ${min % 60}m`;
 }
 
-function coordsLabel(lat: number, lon: number): string {
-  return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-}
 
 function formatTime(ms: number, tz: string): string {
   try {
@@ -104,11 +105,15 @@ ${trkpts}
 }
 
 export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Props) {
+  const units = useUnitSystem();
   const [deviceId, setDeviceId] = useState(
     () => initialDeviceId || devices[0]?.deviceId || "",
   );
   const [date, setDate] = useState(() => todayKeyInOffset(timezone));
   const [points, setPoints] = useState<TrackerDayPoint[]>([]);
+  const [dayTripMode, setDayTripMode] = useState<TripMode | undefined>();
+  const [dayMinSpeed, setDayMinSpeed] = useState<number | undefined>();
+  const [dayBreakMin, setDayBreakMin] = useState<number | undefined>();
   const [protocol, setProtocol] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -139,6 +144,9 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
     fetchTrackerDeviceDay({ deviceId, date, tzOffset: timezone }, ac.signal)
       .then((day) => {
         setPoints(day.points);
+        setDayTripMode(day.tripMode);
+        setDayMinSpeed(day.tripMinSpeedKmh);
+        setDayBreakMin(day.tripBreakMin);
         const proto = day.points.find((p) => p.sourceProtocol)?.sourceProtocol || "";
         setProtocol(proto);
         loadedAt.current = Date.now();
@@ -155,9 +163,25 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
     return () => ac.abort();
   }, [deviceId, date, timezone]);
 
+  const selectedDevice = devices.find((d) => d.deviceId === deviceId);
   const trips = useMemo(
-    () => buildDeviceTrips(points, { tzOffset: timezone }),
-    [points, timezone],
+    () =>
+      buildDeviceTrips(points, {
+        tzOffset: timezone,
+        tripMode: selectedDevice?.tripMode || dayTripMode,
+        minSpeedKmh: selectedDevice?.tripMinSpeedKmh ?? dayMinSpeed,
+        tripBreakMin: selectedDevice?.tripBreakMin ?? dayBreakMin,
+      }),
+    [
+      points,
+      timezone,
+      selectedDevice?.tripMode,
+      selectedDevice?.tripMinSpeedKmh,
+      selectedDevice?.tripBreakMin,
+      dayTripMode,
+      dayMinSpeed,
+      dayBreakMin,
+    ],
   );
 
   useEffect(() => {
@@ -338,9 +362,9 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
             <IcoOdo />
           </span>
           <div>
-            <strong>{formatKm(totals.distanceKm)}</strong>
+            <strong>{units.distance(totals.distanceKm, false)}</strong>
             <em>Distance</em>
-            <span className="muted">total driven · km</span>
+            <span className="muted">total driven · {units.distanceUnit}</span>
           </div>
         </button>
         <button
@@ -442,33 +466,33 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
                         <span
                           title={
                             addressAt(addresses, t.startLat, t.startLon) ||
-                            coordsLabel(t.startLat, t.startLon)
+                            units.coord(t.startLat, t.startLon)
                           }
                         >
                           <em>Start</em>{" "}
                           {addressAt(addresses, t.startLat, t.startLon) ||
-                            coordsLabel(t.startLat, t.startLon)}
+                            units.coord(t.startLat, t.startLon)}
                         </span>
                         <span
                           title={
                             addressAt(addresses, t.endLat, t.endLon) ||
-                            coordsLabel(t.endLat, t.endLon)
+                            units.coord(t.endLat, t.endLon)
                           }
                         >
                           <em>Stop</em>{" "}
                           {addressAt(addresses, t.endLat, t.endLon) ||
-                            coordsLabel(t.endLat, t.endLon)}
+                            units.coord(t.endLat, t.endLon)}
                         </span>
                       </span>
                       <span className="fleet-trips-meta">
                         <span title="Distance">
-                          <IcoOdo /> {formatKm(t.distanceKm)} km
+                          <IcoOdo /> {units.distance(t.distanceKm)}
                         </span>
                         <span title="Duration">
                           <IcoHistory /> {formatDur(t.durationMs)}
                         </span>
                         <span title="Avg / max speed">
-                          <IcoSpeed /> {formatSpeed(t.avgSpeedKmh)} / {formatSpeed(t.maxSpeedKmh)}
+                          <IcoSpeed /> {units.speed(t.avgSpeedKmh, false)} / {units.speed(t.maxSpeedKmh, false)} {units.speedUnit}
                         </span>
                       </span>
                       <SpeedSpark speeds={t.speeds} maxSpeed={t.maxSpeedKmh} active={isSel} />
@@ -489,7 +513,7 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
                 <span className="fleet-trips-detail-badge">#{selected.index}</span>
                 <div>
                   <strong>
-                    Trip #{selected.index} · {formatKm(selected.distanceKm)} km in{" "}
+                    Trip #{selected.index} · {units.distance(selected.distanceKm)} in{" "}
                     {formatDur(selected.durationMs)}
                   </strong>
                   <p className="muted">
@@ -516,7 +540,7 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
                 <div>
                   <span>Start</span>
                   <strong>{formatTime(selected.startMs, timezone)}</strong>
-                  <p className="muted">{coordsLabel(selected.startLat, selected.startLon)}</p>
+                  <p className="muted">{units.coord(selected.startLat, selected.startLon)}</p>
                   <p className="fleet-trips-end-addr">
                     {addressAt(addresses, selected.startLat, selected.startLon) ||
                       (!(geocodeCacheKey(selected.startLat, selected.startLon) in addresses)
@@ -527,7 +551,7 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
                 <div>
                   <span>Stop</span>
                   <strong>{formatTime(selected.endMs, timezone)}</strong>
-                  <p className="muted">{coordsLabel(selected.endLat, selected.endLon)}</p>
+                  <p className="muted">{units.coord(selected.endLat, selected.endLon)}</p>
                   <p className="fleet-trips-end-addr">
                     {addressAt(addresses, selected.endLat, selected.endLon) ||
                       (!(geocodeCacheKey(selected.endLat, selected.endLon) in addresses)
@@ -540,11 +564,11 @@ export function FleetLiveTripsPanel({ devices, timezone, initialDeviceId }: Prop
               <div className="fleet-trips-detail-metrics">
                 <div>
                   <span>Avg speed</span>
-                  <strong>{formatSpeed(selected.avgSpeedKmh)} km/h</strong>
+                  <strong>{units.speed(selected.avgSpeedKmh)}</strong>
                 </div>
                 <div>
                   <span>Max speed</span>
-                  <strong>{formatSpeed(selected.maxSpeedKmh)} km/h</strong>
+                  <strong>{units.speed(selected.maxSpeedKmh)}</strong>
                 </div>
                 <div>
                   <span>Points</span>

@@ -181,7 +181,7 @@ export function DispatchLiveMap({ drivers, focusJobId, fitKey, onSelectJob }: Pr
             icon: eventDotIcon(LIVE_MAP_COLORS.armada, "S"),
             opacity: focused ? 1 : 0.4,
           })
-            .bindPopup(`Vehicle start · ${escapeHtml(s.name || "")}`)
+            .bindPopup(`Asset start · ${escapeHtml(s.name || "")}`)
             .addTo(layer);
           if (focused) bounds.push(startArmada);
         }
@@ -202,7 +202,7 @@ export function DispatchLiveMap({ drivers, focusJobId, fitKey, onSelectJob }: Pr
             icon: eventDotIcon(LIVE_MAP_COLORS.armada, "C"),
             opacity: focused ? 1 : 0.4,
           })
-            .bindPopup(`Vehicle complete · ${escapeHtml(s.name || "")}`)
+            .bindPopup(`Asset complete · ${escapeHtml(s.name || "")}`)
             .addTo(layer);
           if (focused) bounds.push(doneArmada);
         }
@@ -236,15 +236,15 @@ export function DispatchLiveMap({ drivers, focusJobId, fitKey, onSelectJob }: Pr
             d.livePosition?.source === "device"
               ? "Device live"
               : d.armadaUserId != null
-                ? "Vehicle GPS live"
-                : "Vehicle live";
+                ? "Asset GPS live"
+                : "Asset live";
           L.marker(vehicleLive, {
             icon: liveDotIcon(LIVE_MAP_COLORS.armada, focused),
             opacity: focused ? 1 : 0.45,
             zIndexOffset: 420,
           })
             .bindPopup(
-              `<strong>${escapeHtml(d.vehicleLabel || "Vehicle")}</strong><br/>${liveSrc}`,
+              `<strong>${escapeHtml(d.vehicleLabel || "Asset")}</strong><br/>${liveSrc}`,
             )
             .on("click", () => onSelectRef.current?.(d.jobId))
             .addTo(layer);
@@ -278,7 +278,7 @@ export function DispatchLiveMap({ drivers, focusJobId, fitKey, onSelectJob }: Pr
           <i style={{ background: LIVE_MAP_COLORS.phone }} /> Phone actual
         </li>
         <li>
-          <i style={{ background: LIVE_MAP_COLORS.armada }} /> Vehicle GPS
+          <i style={{ background: LIVE_MAP_COLORS.armada }} /> Asset GPS
         </li>
         <li>
           <span className="dispatch-live-map-legend-s">S</span> Start ·{" "}

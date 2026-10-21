@@ -38,7 +38,7 @@ export function exportMetricsPdf(options: {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
   doc.setTextColor(23, 22, 20);
-  doc.text("Vehicle Metrics", 14, 16);
+  doc.text("Asset Metrics", 14, 16);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
@@ -189,7 +189,7 @@ export function exportMetricsPdf(options: {
   }
 
   if (insights && insights.length > 0) {
-    let y = sectionTitle(doc, "Vehicle analysis", tableBottom(doc) + 10);
+    let y = sectionTitle(doc, "Asset analysis", tableBottom(doc) + 10);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(23, 22, 20);

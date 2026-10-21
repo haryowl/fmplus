@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { assetCopy } from "../lib/assetCopy";
+import { TRIP_MODE_OPTIONS } from "../lib/tripMode";
 import { vehicleTrackHref } from "../lib/routing";
 
 export type FleetDeviceRow = {
@@ -18,6 +20,9 @@ export type FleetDeviceRow = {
   cameraChannels?: number;
   tags?: string[];
   customAttrs?: Record<string, unknown>;
+  tripMode?: "default" | "speed" | "ignition";
+  tripMinSpeedKmh?: number;
+  tripBreakMin?: number;
   armadaUserId: number | null;
   enabled: boolean;
   profileId?: string | null;
@@ -124,6 +129,9 @@ export function AdminFleetDevicePanel({
       armadaUserId: selected.armadaUserId ?? "",
       enabled: selected.enabled !== false,
       uniqueId: selected.uniqueId || "",
+      tripMode: selected.tripMode || "default",
+      tripMinSpeedKmh: selected.tripMinSpeedKmh ?? 3,
+      tripBreakMin: selected.tripBreakMin ?? 5,
       customAttrs: { ...(selected.customAttrs || {}) },
     });
   }, [selectedId, selected]);
@@ -154,6 +162,9 @@ export function AdminFleetDevicePanel({
       cameraChannels: 0,
       tags: "",
       customAttrs: {},
+      tripMode: "default",
+      tripMinSpeedKmh: 3,
+      tripBreakMin: 5,
     });
   }
 
@@ -181,6 +192,9 @@ export function AdminFleetDevicePanel({
       enabled: draft.enabled !== false,
       uniqueId: draft.uniqueId,
       customAttrs,
+      tripMode: draft.tripMode || "default",
+      tripMinSpeedKmh: Number(draft.tripMinSpeedKmh) || 3,
+      tripBreakMin: Number(draft.tripBreakMin) || 5,
     };
     if (creating) {
       body.imei = draft.imei;
@@ -404,7 +418,7 @@ export function AdminFleetDevicePanel({
                   />
                 </label>
                 <label>
-                  Vehicle type
+                  {assetCopy.assetType}
                   <select
                     value={String(draft.vehicleType || "")}
                     onChange={(e) => setDraft((d) => ({ ...d, vehicleType: e.target.value }))}
@@ -465,7 +479,45 @@ export function AdminFleetDevicePanel({
                   />
                   Enabled
                 </label>
+                <label>
+                  Trip mode
+                  <select
+                    value={String(draft.tripMode || "default")}
+                    onChange={(e) => setDraft((d) => ({ ...d, tripMode: e.target.value }))}
+                  >
+                    {TRIP_MODE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value} title={opt.hint}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Min speed (km/h)
+                  <input
+                    type="number"
+                    min={0}
+                    max={200}
+                    step={0.5}
+                    value={draft.tripMinSpeedKmh === undefined ? 3 : String(draft.tripMinSpeedKmh)}
+                    onChange={(e) => setDraft((d) => ({ ...d, tripMinSpeedKmh: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  Break (minutes)
+                  <input
+                    type="number"
+                    min={1}
+                    max={180}
+                    value={draft.tripBreakMin === undefined ? 5 : String(draft.tripBreakMin)}
+                    onChange={(e) => setDraft((d) => ({ ...d, tripBreakMin: e.target.value }))}
+                  />
+                </label>
               </div>
+              <p className="muted">
+                Default trips start above min speed and end on ignition off, a GPS gap, or parked
+                for the break. Speed-only ignores ignition. Ignition-only starts/stops with ACC.
+              </p>
 
               {enabledFields.length ? (
                 <div className="fleet-dev-custom">

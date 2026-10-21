@@ -461,7 +461,7 @@ export default function LiveOps() {
             />
           </div>
           <aside className="live-ops-list">
-            <h2>Vehicles</h2>
+            <h2>Assets</h2>
             {filtered.length === 0 ? (
               <p className="muted">{loading ? "Loading…" : "No vehicles match filters."}</p>
             ) : (

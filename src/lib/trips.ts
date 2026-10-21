@@ -1,3 +1,5 @@
+import type { TripMode } from "./tripMode";
+
 export type MotionPoint = {
   ms: number;
   dateKey: string;
@@ -9,22 +11,26 @@ export type MotionPoint = {
 /**
  * Split/merge a chronological GPS/CAN stream into driving trips.
  *
- * Start: vehicle is moving (speed above the minimum).
- * End: ignition turns off, GPS gap longer than `breakMs`, or parked
- * (speed at or below the minimum) for `breakMs`.
- * Armada recordings are merged when none of those apply.
- * Sessions with no moving points are not counted.
+ * default (hybrid): start when speed > min; end on ignition off, GPS gap, or parked for breakMs.
+ * speed: ignore ignition; start when moving; end on gap or parked for breakMs.
+ * ignition: start on ignition on; end on ignition off or GPS gap.
+ * Sessions with no moving points are discarded when minSpeedKmh > 0.
  */
 export function assignLogicalTrips(
   points: MotionPoint[],
-  options: { minSpeedKmh: number; breakMs: number },
+  options: { minSpeedKmh: number; breakMs: number; mode?: TripMode },
 ): Map<number, string> {
   const { minSpeedKmh, breakMs } = options;
+  const mode: TripMode = options.mode || "default";
   const sorted = [...points].sort((a, b) => a.ms - b.ms || a.dateKey.localeCompare(b.dateKey));
   for (const point of sorted) point.logicalTripId = null;
 
   const moving = (point: MotionPoint) => point.speedKmh > minSpeedKmh;
-  const canStart = (point: MotionPoint) => moving(point);
+  const canStart = (point: MotionPoint) => {
+    if (mode === "ignition") return point.ignition;
+    return moving(point);
+  };
+  const endOnIgnitionOff = mode !== "speed";
 
   const starts = new Map<number, string>();
   let nextId = 1;
@@ -61,7 +67,7 @@ export function assignLogicalTrips(
       continue;
     }
 
-    if (last.ignition && !point.ignition) {
+    if (endOnIgnitionOff && last.ignition && !point.ignition) {
       point.logicalTripId = openId;
       close();
       continue;
@@ -83,7 +89,8 @@ export function assignLogicalTrips(
 
   const withMotion = new Set<number>();
   for (const point of sorted) {
-    if (point.logicalTripId !== null && moving(point)) withMotion.add(point.logicalTripId);
+    if (point.logicalTripId === null) continue;
+    if (minSpeedKmh <= 0 || moving(point)) withMotion.add(point.logicalTripId);
   }
   for (const point of sorted) {
     if (point.logicalTripId !== null && !withMotion.has(point.logicalTripId)) {

@@ -22,6 +22,7 @@ import { BrandMark } from "./components/BrandMark";
 import { ViewNav } from "./components/ViewNav";
 import { ExportPdfButton } from "./components/ExportPdfButton";
 import { ExportExcelButton } from "./components/ExportExcelButton";
+import { UnitSystemSelect } from "./components/UnitSystemSelect";
 import {
   behaviorEventsSheet,
   periodDetailSheet,
@@ -163,7 +164,7 @@ export default function App() {
         <div className="brand">
           <BrandMark />
           <div>
-            <h1>Vehicle Metrics</h1>
+            <h1>Asset Metrics</h1>
             <p>Distance, utilization &amp; fuel · Armada embed</p>
           </div>
         </div>
@@ -171,14 +172,14 @@ export default function App() {
           <ViewNav current="full" />
           <ExportPdfButton disabled={rows.length === 0} />
           <div className="vehicle-chip">
-            {selectedUser ? userLabel(selectedUser) : "No vehicle selected"}
+            {selectedUser ? userLabel(selectedUser) : "No asset selected"}
             {selectedGroup ? ` · ${selectedGroup.name}` : ""}
           </div>
         </div>
       </header>
 
       <p className="print-meta">
-        {selectedUser ? userLabel(selectedUser) : "No vehicle"}
+        {selectedUser ? userLabel(selectedUser) : "No asset"}
         {selectedGroup ? ` · ${selectedGroup.name}` : ""}
         {dateFrom && dateTo ? ` · ${dateFrom} → ${dateTo}` : ""}
         {timezone ? ` · ${timezone}` : ""}
@@ -209,7 +210,7 @@ export default function App() {
             </select>
           </div>
           <div className="field">
-            <label htmlFor="user">Vehicle</label>
+            <label htmlFor="user">Asset</label>
             <select
               id="user"
               value={userId}
@@ -219,7 +220,7 @@ export default function App() {
               }}
               disabled={!selectedGroup}
             >
-              <option value="">{selectedGroup ? "Select a vehicle" : "Choose a group first"}</option>
+              <option value="">{selectedGroup ? "Select an asset" : "Choose a group first"}</option>
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
                   {userOptionLabel(user)}
@@ -259,6 +260,7 @@ export default function App() {
               ))}
             </select>
           </div>
+          <UnitSystemSelect id="app-units" />
           <button className="btn btn-primary" type="button" onClick={() => void handleLoad()} disabled={!userId || loading}>
             {loading ? "Loading…" : "Load metrics"}
           </button>
@@ -420,7 +422,7 @@ export default function App() {
                     <circle cx="13" cy="19" r="2" fill="currentColor" />
                   </svg>
                 </div>
-                <h3>{trips ? "No points in this range" : "Load a vehicle to see activity"}</h3>
+                <h3>{trips ? "No points in this range" : "Load an asset to see activity"}</h3>
                 <p>
                   Choose a group and vehicle, set the date range in the vehicle’s timezone, then load
                   metrics. Period grouping updates instantly after data is in.

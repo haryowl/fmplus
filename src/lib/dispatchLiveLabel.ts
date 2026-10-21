@@ -19,7 +19,7 @@ export function liveSeparationPhrase(
   km: number | null | undefined,
 ): string {
   if (km == null || !Number.isFinite(km) || km < 0.2) return "";
-  const other = source === "phone" ? "vehicle" : "driver phone";
+  const other = source === "phone" ? "asset" : "driver phone";
   return `${km.toFixed(1)} km from ${other}`;
 }
 
@@ -43,7 +43,7 @@ export function livePositionLabel(driver: Pick<DispatchLiveDriver, "livePosition
   } else if (pos.source === "device") {
     parts.push(age ? `Tracker · ${age} ago` : "Tracker");
   } else {
-    parts.push(age ? `Vehicle GPS · ${age} ago` : "Vehicle GPS");
+    parts.push(age ? `Asset GPS · ${age} ago` : "Asset GPS");
   }
   const gap = liveSeparationPhrase(pos.source, pos.phoneSeparationKm);
   if (gap) parts.push(gap);

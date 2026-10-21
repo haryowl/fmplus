@@ -216,7 +216,7 @@ export function sortStatusRows(
 
 export function statusExcelHeaders(): string[] {
   return [
-    "Vehicle",
+    "Asset",
     "Id",
     "Driver",
     "Last seen",

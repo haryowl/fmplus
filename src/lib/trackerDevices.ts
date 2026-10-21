@@ -19,6 +19,10 @@ export type TrackerLastFix = {
   sourceProtocol: string;
   displayParams?: Record<string, string | number | boolean>;
   odometerKm?: number | null;
+  odometerSource?: "device" | "gps" | null;
+  tripMode?: "default" | "speed" | "ignition";
+  tripMinSpeedKmh?: number;
+  tripBreakMin?: number;
   fuelLevel?: number | null;
   fuelLiters?: number | null;
   groups?: TrackerDeviceGroupRef[];
@@ -258,6 +262,9 @@ export type TrackerDeviceDay = {
   tzOffset?: string;
   label?: string;
   imei?: string;
+  tripMode?: "default" | "speed" | "ignition";
+  tripMinSpeedKmh?: number;
+  tripBreakMin?: number;
   points: TrackerDayPoint[];
   telematicsSource?: TelematicsSource;
 };
@@ -284,6 +291,9 @@ export async function fetchTrackerDeviceDay(
     tzOffset: data.tzOffset,
     label: data.label,
     imei: data.imei,
+    tripMode: data.tripMode,
+    tripMinSpeedKmh: data.tripMinSpeedKmh,
+    tripBreakMin: data.tripBreakMin,
     points: Array.isArray(data.points) ? data.points : [],
     telematicsSource: data.telematicsSource,
   };

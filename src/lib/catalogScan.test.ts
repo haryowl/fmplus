@@ -194,13 +194,13 @@ describe("vehicle and location scan helpers", () => {
       { id: "b", armadaUserId: 22, status: "assigned" },
       { id: "c", armadaUserId: 11, status: "done" },
     ];
-    expect(resolveVehicleJobOpen(jobs, 11, "a")).toEqual({ jobId: "a", notice: "Vehicle confirmed" });
+    expect(resolveVehicleJobOpen(jobs, 11, "a")).toEqual({ jobId: "a", notice: "Asset confirmed" });
     expect(resolveVehicleJobOpen(jobs, 22, "a")).toEqual({
       jobId: "b",
-      notice: "Opened job for this vehicle",
+      notice: "Opened job for this asset",
     });
-    expect(resolveVehicleJobOpen(jobs, 99, "a")).toEqual({ error: "Wrong vehicle" });
-    expect(resolveVehicleJobOpen(jobs, 99, null)).toEqual({ error: "No open job for this vehicle" });
+    expect(resolveVehicleJobOpen(jobs, 99, "a")).toEqual({ error: "Wrong asset" });
+    expect(resolveVehicleJobOpen(jobs, 99, null)).toEqual({ error: "No open job for this asset" });
   });
 
   it("matches GPS-only jobs by trackerDeviceId", () => {
@@ -211,16 +211,16 @@ describe("vehicle and location scan helpers", () => {
     ];
     expect(
       resolveVehicleJobOpen(jobs, { trackerDeviceId: deviceId }, null),
-    ).toEqual({ jobId: "d1", notice: "Vehicle confirmed" });
+    ).toEqual({ jobId: "d1", notice: "Asset confirmed" });
     expect(
       resolveVehicleJobOpen(jobs, { trackerDeviceId: deviceId }, "d2"),
     ).toEqual({
       jobId: "d1",
-      notice: "Opened job for this vehicle",
+      notice: "Opened job for this asset",
     });
     expect(
       resolveVehicleJobOpen(jobs, { trackerDeviceId: "22222222-2222-4222-8222-222222222222" }, "d1"),
-    ).toEqual({ error: "Wrong vehicle" });
+    ).toEqual({ error: "Wrong asset" });
   });
 
   it("blocks Start / orders / Complete until the vehicle tag is confirmed", () => {
@@ -293,7 +293,7 @@ describe("vehicle and location scan helpers", () => {
       }),
     ).toBeNull();
     expect(jobRequireScanReason({ requireVehicle: true, vehicleConfirmed: false })).toBe(
-      "Scan the vehicle before completing this job",
+      "Scan the asset before completing this job",
     );
     expect(jobRequireScanReason({ requireVehicle: true, vehicleConfirmed: true })).toBeNull();
     expect(

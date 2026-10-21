@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { STREET_TILE, streetTileOptions } from "../lib/mapTiles";
-import { formatSpeed } from "../lib/format";
+import { formatCoord, formatSpeedValue, type UnitSystem } from "../lib/units";
+import { useUnitSystem } from "../lib/unitSystem";
 import { ageLabel } from "../lib/lastStatus";
 import type { LastStatusRow } from "../lib/lastStatus";
 import {
@@ -92,6 +93,7 @@ function popupHtml(
   deviceId?: string | null,
   telematicsSource?: TelematicsSource | null,
   address?: string,
+  unitSystem: UnitSystem = "metric",
 ): string {
   const trips = vehicleTrackHref({
     rowId: row.id,
@@ -107,14 +109,16 @@ function popupHtml(
   });
   const ign = row.ignition === true ? "On" : row.ignition === false ? "Off" : "—";
   const coords =
-    row.lat != null && row.lon != null ? `${row.lat.toFixed(5)}, ${row.lon.toFixed(5)}` : "";
+    row.lat != null && row.lon != null ? formatCoord(row.lat, row.lon, unitSystem) : "";
   const addr = (address || "").trim();
+  const speed =
+    row.speedKmh == null || !Number.isFinite(row.speedKmh)
+      ? "—"
+      : formatSpeedValue(row.speedKmh, unitSystem);
   return `<div class="live-ops-popup">
     <strong>${escapeHtml(row.name)}</strong>
     <div class="muted">${escapeHtml(LIVE_OPS_LABELS[opsClass])} · ${escapeHtml(ageLabel(row.lastMs, now))}</div>
-    <div>Speed ${
-      row.speedKmh === null ? "—" : `${escapeHtml(formatSpeed(row.speedKmh))} km/h`
-    } · Ign ${ign}</div>
+    <div>Speed ${escapeHtml(speed)} · Ign ${ign}</div>
     ${coords ? `<div class="muted live-ops-popup-coords">${escapeHtml(coords)}</div>` : ""}
     ${addr ? `<div class="live-ops-popup-addr" title="${escapeHtml(addr)}">${escapeHtml(addr)}</div>` : ""}
     <div class="live-ops-popup-links">
@@ -175,6 +179,9 @@ export function LiveOpsMap({
   servicePoints,
   addresses,
 }: Props) {
+  const units = useUnitSystem();
+  const unitSystemRef = useRef(units.system);
+  unitSystemRef.current = units.system;
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
@@ -333,6 +340,7 @@ export function LiveOpsMap({
             deviceIdByRowIdRef.current?.get(latest.id),
             telematicsSourceRef.current,
             addr,
+            unitSystemRef.current,
           );
         });
         marker.addTo(layer);

@@ -1213,14 +1213,14 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
                 <>
                   <CatalogScanButton
                     disabled={busy}
-                    label="Scan vehicle"
+                    label="Scan asset"
                     allowCamera={scan?.camera !== false}
                     allowTyped={scan?.typed !== false}
                     allowNfc={scan?.nfc === true}
                     onCode={onVehicleCode}
                   />
                   {vehicleConfirmedJobId === selected.id ? (
-                    <span className="field-pill">Vehicle confirmed</span>
+                    <span className="field-pill">Asset confirmed</span>
                   ) : selected.armadaUserId || selected.trackerDeviceId ? (
                     <span className="muted">Scan this vehicle before Start / orders</span>
                   ) : null}
@@ -1629,7 +1629,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
         <div className="field-action-row" style={{ marginBottom: 8 }}>
           <CatalogScanButton
             disabled={busy || loading}
-            label="Scan vehicle"
+            label="Scan asset"
             allowCamera={scan?.camera !== false}
             allowTyped={scan?.typed !== false}
             allowNfc={scan?.nfc === true}

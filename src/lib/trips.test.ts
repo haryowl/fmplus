@@ -61,4 +61,25 @@ describe("assignLogicalTrips", () => {
     expect(starts.size).toBe(0);
     expect(points.every((p) => p.logicalTripId === null)).toBe(true);
   });
+
+  it("speed mode ignores ignition off", () => {
+    const points = [
+      pt(0, 40, true),
+      pt(30_000, 36, false),
+      pt(60_000, 38, false),
+    ];
+    assignLogicalTrips(points, { minSpeedKmh: 3, breakMs: BREAK, mode: "speed" });
+    expect(new Set(points.map((p) => p.logicalTripId))).toEqual(new Set([1]));
+  });
+
+  it("ignition mode starts on ignition and ends when it turns off", () => {
+    const points = [
+      pt(0, 0, true),
+      pt(30_000, 40, true),
+      pt(60_000, 0, false),
+      pt(90_000, 36, true),
+    ];
+    assignLogicalTrips(points, { minSpeedKmh: 3, breakMs: BREAK, mode: "ignition" });
+    expect(points.map((p) => p.logicalTripId)).toEqual([1, 1, 1, 2]);
+  });
 });

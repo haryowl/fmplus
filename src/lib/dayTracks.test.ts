@@ -58,9 +58,9 @@ describe("groupRowsIntoTrips", () => {
 });
 
 describe("describeLoadProgress", () => {
-  it("names vehicle-days instead of trip downloads", () => {
+  it("names asset-days instead of trip downloads", () => {
     expect(describeLoadProgress({ phase: "days", loaded: 12, total: 33 })).toBe(
-      "Downloading 12 of 33 vehicle-days",
+      "Downloading 12 of 33 asset-days",
     );
   });
 });

@@ -221,7 +221,7 @@ export function fleetRankSheet(
 ): ExcelCell[][] {
   const showDriver = Boolean(drivers && Object.values(drivers).some(Boolean));
   return [
-    ["Vehicle", ...(showDriver ? ["Driver"] : []), ...RANK_COLUMNS.map((c) => c.label)],
+    ["Asset", ...(showDriver ? ["Driver"] : []), ...RANK_COLUMNS.map((c) => c.label)],
     ...vehicles.map((row) => [
       row.label,
       ...(showDriver ? [drivers?.[row.userId] || ""] : []),
@@ -253,7 +253,7 @@ export function behaviorEventsSheet(
 
 export function fleetDistanceByVehicleSheet(vehicles: FleetVehicleRow[]): ExcelCell[][] {
   return [
-    ["Vehicle", "GPS km"],
+    ["Asset", "GPS km"],
     ...vehicles.map((v) => [v.label, n(v.totals.gps)]),
   ];
 }
@@ -274,7 +274,7 @@ export function fleetDistanceOverTimeSheet(vehicles: FleetVehicleRow[]): ExcelCe
 
 export function fleetUtilizationSheet(vehicles: FleetVehicleRow[]): ExcelCell[][] {
   return [
-    ["Vehicle", "Active h", "Idle h", "Moving share %"],
+    ["Asset", "Active h", "Idle h", "Moving share %"],
     ...vehicles.map((v) => [
       v.label,
       n(v.totals.hours, 3),
@@ -286,14 +286,14 @@ export function fleetUtilizationSheet(vehicles: FleetVehicleRow[]): ExcelCell[][
 
 export function fleetEfficiencySheet(vehicles: FleetVehicleRow[]): ExcelCell[][] {
   return [
-    ["Vehicle", "km/l"],
+    ["Asset", "km/l"],
     ...vehicles.map((v) => [v.label, n(v.totals.fuel > 0 ? v.totals.gps / v.totals.fuel : 0, 2)]),
   ];
 }
 
 export function fleetFuelSheet(vehicles: FleetVehicleRow[]): ExcelCell[][] {
   return [
-    ["Vehicle", "CAN L", "Tank L", "Fuel L", "Cost"],
+    ["Asset", "CAN L", "Tank L", "Fuel L", "Cost"],
     ...vehicles.map((v) => [
       v.label,
       n(v.totals.canFuel),
@@ -306,7 +306,7 @@ export function fleetFuelSheet(vehicles: FleetVehicleRow[]): ExcelCell[][] {
 
 export function fleetSafetySheet(vehicles: FleetVehicleRow[]): ExcelCell[][] {
   return [
-    ["Vehicle", "Braking", "Acceleration", "Cornering", "Overspeed", "Safety score", "Events/100 km"],
+    ["Asset", "Braking", "Acceleration", "Cornering", "Overspeed", "Safety score", "Events/100 km"],
     ...vehicles.map((v) => [
       v.label,
       v.behavior?.harshBraking ?? 0,
@@ -344,7 +344,7 @@ export function fleetKpiSheet(options: {
 }): ExcelCell[][] {
   const kmPerL = options.fuelL > 0 ? options.gpsKm / options.fuelL : 0;
   return pairsToSheet([
-    ["Vehicles", options.vehicleCount],
+    ["Assets", options.vehicleCount],
     ["Fleet GPS km", n(options.gpsKm)],
     ["Active hours", n(options.activeHours, 3)],
     ["Moving share %", n(movingSharePct(options.activeHours, options.idleHours), 1)],
@@ -420,7 +420,7 @@ export function tripSegmentsSheet(options: {
   } = options;
   const selectedCf = customFields.filter((cf) => customFieldNames.includes(cf.name));
   const headers: string[] = [
-    "Vehicle Name",
+    "Asset Name",
     "Group",
     ...selectedCf.map((cf) => cf.name),
     "Trip Status",

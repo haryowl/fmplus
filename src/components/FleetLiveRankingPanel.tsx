@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { formatKm, formatSpeed } from "../lib/format";
+import { useUnitSystem } from "../lib/unitSystem";
 import {
   extraDisplayPinColumns,
   formatDisplayPinValue,
@@ -60,6 +60,7 @@ export function FleetLiveRankingPanel({
   displayPinLabels,
   onOpenLive,
 }: Props) {
+  const units = useUnitSystem();
   const [sortKey, setSortKey] = useState<SortKey>("odometer");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const pinColumns = useMemo(
@@ -166,7 +167,7 @@ export function FleetLiveRankingPanel({
           </header>
           <span className="fleet-dash-kpi-label">Distance</span>
           <strong>
-            {leaders.topOdo?.odo != null ? formatKm(leaders.topOdo.odo) : "—"}
+            {leaders.topOdo?.odo != null ? units.distance(leaders.topOdo.odo, false) : "—"}
           </strong>
           <p className="muted">{leaders.topOdo?.row.name || "—"}</p>
         </article>
@@ -179,10 +180,8 @@ export function FleetLiveRankingPanel({
           </header>
           <span className="fleet-dash-kpi-label">Speed</span>
           <strong>
-            {leaders.topSpeed?.row.speedKmh != null
-              ? formatSpeed(leaders.topSpeed.row.speedKmh)
-              : "—"}
-            <em className="fleet-rank-unit"> km/h</em>
+            {units.speed(leaders.topSpeed?.row.speedKmh, false)}
+            <em className="fleet-rank-unit"> {units.speedUnit}</em>
           </strong>
           <p className="muted">{leaders.topSpeed?.row.name || "—"}</p>
         </article>
@@ -193,7 +192,7 @@ export function FleetLiveRankingPanel({
             </span>
             <em className="fleet-dash-pill is-live">24h</em>
           </header>
-          <span className="fleet-dash-kpi-label">Alerts</span>
+          <span className="fleet-dash-kpi-label">Events</span>
           <strong>{leaders.topAlerts?.alerts ?? 0}</strong>
           <p className="muted">{leaders.topAlerts?.row.name || "—"}</p>
         </article>
@@ -231,9 +230,9 @@ export function FleetLiveRankingPanel({
                 {LIVE_OPS_LABELS[item.cls]}
               </span>
               <span className="muted">
-                {item.odo != null ? `${formatKm(item.odo)} km` : "—"}
+                {item.odo != null ? units.distance(item.odo) : "—"}
                 {" · "}
-                {item.row.speedKmh == null ? "—" : `${formatSpeed(item.row.speedKmh)} km/h`}
+                {units.speed(item.row.speedKmh)}
               </span>
             </button>
           ))}
@@ -299,7 +298,7 @@ export function FleetLiveRankingPanel({
                 <button
                   type="button"
                   className="fleet-rank-sort"
-                  title="Alerts 24h"
+                  title="Events 24h"
                   onClick={() => toggleSort("alerts")}
                 >
                   <IcoAlerts /> {sortIcon("alerts")}
@@ -366,10 +365,8 @@ export function FleetLiveRankingPanel({
                         {LIVE_OPS_LABELS[item.cls]}
                       </span>
                     </td>
-                    <td>
-                      {item.row.speedKmh == null ? "—" : `${formatSpeed(item.row.speedKmh)}`}
-                    </td>
-                    <td>{item.odo != null ? formatKm(item.odo) : "—"}</td>
+                    <td>{units.speed(item.row.speedKmh, false)}</td>
+                    <td>{units.distance(item.odo, false)}</td>
                     <td>{item.fuel != null ? `${Math.round(item.fuel)}%` : "—"}</td>
                     {pinColumns.map((col) => (
                       <td key={col.id} className="fleet-dash-pin" title={col.id}>

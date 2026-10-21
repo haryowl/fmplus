@@ -181,7 +181,7 @@ export function downloadExceptionsExcel(items: ExceptionItem[], now = Date.now()
     "Rule",
     "Geofence",
     "When",
-    "Vehicle",
+    "Asset",
     "Username",
     "User ID",
     "Lat",

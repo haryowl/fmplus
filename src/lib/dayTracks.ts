@@ -141,14 +141,14 @@ export function describeLoadProgress(
   }
   if (progress.phase === "days") {
     if (fleetVehicleCount && fleetVehicleCount > 1) {
-      return `Downloading ${progress.loaded} of ${progress.total} vehicle-days across ${fleetVehicleCount} vehicles${skipped}`;
+      return `Downloading ${progress.loaded} of ${progress.total} asset-days across ${fleetVehicleCount} assets${skipped}`;
     }
-    return `Downloading ${progress.loaded} of ${progress.total} vehicle-days${skipped}`;
+    return `Downloading ${progress.loaded} of ${progress.total} asset-days${skipped}`;
   }
   if (progress.phase === "charts") {
     return "Preparing charts…";
   }
-  const fleet = fleetVehicleCount && fleetVehicleCount > 1 ? ` across ${fleetVehicleCount} vehicles` : "";
+  const fleet = fleetVehicleCount && fleetVehicleCount > 1 ? ` across ${fleetVehicleCount} assets` : "";
   return `Loading tracks ${progress.loaded} of ${progress.total}${fleet}${skipped}`;
 }
 

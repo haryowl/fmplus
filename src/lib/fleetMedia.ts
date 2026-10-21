@@ -19,6 +19,8 @@ export type FleetMediaEvent = {
   mediaChannel?: number | null;
   mediaId?: number | string | null;
   mappedAttrs?: Record<string, unknown>;
+  eventClass?: "safety" | "warning" | "asset" | "none";
+  raiseAlert?: boolean;
 };
 
 export type FleetMediaResponse = {

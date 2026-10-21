@@ -79,7 +79,7 @@ export function FleetRankTable({ vehicles, dense, drivers }: Props) {
       <table className="metrics rank-table">
         <thead>
           <tr>
-            <th>Vehicle</th>
+            <th>Asset</th>
             {showDriver ? <th>Driver</th> : null}
             {RANK_COLUMNS.map((col) => (
               <th key={col.id} className="num">

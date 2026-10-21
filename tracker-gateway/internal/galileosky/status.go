@@ -62,11 +62,10 @@ func applyStatusTags(tags map[byte][]byte, raw map[string]any) []*store.SafetyEv
 			raw["alarm.power_ext"] = true
 			add("power_ext", 2, map[string]any{"alarm.power_ext": true, "tag.0x40": int(st)})
 		}
-		if st&0x0200 != 0 {
-			raw["status.acc"] = true
-			raw["status.ignition"] = true
-			raw["ignition"] = true
-		}
+		ign := st&0x0200 != 0
+		raw["status.acc"] = ign
+		raw["status.ignition"] = ign
+		raw["ignition"] = ign
 		if st&0x0400 != 0 {
 			raw["alarm.impact"] = true
 			add("impact", 2, map[string]any{"alarm.impact": true, "tag.0x40": int(st)})

@@ -119,7 +119,7 @@ export default function FleetDashboard() {
             </select>
           </div>
           <div className="field fleet-picker-field">
-            <label>Vehicles</label>
+            <label>Assets</label>
             <VehiclePicker
               users={d.users}
               selectedIds={d.userIds}
@@ -216,7 +216,7 @@ export default function FleetDashboard() {
         </div>
         <section className="kpis">
           <article className="kpi" style={{ ["--tick" as string]: "var(--gps)" }}>
-            <div className="label">Vehicles loaded</div>
+            <div className="label">Assets loaded</div>
             <div className="value">{d.byUserId ? formatInt(d.loadedCount) : "—"}</div>
             <div className="unit">of {d.userIds.length} selected</div>
           </article>

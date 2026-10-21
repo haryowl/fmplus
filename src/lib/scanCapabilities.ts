@@ -70,7 +70,7 @@ export const SCAN_ACTION_LABELS: Record<ScanActionKey, string> = {
   stopRequireScan: "Require stop",
   partSerial: "Part serial",
   jobRequireScan: "Require job",
-  vehicleOpen: "Vehicle tag",
+  vehicleOpen: "Asset tag",
   locationSet: "Location tag",
 };
 

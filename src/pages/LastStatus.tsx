@@ -12,6 +12,7 @@ import { BrandMark } from "../components/BrandMark";
 import { ExportPdfButton } from "../components/ExportPdfButton";
 import { LastStatusPanel } from "../components/LastStatusPanel";
 import { ViewNav } from "../components/ViewNav";
+import { UnitSystemSelect } from "../components/UnitSystemSelect";
 
 export default function LastStatus() {
   const { query, ready, error: tenantError, allowedUserIds, allowedGroupIds, allowsUser, allowsGroup } =
@@ -195,6 +196,7 @@ export default function LastStatus() {
               ))}
             </select>
           </div>
+          <UnitSystemSelect id="s-units" />
         </section>
 
         {bootError && <div className="banner error">{bootError}</div>}

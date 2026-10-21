@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { formatKm } from "../lib/format";
+import { assetCopy } from "../lib/assetCopy";
+import { useUnitSystem } from "../lib/unitSystem";
 import { ageLabel, ageTone, type LastStatusRow } from "../lib/lastStatus";
 import {
   classifyLiveRow,
@@ -33,6 +34,7 @@ export type FleetDashFixMeta = {
   deviceId: string;
   imei: string;
   odometerKm: number | null;
+  odometerSource?: "device" | "gps" | null;
   fuelLevel: number | null;
   fuelLiters: number | null;
   groups: string;
@@ -156,6 +158,7 @@ export function FleetLiveDashboardPanel({
   onOpenLive,
   maintenanceHref,
 }: Props) {
+  const units = useUnitSystem();
   const [snapFilter, setSnapFilter] = useState<SnapFilter>("all");
   const [snapQuery, setSnapQuery] = useState("");
   const pinColumns = useMemo(
@@ -303,7 +306,9 @@ export function FleetLiveDashboardPanel({
     let sum = 0;
     let n = 0;
     for (const row of rows) {
-      const o = fixMeta[row.id]?.odometerKm;
+      const meta = fixMeta[row.id];
+      if (meta?.odometerSource === "gps") continue;
+      const o = meta?.odometerKm;
       if (o != null && Number.isFinite(o)) {
         sum += o;
         n += 1;
@@ -462,8 +467,8 @@ export function FleetLiveDashboardPanel({
             <em className="fleet-dash-pill">{odoTotal.n ? `${odoTotal.n} units` : "—"}</em>
           </header>
           <span className="fleet-dash-kpi-label">Odo</span>
-          <strong>{odoTotal.n ? formatKm(odoTotal.sum) : "—"}</strong>
-          <p className="muted">total km · tracked</p>
+          <strong>{odoTotal.n ? units.distance(odoTotal.sum, false) : "—"}</strong>
+          <p className="muted">device odo · {units.distanceUnit}</p>
         </article>
       </section>
 
@@ -676,7 +681,7 @@ export function FleetLiveDashboardPanel({
           <table className="fleet-dash-table">
             <thead>
               <tr>
-                <th>Vehicle</th>
+                <th>{assetCopy.asset}</th>
                 <th>Status</th>
                 <th>Age</th>
                 <th>
@@ -743,7 +748,11 @@ export function FleetLiveDashboardPanel({
                           : formatDisplayPinValue(readDisplayPin(pins, { id: "fuel_level" }))}
                       </td>
                       <td>
-                        {meta?.odometerKm != null ? `${formatKm(meta.odometerKm)} km` : "—"}
+                        {meta?.odometerKm != null
+                          ? `${units.distance(meta.odometerKm, false)} ${units.distanceUnit}${
+                              meta.odometerSource === "gps" ? " GPS" : ""
+                            }`
+                          : "—"}
                       </td>
                       {pinColumns.map((col) => (
                         <td key={col.id} className="fleet-dash-pin" title={col.id}>

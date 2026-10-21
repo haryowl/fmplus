@@ -25,6 +25,7 @@ import {
   type ScanEntitlements,
 } from "../lib/scanCapabilities";
 import { BrandMark } from "../components/BrandMark";
+import { AdminEventClassPanel } from "../components/AdminEventClassPanel";
 import { AdminFleetDevicePanel, type DeviceFieldDef } from "../components/AdminFleetDevicePanel";
 import {
   DESK_PRIVILEGE_KEYS,
@@ -83,6 +84,9 @@ type TrackerDeviceRow = {
   videoRtspUrl?: string;
   videoNotes?: string;
   profileId?: string | null;
+  tripMode?: "default" | "speed" | "ignition";
+  tripMinSpeedKmh?: number;
+  tripBreakMin?: number;
   lastSeenAt?: string | null;
   lastFix?: {
     lat: number;
@@ -2336,7 +2340,7 @@ export default function AdminConsole() {
                     />
                   </label>
                   <label className="span-2">
-                    Vehicle telematics source
+                    Asset telematics source
                     <select
                       value={draft.telematicsSource}
                       onChange={(e) =>
@@ -3401,6 +3405,15 @@ export default function AdminConsole() {
                       {remapPreview}
                     </pre>
                   ) : null}
+                  {selectedId && selectedId !== "new" ? (
+                    <AdminEventClassPanel
+                      tenantId={selectedId}
+                      profileId={dmProfileId || undefined}
+                      deviceId={dmMapDeviceId || undefined}
+                      busy={busy}
+                    />
+                  ) : null}
+
                   {safetyEvents.length > 0 ? (
                     <ul className="admin-field-list">
                       {safetyEvents.map((ev) => {

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TIMEZONES } from "../lib/config";
-import { formatKm, formatSpeed } from "../lib/format";
+import { assetCopy } from "../lib/assetCopy";
+import { eventClassLabel } from "../lib/eventClass";
+import { useUnitSystem } from "../lib/unitSystem";
+import { UnitSystemSelect } from "../components/UnitSystemSelect";
 import { ageLabel, type LastStatusRow } from "../lib/lastStatus";
 import {
   classifyLiveRow,
@@ -100,7 +103,7 @@ const FLEET_SECTIONS: Array<{
   { id: "trips", label: "Trips", feature: "fleetLiveTrips", privilege: "viewFleetTrips" },
   { id: "history", label: "History", feature: "fleetLiveHistory", privilege: "viewFleetHistory" },
   { id: "media", label: "Media", feature: "fleetLiveMedia", privilege: "viewFleetMedia" },
-  { id: "alerts", label: "Alerts", feature: "fleetLiveAlerts", privilege: "ackFleetAlerts" },
+  { id: "alerts", label: "Events", feature: "fleetLiveAlerts", privilege: "ackFleetAlerts" },
 ];
 
 type SafetyEvent = {
@@ -112,12 +115,18 @@ type SafetyEvent = {
   alarmLevel: number;
   recordedAt: string;
   sourceProtocol?: string;
+  eventClass?: "safety" | "warning" | "asset" | "none";
+  raiseAlert?: boolean;
 };
 
 type FixMeta = {
   deviceId: string;
   imei: string;
   odometerKm: number | null;
+  odometerSource?: "device" | "gps" | null;
+  tripMode?: "default" | "speed" | "ignition";
+  tripMinSpeedKmh?: number;
+  tripBreakMin?: number;
   fuelLevel: number | null;
   fuelLiters: number | null;
   groups: string;
@@ -126,7 +135,7 @@ type FixMeta = {
 };
 
 const LIST_TABS: { id: ListTab; label: string; short: string }[] = [
-  { id: "all", label: "All vehicles", short: "All" },
+  { id: "all", label: assetCopy.allAssets, short: "All" },
   { id: "moving", label: "Moving", short: "Move" },
   { id: "idle", label: "Idle", short: "Idle" },
   { id: "off", label: "Ignition off", short: "Off" },
@@ -211,6 +220,7 @@ function clockLabel(tz: string): string {
 export default function FleetLive() {
   const { query, ready, error: tenantError, entitlements, moduleAllowed } = useEmbedTenant();
   const { user: deskUser, privileges: deskPrivileges } = useDeskSession();
+  const units = useUnitSystem();
   const [deviceGroups, setDeviceGroups] = useState<TrackerDeviceGroup[]>([]);
   const [groupId, setGroupId] = useState(() => {
     const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
@@ -416,6 +426,10 @@ export default function FleetLive() {
               deviceId: fix.deviceId,
               imei: fix.imei,
               odometerKm: fix.odometerKm ?? null,
+              odometerSource: fix.odometerSource ?? null,
+              tripMode: fix.tripMode,
+              tripMinSpeedKmh: fix.tripMinSpeedKmh,
+              tripBreakMin: fix.tripBreakMin,
               fuelLevel: fix.fuelLevel ?? null,
               fuelLiters: fix.fuelLiters ?? null,
               groups: (fix.groups || []).map((g) => g.name).join(", "),
@@ -513,6 +527,7 @@ export default function FleetLive() {
     const recent = Date.now() - 24 * 60 * 60 * 1000;
     const set = new Set<string>();
     for (const a of alerts) {
+      if (a.raiseAlert === false) continue;
       const t = Date.parse(a.recordedAt);
       if (Number.isFinite(t) && t >= recent) set.add(a.deviceId);
     }
@@ -522,7 +537,8 @@ export default function FleetLive() {
     return set;
   }, [alerts, ruleFires]);
 
-  const drawerAlertCount = alerts.length + ruleFires.length;
+  const drawerAlertCount =
+    alerts.filter((a) => a.raiseAlert !== false).length + ruleFires.length;
 
   const drawerFeed = useMemo(() => {
     type Item = {
@@ -538,6 +554,7 @@ export default function FleetLive() {
     };
     const items: Item[] = [];
     for (const a of alerts) {
+      if (a.raiseAlert === false) continue;
       const atMs = Date.parse(a.recordedAt);
       items.push({
         key: `s-${a.id}`,
@@ -547,7 +564,7 @@ export default function FleetLive() {
         atMs: Number.isFinite(atMs) ? atMs : 0,
         atLabel: a.recordedAt ? new Date(a.recordedAt).toLocaleString() : "—",
         level: Math.min(3, Math.max(0, a.alarmLevel || 0)),
-        pill: "Safety",
+        pill: eventClassLabel(a.eventClass || "warning"),
       });
     }
     for (const r of ruleFires) {
@@ -737,13 +754,25 @@ export default function FleetLive() {
   }, []);
 
   const tripDevices = useMemo(() => {
-    const list: Array<{ deviceId: string; label: string }> = [];
+    const list: Array<{
+      deviceId: string;
+      label: string;
+      tripMode?: "default" | "speed" | "ignition";
+      tripMinSpeedKmh?: number;
+      tripBreakMin?: number;
+    }> = [];
     const seen = new Set<string>();
     for (const row of searchFiltered) {
       const meta = fixMeta[row.id];
       if (!meta?.deviceId || seen.has(meta.deviceId)) continue;
       seen.add(meta.deviceId);
-      list.push({ deviceId: meta.deviceId, label: row.name });
+      list.push({
+        deviceId: meta.deviceId,
+        label: row.name,
+        tripMode: meta.tripMode,
+        tripMinSpeedKmh: meta.tripMinSpeedKmh,
+        tripBreakMin: meta.tripBreakMin,
+      });
     }
     return list;
   }, [searchFiltered, fixMeta]);
@@ -979,6 +1008,7 @@ export default function FleetLive() {
             ))}
           </select>
         </label>
+        <UnitSystemSelect id="fleet-units" compact className="fleet-cc-field fleet-cc-field-ico" />
         <label className="fleet-cc-field fleet-cc-search fleet-cc-field-ico">
           <span className="sr-only">Search</span>
           <span className="fleet-cc-search-wrap">
@@ -1212,7 +1242,7 @@ export default function FleetLive() {
                 </header>
                 <p className="fleet-cc-sel-addr" title={selectedAddress || undefined}>
                   {selected.lat != null && selected.lon != null
-                    ? `${selected.lat.toFixed(5)}, ${selected.lon.toFixed(5)}`
+                    ? units.coord(selected.lat, selected.lon)
                     : "No position"}
                   {selectedAddress ? ` · ${selectedAddress}` : selectedAddrPending ? " · looking up address…" : ""}
                 </p>
@@ -1220,15 +1250,19 @@ export default function FleetLive() {
                   <div>
                     <span>Speed</span>
                     <strong>
-                      {selected.speedKmh == null ? "—" : `${formatSpeed(selected.speedKmh)}`}
-                      <em> km/h</em>
+                      {units.speed(selected.speedKmh, false)}
+                      <em> {units.speedUnit}</em>
                     </strong>
                   </div>
                   <div>
                     <span>Odometer</span>
                     <strong>
-                      {selectedMeta?.odometerKm != null ? formatKm(selectedMeta.odometerKm) : "—"}
-                      <em> km</em>
+                      {units.distance(selectedMeta?.odometerKm, false)}
+                      <em>
+                        {" "}
+                        {units.distanceUnit}
+                        {selectedMeta?.odometerSource === "gps" ? " GPS" : ""}
+                      </em>
                     </strong>
                   </div>
                   <div>
@@ -1307,7 +1341,7 @@ export default function FleetLive() {
           <header className="fleet-cc-list-head">
             <div>
               <h2>
-                <IcoFleet /> Vehicles
+                <IcoFleet /> {assetCopy.assets}
               </h2>
               <p className="fleet-cc-list-sub muted">
                 {filtered.length}/{rows.length} shown
@@ -1406,7 +1440,7 @@ export default function FleetLive() {
                           ) : null}
                         </span>
                         <span className="muted fleet-cc-vline">
-                          <span>{row.speedKmh == null ? "—" : `${formatSpeed(row.speedKmh)} km/h`}</span>
+                          <span>{units.speed(row.speedKmh)}</span>
                           <span>{ageLabel(row.lastMs, now)}</span>
                           {fuel != null ? <span>{Math.round(fuel)}% fuel</span> : null}
                         </span>
@@ -1415,10 +1449,10 @@ export default function FleetLive() {
                             className="muted fleet-cc-vaddr"
                             title={
                               addressAt(addresses, row.lat, row.lon) ||
-                              `${row.lat.toFixed(5)}, ${row.lon.toFixed(5)}`
+                              units.coord(row.lat, row.lon)
                             }
                           >
-                            {row.lat.toFixed(5)}, {row.lon.toFixed(5)}
+                            {units.coord(row.lat, row.lon)}
                             {addressAt(addresses, row.lat, row.lon)
                               ? ` · ${addressAt(addresses, row.lat, row.lon)}`
                               : ""}
@@ -1431,8 +1465,11 @@ export default function FleetLive() {
                         ) : null}
                       </span>
                       <span className="fleet-cc-vodo">
-                        {meta?.odometerKm != null ? `${formatKm(meta.odometerKm)}` : "—"}
-                        <em>km</em>
+                        {units.distance(meta?.odometerKm, false)}
+                        <em>
+                          {units.distanceUnit}
+                          {meta?.odometerSource === "gps" ? " GPS" : ""}
+                        </em>
                       </span>
                     </button>
                   </li>

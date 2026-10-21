@@ -311,7 +311,7 @@ export function LastStatusPanel({
               <tr>
                 <th>
                   <button type="button" className="sort-btn" onClick={() => toggle("name")}>
-                    Vehicle{sortMark("name")}
+                    Asset{sortMark("name")}
                   </button>
                 </th>
                 <th>Driver</th>

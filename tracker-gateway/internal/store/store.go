@@ -285,6 +285,7 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 	fix.MappedAttrs["gps.valid"] = gpsOK
 	raw, _ := json.Marshal(fix.RawAttrs)
 	mapped, _ := json.Marshal(fix.MappedAttrs)
+	prev := s.loadLastFixSnap(ctx, device.ID)
 
 	// Always persist the packet (Terminal + remap), even when GPS is invalid.
 	_, err := s.pool.Exec(ctx, `
@@ -356,7 +357,21 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 		WHERE id = $1::uuid AND tenant_id = $2::uuid`,
 		device.ID, device.TenantID, fix.RecordedAt,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if gpsOK && prev.Has {
+		delta := gpsStepKm(prev.Lat, prev.Lon, prev.RecordedAt, fix.Lat, fix.Lon, fix.RecordedAt)
+		if delta > 0 {
+			_, _ = s.pool.Exec(ctx, `
+				UPDATE tracker_devices
+				SET gps_odometer_km = COALESCE(gps_odometer_km, 0) + $2
+				WHERE id = $1::uuid`, device.ID, delta)
+		}
+	}
+	s.emitParamEdges(ctx, device, prev, fix)
+	return nil
 }
 
 // TouchSeen updates device last_seen without writing a fix (heartbeats).
@@ -387,8 +402,9 @@ func (s *Store) PatchLastStatus(ctx context.Context, device *Device, rawPatch ma
 		mapped = ApplyRemap(rawPatch, rules)
 		if ignition == nil {
 			if v, ok := mapped["ignition"]; ok {
-				b := asBoolAny(v)
-				ignition = &b
+				if b, ok2 := asBoolAny(v); ok2 {
+					ignition = &b
+				}
 			}
 		}
 	}
@@ -403,21 +419,6 @@ func (s *Store) PatchLastStatus(ctx context.Context, device *Device, rawPatch ma
 		WHERE device_id = $1::uuid`,
 		device.ID, string(rawJSON), string(mappedJSON), ignition)
 	return err
-}
-
-func asBoolAny(v any) bool {
-	switch t := v.(type) {
-	case bool:
-		return t
-	case float64:
-		return t != 0
-	case int:
-		return t != 0
-	case int64:
-		return t != 0
-	default:
-		return false
-	}
 }
 
 func (s *Store) PruneFixes(ctx context.Context, days int) (int64, error) {

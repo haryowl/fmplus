@@ -5,6 +5,8 @@
 import crypto from "node:crypto";
 import { dbQuery } from "./db.mjs";
 import { applyDeviceRemap } from "./device-manager.mjs";
+import { emitParamEdgeEvents } from "./event-class.mjs";
+import { gpsStepKm } from "./gps-odometer.mjs";
 import { mergeEntitlements } from "./entitlements.mjs";
 import {
   deviceIdsInGroups,
@@ -131,6 +133,19 @@ export function publicTrackerDevice(row, { includeTokenHint = false } = {}) {
     videoRtspUrl: row.video_rtsp_url || "",
     videoNotes: row.video_notes || "",
     profileId: row.profile_id || null,
+    gpsOdometerKm:
+      row.gps_odometer_km == null || !Number.isFinite(Number(row.gps_odometer_km))
+        ? null
+        : Number(row.gps_odometer_km),
+    tripMode: ["default", "speed", "ignition"].includes(row.trip_mode) ? row.trip_mode : "default",
+    tripMinSpeedKmh:
+      row.trip_min_speed_kmh == null || !Number.isFinite(Number(row.trip_min_speed_kmh))
+        ? 3
+        : Number(row.trip_min_speed_kmh),
+    tripBreakMin:
+      row.trip_break_min == null || !Number.isFinite(Number(row.trip_break_min))
+        ? 5
+        : Math.max(1, Math.round(Number(row.trip_break_min))),
     lastSeenAt: row.last_seen_at || null,
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null,
@@ -168,6 +183,23 @@ function parseCameraChannels(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(32, Math.trunc(n)));
+}
+
+function parseTripMode(v, fallback = "default") {
+  const s = String(v || "").trim().toLowerCase();
+  return s === "speed" || s === "ignition" || s === "default" ? s : fallback;
+}
+
+function parseTripMinSpeed(v, fallback = 3) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.min(200, n);
+}
+
+function parseTripBreakMin(v, fallback = 5) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.min(180, Math.round(n));
 }
 
 function parseTags(v) {
@@ -274,8 +306,8 @@ export async function createTrackerDevice(tenantId, body) {
        tenant_id, imei, unique_id, protocol, label, armada_user_id, auth_token_hash, enabled,
        video_channel_id, video_rtsp_url, video_notes, profile_id,
        description, plate, vin, make, model, model_year, vehicle_type, color,
-       camera_channels, tags, custom_attrs
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23::jsonb)
+       camera_channels, tags, custom_attrs, trip_mode, trip_min_speed_kmh, trip_break_min
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23::jsonb,$24,$25,$26)
      RETURNING *`,
     [
       tenantId,
@@ -301,6 +333,9 @@ export async function createTrackerDevice(tenantId, body) {
       cameraChannels,
       tags,
       JSON.stringify(customAttrs),
+      parseTripMode(body.tripMode ?? body.trip_mode),
+      parseTripMinSpeed(body.tripMinSpeedKmh ?? body.trip_min_speed_kmh),
+      parseTripBreakMin(body.tripBreakMin ?? body.trip_break_min),
     ],
   );
   const row = inserted.rows[0];
@@ -392,6 +427,18 @@ export async function updateTrackerDevice(tenantId, deviceId, body) {
       : Math.max(0, Number(current.camera_channels) || 0);
   const tags = body.tags !== undefined ? parseTags(body.tags) : Array.isArray(current.tags) ? current.tags : [];
   const customAttrs = await resolveCustomAttrs(tenantId, body, current.custom_attrs);
+  const tripMode =
+    body.tripMode !== undefined || body.trip_mode !== undefined
+      ? parseTripMode(body.tripMode ?? body.trip_mode, current.trip_mode || "default")
+      : parseTripMode(current.trip_mode);
+  const tripMinSpeedKmh =
+    body.tripMinSpeedKmh !== undefined || body.trip_min_speed_kmh !== undefined
+      ? parseTripMinSpeed(body.tripMinSpeedKmh ?? body.trip_min_speed_kmh, Number(current.trip_min_speed_kmh) || 3)
+      : parseTripMinSpeed(current.trip_min_speed_kmh);
+  const tripBreakMin =
+    body.tripBreakMin !== undefined || body.trip_break_min !== undefined
+      ? parseTripBreakMin(body.tripBreakMin ?? body.trip_break_min, Number(current.trip_break_min) || 5)
+      : parseTripBreakMin(current.trip_break_min);
   const updated = await dbQuery(
     `UPDATE tracker_devices SET
        imei = $3, unique_id = $4, protocol = $5, label = $6,
@@ -400,7 +447,9 @@ export async function updateTrackerDevice(tenantId, deviceId, body) {
        profile_id = $13,
        description = $14, plate = $15, vin = $16, make = $17, model = $18,
        model_year = $19, vehicle_type = $20, color = $21, camera_channels = $22,
-       tags = $23, custom_attrs = $24::jsonb, updated_at = now()
+       tags = $23, custom_attrs = $24::jsonb,
+       trip_mode = $25, trip_min_speed_kmh = $26, trip_break_min = $27,
+       updated_at = now()
      WHERE tenant_id = $1 AND id = $2
      RETURNING *`,
     [
@@ -428,6 +477,9 @@ export async function updateTrackerDevice(tenantId, deviceId, body) {
       cameraChannels,
       tags,
       JSON.stringify(customAttrs),
+      tripMode,
+      tripMinSpeedKmh,
+      tripBreakMin,
     ],
   );
   const row = updated.rows[0];
@@ -636,6 +688,18 @@ export async function ingestVehicleFix(deviceRow, fix) {
     /* tables may not exist mid-migrate */
   }
 
+  let prevFix = null;
+  try {
+    const prevRows = await dbQuery(
+      `SELECT lat, lon, recorded_at, ignition, raw_attrs, mapped_attrs
+       FROM vehicle_last_fix WHERE device_id = $1`,
+      [deviceRow.id],
+    );
+    prevFix = prevRows.rows[0] || null;
+  } catch {
+    prevFix = null;
+  }
+
   await dbQuery(
     `INSERT INTO vehicle_fixes (
        tenant_id, device_id, recorded_at, lat, lon, speed, heading, ignition,
@@ -702,6 +766,34 @@ export async function ingestVehicleFix(deviceRow, fix) {
      WHERE id = $1 AND tenant_id = $2`,
     [deviceRow.id, deviceRow.tenant_id, recordedAt.toISOString()],
   );
+
+  if (prevFix) {
+    const delta = gpsStepKm(
+      { lat: prevFix.lat, lon: prevFix.lon, recordedAt: prevFix.recorded_at },
+      { lat: coords.lat, lon: coords.lon, recordedAt },
+    );
+    if (delta > 0) {
+      try {
+        await dbQuery(
+          `UPDATE tracker_devices
+           SET gps_odometer_km = COALESCE(gps_odometer_km, 0) + $2
+           WHERE id = $1`,
+          [deviceRow.id, delta],
+        );
+      } catch {
+        /* column may not exist mid-migrate */
+      }
+    }
+  }
+  void emitParamEdgeEvents(deviceRow, prevFix, {
+    lat: coords.lat,
+    lon: coords.lon,
+    ignition: ignitionOut,
+    recordedAt,
+    sourceProtocol: protocol,
+    rawAttrs,
+    mappedAttrs,
+  }).catch(() => {});
 
   // Fire-and-forget rule eval (never block ingest).
   void import("./fleet-alert-rules.mjs")
@@ -886,6 +978,14 @@ export function enrichFixTelemetry(row, pinIds = FLEET_DISPLAY_PIN_IDS) {
     const fromMapped = Number(mapped.odometer_km);
     odometerKm = Number.isFinite(fromMapped) ? fromMapped : null;
   }
+  let odometerSource = Number.isFinite(odometerKm) ? "device" : null;
+  if (!Number.isFinite(odometerKm)) {
+    const gpsOdo = Number(row.gps_odometer_km ?? mapped.gps_odometer_km);
+    if (Number.isFinite(gpsOdo)) {
+      odometerKm = gpsOdo;
+      odometerSource = "gps";
+    }
+  }
   let fuelLevel = null;
   const fl = Number(mapped.fuel_level);
   if (Number.isFinite(fl)) fuelLevel = fl;
@@ -894,6 +994,7 @@ export function enrichFixTelemetry(row, pinIds = FLEET_DISPLAY_PIN_IDS) {
   if (Number.isFinite(liters)) fuelLiters = liters;
   return {
     odometerKm,
+    odometerSource,
     fuelLevel,
     fuelLiters,
     displayParams: pickDisplayParams(mapped, pinIds),
@@ -917,6 +1018,7 @@ export async function lastFixesByDeviceIds(tenantId, deviceIds) {
   if (!ids.length) return map;
   const rows = await dbQuery(
     `SELECT d.id AS device_id, d.imei, d.label, d.armada_user_id,
+            d.gps_odometer_km, d.trip_mode, d.trip_min_speed_kmh, d.trip_break_min,
             lf.lat, lf.lon, lf.recorded_at, lf.speed, lf.heading, lf.ignition,
             lf.odometer, lf.mapped_attrs, lf.source_protocol
      FROM tracker_devices d
@@ -952,6 +1054,10 @@ export async function lastFixesByDeviceIds(tenantId, deviceIds) {
       label: r.label || r.imei,
       sourceProtocol: r.source_protocol,
       odometerKm: tel.odometerKm,
+      odometerSource: tel.odometerSource,
+      tripMode: r.trip_mode || "default",
+      tripMinSpeedKmh: Number(r.trip_min_speed_kmh) || 3,
+      tripBreakMin: Number(r.trip_break_min) || 5,
       fuelLevel: tel.fuelLevel,
       fuelLiters: tel.fuelLiters,
       groups: groupsByDevice.get(r.device_id) || [],
@@ -971,6 +1077,7 @@ export async function lastFixesByArmadaUserIds(tenantId, armadaUserIds) {
   if (!ids.length) return map;
   const rows = await dbQuery(
     `SELECT d.armada_user_id, d.id AS device_id, d.imei, d.label,
+            d.gps_odometer_km, d.trip_mode, d.trip_min_speed_kmh, d.trip_break_min,
             lf.lat, lf.lon, lf.recorded_at, lf.speed, lf.heading, lf.ignition,
             lf.odometer, lf.mapped_attrs, lf.source_protocol
      FROM tracker_devices d
@@ -1006,6 +1113,10 @@ export async function lastFixesByArmadaUserIds(tenantId, armadaUserIds) {
       label: r.label || r.imei,
       sourceProtocol: r.source_protocol,
       odometerKm: tel.odometerKm,
+      odometerSource: tel.odometerSource,
+      tripMode: r.trip_mode || "default",
+      tripMinSpeedKmh: Number(r.trip_min_speed_kmh) || 3,
+      tripBreakMin: Number(r.trip_break_min) || 5,
       fuelLevel: tel.fuelLevel,
       fuelLiters: tel.fuelLiters,
       groups: groupsByDevice.get(r.device_id) || [],
@@ -1132,7 +1243,7 @@ export async function buildTelematicsPosMap(tenantId, vaultTenant, opts = {}) {
             lon: fix.lon,
             label: fix.label
               ? `${fix.label} (device)`
-              : prev?.label || `Vehicle ${uid} (device)`,
+              : prev?.label || `Asset ${uid} (device)`,
           });
         }
       } catch {
@@ -1160,6 +1271,7 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
   // Avoids deviceIdsInGroups + groupSummariesByDeviceIds (2 extra queries per poll).
   const rows = await dbQuery(
     `SELECT d.id AS device_id, d.imei, d.label, d.plate, d.vehicle_type, d.armada_user_id, d.protocol,
+            d.gps_odometer_km, d.trip_mode, d.trip_min_speed_kmh, d.trip_break_min,
             lf.lat, lf.lon, lf.recorded_at, lf.speed, lf.heading, lf.ignition,
             lf.odometer, lf.mapped_attrs, lf.source_protocol,
             COALESCE(gs.groups_json, '[]'::json) AS groups_json
@@ -1222,6 +1334,10 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
       ignition: r.ignition,
       sourceProtocol: r.source_protocol,
       odometerKm: tel.odometerKm,
+      odometerSource: tel.odometerSource,
+      tripMode: r.trip_mode || "default",
+      tripMinSpeedKmh: Number(r.trip_min_speed_kmh) || 3,
+      tripBreakMin: Number(r.trip_break_min) || 5,
       fuelLevel: tel.fuelLevel,
       fuelLiters: tel.fuelLiters,
       displayParams: tel.displayParams || {},
@@ -1310,7 +1426,8 @@ export async function listDeviceDayFixes(tenantId, deviceId, opts = {}) {
   const limit = Math.min(8000, Math.max(100, Number(opts.limit) || 4000));
 
   const own = await dbQuery(
-    `SELECT id, label, imei FROM tracker_devices
+    `SELECT id, label, imei, trip_mode, trip_min_speed_kmh, trip_break_min
+     FROM tracker_devices
      WHERE tenant_id = $1 AND id = $2::uuid AND enabled = true`,
     [tenantId, device],
   );
@@ -1337,6 +1454,9 @@ export async function listDeviceDayFixes(tenantId, deviceId, opts = {}) {
     tzOffset: offset,
     label: own.rows[0].label || own.rows[0].imei,
     imei: own.rows[0].imei,
+    tripMode: own.rows[0].trip_mode || "default",
+    tripMinSpeedKmh: Number(own.rows[0].trip_min_speed_kmh) || 3,
+    tripBreakMin: Number(own.rows[0].trip_break_min) || 5,
     points: rows.rows.map((r) => ({
       lat: Number(r.lat),
       lon: Number(r.lon),

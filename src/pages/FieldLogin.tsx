@@ -728,14 +728,14 @@ export default function FieldLogin() {
                 <div className="field-action-row">
                   <CatalogScanButton
                     disabled={busy}
-                    label="Scan vehicle"
+                    label="Scan asset"
                     allowCamera={scan?.camera !== false}
                     allowTyped={scan?.typed !== false}
                     allowNfc={scan?.nfc === true}
                     onCode={onVehicleCode}
                   />
                   {vehicleConfirmedJobId === selectedId ? (
-                    <span className="field-pill">Vehicle confirmed</span>
+                    <span className="field-pill">Asset confirmed</span>
                   ) : detail.armadaUserId || detail.trackerDeviceId ? (
                     <span className="muted">Scan this vehicle before Start / Done</span>
                   ) : null}
@@ -796,7 +796,7 @@ export default function FieldLogin() {
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Vehicle last fix
+                  Asset last fix
                 </a>
               ) : null}
             </section>
@@ -1090,7 +1090,7 @@ export default function FieldLogin() {
               <div className="field-action-row" style={{ marginBottom: 8 }}>
                 <CatalogScanButton
                   disabled={busy || loadingJobs}
-                  label="Scan vehicle"
+                  label="Scan asset"
                   allowCamera={scan?.camera !== false}
                   allowTyped={scan?.typed !== false}
                   allowNfc={scan?.nfc === true}

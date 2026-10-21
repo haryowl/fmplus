@@ -17,7 +17,7 @@ function pos(partial: Partial<DispatchLivePosition>): DispatchLivePosition {
 
 describe("liveSeparationPhrase", () => {
   it("names the other source, not the one already shown", () => {
-    expect(liveSeparationPhrase("phone", 13.8)).toBe("13.8 km from vehicle");
+    expect(liveSeparationPhrase("phone", 13.8)).toBe("13.8 km from asset");
     expect(liveSeparationPhrase("armada", 13.8)).toBe("13.8 km from driver phone");
   });
 
@@ -33,7 +33,7 @@ describe("livePositionLabel", () => {
       liveLon: 106.8,
       livePosition: pos({ source: "armada", phoneSeparationKm: 13.8 }),
     });
-    expect(label?.text).toBe("Vehicle GPS · 13.8 km from driver phone");
+    expect(label?.text).toBe("Asset GPS · 13.8 km from driver phone");
   });
 
   it("keeps from-vehicle when the phone is the shown source", () => {
@@ -42,7 +42,7 @@ describe("livePositionLabel", () => {
       liveLon: 106.8,
       livePosition: pos({ source: "phone", ageSec: 9, phoneSeparationKm: 13.8 }),
     });
-    expect(label?.text).toBe("Driver phone · 9s ago · 13.8 km from vehicle");
+    expect(label?.text).toBe("Driver phone · 9s ago · 13.8 km from asset");
   });
 
   it("labels a direct tracker fix with age", () => {

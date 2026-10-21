@@ -74,6 +74,12 @@ import {
   updateProfile,
   upsertMapRule,
 } from "./device-manager.mjs";
+import {
+  deleteEventClassMap,
+  listEventClassMaps,
+  listEventTypeCatalog,
+  upsertEventClassMap,
+} from "./event-class.mjs";
 
 function send(res, status, headers, body) {
   res.writeHead(status, securityHeaders(headers));
@@ -585,6 +591,46 @@ export async function handleAdminRequest(req, res) {
         const rule = await upsertMapRule(body);
         await writeAudit(admin.id, "tracker_param_map.upsert", { tenantId, ruleId: rule.id });
         json(res, 201, { rule });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const eventMapsMatch = /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-event-maps$/i.exec(path);
+    if (eventMapsMatch) {
+      const tenantId = eventMapsMatch[1];
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "GET") {
+        const catalog = await listEventTypeCatalog();
+        const maps = await listEventClassMaps({
+          tenantId,
+          profileId: url.searchParams.get("profileId") || undefined,
+          deviceId: url.searchParams.get("deviceId") || undefined,
+        });
+        json(res, 200, { catalog, maps });
+        return true;
+      }
+      if (req.method === "POST") {
+        const body = await readJson(req);
+        const rule = await upsertEventClassMap(tenantId, body);
+        await writeAudit(admin.id, "tracker_event_map.upsert", { tenantId, mapId: rule.id });
+        json(res, 201, { map: rule });
+        return true;
+      }
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    const eventMapOneMatch =
+      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-event-maps\/([0-9a-f-]{36})$/i.exec(path);
+    if (eventMapOneMatch) {
+      const admin = await requireAdmin(req, res);
+      if (!admin) return true;
+      if (req.method === "DELETE") {
+        await deleteEventClassMap(eventMapOneMatch[2]);
+        json(res, 200, { ok: true });
         return true;
       }
       json(res, 405, { error: "Method not allowed" });

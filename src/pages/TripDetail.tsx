@@ -366,13 +366,13 @@ export default function TripDetail() {
           <BrandMark />
           <div>
             <h1>Trip detail</h1>
-            <p>Single vehicle · chart, table & map · max {TRIP_DETAIL_MAX_DAYS} days</p>
+            <p>Single asset · chart, table & map · max {TRIP_DETAIL_MAX_DAYS} days</p>
           </div>
         </div>
         <div className="topbar-actions">
           <ViewNav current="trips" />
           <div className="vehicle-chip">
-            {selectedUser ? userLabel(selectedUser) : "No vehicle selected"}
+            {selectedUser ? userLabel(selectedUser) : "No asset selected"}
             {driverName ? ` · Driver ${driverName}` : ""}
             {selectedGroup ? ` · ${selectedGroup.name}` : ""}
           </div>
@@ -403,7 +403,7 @@ export default function TripDetail() {
             </select>
           </div>
           <div className="field">
-            <label htmlFor="td-user">Vehicle</label>
+            <label htmlFor="td-user">Asset</label>
             <select
               id="td-user"
               value={userId}
@@ -413,7 +413,7 @@ export default function TripDetail() {
                 setSegments([]);
               }}
             >
-              <option value="">{selectedGroup ? "Select a vehicle" : "Choose a group first"}</option>
+              <option value="">{selectedGroup ? "Select an asset" : "Choose a group first"}</option>
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
                   {userOptionLabel(user)}
@@ -715,7 +715,7 @@ export default function TripDetail() {
                 <table className="data-table trip-detail-table">
                   <thead>
                     <tr>
-                      <th>Vehicle Name</th>
+                      <th>Asset Name</th>
                       <th>Group</th>
                       {selectedCustomFields.map((cf) => (
                         <th key={cf.name}>{cf.name}</th>
@@ -876,9 +876,9 @@ export default function TripDetail() {
 
         {!loading && segments.length === 0 && !loadError && (
           <section className="empty-panel">
-            <h3>Load a vehicle day to see trips</h3>
+            <h3>Load an asset day to see trips</h3>
             <p>
-              Pick one vehicle and up to {TRIP_DETAIL_MAX_DAYS} days. Trips use moving sessions; Idle is ignition-on
+              Pick one asset and up to {TRIP_DETAIL_MAX_DAYS} days. Trips use moving sessions; Idle is ignition-on
               stationary; everything else between points is continuous Stop/park.
             </p>
           </section>

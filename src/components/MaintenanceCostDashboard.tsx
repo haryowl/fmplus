@@ -259,7 +259,7 @@ export function MaintenanceCostDashboard({
             <table className="metrics">
               <thead>
                 <tr>
-                  <th>Vehicle</th>
+                  <th>Asset</th>
                   <th>Title</th>
                   <th>Approved</th>
                   <th>Service</th>

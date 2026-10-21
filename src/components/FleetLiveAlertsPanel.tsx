@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { addDays, todayKeyInOffset, zonedEndMs, zonedStartMs } from "../lib/time";
+import { classifyAlarmType, eventClassLabel, type EventClass } from "../lib/eventClass";
 import {
   alarmLabel,
   fetchFleetAlerts,
@@ -88,6 +89,7 @@ export function FleetLiveAlertsPanel({
   canAckAlerts = true,
 }: Props) {
   const [sub, setSub] = useState<"events" | "rules">("events");
+  const [classTab, setClassTab] = useState<Exclude<EventClass, "none">>("safety");
   const [deviceId, setDeviceId] = useState(() => initialDeviceId || "");
   const [dateFrom, setDateFrom] = useState(() => addDays(todayKeyInOffset(timezone), -1));
   const [dateTo, setDateTo] = useState(() => todayKeyInOffset(timezone));
@@ -174,8 +176,14 @@ export function FleetLiveAlertsPanel({
   }, [sub, canViewRules]);
 
   const filteredSafety = useMemo(
-    () => safety.filter((e) => (e.alarmLevel || 0) >= minLevel),
-    [safety, minLevel],
+    () =>
+      safety.filter((e) => {
+        if ((e.alarmLevel || 0) < minLevel) return false;
+        const cls = e.eventClass || classifyAlarmType(e.alarmType).eventClass;
+        if (cls === "none") return false;
+        return cls === classTab;
+      }),
+    [safety, minLevel, classTab],
   );
 
   const startEdit = (rule: FleetAlertRule) => {
@@ -278,22 +286,28 @@ export function FleetLiveAlertsPanel({
     <div className="fleet-sec fleet-alerts">
       <FleetLiveSectionHead
         section="alerts"
-        title="Alerts"
-        badge={sub === "rules" ? "RULES" : "FEED"}
-        subtitle={loading ? "Loading…" : "Safety feed & telematics rules"}
+        title="Events"
+        badge={sub === "rules" ? "RULES" : classTab.toUpperCase()}
+        subtitle={loading ? "Loading…" : "Safety, warning, and asset events"}
         actions={
           <div className="fleet-ico-tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              className={sub === "events" ? "is-active" : ""}
-              aria-selected={sub === "events"}
-              title="Events"
-              onClick={() => setSub("events")}
-            >
-              <IcoAlerts />
-              <span>Events</span>
-            </button>
+            {(["safety", "warning", "asset"] as const).map((cls) => (
+              <button
+                key={cls}
+                type="button"
+                role="tab"
+                className={sub === "events" && classTab === cls ? "is-active" : ""}
+                aria-selected={sub === "events" && classTab === cls}
+                title={eventClassLabel(cls)}
+                onClick={() => {
+                  setSub("events");
+                  setClassTab(cls);
+                }}
+              >
+                <IcoAlerts />
+                <span>{eventClassLabel(cls)}</span>
+              </button>
+            ))}
             {canViewRules ? (
               <button
                 type="button"
@@ -780,13 +794,13 @@ export function FleetLiveAlertsPanel({
             <section className="fleet-dash-card">
               <header className="fleet-dash-card-head">
                 <h3>
-                  <IcoAlerts /> Safety
+                  <IcoAlerts /> {eventClassLabel(classTab)}
                 </h3>
                 <em className="fleet-dash-pill">{filteredSafety.length}</em>
               </header>
               {filteredSafety.length === 0 ? (
                 <p className="muted fleet-dash-empty">
-                  {loading ? "Loading…" : "No safety events in this range."}
+                  {loading ? "Loading…" : `No ${eventClassLabel(classTab).toLowerCase()} events in this range.`}
                 </p>
               ) : (
                 <ul className="fleet-alerts-list">

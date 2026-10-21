@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { formatKm, formatSpeed } from "../lib/format";
+import { classifyAlarmType } from "../lib/eventClass";
+import { useUnitSystem } from "../lib/unitSystem";
 import { slimDayPoints } from "../lib/deviceDayTrips";
 import { todayKeyInOffset } from "../lib/time";
 import { fetchLiveReverseAddress } from "../lib/geocode";
@@ -30,6 +31,7 @@ type SafetyEvent = {
   alarmType: string;
   alarmLevel: number;
   recordedAt: string;
+  eventClass?: "safety" | "warning" | "asset" | "none";
 };
 
 type TimelineItem =
@@ -97,6 +99,7 @@ async function fetchDeviceSafety(
 }
 
 export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Props) {
+  const units = useUnitSystem();
   const [deviceId, setDeviceId] = useState(
     () => initialDeviceId || devices[0]?.deviceId || "",
   );
@@ -134,7 +137,9 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
         setAlerts(
           safety.filter((e) => {
             const t = Date.parse(e.recordedAt);
-            return Number.isFinite(t) && t >= start && t < end;
+            if (!Number.isFinite(t) || t < start || t >= end) return false;
+            const cls = e.eventClass || classifyAlarmType(e.alarmType).eventClass;
+            return cls !== "none";
           }),
         );
       })
@@ -276,7 +281,7 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
           </span>
           <div>
             <strong>{alerts.length}</strong>
-            <em>Alerts</em>
+            <em>Events</em>
             <span className="muted">on {date}</span>
           </div>
         </div>
@@ -285,9 +290,9 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
             <IcoSpeed />
           </span>
           <div>
-            <strong>{avgSpeed != null ? formatSpeed(avgSpeed) : "—"}</strong>
+            <strong>{avgSpeed != null ? units.speed(avgSpeed, false) : "—"}</strong>
             <em>Avg speed</em>
-            <span className="muted">km/h</span>
+            <span className="muted">{units.speedUnit}</span>
           </div>
         </div>
         <div className="fleet-trips-kpi">
@@ -313,7 +318,7 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
                 [
                   { id: "all" as const, label: "All" },
                   { id: "fix" as const, label: "Fixes" },
-                  { id: "alert" as const, label: "Alerts" },
+                  { id: "alert" as const, label: "Events" },
                 ] as const
               ).map((tab) => (
                 <button
@@ -372,7 +377,7 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
                           <strong>
                             {item.point.speed != null ? (
                               <>
-                                <IcoSpeed /> {formatSpeed(item.point.speed)} km/h
+                                <IcoSpeed /> {units.speed(item.point.speed)}
                               </>
                             ) : (
                               "Fix"
@@ -386,7 +391,7 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
                             {item.point.odometerKm != null ? (
                               <>
                                 {" · "}
-                                <IcoOdo /> {formatKm(item.point.odometerKm)}
+                                <IcoOdo /> {units.distance(item.point.odometerKm)}
                               </>
                             ) : null}
                             {item.point.ignition === true ? (

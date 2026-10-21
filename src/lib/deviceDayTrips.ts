@@ -2,6 +2,7 @@ import { DEFAULT_MIN_SPEED_KMH, DEFAULT_TRIP_BREAK_MIN } from "./config";
 import { haversineKm } from "./geo";
 import { keepGpsTrack, MAX_GPS_TELEPORT_KM } from "./gpsJump";
 import { dateKeyInOffset } from "./time";
+import { normalizeTripConfig, type TripMode } from "./tripMode";
 import { assignLogicalTrips, type MotionPoint } from "./trips";
 import type { TrackerDayPoint } from "./trackerDevices";
 
@@ -42,10 +43,20 @@ type PointWithMs = TrackerDayPoint & { ms: number };
 
 export function buildDeviceTrips(
   points: TrackerDayPoint[],
-  opts: { tzOffset: string; minSpeedKmh?: number; tripBreakMin?: number },
+  opts: {
+    tzOffset: string;
+    minSpeedKmh?: number;
+    tripBreakMin?: number;
+    tripMode?: TripMode;
+  },
 ): DeviceTrip[] {
-  const minSpeedKmh = opts.minSpeedKmh ?? DEFAULT_MIN_SPEED_KMH;
-  const breakMs = (opts.tripBreakMin ?? DEFAULT_TRIP_BREAK_MIN) * 60_000;
+  const cfg = normalizeTripConfig({
+    tripMode: opts.tripMode,
+    minSpeedKmh: opts.minSpeedKmh ?? DEFAULT_MIN_SPEED_KMH,
+    tripBreakMin: opts.tripBreakMin ?? DEFAULT_TRIP_BREAK_MIN,
+  });
+  const minSpeedKmh = cfg.minSpeedKmh;
+  const breakMs = cfg.tripBreakMin * 60_000;
 
   const withMs: PointWithMs[] = [];
   for (const p of points) {
@@ -65,7 +76,7 @@ export function buildDeviceTrips(
     logicalTripId: null,
   }));
 
-  assignLogicalTrips(motion, { minSpeedKmh, breakMs });
+  assignLogicalTrips(motion, { minSpeedKmh, breakMs, mode: cfg.tripMode });
 
   const byId = new Map<number, PointWithMs[]>();
   for (let i = 0; i < cleaned.length; i += 1) {

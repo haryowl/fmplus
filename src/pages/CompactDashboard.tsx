@@ -70,7 +70,7 @@ export default function CompactDashboard() {
     const root = document.documentElement;
     const previousTitle = document.title;
     root.classList.add("onesheet-root");
-    document.title = "Vehicle Metrics · Compact";
+    document.title = "Asset Metrics · Compact";
     return () => {
       root.classList.remove("onesheet-root");
       document.title = previousTitle;
@@ -103,7 +103,7 @@ export default function CompactDashboard() {
         <div className="brand">
           <BrandMark size={16} />
           <div>
-            <h1>Vehicle Metrics</h1>
+            <h1>Asset Metrics</h1>
             <p>Compact · one page</p>
           </div>
         </div>
@@ -111,14 +111,14 @@ export default function CompactDashboard() {
           <ViewNav current="compact" />
           <ExportPdfButton disabled={!hasRows} />
           <div className="vehicle-chip">
-            {selectedUser ? userLabel(selectedUser) : "No vehicle selected"}
+            {selectedUser ? userLabel(selectedUser) : "No asset selected"}
             {selectedGroup ? ` · ${selectedGroup.name}` : ""}
           </div>
         </div>
       </header>
 
       <p className="print-meta">
-        {selectedUser ? userLabel(selectedUser) : "No vehicle"}
+        {selectedUser ? userLabel(selectedUser) : "No asset"}
         {selectedGroup ? ` · ${selectedGroup.name}` : ""}
         {dateFrom && dateTo ? ` · ${dateFrom} → ${dateTo}` : ""}
         {timezone ? ` · ${timezone}` : ""}
@@ -149,7 +149,7 @@ export default function CompactDashboard() {
             </select>
           </div>
           <div className="field">
-            <label htmlFor="c-user">Vehicle</label>
+            <label htmlFor="c-user">Asset</label>
             <select
               id="c-user"
               value={userId}
@@ -159,7 +159,7 @@ export default function CompactDashboard() {
               }}
               disabled={!selectedGroup}
             >
-              <option value="">{selectedGroup ? "Select a vehicle" : "Choose a group first"}</option>
+              <option value="">{selectedGroup ? "Select an asset" : "Choose a group first"}</option>
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
                   {userOptionLabel(user)}
@@ -291,9 +291,9 @@ export default function CompactDashboard() {
                   <circle cx="13" cy="19" r="2" fill="currentColor" />
                 </svg>
               </div>
-              <h3>{trips ? "No points in this range" : "Load a vehicle to see activity"}</h3>
+              <h3>{trips ? "No points in this range" : "Load an asset to see activity"}</h3>
               <p>
-                Same metrics as the full dashboard, fitted to one screen. Choose a vehicle and load, or
+                Same metrics as the full dashboard, fitted to one screen. Choose an asset and load, or
                 open Full view for charts, map, table, and AI.
               </p>
             </div>

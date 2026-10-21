@@ -1225,7 +1225,7 @@ export function downloadMaintenanceExcel(events: ServiceEvent[]): void {
   const headers = [
     "Status",
     "Title",
-    "Vehicle",
+    "Asset",
     "Username",
     "User ID",
     "Tracker device ID",
@@ -1320,7 +1320,7 @@ export function downloadAnalyzeReportExcel(
   ];
   if (fleet) {
     rows.push(
-      ["Fleet", "Vehicles in scope", fleet.vehicles],
+      ["Fleet", "Assets in scope", fleet.vehicles],
       ["Fleet", "With open maintenance", fleet.withOpen],
       ["Fleet", "With overdue", fleet.withOverdue],
       [
@@ -1366,7 +1366,7 @@ export function downloadServiceResultsExcel(
   for (const g of data.byFleetGroup || []) {
     rows.push([g.name, g.count, g.price, g.cost, g.margin]);
   }
-  rows.push([], ["Vehicle", "Fleet groups", "Jobs", "Outstanding", "Approved", "Price", "Cost"]);
+  rows.push([], ["Asset", "Fleet groups", "Jobs", "Outstanding", "Approved", "Price", "Cost"]);
   for (const v of data.byVehicle) {
     rows.push([
       v.label,
@@ -1382,7 +1382,7 @@ export function downloadServiceResultsExcel(
   for (const it of data.byItem) {
     rows.push([it.name, it.kind, it.jobs, it.qty, it.price, it.cost, it.margin]);
   }
-  rows.push([], ["Date", "Status", "Vehicle", "Fleet groups", "Title", "Price", "Cost", "Margin", "Minutes", "Items"]);
+  rows.push([], ["Date", "Status", "Asset", "Fleet groups", "Title", "Price", "Cost", "Margin", "Minutes", "Items"]);
   for (const r of data.rows) {
     rows.push([
       r.date ? String(r.date).slice(0, 10) : "",

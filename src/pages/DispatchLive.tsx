@@ -4,6 +4,7 @@ import { DispatchLiveMap } from "../components/DispatchLiveMap";
 import { DispatchLiveTimeline } from "../components/DispatchLiveTimeline";
 import { FoldPanel } from "../components/FoldPanel";
 import { ViewNav } from "../components/ViewNav";
+import { UnitSystemSelect } from "../components/UnitSystemSelect";
 import {
   ackDispatchOpsException,
   fetchArmadaDayTracks,
@@ -733,6 +734,7 @@ export default function DispatchLive() {
         </div>
         <div className="topbar-actions">
           <ViewNav current="dispatchLive" />
+          <UnitSystemSelect id="dl-units" className="field" />
           <div className="vehicle-chip">
             {tab === "live"
               ? loading && !snapshot
@@ -1483,7 +1485,7 @@ export default function DispatchLive() {
                           <th>POD</th>
                           <th>Plan</th>
                           <th>Phone</th>
-                          <th>Vehicle</th>
+                          <th>Asset</th>
                         </tr>
                       </thead>
                       <tbody>

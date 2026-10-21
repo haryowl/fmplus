@@ -278,7 +278,7 @@ export function DispatchJobMap({
         const sa = asCoord(stop.startArmadaLat, stop.startArmadaLon);
         if (sa && hasVehicle) {
           L.marker(sa, { icon: eventIcon(LIVE_MAP_COLORS.armada, "S") })
-            .bindPopup("Vehicle start")
+            .bindPopup("Asset start")
             .addTo(layer);
           bounds.push(sa);
         }
@@ -292,7 +292,7 @@ export function DispatchJobMap({
         const ca = asCoord(stop.completeArmadaLat, stop.completeArmadaLon);
         if (ca && hasVehicle) {
           L.marker(ca, { icon: eventIcon(LIVE_MAP_COLORS.armada, "C") })
-            .bindPopup("Vehicle complete")
+            .bindPopup("Asset complete")
             .addTo(layer);
           bounds.push(ca);
         }
@@ -330,7 +330,7 @@ export function DispatchJobMap({
       const vl = asCoord(vehicleLive?.lat, vehicleLive?.lon);
       if (vl) {
         L.marker(vl, { icon: liveIcon(LIVE_MAP_COLORS.armada), zIndexOffset: 420 })
-          .bindPopup("Vehicle GPS live")
+          .bindPopup("Asset GPS live")
           .addTo(layer);
         bounds.push(vl);
       }
@@ -414,7 +414,7 @@ export function DispatchJobMap({
           </li>
           {hasVehicle ? (
             <li>
-              <i style={{ background: LIVE_MAP_COLORS.armada }} /> Vehicle GPS
+              <i style={{ background: LIVE_MAP_COLORS.armada }} /> Asset GPS
             </li>
           ) : null}
           {trackStatus ? <li>{trackStatus}</li> : null}

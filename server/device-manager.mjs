@@ -106,6 +106,9 @@ export function publicParamDef(row) {
     label: row.label || row.id,
     description: row.description || "",
     system: !row.tenant_id,
+    eventClass: row.event_class || "none",
+    raiseAlert: row.raise_alert === true,
+    emitOn: row.emit_on || "event",
   };
 }
 
@@ -1191,20 +1194,56 @@ export async function listSafetyEvents(
   );
 
   const filtered = mediaOnly ? rows.rows.filter((r) => safetyEventHasMedia(r)) : rows.rows;
-  return filtered.map((r) => ({
-    id: String(r.id),
-    deviceId: r.device_id,
-    recordedAt: r.recorded_at,
-    alarmType: r.alarm_type,
-    alarmLevel: r.alarm_level,
-    lat: r.lat == null ? null : Number(r.lat),
-    lon: r.lon == null ? null : Number(r.lon),
-    attachmentId: r.attachment_id || "",
-    sourceProtocol: r.source_protocol,
-    rawAttrs: r.raw_attrs,
-    mappedAttrs: r.mapped_attrs,
-    mediaKind: classifySafetyMediaKind(r),
-  }));
+  let classIndex = null;
+  try {
+    const { loadEventClassIndex, resolveEventClass } = await import("./event-class.mjs");
+    classIndex = await loadEventClassIndex(tenantId);
+    const out = filtered.map((r) => {
+      const cls = resolveEventClass(classIndex, r.alarm_type, { deviceId: r.device_id });
+      return {
+        id: String(r.id),
+        deviceId: r.device_id,
+        recordedAt: r.recorded_at,
+        alarmType: r.alarm_type,
+        alarmLevel: r.alarm_level,
+        lat: r.lat == null ? null : Number(r.lat),
+        lon: r.lon == null ? null : Number(r.lon),
+        attachmentId: r.attachment_id || "",
+        sourceProtocol: r.source_protocol,
+        rawAttrs: r.raw_attrs,
+        mappedAttrs: r.mapped_attrs,
+        mediaKind: classifySafetyMediaKind(r),
+        eventClass: cls.eventClass,
+        raiseAlert: cls.raiseAlert,
+        emitOn: cls.emitOn,
+      };
+    });
+    return out;
+  } catch {
+    const { classifyAlarmType } = await import("./event-class.mjs").catch(() => ({
+      classifyAlarmType: () => ({ eventClass: "warning", raiseAlert: true, emitOn: "event" }),
+    }));
+    return filtered.map((r) => {
+      const cls = classifyAlarmType(r.alarm_type);
+      return {
+        id: String(r.id),
+        deviceId: r.device_id,
+        recordedAt: r.recorded_at,
+        alarmType: r.alarm_type,
+        alarmLevel: r.alarm_level,
+        lat: r.lat == null ? null : Number(r.lat),
+        lon: r.lon == null ? null : Number(r.lon),
+        attachmentId: r.attachment_id || "",
+        sourceProtocol: r.source_protocol,
+        rawAttrs: r.raw_attrs,
+        mappedAttrs: r.mapped_attrs,
+        mediaKind: classifySafetyMediaKind(r),
+        eventClass: cls.eventClass,
+        raiseAlert: cls.raiseAlert,
+        emitOn: cls.emitOn,
+      };
+    });
+  }
 }
 
 export async function lastFixPreview(tenantId, deviceId) {
