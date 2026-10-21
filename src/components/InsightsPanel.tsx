@@ -1,3 +1,4 @@
+import { assetCopy } from "../lib/assetCopy";
 import type { InsightBlock, InsightDepth } from "../lib/insight";
 import type { InsightSource } from "../lib/aiInsights";
 import { insightsSheet } from "../lib/panelExcel";
@@ -33,7 +34,7 @@ export function InsightsPanel({
     <section className="panel">
       <div className="panel-head">
         <div>
-          <h2>Vehicle analysis</h2>
+          <h2>{assetCopy.analysis}</h2>
           <p>
             {usingAi
               ? "Language-model briefing from the same measured totals. The API key stays on the server. Switch Source back to Template anytime."

@@ -1222,7 +1222,7 @@ export function FieldDispatchPanel({ onError, onNotice, scan, showMoney = false 
                   {vehicleConfirmedJobId === selected.id ? (
                     <span className="field-pill">Asset confirmed</span>
                   ) : selected.armadaUserId || selected.trackerDeviceId ? (
-                    <span className="muted">Scan this vehicle before Start / orders</span>
+                    <span className="muted">Scan this asset before Start / orders</span>
                   ) : null}
                 </>
               ) : null}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchUsersStatus } from "../lib/api";
 import { fetchDriverMap } from "../lib/driverFields";
-import { formatKm, formatSpeed } from "../lib/format";
+import { useUnitSystem } from "../lib/unitSystem";
 import {
   ageLabel,
   ageTone,
@@ -85,6 +85,7 @@ export function LastStatusPanel({
   dense,
   fill,
 }: Props) {
+  const units = useUnitSystem();
   const [rows, setRows] = useState<LastStatusRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -381,9 +382,9 @@ export function LastStatusPanel({
                         </span>
                       )}
                     </td>
-                    <td className="num">{row.speedKmh === null ? "—" : `${formatSpeed(row.speedKmh)} km/h`}</td>
-                    <td className="num">{row.fuelLevel === null ? "—" : formatSpeed(row.fuelLevel)}</td>
-                    <td className="num">{row.odometerKm === null ? "—" : formatKm(row.odometerKm)}</td>
+                    <td className="num">{row.speedKmh === null ? "—" : units.speed(row.speedKmh)}</td>
+                    <td className="num">{row.fuelLevel === null ? "—" : row.fuelLevel.toFixed(1)}</td>
+                    <td className="num">{row.odometerKm === null ? "—" : units.distance(row.odometerKm, false)}</td>
                     <td>
                       <a
                         className={`status-maint-pill${maintClass ? ` ${maintClass}` : ""}`}

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { assetCopy } from "../lib/assetCopy";
 import {
   RANK_COLUMNS,
   columnTones,
@@ -71,7 +72,7 @@ export function FleetRankTable({ vehicles, dense, drivers }: Props) {
   }
 
   if (vehicles.length === 0) {
-    return <p className="compare-hint">Select vehicles and load metrics to rank them.</p>;
+    return <p className="compare-hint">{assetCopy.selectAndLoadToRank}</p>;
   }
 
   return (

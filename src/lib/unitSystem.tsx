@@ -9,7 +9,7 @@ import {
   type UnitSystem,
 } from "./units";
 
-type UnitApi = {
+export type UnitApi = {
   system: UnitSystem;
   setSystem: (next: UnitSystem) => void;
   distance: (km: number | null | undefined, withUnit?: boolean) => string;

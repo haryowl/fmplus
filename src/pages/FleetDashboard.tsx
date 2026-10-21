@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from "react";
 import { groupOptionLabel } from "../lib/api";
+import { assetCopy } from "../lib/assetCopy";
 import { TIMEZONES } from "../lib/config";
 import { fetchDriverMap } from "../lib/driverFields";
 import { seriesForPeriod, type FleetVehicleRow } from "../lib/fleet";
@@ -250,12 +251,12 @@ export default function FleetDashboard() {
                     ? "Loading fleet…"
                     : d.byUserId
                       ? "No points in this range"
-                      : "Select vehicles to compare"}
+                      : assetCopy.selectToCompare}
                 </h3>
                 <p>
                   {d.loading
                     ? "Charts appear when the download finishes."
-                    : "The last vehicle you opened on Full or Compact is selected by default. Tick more vehicles from the group, then load."}
+                    : "The last asset you opened on Full or Compact is selected by default. Tick more assets from the group, then load."}
                 </p>
               </div>
             </div>

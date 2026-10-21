@@ -1,4 +1,5 @@
 import type { DispatchLiveDriver, DispatchLivePosition } from "./dispatch";
+import { formatDistance, readStoredUnitSystem } from "./units";
 
 /** Compact age for a live fix: "12s", "4m", "1h 20m". */
 export function formatFixAge(ageSec: number | null | undefined): string {
@@ -20,7 +21,7 @@ export function liveSeparationPhrase(
 ): string {
   if (km == null || !Number.isFinite(km) || km < 0.2) return "";
   const other = source === "phone" ? "asset" : "driver phone";
-  return `${km.toFixed(1)} km from ${other}`;
+  return `${formatDistance(km, readStoredUnitSystem())} from ${other}`;
 }
 
 /**

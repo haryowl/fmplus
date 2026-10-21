@@ -11,6 +11,7 @@ import {
   type ChartOptions,
 } from "chart.js";
 import { Bar, Line } from "react-chartjs-2";
+import { assetCopy } from "../lib/assetCopy";
 import { chartFonts, useChartTheme } from "./chartTheme";
 import {
   downloadAnalyzeReportExcel,
@@ -568,11 +569,11 @@ export function MaintenanceAnalyzeReport({
               </div>
               {vehicleRows.length ? (
                 <div className="table-wrap">
-                  <h3>Approved by vehicle</h3>
+                  <h3>Approved by asset</h3>
                   <table className="metrics">
                     <thead>
                       <tr>
-                        <th>Vehicle</th>
+                        <th>{assetCopy.asset}</th>
                         <th>Fleet group</th>
                         <th className="num">Jobs</th>
                         <th className="num">Price</th>
@@ -620,7 +621,7 @@ export function MaintenanceAnalyzeReport({
                 <table className="metrics">
                   <thead>
                     <tr>
-                      <th>Vehicle</th>
+                      <th>{assetCopy.asset}</th>
                       <th>Fleet group</th>
                       <th>Title</th>
                       <th>Approved</th>

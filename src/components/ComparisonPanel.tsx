@@ -1,19 +1,20 @@
 import { comparePeriods, deltaTone } from "../lib/compare";
-import { formatHours, formatIdr, formatKm, formatKmPerL, formatLiters, formatMeters, formatRpm, formatSpeed } from "../lib/format";
+import { formatHours, formatIdr, formatKmPerL, formatLiters, formatRpm } from "../lib/format";
 import { periodCompareSheet } from "../lib/panelExcel";
 import type { PeriodMetrics } from "../lib/types";
+import { useUnitSystem, type UnitApi } from "../lib/unitSystem";
 import { ExportExcelButton } from "./ExportExcelButton";
 
-function formatValue(id: string, n: number): string {
+function formatValue(id: string, n: number, units: UnitApi): string {
   if (id === "active" || id === "idle") return `${formatHours(n)} h`;
-  if (id === "speed") return n > 0 ? `${formatSpeed(n)} km/h` : "—";
+  if (id === "speed") return n > 0 ? units.speed(n) : "—";
   if (id === "rpm") return n > 0 ? `${formatRpm(n)}` : "—";
   if (id === "fuel" || id === "refill" || id === "can" || id === "tank") return `${formatLiters(n)} L`;
   if (id === "kml" || id === "flatkml") return n > 0 ? `${formatKmPerL(n)} km/l` : "—";
   if (id === "cost") return formatIdr(n);
-  if (id === "gain" || id === "loss") return formatMeters(n);
+  if (id === "gain" || id === "loss") return units.altitude(n);
   if (id === "bumpy") return `${n.toFixed(1)}%`;
-  return `${formatKm(n)} km`;
+  return units.distance(n);
 }
 
 function formatDelta(pct: number | null, b: number, a: number): string {
@@ -32,6 +33,7 @@ type Props = {
 };
 
 export function ComparisonPanel({ rows, baselineKey, compareKey, onBaseline, onCompare }: Props) {
+  const units = useUnitSystem();
   const baseline = rows.find((row) => row.key === baselineKey);
   const compare = rows.find((row) => row.key === compareKey);
   const metrics = baseline && compare ? comparePeriods(baseline, compare) : [];
@@ -91,8 +93,8 @@ export function ComparisonPanel({ rows, baselineKey, compareKey, onBaseline, onC
                   <span className={`delta ${tone}`}>{formatDelta(metric.pct, metric.b, metric.a)}</span>
                 </div>
                 <div className="compare-values">
-                  <span>{formatValue(metric.id, metric.a)}</span>
-                  <span>{formatValue(metric.id, metric.b)}</span>
+                  <span>{formatValue(metric.id, metric.a, units)}</span>
+                  <span>{formatValue(metric.id, metric.b, units)}</span>
                 </div>
                 <div className="compare-bar" aria-hidden="true">
                   <span className="track">

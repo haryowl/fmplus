@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { groupOptionLabel, userLabel, userOptionLabel } from "./lib/api";
 import { DEFAULT_TRIP_BREAK_MIN, TIMEZONES } from "./lib/config";
-import { formatHours, formatIdr, formatInt, formatKm, formatKmPerL, formatLiters, formatMeters, formatPct, formatRpm, formatSpeed, odoGpsDelta } from "./lib/format";
+import { formatHours, formatIdr, formatInt, formatKmPerL, formatLiters, formatPct, formatRpm, odoGpsDelta } from "./lib/format";
 import { describeFuelSource, listRefillEvents, movingSharePct } from "./lib/metrics";
 import { buildInsights, type InsightBlock, type InsightDepth } from "./lib/insight";
 import { fetchAnalyzeStatus, requestAiInsights, type InsightSource } from "./lib/aiInsights";
@@ -23,6 +23,7 @@ import { ViewNav } from "./components/ViewNav";
 import { ExportPdfButton } from "./components/ExportPdfButton";
 import { ExportExcelButton } from "./components/ExportExcelButton";
 import { UnitSystemSelect } from "./components/UnitSystemSelect";
+import { useUnitSystem } from "./lib/unitSystem";
 import {
   behaviorEventsSheet,
   periodDetailSheet,
@@ -86,6 +87,7 @@ export default function App() {
     insightInput,
     handleLoad,
   } = useVehicleDashboard();
+  const units = useUnitSystem();
 
   const [compareA, setCompareA] = useState("");
   const [compareB, setCompareB] = useState("");
@@ -351,19 +353,19 @@ export default function App() {
         <section className="kpis">
           <article className="kpi" style={{ ["--tick" as string]: "var(--gps)" }}>
             <div className="label">GPS distance</div>
-            <div className="value">{trips ? formatKm(totals.gps) : "—"}</div>
-            <div className="unit">km · all points</div>
+            <div className="value">{trips ? units.distance(totals.gps, false) : "—"}</div>
+            <div className="unit">{units.distanceUnit} · all points</div>
           </article>
           <article className="kpi" style={{ ["--tick" as string]: "var(--ign)" }}>
             <div className="label">Ignition distance</div>
-            <div className="value">{trips ? formatKm(totals.ignition) : "—"}</div>
-            <div className="unit">km · engine on</div>
+            <div className="value">{trips ? units.distance(totals.ignition, false) : "—"}</div>
+            <div className="unit">{units.distanceUnit} · engine on</div>
           </article>
           <article className="kpi" style={{ ["--tick" as string]: "var(--odo)" }}>
             <div className="label">Odometer</div>
-            <div className="value">{trips ? formatKm(totals.odometer) : "—"}</div>
+            <div className="value">{trips ? units.distance(totals.odometer, false) : "—"}</div>
             <div className="unit">
-              km · {trips ? `vs GPS ${odoGpsDelta(totals.odometer, totals.ignition)}` : "CAN"}
+              {units.distanceUnit} · {trips ? `vs GPS ${odoGpsDelta(totals.odometer, totals.ignition)}` : "CAN"}
             </div>
           </article>
           <article className="kpi" style={{ ["--tick" as string]: "var(--hrs)" }}>
@@ -471,13 +473,13 @@ export default function App() {
               <div className="mini-stat">
                 <div className="l">Avg speed</div>
                 <div className="v">
-                  {totals.avgSpeed > 0 ? `${formatSpeed(totals.avgSpeed)} km/h` : "—"}
+                  {totals.avgSpeed > 0 ? units.speed(totals.avgSpeed) : "—"}
                 </div>
               </div>
               <div className="mini-stat">
                 <div className="l">Max speed</div>
                 <div className="v">
-                  {totals.maxSpeed > 0 ? `${formatSpeed(totals.maxSpeed)} km/h` : "—"}
+                  {totals.maxSpeed > 0 ? units.speed(totals.maxSpeed) : "—"}
                 </div>
               </div>
               <div className="mini-stat">
@@ -640,16 +642,16 @@ export default function App() {
             <div className="stat-strip four">
               <div className="mini-stat">
                 <div className="l">Elevation gain</div>
-                <div className="v">{formatMeters(totals.elevationGainM)}</div>
+                <div className="v">{units.altitude(totals.elevationGainM)}</div>
                 <div className="hint">
                   {totals.altitudeMinM !== null && totals.altitudeMaxM !== null
-                    ? `${Math.round(totals.altitudeMinM)}–${Math.round(totals.altitudeMaxM)} m range`
+                    ? `${units.altitude(totals.altitudeMinM, false)}–${units.altitude(totals.altitudeMaxM, false)} ${units.altitudeUnit} range`
                     : ""}
                 </div>
               </div>
               <div className="mini-stat">
                 <div className="l">Elevation loss</div>
-                <div className="v">{formatMeters(totals.elevationLossM)}</div>
+                <div className="v">{units.altitude(totals.elevationLossM)}</div>
               </div>
               <div className="mini-stat">
                 <div className="l">Terrain impact</div>
@@ -887,14 +889,14 @@ export default function App() {
                   <tr>
                     <th>Period</th>
                     <th className="num">Trips</th>
-                    <th className="num">GPS all (km)</th>
-                    <th className="num">Ignition (km)</th>
-                    <th className="num">Odometer (km)</th>
+                    <th className="num">GPS all ({units.distanceUnit})</th>
+                    <th className="num">Ignition ({units.distanceUnit})</th>
+                    <th className="num">Odometer ({units.distanceUnit})</th>
                     <th className="num">vs GPS</th>
                     <th className="num">Active (h)</th>
                     <th className="num">Idle (h)</th>
-                    <th className="num">Avg km/h</th>
-                    <th className="num">Max km/h</th>
+                    <th className="num">Avg {units.speedUnit}</th>
+                    <th className="num">Max {units.speedUnit}</th>
                     <th className="num">Avg RPM</th>
                     <th className="num">Max RPM</th>
                     <th className="num">Fuel (L)</th>
@@ -902,8 +904,8 @@ export default function App() {
                     <th className="num">Tank (L)</th>
                     <th className="num">Refill (L)</th>
                     <th className="num">km/l</th>
-                    <th className="num">Gain (m)</th>
-                    <th className="num">Loss (m)</th>
+                    <th className="num">Gain ({units.altitudeUnit})</th>
+                    <th className="num">Loss ({units.altitudeUnit})</th>
                     <th className="num">Flat km/l</th>
                   </tr>
                 </thead>
@@ -912,14 +914,14 @@ export default function App() {
                     <tr key={row.key}>
                       <td>{row.label}</td>
                       <td className="num">{row.tripCount}</td>
-                      <td className="num">{formatKm(row.gpsDistanceKm)}</td>
-                      <td className="num">{formatKm(row.ignitionDistanceKm)}</td>
-                      <td className="num">{formatKm(row.odometerKm)}</td>
+                      <td className="num">{units.distance(row.gpsDistanceKm, false)}</td>
+                      <td className="num">{units.distance(row.ignitionDistanceKm, false)}</td>
+                      <td className="num">{units.distance(row.odometerKm, false)}</td>
                       <td className="num">{odoGpsDelta(row.odometerKm, row.ignitionDistanceKm)}</td>
                       <td className="num">{formatHours(row.activeHours)}</td>
                       <td className="num">{formatHours(row.idleHours)}</td>
-                      <td className="num">{row.avgSpeedKmh > 0 ? formatSpeed(row.avgSpeedKmh) : "—"}</td>
-                      <td className="num">{row.maxSpeedKmh > 0 ? formatSpeed(row.maxSpeedKmh) : "—"}</td>
+                      <td className="num">{row.avgSpeedKmh > 0 ? units.speed(row.avgSpeedKmh, false) : "—"}</td>
+                      <td className="num">{row.maxSpeedKmh > 0 ? units.speed(row.maxSpeedKmh, false) : "—"}</td>
                       <td className="num">{row.avgRpm > 0 ? formatRpm(row.avgRpm) : "—"}</td>
                       <td className="num">{row.maxRpm > 0 ? formatRpm(row.maxRpm) : "—"}</td>
                       <td className="num">{formatLiters(row.fuelUsedL)}</td>
@@ -932,10 +934,10 @@ export default function App() {
                       <td className="num">{formatLiters(row.refillL)}</td>
                       <td className="num">{row.kmPerL > 0 ? formatKmPerL(row.kmPerL) : "—"}</td>
                       <td className="num">
-                        {row.altitudeSamples > 0 ? Math.round(row.elevationGainM) : "—"}
+                        {row.altitudeSamples > 0 ? units.altitude(row.elevationGainM, false) : "—"}
                       </td>
                       <td className="num">
-                        {row.altitudeSamples > 0 ? Math.round(row.elevationLossM) : "—"}
+                        {row.altitudeSamples > 0 ? units.altitude(row.elevationLossM, false) : "—"}
                       </td>
                       <td className="num">
                         {row.flatKmPerL > 0 ? formatKmPerL(row.flatKmPerL) : "—"}

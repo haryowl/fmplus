@@ -737,7 +737,7 @@ export default function FieldLogin() {
                   {vehicleConfirmedJobId === selectedId ? (
                     <span className="field-pill">Asset confirmed</span>
                   ) : detail.armadaUserId || detail.trackerDeviceId ? (
-                    <span className="muted">Scan this vehicle before Start / Done</span>
+                    <span className="muted">Scan this asset before Start / Done</span>
                   ) : null}
                 </div>
               ) : null}

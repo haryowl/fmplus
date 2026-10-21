@@ -913,7 +913,7 @@ export function preferDeviceEndOpen(opts: {
 
 export async function endOpenMaintenanceForVehicle(
   armadaUserId: number,
-  reason = "Vehicle maintenance stopped",
+  reason = "Asset maintenance stopped",
 ): Promise<EndSeriesResult> {
   const res = await fetch(`/api/maintenance/vehicles/${armadaUserId}/end-open`, {
     method: "POST",

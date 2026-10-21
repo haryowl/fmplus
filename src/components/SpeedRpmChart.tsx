@@ -10,6 +10,8 @@ import {
   type ChartOptions,
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
+import { kmhToDisplay } from "../lib/units";
+import { useUnitSystem } from "../lib/unitSystem";
 import type { PeriodMetrics } from "../lib/types";
 import { axisTitle, chartFonts, useChartTheme } from "./chartTheme";
 
@@ -21,6 +23,7 @@ type Props = {
 
 export function SpeedRpmChart({ rows }: Props) {
   const theme = useChartTheme();
+  const units = useUnitSystem();
   const speed = theme.gps;
   const rpm = theme.odo;
   const data: ChartData<"line"> = {
@@ -28,7 +31,7 @@ export function SpeedRpmChart({ rows }: Props) {
     datasets: [
       {
         label: "Avg speed",
-        data: rows.map((row) => Number(row.avgSpeedKmh.toFixed(1))),
+        data: rows.map((row) => Number(kmhToDisplay(row.avgSpeedKmh, units.system).toFixed(1))),
         borderColor: speed,
         backgroundColor: theme.gpsSoft,
         pointBackgroundColor: theme.surface,
@@ -43,7 +46,7 @@ export function SpeedRpmChart({ rows }: Props) {
       },
       {
         label: "Max speed",
-        data: rows.map((row) => Number(row.maxSpeedKmh.toFixed(1))),
+        data: rows.map((row) => Number(kmhToDisplay(row.maxSpeedKmh, units.system).toFixed(1))),
         borderColor: speed,
         backgroundColor: "transparent",
         pointBackgroundColor: speed,
@@ -104,7 +107,7 @@ export function SpeedRpmChart({ rows }: Props) {
           label(item) {
             const value = Number(item.parsed.y ?? 0);
             const rpm = item.dataset.yAxisID === "yRpm";
-            return ` ${item.dataset.label}: ${rpm ? value.toFixed(0) : value.toFixed(1)}${rpm ? "" : " km/h"}`;
+            return ` ${item.dataset.label}: ${rpm ? value.toFixed(0) : value.toFixed(1)}${rpm ? "" : ` ${units.speedUnit}`}`;
           },
         },
       },
@@ -127,7 +130,7 @@ export function SpeedRpmChart({ rows }: Props) {
         border: { display: false },
         grid: { color: theme.grid },
         ticks: theme.ticks,
-        title: { display: true, text: "Speed (km/h)", ...axisTitle },
+        title: { display: true, text: `Speed (${units.speedUnit})`, ...axisTitle },
       },
       yRpm: {
         beginAtZero: true,

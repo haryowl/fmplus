@@ -15,6 +15,7 @@ import {
   vehicleRefFromScan,
   vehicleScanBlocks,
 } from "../lib/catalogScan";
+import { assetCopy } from "../lib/assetCopy";
 import { fieldScanCanPart, fieldScanCanVehicle, type FieldScanCapabilities } from "../lib/scanCapabilities";
 import { prepareImageDataUrl } from "../lib/imageUpload";
 import {
@@ -507,7 +508,7 @@ export default function ManagerMaintenance() {
         method: "POST",
         body: JSON.stringify({
           reason:
-            via === "device" ? "Device maintenance stopped" : "Vehicle maintenance stopped",
+            via === "device" ? "Device maintenance stopped" : assetCopy.maintenanceStopped,
         }),
       });
       setNotice(
@@ -660,16 +661,16 @@ export default function ManagerMaintenance() {
                 <div className="field-action-row">
                   <CatalogScanButton
                     disabled={busy}
-                    label="Scan vehicle"
+                    label={assetCopy.scanAsset}
                     allowCamera={scan?.camera !== false}
                     allowTyped={scan?.typed !== false}
                     allowNfc={scan?.nfc === true}
                     onCode={onVehicleCode}
                   />
                   {vehicleConfirmedJobId === selectedId ? (
-                    <span className="field-pill">Vehicle confirmed</span>
+                    <span className="field-pill">{assetCopy.assetConfirmed}</span>
                   ) : detail.armadaUserId || detail.trackerDeviceId ? (
-                    <span className="muted">Scan this vehicle before Start / Done</span>
+                    <span className="muted">{assetCopy.scanThisBeforeStartDone}</span>
                   ) : null}
                 </div>
               ) : null}
@@ -991,7 +992,7 @@ export default function ManagerMaintenance() {
               <div className="field-action-row" style={{ marginBottom: 8 }}>
                 <CatalogScanButton
                   disabled={busy || loadingJobs}
-                  label="Scan vehicle"
+                  label={assetCopy.scanAsset}
                   allowCamera={scan?.camera !== false}
                   allowTyped={scan?.typed !== false}
                   allowNfc={scan?.nfc === true}

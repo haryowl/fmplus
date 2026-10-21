@@ -12,6 +12,7 @@ import {
 } from "../lib/format";
 import { movingSharePct } from "../lib/metrics";
 import { describeLoadProgress } from "../lib/dayTracks";
+import { assetCopy } from "../lib/assetCopy";
 import { useFleetDashboard } from "../lib/useFleetDashboard";
 import type { Period } from "../lib/types";
 import { useChartTheme } from "../components/chartTheme";
@@ -128,7 +129,7 @@ export default function FleetCompact() {
             </select>
           </div>
           <div className="field fleet-picker-field">
-            <label>Vehicles</label>
+            <label>{assetCopy.assets}</label>
             <VehiclePicker
               dense
               users={d.users}
@@ -209,7 +210,7 @@ export default function FleetCompact() {
         </div>
         <section className="kpis">
           <article className="kpi" style={{ ["--tick" as string]: "var(--gps)" }}>
-            <div className="label">Vehicles</div>
+            <div className="label">{assetCopy.assets}</div>
             <div className="value">{d.byUserId ? formatInt(d.loadedCount) : "—"}</div>
             <div className="unit">loaded</div>
           </article>
@@ -254,7 +255,7 @@ export default function FleetCompact() {
                   ? "Loading fleet…"
                   : d.byUserId
                     ? "No points in this range"
-                    : "Select vehicles to rank"}
+                    : assetCopy.selectToRank}
               </h3>
               <p>
                 {d.loading

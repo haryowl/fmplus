@@ -11,7 +11,7 @@ import {
 
 function row(partial: Partial<LastStatusRow> & Pick<LastStatusRow, "id">): LastStatusRow {
   return {
-    name: partial.name ?? `Vehicle ${partial.id}`,
+    name: partial.name ?? `Asset ${partial.id}`,
     username: partial.username ?? `u${partial.id}`,
     utc: partial.utc ?? "",
     deviceActivity: partial.deviceActivity ?? "",

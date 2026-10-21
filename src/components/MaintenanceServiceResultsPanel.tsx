@@ -9,6 +9,7 @@ import {
   type ChartOptions,
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
+import { assetCopy } from "../lib/assetCopy";
 import { useChartTheme } from "./chartTheme";
 import {
   downloadServiceResultsExcel,
@@ -288,7 +289,7 @@ export function MaintenanceServiceResultsPanel({
           </select>
         </label>
         <label>
-          Vehicle
+          {assetCopy.asset}
           <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
             <option value="">All with jobs</option>
             {vehicleOptions.map((v) => (
@@ -426,7 +427,7 @@ export function MaintenanceServiceResultsPanel({
               <table className="metrics">
                 <thead>
                   <tr>
-                    <th>Vehicle</th>
+                    <th>{assetCopy.asset}</th>
                     <th>Fleet group</th>
                     <th className="num">Jobs</th>
                     <th className="num">Outstanding</th>
@@ -492,7 +493,7 @@ export function MaintenanceServiceResultsPanel({
                   <tr>
                     <th>Date</th>
                     <th>Status</th>
-                    <th>Vehicle</th>
+                    <th>{assetCopy.asset}</th>
                     <th>Fleet group</th>
                     <th>Title</th>
                     <th>Items</th>

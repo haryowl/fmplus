@@ -1,5 +1,6 @@
 import type { BehaviorSummary } from "./behavior";
-import { formatHours, formatKm, formatKmPerL, formatLiters, formatMeters, formatPct, formatSpeed } from "./format";
+import { formatHours, formatKmPerL, formatLiters, formatPct } from "./format";
+import { formatAltitude, formatDistance, formatSpeedValue, readStoredUnitSystem } from "./units";
 
 export type InsightDepth = "standard" | "detailed";
 
@@ -34,8 +35,9 @@ export type InsightInput = {
 };
 
 function fuelSentence(input: InsightInput): string {
+  const units = readStoredUnitSystem();
   if (input.kmPerL <= 0) return "Not enough fuel data for an efficiency reading.";
-  let text = `Current efficiency ${formatKmPerL(input.kmPerL)} km/l from ${formatLiters(input.fuelUsedL)} L used over ${formatKm(input.gpsKm)} km.`;
+  let text = `Current efficiency ${formatKmPerL(input.kmPerL)} km/l from ${formatLiters(input.fuelUsedL)} L used over ${formatDistance(input.gpsKm, units)}.`;
   if (input.canFuelUsedL > 0 && input.tankFuelUsedL > 0) {
     text += ` CAN reports ${formatLiters(input.canFuelUsedL)} L; tank identity ${formatLiters(input.tankFuelUsedL)} L.`;
     const gap = Math.abs(input.canFuelUsedL - input.tankFuelUsedL);
@@ -45,7 +47,7 @@ function fuelSentence(input: InsightInput): string {
     }
   }
   if (input.altitudeSamples > 0 && input.elevationGainM > 0 && input.terrainImpactPct > 0) {
-    text += ` Terrain impact about ${formatPct(input.terrainImpactPct)} extra fuel from ${formatMeters(input.elevationGainM)} gain.`;
+    text += ` Terrain impact about ${formatPct(input.terrainImpactPct)} extra fuel from ${formatAltitude(input.elevationGainM, units)} gain.`;
     if (input.flatKmPerL > input.kmPerL) {
       text += ` Flat-terrain equivalent ${formatKmPerL(input.flatKmPerL)} km/l.`;
     }
@@ -54,7 +56,8 @@ function fuelSentence(input: InsightInput): string {
 }
 
 function performanceSentence(input: InsightInput, depth: InsightDepth): string {
-  let text = `Average speed ${formatSpeed(input.avgSpeedKmh)} km/h over ${formatKm(input.gpsKm)} km in ${formatHours(input.activeHours)} active hours.`;
+  const units = readStoredUnitSystem();
+  let text = `Average speed ${formatSpeedValue(input.avgSpeedKmh, units)} over ${formatDistance(input.gpsKm, units)} in ${formatHours(input.activeHours)} active hours.`;
   if (depth === "detailed") {
     const engine = input.activeHours + input.idleHours;
     if (engine > 0) {
@@ -73,7 +76,8 @@ function behaviorSentence(input: InsightInput, depth: InsightDepth): string {
   if (!b || b.totalEvents === 0) {
     let text = "Good driving behavior with no significant events detected.";
     if (input.altitudeSamples > 0 && (input.elevationGainM > 0 || input.elevationLossM > 0)) {
-      text += ` Drive included ${formatMeters(input.elevationGainM)} gain and ${formatMeters(input.elevationLossM)} loss.`;
+      const units = readStoredUnitSystem();
+      text += ` Drive included ${formatAltitude(input.elevationGainM, units)} gain and ${formatAltitude(input.elevationLossM, units)} loss.`;
     }
     return text;
   }
@@ -122,7 +126,7 @@ function maintenanceItems(input: InsightInput, depth: InsightDepth): string[] {
   if (items.length === 0) items.push("No urgent maintenance flagged from this range.");
   if (depth === "detailed") {
     items.push(
-      `Based on ${formatKm(input.gpsKm)} km, ${formatMeters(input.elevationGainM)} gain, ${formatMeters(input.elevationLossM)} loss.`,
+      `Based on ${formatDistance(input.gpsKm, readStoredUnitSystem())}, ${formatAltitude(input.elevationGainM, readStoredUnitSystem())} gain, ${formatAltitude(input.elevationLossM, readStoredUnitSystem())} loss.`,
     );
   }
   return items;

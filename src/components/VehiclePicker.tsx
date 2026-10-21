@@ -1,3 +1,4 @@
+import { assetCopy } from "../lib/assetCopy";
 import { FLEET_VEHICLE_CAP } from "../lib/config";
 import { userOptionLabel } from "../lib/api";
 import type { User } from "../lib/types";
@@ -38,9 +39,9 @@ export function VehiclePicker({ users, selectedIds, onChange, disabled, dense }:
           {users.length > FLEET_VEHICLE_CAP ? `Select ${FLEET_VEHICLE_CAP}` : "Select all"}
         </button>
       </div>
-      <div className="vehicle-picker-list" role="group" aria-label="Vehicles in group">
+      <div className="vehicle-picker-list" role="group" aria-label={assetCopy.inGroup}>
         {users.length === 0 ? (
-          <p className="vehicle-picker-empty">Choose a group first</p>
+          <p className="vehicle-picker-empty">{assetCopy.chooseGroupFirst}</p>
         ) : (
           users.map((user) => {
             const id = String(user.id);

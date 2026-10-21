@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchGroups, fetchUsersForGroup, fetchUsersStatus, groupOptionLabel } from "../lib/api";
 import { TIMEZONES } from "../lib/config";
-import { formatSpeed } from "../lib/format";
+import { useUnitSystem } from "../lib/unitSystem";
 import { ageLabel, filterStatusRows, type LastStatusRow } from "../lib/lastStatus";
 import {
   classifyLiveRow,
@@ -50,6 +50,7 @@ function maintenanceOpenHref(userId: number, deviceId?: string | null): string {
 }
 
 export default function LiveOps() {
+  const units = useUnitSystem();
   const {
     query,
     ready,
@@ -481,7 +482,7 @@ export default function LiveOps() {
                           <span className="muted">
                             {driversByUser[row.id] ? `${driversByUser[row.id]} · ` : ""}
                             {LIVE_OPS_LABELS[cls]} · {ageLabel(row.lastMs, now)} ·{" "}
-                            {row.speedKmh === null ? "—" : `${formatSpeed(row.speedKmh)} km/h`}
+                            {row.speedKmh === null ? "—" : units.speed(row.speedKmh)}
                           </span>
                         </span>
                       </button>

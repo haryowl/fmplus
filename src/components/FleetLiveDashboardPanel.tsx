@@ -650,7 +650,7 @@ export function FleetLiveDashboardPanel({
                 type="search"
                 value={snapQuery}
                 onChange={(e) => setSnapQuery(e.target.value)}
-                placeholder="Search vehicle…"
+                placeholder={`${assetCopy.searchAsset}…`}
               />
             </label>
             <div className="fleet-ico-tabs" role="tablist">

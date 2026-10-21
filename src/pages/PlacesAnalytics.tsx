@@ -19,6 +19,7 @@ import {
   type NativeGeofence,
   type PlacesSummary,
 } from "../lib/places";
+import { assetCopy } from "../lib/assetCopy";
 import { exceptionsHref, writeLocationSearch } from "../lib/routing";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 
@@ -564,7 +565,7 @@ export default function PlacesAnalytics() {
                       <tr>
                         <th>Fence</th>
                         <th>Hits</th>
-                        <th>Vehicles</th>
+                        <th>{assetCopy.assets}</th>
                         <th>Last</th>
                       </tr>
                     </thead>

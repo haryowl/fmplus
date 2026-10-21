@@ -3,26 +3,24 @@ import { totalsToCompare, type FleetVehicleRow } from "../lib/fleet";
 import {
   formatHours,
   formatIdr,
-  formatKm,
   formatKmPerL,
   formatLiters,
-  formatMeters,
   formatRpm,
-  formatSpeed,
 } from "../lib/format";
 import { fleetHeadToHeadSheet } from "../lib/panelExcel";
+import { useUnitSystem, type UnitApi } from "../lib/unitSystem";
 import { ExportExcelButton } from "./ExportExcelButton";
 
-function formatValue(id: string, n: number): string {
+function formatValue(id: string, n: number, units: UnitApi): string {
   if (id === "active" || id === "idle") return `${formatHours(n)} h`;
-  if (id === "speed") return n > 0 ? `${formatSpeed(n)} km/h` : "—";
+  if (id === "speed") return n > 0 ? units.speed(n) : "—";
   if (id === "rpm") return n > 0 ? `${formatRpm(n)}` : "—";
   if (id === "fuel" || id === "refill" || id === "can" || id === "tank") return `${formatLiters(n)} L`;
   if (id === "kml" || id === "flatkml") return n > 0 ? `${formatKmPerL(n)} km/l` : "—";
   if (id === "cost") return formatIdr(n);
-  if (id === "gain" || id === "loss") return formatMeters(n);
+  if (id === "gain" || id === "loss") return units.altitude(n);
   if (id === "bumpy") return `${n.toFixed(1)}%`;
-  return `${formatKm(n)} km`;
+  return units.distance(n);
 }
 
 function formatDelta(pct: number | null, b: number, a: number): string {
@@ -41,6 +39,7 @@ type Props = {
 };
 
 export function FleetHeadToHead({ vehicles, baselineId, compareId, onBaseline, onCompare }: Props) {
+  const units = useUnitSystem();
   const live = vehicles.filter((v) => v.hasData);
   const baseline = live.find((v) => v.userId === baselineId) ?? live[0];
   const compare =
@@ -54,7 +53,7 @@ export function FleetHeadToHead({ vehicles, baselineId, compareId, onBaseline, o
       <div className="panel-head">
         <div>
           <h2>Head to head</h2>
-          <p>Second vehicle versus the first. Idle, fuel, and cost are better when they fall; efficiency is better when it rises.</p>
+          <p>Second asset versus the first. Idle, fuel, and cost are better when they fall; efficiency is better when it rises.</p>
         </div>
         <div className="panel-head-aside">
           <div className="compare-picks">
@@ -98,7 +97,7 @@ export function FleetHeadToHead({ vehicles, baselineId, compareId, onBaseline, o
         </div>
       </div>
       {metrics.length === 0 ? (
-        <p className="compare-hint">Load at least two vehicles with trips in this range.</p>
+        <p className="compare-hint">Load at least two assets with trips in this range.</p>
       ) : (
         <div className="compare-grid">
           {metrics.map((metric) => {
@@ -111,8 +110,8 @@ export function FleetHeadToHead({ vehicles, baselineId, compareId, onBaseline, o
                   <span className={`delta ${tone}`}>{formatDelta(metric.pct, metric.b, metric.a)}</span>
                 </div>
                 <div className="compare-values">
-                  <span>{formatValue(metric.id, metric.a)}</span>
-                  <span>{formatValue(metric.id, metric.b)}</span>
+                  <span>{formatValue(metric.id, metric.a, units)}</span>
+                  <span>{formatValue(metric.id, metric.b, units)}</span>
                 </div>
                 <div className="compare-bar" aria-hidden="true">
                   <span className="track">

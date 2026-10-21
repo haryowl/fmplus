@@ -70,7 +70,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   fleetLiveTrips: "Fleet Live: Trips section",
   fleetLiveHistory: "Fleet Live: History section",
   fleetLiveMedia: "Fleet Live: Media (video/picture)",
-  fleetLiveAlerts: "Fleet Live: Alerts events",
+  fleetLiveAlerts: "Fleet Live: Events",
   fleetLiveRules: "Fleet Live: Alert rules editor",
 };
 

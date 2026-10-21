@@ -3,6 +3,7 @@ import { fetchGroups, fetchUsersForGroup, fetchUsersStatus, groupOptionLabel, us
 import { BrandMark } from "../components/BrandMark";
 import { RoutePlanMap } from "../components/RoutePlanMap";
 import { ViewNav } from "../components/ViewNav";
+import { assetCopy } from "../lib/assetCopy";
 import { formatKm } from "../lib/format";
 import { filterStatusRows, type LastStatusRow } from "../lib/lastStatus";
 import {
@@ -409,9 +410,9 @@ export default function RoutePlanPage() {
             >
               <option value="">
                 {vehicleChoices.length
-                  ? "Select vehicle"
+                  ? assetCopy.selectAsset
                   : groups.length || deviceGroupId || statusRows.length
-                    ? "No vehicles with GPS"
+                    ? "No assets with GPS"
                     : "Pick a group"}
               </option>
               {vehicleChoices.map((v) => (

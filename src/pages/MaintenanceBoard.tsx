@@ -37,7 +37,8 @@ import {
 } from "../lib/csvImport";
 import { CsvImportPanel } from "../components/CsvImportPanel";
 import { filterStatusRows, type LastStatusRow } from "../lib/lastStatus";
-import { formatKm, formatSpeed } from "../lib/format";
+import { assetCopy } from "../lib/assetCopy";
+import { useUnitSystem } from "../lib/unitSystem";
 import { vehicleTrackHref, writeLocationSearch } from "../lib/routing";
 import {
   deviceIdByStatusRowId,
@@ -136,6 +137,7 @@ export default function MaintenanceBoard() {
     allowsUser,
     allowsGroup,
   } = useEmbedTenant();
+  const units = useUnitSystem();
   const [timezone, setTimezone] = useState(query.tz);
   const [groupId, setGroupId] = useState(query.groupId);
   const [deviceGroups, setDeviceGroups] = useState<TrackerDeviceGroup[]>([]);
@@ -598,7 +600,7 @@ export default function MaintenanceBoard() {
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     if (!selectedUserId) {
-      setError("Select a vehicle from the fleet list.");
+      setError(assetCopy.selectFromFleet);
       return;
     }
     setBusyId("create");
@@ -1031,7 +1033,7 @@ export default function MaintenanceBoard() {
         {!eventId && boardPanel === "jobs" && showCreate && (
           <form className="maintenance-create" onSubmit={(e) => void onCreate(e)}>
             <label className="span-2">
-              Search vehicle
+              {assetCopy.searchAsset}
               <input
                 value={vehicleQuery}
                 onChange={(e) => setVehicleQuery(e.target.value)}
@@ -1039,19 +1041,19 @@ export default function MaintenanceBoard() {
               />
             </label>
             <label className="span-2">
-              Vehicle
+              {assetCopy.asset}
               <select
                 value={selectedUserId}
                 onChange={(e) => setSelectedUserId(e.target.value)}
                 required
                 size={Math.min(8, Math.max(4, vehicleOptions.length || 4))}
               >
-                <option value="">Select a vehicle…</option>
+                <option value="">{assetCopy.selectAnAsset}</option>
                 {vehicleOptions.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.name}
                     {v.username ? ` (${v.username})` : ""} · #{v.id}
-                    {v.status?.odometerKm != null ? ` · ${formatKm(v.status.odometerKm)} km` : ""}
+                    {v.status?.odometerKm != null ? ` · ${units.distance(v.status.odometerKm)}` : ""}
                   </option>
                 ))}
               </select>
@@ -1059,10 +1061,10 @@ export default function MaintenanceBoard() {
             {selectedStatus && (
               <p className="span-2 muted maintenance-hint">
                 Last status: {selectedStatus.ignition === true ? "Ign on" : selectedStatus.ignition === false ? "Ign off" : "Ign —"}
-                {selectedStatus.speedKmh != null ? ` · ${formatSpeed(selectedStatus.speedKmh)} km/h` : ""}
-                {selectedStatus.odometerKm != null ? ` · odo ${formatKm(selectedStatus.odometerKm)} km` : ""}
+                {selectedStatus.speedKmh != null ? ` · ${units.speed(selectedStatus.speedKmh)}` : ""}
+                {selectedStatus.odometerKm != null ? ` · odo ${units.distance(selectedStatus.odometerKm)}` : ""}
                 {selectedStatus.lat != null && selectedStatus.lon != null
-                  ? ` · ${selectedStatus.lat.toFixed(5)}, ${selectedStatus.lon.toFixed(5)}`
+                  ? ` · ${units.coord(selectedStatus.lat, selectedStatus.lon)}`
                   : " · no fix"}
                 {" — name, odo, and position are saved on create."}
               </p>
@@ -1623,7 +1625,7 @@ export default function MaintenanceBoard() {
                               )
                             : endOpenMaintenanceForVehicle(
                                 Number(sample.armadaUserId),
-                                "Vehicle maintenance stopped",
+                                assetCopy.maintenanceStopped,
                               );
                         void stopPromise
                           .then((result) => {
@@ -1683,7 +1685,7 @@ export default function MaintenanceBoard() {
                                   </span>
                                 ) : null}
                                 <span>{eventWhen(ev, now)}</span>
-                                {ev.odometerKm != null ? <span>{formatKm(ev.odometerKm)} km</span> : null}
+                                {ev.odometerKm != null ? <span>{units.distance(ev.odometerKm)}</span> : null}
                                 {ev.serviceDurationMinutes != null ? (
                                   <span>{formatServiceDuration(ev.serviceDurationMinutes)}</span>
                                 ) : null}

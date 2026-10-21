@@ -6,6 +6,7 @@ import {
   groupOptionLabel,
   userOptionLabel,
 } from "../lib/api";
+import { assetCopy } from "../lib/assetCopy";
 import { BrandMark } from "../components/BrandMark";
 import { CsvImportPanel } from "../components/CsvImportPanel";
 import { CatalogCodesEditor } from "../components/CatalogCodesEditor";
@@ -2734,7 +2735,7 @@ export default function DispatchBoard() {
                     onChange={(e) => setOpenStartMode(e.target.value as DispatchOpenStartMode)}
                   >
                     <option value="none">None (open between stops)</option>
-                    <option value="vehicle">Vehicle last position</option>
+                    <option value="vehicle">{assetCopy.lastPosition}</option>
                   </select>
                 </div>
               ) : null}
@@ -3441,14 +3442,14 @@ export default function DispatchBoard() {
                   <p className="dispatch-search-hint" style={{ gridColumn: "1 / -1" }}>
                     Create or move a depot from a saved POI, or pin on the map. Plan uses selected depots
                     above (or all when none selected). Orders go to the nearest chosen depot (or zone map
-                    when enabled). Vehicles use their capacity depot when set; otherwise they are balanced
+                    when enabled). Assets use their capacity depot when set; otherwise they are balanced
                     by demand. {depots.length} depot(s) saved.
                   </p>
                 </>
               ) : null}
             </div>
             <p className="dispatch-search-hint">
-              Packs pending orders onto vehicles under volume + weight caps using road distances when OSRM is up.
+              Packs pending orders onto assets under volume + weight caps using road distances when OSRM is up.
               Preview first, then apply.
             </p>
             <div className="dispatch-create-actions">
@@ -3574,14 +3575,14 @@ export default function DispatchBoard() {
                         </select>
                       </label>
                       <label className="field">
-                        Vehicle
+                        {assetCopy.asset}
                         <select
                           value={userId}
                           onChange={(e) => setUserId(e.target.value)}
                           disabled={!selectedGroup}
                         >
                           <option value="">
-                            {selectedGroup ? "Select vehicle" : "Pick group first"}
+                            {selectedGroup ? assetCopy.selectAsset : "Pick group first"}
                           </option>
                           {users.map((u) => {
                             const cap = capacityForVehicle(vehicleCaps, Number(u.id));
@@ -4943,7 +4944,7 @@ export default function DispatchBoard() {
           <section className="dispatch-rail dispatch-vehicle-pane">
             {!selected ? (
               <div className="dispatch-empty">
-                <p className="dispatch-eyebrow">Vehicle</p>
+                <p className="dispatch-eyebrow">{assetCopy.asset}</p>
                 <h2>No job selected</h2>
                 <span>Create a job, then assign pinned orders from the pool.</span>
               </div>
@@ -4951,7 +4952,7 @@ export default function DispatchBoard() {
               <>
                 <header className="dispatch-pane-head">
                   <div>
-                    <p className="dispatch-eyebrow">{isSales ? "Sales run" : "Vehicle load"}</p>
+                    <p className="dispatch-eyebrow">{isSales ? "Sales run" : assetCopy.load}</p>
                     <h2>{selected.title}</h2>
                   </div>
                   <span className={`dispatch-status dispatch-status-${selected.status}`}>
@@ -5234,7 +5235,7 @@ export default function DispatchBoard() {
                 {!isSales ? (
                 <div className="dispatch-cap-edit">
                   <p className="dispatch-eyebrow">
-                    {isPassenger ? "Vehicle seats / luggage" : "Vehicle capacity"}
+                    {isPassenger ? assetCopy.seatsLuggage : assetCopy.capacity}
                   </p>
                   <div className="dispatch-cap-edit-fields">
                     <div className="field">

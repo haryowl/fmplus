@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { assetCopy } from "../lib/assetCopy";
 import { useUnitSystem } from "../lib/unitSystem";
 import {
   extraDisplayPinColumns,
@@ -246,7 +247,7 @@ export function FleetLiveRankingPanel({
               <th className="fleet-rank-pos">#</th>
               <th>
                 <button type="button" className="fleet-rank-sort" onClick={() => toggleSort("name")}>
-                  Vehicle {sortIcon("name")}
+                  {assetCopy.asset} {sortIcon("name")}
                 </button>
               </th>
               <th>

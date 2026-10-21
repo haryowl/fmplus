@@ -1,4 +1,5 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { assetCopy } from "../lib/assetCopy";
 import {
   emptyLine,
   endMaintenanceSeries,
@@ -489,7 +490,7 @@ export function MaintenanceEventDetail({
             )
           : await endOpenMaintenanceForVehicle(
               Number(event.armadaUserId),
-              "Vehicle maintenance stopped",
+              assetCopy.maintenanceStopped,
             );
       setNotice(
         result.count
