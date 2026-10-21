@@ -1,5 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { EVENT_CLASS_LABELS, type EventClass, type EventEmitOn } from "../lib/eventClass";
+import {
+  DEFAULT_EVENT_CLASS_BY_TYPE,
+  EVENT_CLASS_LABELS,
+  type EventClass,
+  type EventEmitOn,
+} from "../lib/eventClass";
 
 type CatalogRow = {
   alarmType: string;
@@ -33,8 +38,26 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return data;
 }
 
+function seededCatalog(): CatalogRow[] {
+  return Object.entries(DEFAULT_EVENT_CLASS_BY_TYPE).map(([alarmType, info]) => ({
+    alarmType,
+    label: info.label || alarmType,
+    eventClass: info.eventClass,
+    raiseAlert: info.raiseAlert,
+    emitOn: info.emitOn,
+  }));
+}
+
+function apiUnavailableMessage(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err || "");
+  if (/not found/i.test(msg) || /HTTP 404/i.test(msg)) {
+    return "Event class API not loaded. Restart npm run dev or npm start after this update, then run npm run db:migrate.";
+  }
+  return msg || "Failed to load event classes";
+}
+
 export function AdminEventClassPanel({ tenantId, profileId, deviceId, busy }: Props) {
-  const [catalog, setCatalog] = useState<CatalogRow[]>([]);
+  const [catalog, setCatalog] = useState<CatalogRow[]>(() => seededCatalog());
   const [maps, setMaps] = useState<MapRow[]>([]);
   const [alarmType, setAlarmType] = useState("ignition");
   const [eventClass, setEventClass] = useState<EventClass>("asset");
@@ -44,19 +67,47 @@ export function AdminEventClassPanel({ tenantId, profileId, deviceId, busy }: Pr
   const [saving, setSaving] = useState(false);
 
   async function reload() {
+    setError("");
     const q = new URLSearchParams();
     if (deviceId) q.set("deviceId", deviceId);
     else if (profileId) q.set("profileId", profileId);
-    const data = await api<{ catalog: CatalogRow[]; maps: MapRow[] }>(
-      `/api/admin/tenants/${tenantId}/tracker-event-maps?${q}`,
-    );
-    setCatalog(data.catalog || []);
+    const suffix = q.toString() ? `?${q}` : "";
+    const tenantPath = `/api/admin/tenants/${encodeURIComponent(tenantId)}`;
+    let data: { catalog: CatalogRow[]; maps: MapRow[] };
+    try {
+      data = await api<{ catalog: CatalogRow[]; maps: MapRow[] }>(
+        `${tenantPath}/tracker-event-maps${suffix}`,
+      );
+    } catch (err) {
+      try {
+        const fallback = await api<{
+          eventCatalog?: CatalogRow[];
+          eventMaps?: MapRow[];
+        }>(`${tenantPath}/tracker-param-maps${suffix}`);
+        if (!fallback.eventCatalog) throw err;
+        data = { catalog: fallback.eventCatalog, maps: fallback.eventMaps || [] };
+      } catch {
+        throw err;
+      }
+    }
+    const nextCatalog = data.catalog?.length ? data.catalog : seededCatalog();
+    setCatalog(nextCatalog);
     setMaps(data.maps || []);
+    const hit = nextCatalog.find((c) => c.alarmType === alarmType);
+    if (hit) {
+      setEventClass(hit.eventClass);
+      setRaiseAlert(hit.raiseAlert);
+      setEmitOn(hit.emitOn);
+    }
   }
 
   useEffect(() => {
     if (!tenantId) return;
-    void reload().catch((err: Error) => setError(err.message || "Failed to load event classes"));
+    void reload().catch((err: unknown) => {
+      setCatalog(seededCatalog());
+      setMaps([]);
+      setError(apiUnavailableMessage(err));
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, profileId, deviceId]);
 
@@ -65,7 +116,7 @@ export function AdminEventClassPanel({ tenantId, profileId, deviceId, busy }: Pr
     setSaving(true);
     setError("");
     try {
-      await api(`/api/admin/tenants/${tenantId}/tracker-event-maps`, {
+      await api(`/api/admin/tenants/${encodeURIComponent(tenantId)}/tracker-event-maps`, {
         method: "POST",
         body: JSON.stringify({
           alarmType,
@@ -77,7 +128,7 @@ export function AdminEventClassPanel({ tenantId, profileId, deviceId, busy }: Pr
       });
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(apiUnavailableMessage(err));
     } finally {
       setSaving(false);
     }
@@ -87,10 +138,13 @@ export function AdminEventClassPanel({ tenantId, profileId, deviceId, busy }: Pr
     if (!window.confirm("Remove this event class override?")) return;
     setSaving(true);
     try {
-      await api(`/api/admin/tenants/${tenantId}/tracker-event-maps/${id}`, { method: "DELETE" });
+      await api(
+        `/api/admin/tenants/${encodeURIComponent(tenantId)}/tracker-event-maps/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+      );
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setError(apiUnavailableMessage(err));
     } finally {
       setSaving(false);
     }

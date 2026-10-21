@@ -209,6 +209,16 @@ export function resolveEventClass(index, alarmType, { deviceId, profileId } = {}
   return classifyAlarmType(key);
 }
 
+function missingEventTableError(err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/does not exist|undefined table|no such table/i.test(msg)) {
+    const e = new Error("Event class tables missing. Run npm run db:migrate.");
+    e.status = 503;
+    return e;
+  }
+  return null;
+}
+
 export async function upsertEventClassMap(tenantId, body) {
   const alarmType = normalizeAlarmType(body.alarmType || body.alarm_type);
   if (!alarmType) {
@@ -229,32 +239,36 @@ export async function upsertEventClassMap(tenantId, body) {
     err.status = 400;
     throw err;
   }
-  const existing = await dbQuery(
-    deviceId
-      ? `SELECT id FROM tracker_event_class_maps WHERE device_id = $1 AND alarm_type = $2`
-      : profileId
-        ? `SELECT id FROM tracker_event_class_maps WHERE profile_id = $1 AND device_id IS NULL AND alarm_type = $2`
-        : `SELECT id FROM tracker_event_class_maps WHERE tenant_id = $1 AND profile_id IS NULL AND device_id IS NULL AND alarm_type = $2`,
-    [deviceId || profileId || tenantId, alarmType],
-  );
-  if (existing.rows[0]) {
-    const updated = await dbQuery(
-      `UPDATE tracker_event_class_maps
-       SET event_class = $2, raise_alert = $3, emit_on = $4, updated_at = now()
-       WHERE id = $1
-       RETURNING *`,
-      [existing.rows[0].id, eventClass, raiseAlert, emitOn],
+  try {
+    const existing = await dbQuery(
+      deviceId
+        ? `SELECT id FROM tracker_event_class_maps WHERE device_id = $1 AND alarm_type = $2`
+        : profileId
+          ? `SELECT id FROM tracker_event_class_maps WHERE profile_id = $1 AND device_id IS NULL AND alarm_type = $2`
+          : `SELECT id FROM tracker_event_class_maps WHERE tenant_id = $1 AND profile_id IS NULL AND device_id IS NULL AND alarm_type = $2`,
+      [deviceId || profileId || tenantId, alarmType],
     );
-    return publicEventMap(updated.rows[0]);
+    if (existing.rows[0]) {
+      const updated = await dbQuery(
+        `UPDATE tracker_event_class_maps
+         SET event_class = $2, raise_alert = $3, emit_on = $4, updated_at = now()
+         WHERE id = $1
+         RETURNING *`,
+        [existing.rows[0].id, eventClass, raiseAlert, emitOn],
+      );
+      return publicEventMap(updated.rows[0]);
+    }
+    const inserted = await dbQuery(
+      `INSERT INTO tracker_event_class_maps (
+         tenant_id, profile_id, device_id, alarm_type, event_class, raise_alert, emit_on
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING *`,
+      [tenantId, profileId, deviceId, alarmType, eventClass, raiseAlert, emitOn],
+    );
+    return publicEventMap(inserted.rows[0]);
+  } catch (err) {
+    throw missingEventTableError(err) || err;
   }
-  const inserted = await dbQuery(
-    `INSERT INTO tracker_event_class_maps (
-       tenant_id, profile_id, device_id, alarm_type, event_class, raise_alert, emit_on
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7)
-     RETURNING *`,
-    [deviceId || profileId ? tenantId : tenantId, profileId, deviceId, alarmType, eventClass, raiseAlert, emitOn],
-  );
-  return publicEventMap(inserted.rows[0]);
 }
 
 export async function deleteEventClassMap(mapId) {

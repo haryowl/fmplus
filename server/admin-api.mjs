@@ -578,11 +578,12 @@ export async function handleAdminRequest(req, res) {
       const admin = await requireAdmin(req, res);
       if (!admin) return true;
       if (req.method === "GET") {
+        const profileId = url.searchParams.get("profileId") || undefined;
+        const deviceId = url.searchParams.get("deviceId") || undefined;
         json(res, 200, {
-          rules: await listMapRules({
-            profileId: url.searchParams.get("profileId") || undefined,
-            deviceId: url.searchParams.get("deviceId") || undefined,
-          }),
+          rules: await listMapRules({ profileId, deviceId }),
+          eventCatalog: await listEventTypeCatalog(),
+          eventMaps: await listEventClassMaps({ tenantId, profileId, deviceId }),
         });
         return true;
       }
@@ -597,26 +598,35 @@ export async function handleAdminRequest(req, res) {
       return true;
     }
 
-    const eventMapsMatch = /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-event-maps$/i.exec(path);
+    const eventMapsMatch =
+      /^\/api\/admin\/tenants\/([^/]+)\/tracker-event-maps\/?$/i.exec(path);
     if (eventMapsMatch) {
-      const tenantId = eventMapsMatch[1];
+      const tenantId = decodeURIComponent(eventMapsMatch[1]);
       const admin = await requireAdmin(req, res);
       if (!admin) return true;
       if (req.method === "GET") {
-        const catalog = await listEventTypeCatalog();
-        const maps = await listEventClassMaps({
-          tenantId,
-          profileId: url.searchParams.get("profileId") || undefined,
-          deviceId: url.searchParams.get("deviceId") || undefined,
-        });
-        json(res, 200, { catalog, maps });
+        try {
+          const catalog = await listEventTypeCatalog();
+          const maps = await listEventClassMaps({
+            tenantId,
+            profileId: url.searchParams.get("profileId") || undefined,
+            deviceId: url.searchParams.get("deviceId") || undefined,
+          });
+          json(res, 200, { catalog, maps });
+        } catch (err) {
+          json(res, err?.status || 500, { error: err?.message || "Load event classes failed" });
+        }
         return true;
       }
       if (req.method === "POST") {
-        const body = await readJson(req);
-        const rule = await upsertEventClassMap(tenantId, body);
-        await writeAudit(admin.id, "tracker_event_map.upsert", { tenantId, mapId: rule.id });
-        json(res, 201, { map: rule });
+        try {
+          const body = await readJson(req);
+          const rule = await upsertEventClassMap(tenantId, body);
+          await writeAudit(admin.id, "tracker_event_map.upsert", { tenantId, mapId: rule.id });
+          json(res, 201, { map: rule });
+        } catch (err) {
+          json(res, err?.status || 500, { error: err?.message || "Save event class failed" });
+        }
         return true;
       }
       json(res, 405, { error: "Method not allowed" });
@@ -624,13 +634,17 @@ export async function handleAdminRequest(req, res) {
     }
 
     const eventMapOneMatch =
-      /^\/api\/admin\/tenants\/([0-9a-f-]{36})\/tracker-event-maps\/([0-9a-f-]{36})$/i.exec(path);
+      /^\/api\/admin\/tenants\/([^/]+)\/tracker-event-maps\/([^/]+)\/?$/i.exec(path);
     if (eventMapOneMatch) {
       const admin = await requireAdmin(req, res);
       if (!admin) return true;
       if (req.method === "DELETE") {
-        await deleteEventClassMap(eventMapOneMatch[2]);
-        json(res, 200, { ok: true });
+        try {
+          await deleteEventClassMap(decodeURIComponent(eventMapOneMatch[2]));
+          json(res, 200, { ok: true });
+        } catch (err) {
+          json(res, err?.status || 500, { error: err?.message || "Delete event class failed" });
+        }
         return true;
       }
       json(res, 405, { error: "Method not allowed" });
