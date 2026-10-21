@@ -39,5 +39,6 @@ describe("placesAccessRows", () => {
     );
     expect(rows.every((r) => r.ok)).toBe(true);
     expect(rows.find((r) => r.label === "Geofences")?.detail).toMatch(/not used/i);
+    expect(rows.find((r) => r.label === "POI categories")?.detail).toMatch(/native/i);
   });
 });

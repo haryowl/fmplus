@@ -1,9 +1,15 @@
 /**
- * Exceptions inbox API — list/ack Armada notifier rows for the embed tenant.
+ * Exceptions inbox API — list/ack Armada notifier rows + Fleet Live alert events.
  * GET  /api/exceptions?status=open|acked|all&limit=
  * POST /api/exceptions/:id/ack  body: { note? }
  */
 import { databaseUrlConfigured, dbQuery } from "./db.mjs";
+import {
+  ackFleetAlertEvent,
+  getFleetAlertEvent,
+  listFleetAlertEvents,
+  unackFleetAlertEvent,
+} from "./fleet-alert-rules.mjs";
 import { resolveDbTenant } from "./maintenance-api.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 
@@ -132,6 +138,48 @@ async function trackerDeviceIdsForNotifications(tenantId, rows) {
   return byRowId;
 }
 
+function publicFleetException(ev) {
+  const payload =
+    ev?.payload && typeof ev.payload === "object" && !Array.isArray(ev.payload) ? ev.payload : {};
+  const closed = ev.status && ev.status !== "open";
+  return {
+    id: ev.id,
+    kind: "fleet_alert",
+    ruleName: ev.title || ev.ruleName || "Fleet alert",
+    eventTime: ev.firedAt || null,
+    armadaUsername: ev.imei || "",
+    userDisplayName: ev.deviceLabel || "",
+    lat: ev.lat == null ? null : Number(ev.lat),
+    lon: ev.lon == null ? null : Number(ev.lon),
+    payload: {
+      ...payload,
+      DEVICE_ID: ev.deviceId || payload.DEVICE_ID || "",
+      severity: ev.severity || "",
+      detail: ev.detail || "",
+    },
+    createdAt: ev.firedAt || null,
+    ackedAt: closed ? ev.ackedAt || ev.resolvedAt || ev.firedAt || null : null,
+    ackedNote: "",
+    source: "fleet",
+    trackerDeviceId: ev.deviceId || null,
+  };
+}
+
+function eventSortMs(row) {
+  const ms = Date.parse(row.eventTime || row.createdAt || "");
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+async function loadFleetInbox(tenantId, status, limit) {
+  try {
+    const fleetStatus = status === "open" ? "open" : status === "acked" ? "closed" : undefined;
+    const events = await listFleetAlertEvents(tenantId, { limit, status: fleetStatus });
+    return events.map(publicFleetException);
+  } catch {
+    return [];
+  }
+}
+
 function publicException(row, trackerDeviceId = null) {
   const payload = payloadObject(row);
   const userId = payloadUserId(payload);
@@ -198,9 +246,12 @@ export async function handleExceptionsRequest(req, res) {
         params,
       );
       const deviceById = await trackerDeviceIdsForNotifications(dbTenant.id, rows.rows);
-      json(res, 200, {
-        exceptions: rows.rows.map((row) => publicException(row, deviceById.get(row.id) || null)),
-      });
+      const notify = rows.rows.map((row) => publicException(row, deviceById.get(row.id) || null));
+      const fleet = await loadFleetInbox(dbTenant.id, status, limit);
+      const exceptions = [...notify, ...fleet]
+        .sort((a, b) => eventSortMs(b) - eventSortMs(a))
+        .slice(0, limit);
+      json(res, 200, { exceptions });
       return true;
     }
 
@@ -218,14 +269,22 @@ export async function handleExceptionsRequest(req, res) {
                    lat, lon, payload, created_at, acked_at, acked_note`,
         [id, dbTenant.id, note],
       );
-      if (!updated.rows[0]) {
-        json(res, 404, { error: "Exception not found" });
+      if (updated.rows[0]) {
+        const deviceById = await trackerDeviceIdsForNotifications(dbTenant.id, updated.rows);
+        json(res, 200, {
+          exception: publicException(updated.rows[0], deviceById.get(updated.rows[0].id) || null),
+        });
         return true;
       }
-      const deviceById = await trackerDeviceIdsForNotifications(dbTenant.id, updated.rows);
-      json(res, 200, {
-        exception: publicException(updated.rows[0], deviceById.get(updated.rows[0].id) || null),
-      });
+      const fleetAcked = await ackFleetAlertEvent(dbTenant.id, id).catch(() => false);
+      if (fleetAcked) {
+        const ev = await getFleetAlertEvent(dbTenant.id, id);
+        if (ev) {
+          json(res, 200, { exception: publicFleetException(ev) });
+          return true;
+        }
+      }
+      json(res, 404, { error: "Exception not found" });
       return true;
     }
 
@@ -240,14 +299,22 @@ export async function handleExceptionsRequest(req, res) {
                    lat, lon, payload, created_at, acked_at, acked_note`,
         [id, dbTenant.id],
       );
-      if (!updated.rows[0]) {
-        json(res, 404, { error: "Exception not found" });
+      if (updated.rows[0]) {
+        const deviceById = await trackerDeviceIdsForNotifications(dbTenant.id, updated.rows);
+        json(res, 200, {
+          exception: publicException(updated.rows[0], deviceById.get(updated.rows[0].id) || null),
+        });
         return true;
       }
-      const deviceById = await trackerDeviceIdsForNotifications(dbTenant.id, updated.rows);
-      json(res, 200, {
-        exception: publicException(updated.rows[0], deviceById.get(updated.rows[0].id) || null),
-      });
+      const fleetUnacked = await unackFleetAlertEvent(dbTenant.id, id).catch(() => false);
+      if (fleetUnacked) {
+        const ev = await getFleetAlertEvent(dbTenant.id, id);
+        if (ev) {
+          json(res, 200, { exception: publicFleetException(ev) });
+          return true;
+        }
+      }
+      json(res, 404, { error: "Exception not found" });
       return true;
     }
 

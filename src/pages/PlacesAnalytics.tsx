@@ -101,8 +101,12 @@ export default function PlacesAnalytics() {
     ])
       .then(([pts, poiRes]) => {
         setPoints(pts);
-        setPoiAvailable(poiRes.available);
-        setPoiError(poiRes.available ? "" : poiRes.error || "POI unavailable");
+        setPoiAvailable(Boolean(poiRes.available && !poiRes.native && !poiRes.skipped));
+        setPoiError(
+          poiRes.available && !poiRes.native && !poiRes.skipped
+            ? ""
+            : poiRes.error || "POI unavailable",
+        );
         setPois(poiRes.pois || []);
       })
       .catch((err: Error) => {
@@ -222,12 +226,13 @@ export default function PlacesAnalytics() {
   async function onLinkPoi() {
     if (!linkPointId || !linkPoiId) return;
     const poi = pois.find((p) => String(p.id) === linkPoiId);
-    if (!poi?.id) return;
+    const poiId = typeof poi?.id === "number" ? poi.id : Number(poi?.id);
+    if (!poi || !Number.isInteger(poiId) || poiId <= 0) return;
     setLinkBusy(true);
     setLinkMsg("");
     try {
       const point = await patchServicePoint(linkPointId, {
-        armadaPoiId: poi.id,
+        armadaPoiId: poiId,
         armadaPoiName: poi.name,
       });
       setPoints((prev) => prev.map((p) => (p.id === point.id ? point : p)));
@@ -627,7 +632,8 @@ export default function PlacesAnalytics() {
         <section className="places-panel">
           <h2>Service points</h2>
           <p className="muted">
-            Workshops, depots, and yards stored in ARMADA M.1. Used by Maintenance and Dispatch search.
+            Workshops, depots, and yards stored in ARMADA M.1. These are the native POI catalog for
+            Dispatch, Fleet Live, and Live when Armada POI is not used.
           </p>
           <div className="places-link-form">
             <label>
@@ -666,7 +672,10 @@ export default function PlacesAnalytics() {
             only.
           </p>
           {skipArmada ? (
-            <p className="muted">POI linking is Armada-only and is hidden on devices-only tenants.</p>
+            <p className="muted">
+              Armada POI linking is hidden on devices-only tenants. Dispatch uses the service points
+              above as the saved POI list.
+            </p>
           ) : !poiAvailable ? (
             <div className="banner warn">
               {poiError ||

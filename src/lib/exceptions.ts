@@ -16,7 +16,7 @@ export type ExceptionItem = {
   createdAt: string;
   ackedAt: string | null;
   ackedNote: string;
-  source: "notify" | "derived";
+  source: "notify" | "derived" | "fleet";
   /** Present on derived stale rows (Armada user id, or synthetic hash for GPS-only) */
   userId?: number;
   /** GPS tracker UUID when known (derived stale / device-native) */
@@ -35,7 +35,7 @@ export async function fetchExceptions(
   });
   const data = (await res.json().catch(() => ({}))) as { exceptions?: ExceptionItem[]; error?: string };
   if (!res.ok) throw new Error(data.error || `Exceptions ${res.status}`);
-  return (data.exceptions || []).map((row) => ({ ...row, source: "notify" as const }));
+  return (data.exceptions || []).map(withExceptionSource);
 }
 
 export async function ackException(id: string, note = ""): Promise<ExceptionItem> {
@@ -47,7 +47,7 @@ export async function ackException(id: string, note = ""): Promise<ExceptionItem
   const data = (await res.json().catch(() => ({}))) as { exception?: ExceptionItem; error?: string };
   if (!res.ok) throw new Error(data.error || `Ack ${res.status}`);
   if (!data.exception) throw new Error("Ack failed");
-  return { ...data.exception, source: "notify" };
+  return withExceptionSource(data.exception);
 }
 
 export async function unackException(id: string): Promise<ExceptionItem> {
@@ -59,7 +59,21 @@ export async function unackException(id: string): Promise<ExceptionItem> {
   const data = (await res.json().catch(() => ({}))) as { exception?: ExceptionItem; error?: string };
   if (!res.ok) throw new Error(data.error || `Unack ${res.status}`);
   if (!data.exception) throw new Error("Unack failed");
-  return { ...data.exception, source: "notify" };
+  return withExceptionSource(data.exception);
+}
+
+function withExceptionSource(row: ExceptionItem): ExceptionItem {
+  const src = row.source;
+  return {
+    ...row,
+    source: src === "fleet" ? "fleet" : src === "derived" ? "derived" : "notify",
+  };
+}
+
+export function exceptionSourceLabel(item: ExceptionItem): string {
+  if (item.source === "derived") return "Derived";
+  if (item.source === "fleet") return "Fleet Live";
+  return "Notifier";
 }
 
 /** Secondary feed: stale vehicles from last status (not persisted). */
@@ -175,7 +189,7 @@ export function downloadExceptionsExcel(items: ExceptionItem[], now = Date.now()
     "Acked note",
   ];
   const body: ExcelCell[][] = items.map((item) => [
-    item.source === "derived" ? "Derived" : "Notifier",
+    exceptionSourceLabel(item),
     item.ackedAt ? "Acked" : "Open",
     exceptionTitle(item),
     exceptionGeofenceName(item),

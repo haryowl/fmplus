@@ -279,26 +279,10 @@ export async function deleteFleetAlertRule(tenantId, ruleId) {
   return Boolean(res.rows[0]);
 }
 
-export async function listFleetAlertEvents(tenantId, { limit = 80, status } = {}) {
-  const lim = Math.min(200, Math.max(1, Number(limit) || 80));
-  const params = [tenantId];
-  let where = "e.tenant_id = $1";
-  if (status && ["open", "acked", "resolved"].includes(status)) {
-    params.push(status);
-    where += ` AND e.status = $${params.length}`;
-  }
-  params.push(lim);
-  const rows = await dbQuery(
-    `SELECT e.*, r.name AS rule_name, d.label AS device_label, d.imei
-     FROM fleet_alert_events e
-     LEFT JOIN fleet_alert_rules r ON r.id = e.rule_id
-     LEFT JOIN tracker_devices d ON d.id = e.device_id
-     WHERE ${where}
-     ORDER BY e.fired_at DESC
-     LIMIT $${params.length}`,
-    params,
-  );
-  return rows.rows.map((r) => ({
+function mapFleetAlertEvent(r) {
+  const payload =
+    r.payload && typeof r.payload === "object" && !Array.isArray(r.payload) ? r.payload : {};
+  return {
     id: r.id,
     ruleId: r.rule_id,
     ruleName: r.rule_name || "",
@@ -316,7 +300,43 @@ export async function listFleetAlertEvents(tenantId, { limit = 80, status } = {}
     resolvedAt: r.resolved_at,
     notifyEmailSent: Boolean(r.notify_email_sent),
     notifyWhatsappSent: Boolean(r.notify_whatsapp_sent),
-  }));
+    payload,
+  };
+}
+
+const FLEET_EVENT_SELECT = `SELECT e.*, r.name AS rule_name, d.label AS device_label, d.imei
+     FROM fleet_alert_events e
+     LEFT JOIN fleet_alert_rules r ON r.id = e.rule_id
+     LEFT JOIN tracker_devices d ON d.id = e.device_id`;
+
+export async function listFleetAlertEvents(tenantId, { limit = 80, status } = {}) {
+  const lim = Math.min(200, Math.max(1, Number(limit) || 80));
+  const params = [tenantId];
+  let where = "e.tenant_id = $1";
+  if (status === "closed") {
+    where += ` AND e.status IN ('acked', 'resolved')`;
+  } else if (status && ["open", "acked", "resolved"].includes(status)) {
+    params.push(status);
+    where += ` AND e.status = $${params.length}`;
+  }
+  params.push(lim);
+  const rows = await dbQuery(
+    `${FLEET_EVENT_SELECT}
+     WHERE ${where}
+     ORDER BY e.fired_at DESC
+     LIMIT $${params.length}`,
+    params,
+  );
+  return rows.rows.map(mapFleetAlertEvent);
+}
+
+export async function getFleetAlertEvent(tenantId, eventId) {
+  const rows = await dbQuery(
+    `${FLEET_EVENT_SELECT}
+     WHERE e.tenant_id = $1 AND e.id = $2::uuid`,
+    [tenantId, eventId],
+  );
+  return rows.rows[0] ? mapFleetAlertEvent(rows.rows[0]) : null;
 }
 
 /**
@@ -389,6 +409,17 @@ export async function resolveFleetAlertEvent(tenantId, eventId) {
          resolved_at = now(),
          acked_at = COALESCE(acked_at, now())
      WHERE tenant_id = $1 AND id = $2::uuid AND status IN ('open', 'acked')
+     RETURNING id`,
+    [tenantId, eventId],
+  );
+  return Boolean(rows.rows[0]);
+}
+
+export async function unackFleetAlertEvent(tenantId, eventId) {
+  const rows = await dbQuery(
+    `UPDATE fleet_alert_events
+     SET status = 'open', acked_at = NULL, resolved_at = NULL
+     WHERE tenant_id = $1 AND id = $2::uuid AND status IN ('acked', 'resolved')
      RETURNING id`,
     [tenantId, eventId],
   );

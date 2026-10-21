@@ -154,6 +154,33 @@ async function armadaJson(vaultTenant, pathAndQuery) {
   }
 }
 
+async function listNativePois(tenantId, q = "") {
+  const needle = String(q || "").trim();
+  const params = [tenantId];
+  let where = "tenant_id = $1 AND lat IS NOT NULL AND lon IS NOT NULL";
+  if (needle) {
+    params.push(`%${needle}%`);
+    where += ` AND (name ILIKE $${params.length} OR COALESCE(point_type, '') ILIKE $${params.length} OR COALESCE(notes, '') ILIKE $${params.length})`;
+  }
+  const rows = await dbQuery(
+    `SELECT id, name, lat, lon, point_type
+     FROM service_points
+     WHERE ${where}
+     ORDER BY lower(name) ASC
+     LIMIT 300`,
+    params,
+  );
+  return rows.rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    categoryId: null,
+    categoryName: r.point_type || "Service point",
+    lat: r.lat == null ? null : Number(r.lat),
+    lon: r.lon == null ? null : Number(r.lon),
+    source: "native",
+  }));
+}
+
 function skippedArmadaStatus() {
   return {
     ok: true,
@@ -322,6 +349,7 @@ export async function handlePlacesRequest(req, res) {
       }));
 
       const nativeGeofences = await listTenantGeofences(dbTenant.id).catch(() => []);
+      const nativePois = await listNativePois(dbTenant.id).catch(() => []);
 
       json(res, 200, {
         days,
@@ -329,6 +357,7 @@ export async function handlePlacesRequest(req, res) {
         geofenceGroups,
         geofences,
         nativeGeofences,
+        nativePoiCount: nativePois.length,
         fenceHits,
         recentFenceEvents: recent,
         reports,
@@ -372,27 +401,33 @@ export async function handlePlacesRequest(req, res) {
     }
 
     if (url.pathname === "/api/places/pois" && req.method === "GET") {
+      const q = String(url.searchParams.get("q") || "").trim().toLowerCase();
       if (!useArmada) {
+        const pois = await listNativePois(dbTenant.id, q).catch(() => []);
         json(res, 200, {
-          available: false,
+          available: true,
           skipped: true,
-          status: 0,
-          error: "Armada POI is not used on devices-only tenants",
-          pois: [],
+          native: true,
+          status: 200,
+          error: null,
+          pois,
         });
         return true;
       }
-      const q = String(url.searchParams.get("q") || "").trim().toLowerCase();
       const cats = await armadaJson(vaultTenant, "/poicategories?FromIndex=0&PageSize=100");
       if (!cats.ok) {
+        const native = await listNativePois(dbTenant.id, q).catch(() => []);
         json(res, 200, {
-          available: false,
+          available: native.length > 0,
+          native: native.length > 0,
           status: cats.status,
           error:
-            cats.status === 403
-              ? "Armada denied POI categories for this token. Enable POI privilege in Armada, then retry."
-              : cats.error || "POI categories unavailable",
-          pois: [],
+            native.length > 0
+              ? null
+              : cats.status === 403
+                ? "Armada denied POI categories for this token. Enable POI privilege in Armada, then retry."
+                : cats.error || "POI categories unavailable",
+          pois: native,
         });
         return true;
       }

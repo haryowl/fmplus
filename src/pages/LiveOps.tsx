@@ -27,6 +27,7 @@ import {
   type TrackerDeviceGroup,
 } from "../lib/trackerDevices";
 import { BrandMark } from "../components/BrandMark";
+import { fetchServicePoints, type ServicePoint } from "../lib/maintenance";
 import { fetchNativeGeofences, type NativeGeofence } from "../lib/places";
 import { LiveOpsMap } from "../components/LiveOpsMap";
 import { ViewNav } from "../components/ViewNav";
@@ -73,6 +74,7 @@ export default function LiveOps() {
   const [deviceIdByRowId, setDeviceIdByRowId] = useState<Map<number, string>>(() => new Map());
   const [telematicsSource, setTelematicsSource] = useState<TelematicsSource>("both");
   const [geofences, setGeofences] = useState<NativeGeofence[]>([]);
+  const [servicePoints, setServicePoints] = useState<ServicePoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
   const [reload, setReload] = useState(0);
@@ -105,6 +107,13 @@ export default function LiveOps() {
       })
       .catch((err: Error) => {
         if (err.name !== "AbortError") setGeofences([]);
+      });
+    void fetchServicePoints("", ac.signal)
+      .then((list) => {
+        if (!ac.signal.aborted) setServicePoints(list);
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") setServicePoints([]);
       });
     return () => ac.abort();
   }, [ready]);
@@ -448,6 +457,7 @@ export default function LiveOps() {
               deviceIdByRowId={deviceIdByRowId}
               telematicsSource={telematicsSource}
               geofences={geofences}
+              servicePoints={servicePoints}
             />
           </div>
           <aside className="live-ops-list">

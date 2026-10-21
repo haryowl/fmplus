@@ -97,7 +97,7 @@ export function listPoiDropdownOptions(pois: ArmadaPoi[], filter = ""): ArmadaPo
   return out.sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }));
 }
 
-/** Prefetch Armada POIs once for Dispatch (coords required for pinning). */
+/** Prefetch saved POIs once for Dispatch (Armada catalog or native service points). */
 export async function loadDispatchPoiCatalog(signal?: AbortSignal): Promise<ArmadaPoi[]> {
   try {
     const res = await fetchPlacesPois("", signal);

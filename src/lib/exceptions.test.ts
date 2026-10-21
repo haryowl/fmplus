@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   derivedStaleExceptions,
   exceptionGeofenceName,
+  exceptionSourceLabel,
   exceptionTrackerDeviceId,
   exceptionUserId,
   filterExceptionsByGroup,
@@ -146,5 +147,30 @@ describe("exceptionGeofenceName", () => {
       "Geofence Exit West",
     );
     expect(exceptionGeofenceName(notify({ id: "g", ruleName: "Speeding" }))).toBe("");
+  });
+});
+
+describe("exceptionSourceLabel", () => {
+  it("labels notifier, fleet, and derived rows", () => {
+    expect(exceptionSourceLabel(notify({ id: "n" }))).toBe("Notifier");
+    expect(exceptionSourceLabel(notify({ id: "f", source: "fleet" }))).toBe("Fleet Live");
+    expect(exceptionSourceLabel(notify({ id: "d", source: "derived" }))).toBe("Derived");
+  });
+});
+
+describe("fleet inbox rows", () => {
+  it("keeps Fleet Live alerts matching device id", () => {
+    const items = [
+      notify({
+        id: "f1",
+        source: "fleet",
+        trackerDeviceId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      }),
+      notify({ id: "f2", source: "fleet", trackerDeviceId: "bbbbbbbb-cccc-dddd-eeee-ffffffffffff" }),
+    ];
+    const out = filterExceptionsByGroup(items, {
+      deviceIds: ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+    });
+    expect(out.map((x) => x.id)).toEqual(["f1"]);
   });
 });

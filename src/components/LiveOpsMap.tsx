@@ -15,6 +15,13 @@ import { vehicleTrackHref } from "../lib/routing";
 import type { TelematicsSource } from "../lib/trackerDevices";
 import type { NativeGeofence } from "../lib/places";
 
+export type LiveOpsPlace = {
+  id: string;
+  name: string;
+  lat: number | null;
+  lon: number | null;
+};
+
 type Props = {
   rows: LastStatusRow[];
   now: number;
@@ -28,6 +35,7 @@ type Props = {
   deviceIdByRowId?: Map<number, string>;
   telematicsSource?: TelematicsSource | null;
   geofences?: NativeGeofence[];
+  servicePoints?: LiveOpsPlace[];
 };
 
 type MarkerMeta = {
@@ -155,6 +163,7 @@ export function LiveOpsMap({
   deviceIdByRowId,
   telematicsSource,
   geofences,
+  servicePoints,
 }: Props) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -253,7 +262,20 @@ export function LiveOpsMap({
           .addTo(group);
       }
     }
-  }, [geofences, mapReady]);
+    for (const place of servicePoints || []) {
+      if (place.lat == null || place.lon == null) continue;
+      if (!Number.isFinite(place.lat) || !Number.isFinite(place.lon)) continue;
+      L.circleMarker([place.lat, place.lon], {
+        radius: 7,
+        color: "#9a4a2e",
+        weight: 2,
+        fillColor: "#efe8db",
+        fillOpacity: 0.95,
+      })
+        .bindTooltip(place.name || "Place", { sticky: true })
+        .addTo(group);
+    }
+  }, [geofences, servicePoints, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -3059,7 +3059,7 @@ export default function DispatchBoard() {
                     />
                   </div>
                   <div className="field">
-                    <label htmlFor="dispatch-depot-poi">Armada POI (depot)</label>
+                    <label htmlFor="dispatch-depot-poi">Saved POI (depot)</label>
                     <select
                       id="dispatch-depot-poi"
                       value={depotPoiPickKey}
@@ -3266,7 +3266,7 @@ export default function DispatchBoard() {
                     />
                   </div>
                   <div className="field">
-                    <label htmlFor="dispatch-multi-depot-poi">Armada POI (depot)</label>
+                    <label htmlFor="dispatch-multi-depot-poi">Saved POI (depot)</label>
                     <select
                       id="dispatch-multi-depot-poi"
                       value={depotPoiPickKey}
@@ -3439,7 +3439,7 @@ export default function DispatchBoard() {
                     </div>
                   ) : null}
                   <p className="dispatch-search-hint" style={{ gridColumn: "1 / -1" }}>
-                    Create or move a depot from an Armada POI, or pin on the map. Plan uses selected depots
+                    Create or move a depot from a saved POI, or pin on the map. Plan uses selected depots
                     above (or all when none selected). Orders go to the nearest chosen depot (or zone map
                     when enabled). Vehicles use their capacity depot when set; otherwise they are balanced
                     by demand. {depots.length} depot(s) saved.
@@ -3875,7 +3875,7 @@ export default function DispatchBoard() {
                     />
                   </div>
                   <div className="field">
-                    <label htmlFor="dispatch-poi-select">Armada POI</label>
+                    <label htmlFor="dispatch-poi-select">Saved POI</label>
                     <select
                       id="dispatch-poi-select"
                       value={poiPickKey}

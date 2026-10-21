@@ -44,6 +44,7 @@ export type PlacesSummary = {
   geofenceGroups: { id: number | null; name: string }[];
   geofences: { id: number | null; name: string; groupId: number | null }[];
   nativeGeofences?: NativeGeofence[];
+  nativePoiCount?: number;
   fenceHits: PlacesFenceHit[];
   recentFenceEvents: PlacesRecentFenceEvent[];
   reports?: { id: number | null; name: string }[];
@@ -84,7 +85,9 @@ export function placesAccessRows(summary: PlacesSummary): {
       label: "POI categories",
       ok: Boolean(armada.pois.skipped || armada.pois.available || armada.pois.ok),
       detail: armada.pois.skipped
-        ? "Not used on this tenant"
+        ? summary.nativePoiCount
+          ? `${summary.nativePoiCount} native places`
+          : "Native service points (no Armada POI)"
         : armada.pois.available || armada.pois.ok
           ? `${armada.pois.categoryCount ?? 0} categories`
           : armada.pois.error || `HTTP ${armada.pois.status}`,
@@ -102,18 +105,21 @@ export function placesAccessRows(summary: PlacesSummary): {
 }
 
 export type ArmadaPoi = {
-  id: number | null;
+  id: number | string | null;
   name: string;
-  categoryId: number;
+  categoryId: number | null;
   categoryName: string;
   lat: number | null;
   lon: number | null;
+  source?: "armada" | "native";
 };
 
 export type PlacesPoisResponse = {
   available: boolean;
   status: number;
   error: string | null;
+  native?: boolean;
+  skipped?: boolean;
   pois: ArmadaPoi[];
 };
 

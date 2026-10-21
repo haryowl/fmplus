@@ -6,6 +6,7 @@ import {
   derivedStaleExceptions,
   downloadExceptionsExcel,
   exceptionGeofenceName,
+  exceptionSourceLabel,
   exceptionTitle,
   exceptionTrackerDeviceId,
   exceptionUserId,
@@ -291,6 +292,8 @@ export default function ExceptionsInbox() {
     return merged.filter(
       (item) =>
         exceptionTitle(item).toLowerCase().includes(q) ||
+        exceptionGeofenceName(item).toLowerCase().includes(q) ||
+        exceptionSourceLabel(item).toLowerCase().includes(q) ||
         (item.userDisplayName || "").toLowerCase().includes(q) ||
         (item.armadaUsername || "").toLowerCase().includes(q) ||
         String(exceptionUserId(item) ?? "").includes(q),
@@ -343,7 +346,7 @@ export default function ExceptionsInbox() {
           <BrandMark />
           <div>
             <h1>Exceptions</h1>
-            <p>Command notifier + derived stale positions (Armada &amp; GPS devices)</p>
+            <p>Command notifier, Fleet Live rules, and derived stale positions</p>
           </div>
         </div>
         <div className="topbar-actions">
@@ -467,7 +470,7 @@ export default function ExceptionsInbox() {
           {list.length === 0 && !loading && (
             <li className="muted exceptions-empty">
               {query.tenantKey
-                ? "No exceptions yet. Wire Command notifier or wait for stale GPS positions."
+                ? "No exceptions yet. Wire Command notifier, add Fleet Live alert rules, or wait for stale GPS positions."
                 : "Add k= to the URL."}
             </li>
           )}
@@ -488,7 +491,7 @@ export default function ExceptionsInbox() {
                     <span className="exceptions-fence">Fence: {exceptionGeofenceName(item)}</span>
                   ) : null}
                   <span className="muted">
-                    {item.source === "derived" ? "Derived" : "Notifier"} · {exceptionWhen(item, now)}
+                    {exceptionSourceLabel(item)} · {exceptionWhen(item, now)}
                     {item.userDisplayName || item.armadaUsername
                       ? ` · ${item.userDisplayName || item.armadaUsername}`
                       : ""}
@@ -524,7 +527,7 @@ export default function ExceptionsInbox() {
                   ) : (
                     <span className="muted">No vehicle link</span>
                   )}
-                  {item.source === "notify" && !item.ackedAt && (
+                  {item.source !== "derived" && !item.ackedAt && (
                     <button
                       type="button"
                       className="btn"
@@ -534,7 +537,7 @@ export default function ExceptionsInbox() {
                       Ack
                     </button>
                   )}
-                  {item.source === "notify" && item.ackedAt && (
+                  {item.source !== "derived" && item.ackedAt && (
                     <button
                       type="button"
                       className="btn-ghost"
