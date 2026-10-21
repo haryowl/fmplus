@@ -254,8 +254,15 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 	if fix.RawAttrs == nil {
 		fix.RawAttrs = map[string]any{}
 	}
+	protocolSaysNoGPS := false
+	if v, ok := fix.RawAttrs["gps.valid"].(bool); ok && !v {
+		protocolSaysNoGPS = true
+	}
+	if v, ok := fix.RawAttrs["gnss.lbs"].(bool); ok && v {
+		protocolSaysNoGPS = true
+	}
 	NormalizeFixCoords(&fix)
-	gpsOK := ValidCoords(fix.Lat, fix.Lon)
+	gpsOK := ValidCoords(fix.Lat, fix.Lon) && !protocolSaysNoGPS
 	fix.RawAttrs["gps.valid"] = gpsOK
 	// Device Manager remap: vendor raw → canonical mapped attrs + typed columns.
 	if rules, err := s.LoadRemapRules(ctx, device.ID, device.ProfileID); err == nil && len(rules) > 0 {
@@ -319,23 +326,22 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 			string(raw), string(mapped), fix.SourceProtocol,
 		)
 	} else {
-		// Keep previous map pin; refresh attrs only. Do not INSERT a new last_fix
-		// row with invalid lat/lon (NOT NULL columns would otherwise pin garbage).
+		// Keep previous map pin and last GNSS device time. Do not bump recorded_at
+		// with IO/LBS/heartbeat packets (Fleet Live last-seen is this column).
 		_, err = s.pool.Exec(ctx, `
 			UPDATE vehicle_last_fix SET
-				recorded_at = GREATEST(vehicle_last_fix.recorded_at, $2),
-				speed = COALESCE($3, vehicle_last_fix.speed),
-				heading = COALESCE($4, vehicle_last_fix.heading),
-				ignition = COALESCE($5, vehicle_last_fix.ignition),
-				odometer = COALESCE($6, vehicle_last_fix.odometer),
-				altitude = COALESCE($7, vehicle_last_fix.altitude),
-				satellites = COALESCE($8, vehicle_last_fix.satellites),
-				raw_attrs = COALESCE(vehicle_last_fix.raw_attrs, '{}'::jsonb) || $9::jsonb,
-				mapped_attrs = COALESCE(vehicle_last_fix.mapped_attrs, '{}'::jsonb) || $10::jsonb,
-				source_protocol = COALESCE($11, vehicle_last_fix.source_protocol),
+				speed = COALESCE($2, vehicle_last_fix.speed),
+				heading = COALESCE($3, vehicle_last_fix.heading),
+				ignition = COALESCE($4, vehicle_last_fix.ignition),
+				odometer = COALESCE($5, vehicle_last_fix.odometer),
+				altitude = COALESCE($6, vehicle_last_fix.altitude),
+				satellites = COALESCE($7, vehicle_last_fix.satellites),
+				raw_attrs = COALESCE(vehicle_last_fix.raw_attrs, '{}'::jsonb) || $8::jsonb,
+				mapped_attrs = COALESCE(vehicle_last_fix.mapped_attrs, '{}'::jsonb) || $9::jsonb,
+				source_protocol = COALESCE($10, vehicle_last_fix.source_protocol),
 				updated_at = now()
 			WHERE device_id = $1::uuid`,
-			device.ID, fix.RecordedAt,
+			device.ID,
 			fix.Speed, fix.Heading, fix.Ignition, fix.Odometer, fix.Altitude, fix.Satellites,
 			string(raw), string(mapped), fix.SourceProtocol,
 		)

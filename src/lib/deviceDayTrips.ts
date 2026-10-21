@@ -1,5 +1,6 @@
 import { DEFAULT_MIN_SPEED_KMH, DEFAULT_TRIP_BREAK_MIN } from "./config";
 import { haversineKm } from "./geo";
+import { keepGpsTrack, MAX_GPS_TELEPORT_KM } from "./gpsJump";
 import { dateKeyInOffset } from "./time";
 import { assignLogicalTrips, type MotionPoint } from "./trips";
 import type { TrackerDayPoint } from "./trackerDevices";
@@ -54,8 +55,9 @@ export function buildDeviceTrips(
     withMs.push({ ...p, ms });
   }
   withMs.sort((a, b) => a.ms - b.ms);
+  const cleaned = keepGpsTrack(withMs);
 
-  const motion: MotionPoint[] = withMs.map((p) => ({
+  const motion: MotionPoint[] = cleaned.map((p) => ({
     ms: p.ms,
     dateKey: dateKeyInOffset(p.ms, opts.tzOffset),
     ignition: p.ignition === true,
@@ -66,11 +68,11 @@ export function buildDeviceTrips(
   assignLogicalTrips(motion, { minSpeedKmh, breakMs });
 
   const byId = new Map<number, PointWithMs[]>();
-  for (let i = 0; i < withMs.length; i += 1) {
+  for (let i = 0; i < cleaned.length; i += 1) {
     const id = motion[i]?.logicalTripId;
     if (id == null) continue;
     const list = byId.get(id) || [];
-    list.push(withMs[i]);
+    list.push(cleaned[i]);
     byId.set(id, list);
   }
 
@@ -94,7 +96,7 @@ export function buildDeviceTrips(
       if (i > 0) {
         const prev = pts[i - 1];
         const d = haversineKm(prev.lat, prev.lon, p.lat, p.lon);
-        if (Number.isFinite(d) && d < 50) distanceKm += d;
+        if (Number.isFinite(d) && d < MAX_GPS_TELEPORT_KM) distanceKm += d;
       }
     }
     const start = pts[0];
@@ -121,10 +123,22 @@ export function buildDeviceTrips(
   return trips;
 }
 
+export function filterDeviceDayPoints(points: TrackerDayPoint[]): TrackerDayPoint[] {
+  const withMs: PointWithMs[] = [];
+  for (const p of points) {
+    const ms = Date.parse(p.recordedAt);
+    if (!Number.isFinite(ms)) continue;
+    withMs.push({ ...p, ms });
+  }
+  withMs.sort((a, b) => a.ms - b.ms);
+  return keepGpsTrack(withMs);
+}
+
 export function slimDayPoints(points: TrackerDayPoint[], max = 800): TrackerDayPoint[] {
-  if (points.length <= max) return points;
-  const step = (points.length - 1) / (max - 1);
+  const clean = filterDeviceDayPoints(points);
+  if (clean.length <= max) return clean;
+  const step = (clean.length - 1) / (max - 1);
   const out: TrackerDayPoint[] = [];
-  for (let i = 0; i < max; i += 1) out.push(points[Math.round(i * step)]);
+  for (let i = 0; i < max; i += 1) out.push(clean[Math.round(i * step)]);
   return out;
 }

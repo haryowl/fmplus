@@ -63,6 +63,118 @@ func TestParseTagRecords_MultiCoords(t *testing.T) {
 	}
 }
 
+func unixLE(sec uint32) []byte {
+	b := make([]byte, 4)
+	binary.LittleEndian.PutUint32(b, sec)
+	return b
+}
+
+func TestParseTagRecords_CoordsThenDeviceTime(t *testing.T) {
+	// Real devices often emit 0x30 then 0x20 in the same row. Splitting on the
+	// first 0x20 after coords used to leave row 1 with no time.
+	coords, _ := hex.DecodeString("07c00e3203b8d72d05")
+	payload := []byte{0x30}
+	payload = append(payload, coords...)
+	payload = append(payload, 0x20)
+	payload = append(payload, unixLE(1_700_000_000)...)
+	payload = append(payload, 0x30)
+	payload = append(payload, coords...)
+	payload = append(payload, 0x20)
+	payload = append(payload, unixLE(1_700_000_060)...)
+	recs := parseTagRecords(payload)
+	if len(recs) != 2 {
+		t.Fatalf("recs=%d", len(recs))
+	}
+	t0, ok0 := deviceTimeFromTags(recs[0])
+	t1, ok1 := deviceTimeFromTags(recs[1])
+	if !ok0 || !ok1 {
+		t.Fatalf("0x20 missing: %v / %v", recs[0][0x20], recs[1][0x20])
+	}
+	if t0.Unix() != 1_700_000_000 || t1.Unix() != 1_700_000_060 {
+		t.Fatalf("times %v / %v", t0, t1)
+	}
+}
+
+func TestParseTagRecords_ArchiveRows(t *testing.T) {
+	coords, _ := hex.DecodeString("07c00e3203b8d72d05")
+	row := func(n uint16, unix uint32) []byte {
+		idx := make([]byte, 2)
+		binary.LittleEndian.PutUint16(idx, n)
+		p := []byte{0x10}
+		p = append(p, idx...)
+		p = append(p, 0x20)
+		p = append(p, unixLE(unix)...)
+		p = append(p, 0x30)
+		p = append(p, coords...)
+		return p
+	}
+	payload := append(row(10, 1_700_000_000), row(11, 1_700_000_030)...)
+	recs := parseTagRecords(payload)
+	if len(recs) != 2 {
+		t.Fatalf("recs=%d", len(recs))
+	}
+	t0, _ := deviceTimeFromTags(recs[0])
+	t1, _ := deviceTimeFromTags(recs[1])
+	if t0.Unix() != 1_700_000_000 || t1.Unix() != 1_700_000_030 {
+		t.Fatalf("times %v / %v", t0, t1)
+	}
+	if binary.LittleEndian.Uint16(recs[0][0x10]) != 10 || binary.LittleEndian.Uint16(recs[1][0x10]) != 11 {
+		t.Fatalf("archive index")
+	}
+}
+
+func TestParseTagRecords_PerPointDeviceTime(t *testing.T) {
+	coords, _ := hex.DecodeString("07c00e3203b8d72d05")
+	payload := []byte{0x20}
+	payload = append(payload, unixLE(1_700_000_000)...)
+	payload = append(payload, 0x30)
+	payload = append(payload, coords...)
+	payload = append(payload, 0x20)
+	payload = append(payload, unixLE(1_700_000_060)...)
+	payload = append(payload, 0x30)
+	payload = append(payload, coords...)
+	recs := parseTagRecords(payload)
+	if len(recs) != 2 {
+		t.Fatalf("recs=%d", len(recs))
+	}
+	t0, _ := deviceTimeFromTags(recs[0])
+	t1, _ := deviceTimeFromTags(recs[1])
+	if t0.Unix() != 1_700_000_000 || t1.Unix() != 1_700_000_060 {
+		t.Fatalf("times %v / %v", t0, t1)
+	}
+}
+
+func TestFixFromTags_NoServerNowFallback(t *testing.T) {
+	coords, _ := hex.DecodeString("07c00e3203b8d72d05")
+	fix, ok := fixFromTags(map[byte][]byte{0x30: coords})
+	if !ok {
+		t.Fatal("expected fix")
+	}
+	if !fix.RecordedAt.IsZero() {
+		t.Fatalf("missing 0x20 must not stamp server now: %v", fix.RecordedAt)
+	}
+}
+
+func TestFixFromTags_LBSNotMapValid(t *testing.T) {
+	coords, _ := hex.DecodeString("27c00e3203b8d72d05") // nibble 2 = LBS
+	fix, ok := fixFromTags(map[byte][]byte{
+		0x20: unixLE(1_700_000_000),
+		0x30: coords,
+	})
+	if !ok {
+		t.Fatal("expected fix")
+	}
+	if fix.RawAttrs["gps.valid"] != false {
+		t.Fatalf("LBS must not be gps.valid: %v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["gnss.lbs"] != true {
+		t.Fatalf("expected gnss.lbs: %v", fix.RawAttrs)
+	}
+	if fix.Lat == 0 && fix.Lon == 0 {
+		t.Fatal("LBS coords should be kept for Terminal")
+	}
+}
+
 func TestParseTags_LiveValuesPacket_0x21Ms(t *testing.T) {
 	// Production Live values blob after 0x20: unknown 0x21 previously swallowed
 	// the rest into tag.0xff. With official 0x21=2 (ms), the stream must expose
@@ -135,6 +247,7 @@ func TestParseTags_LiveValuesPacket_0x21Ms(t *testing.T) {
 func TestTagSize_Official(t *testing.T) {
 	cases := map[byte]int{
 		0x01: 1, 0x03: 15, 0x04: 2, 0x10: 2, 0x20: 4, 0x21: 2, 0x30: 9, 0x33: 4, 0x34: 2, 0x35: 1,
+		0x5b: 7,
 		0x40: 2, 0x41: 2, 0x42: 2, 0x43: 1, 0x44: 4, 0x45: 2, 0x46: 2, 0x47: 4,
 		0x50: 2, 0x5a: 4, 0x60: 2, 0x63: 3, 0x70: 2, 0x80: 3, 0x90: 4,
 		0xa0: 1, 0xb0: 2, 0xc0: 4, 0xc4: 1, 0xd4: 4, 0xd5: 1, 0xd6: 2, 0xdb: 4, 0xf0: 4,
@@ -235,8 +348,7 @@ func TestAltitudeHDOPVoltage(t *testing.T) {
 	vdop := []byte{25} // 2.5
 	volt := make([]byte, 2)
 	binary.LittleEndian.PutUint16(volt, 12400) // 12.4 V
-	coords := make([]byte, 9)
-	coords[0] = 0x07 // GNSS OK + sats
+	coords, _ := hex.DecodeString("07c00e3203b8d72d05") // GNSS OK + sats, valid lat/lon
 	tags := map[byte][]byte{0x30: coords, 0x34: alt, 0x35: hdop, 0x36: pdop, 0x37: vdop, 0x50: volt}
 	fix, ok := fixFromTags(tags)
 	if !ok || fix.Altitude == nil || *fix.Altitude != 120 {

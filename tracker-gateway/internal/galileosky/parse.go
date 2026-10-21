@@ -27,8 +27,12 @@ func parseTags(payload []byte) map[byte][]byte {
 	return out
 }
 
-// parseTagRecords splits a packet into logical records on each 0x30 coordinate tag.
-// Shared tags (e.g. 0x03 IMEI) from earlier in the stream are copied forward.
+// parseTagRecords splits a Galileosky main/archive payload into records.
+// Official rule: one packet may hold several archive rows, concatenated
+// (tags of row 1, then tags of row 2, …). A repeated tag id starts the next row.
+// 0x20 therefore stays on the same row as the 0x30 it was sent with, whether the
+// device emits time-then-coords or coords-then-time. IMEI (0x03) is copied onto
+// later rows in the same packet; device time is not inherited.
 func parseTagRecords(payload []byte) []map[byte][]byte {
 	type tv struct {
 		id  byte
@@ -86,34 +90,29 @@ func parseTagRecords(payload []byte) []map[byte][]byte {
 	}
 	var records []map[byte][]byte
 	cur := map[byte][]byte{}
-	hasCoord := false
 	var sharedIMEI []byte
 	emit := func() {
-		if !hasCoord && len(cur) == 0 {
+		if len(cur) == 0 {
 			return
 		}
 		rec := map[byte][]byte{}
 		for k, v := range cur {
-			rec[k] = v
+			rec[k] = append([]byte(nil), v...)
 		}
 		if _, ok := rec[0x03]; !ok && len(sharedIMEI) > 0 {
 			rec[0x03] = append([]byte(nil), sharedIMEI...)
 		}
 		records = append(records, rec)
 		cur = map[byte][]byte{}
-		hasCoord = false
 	}
 	for _, t := range flat {
 		if t.id == 0x03 {
 			sharedIMEI = t.val
 		}
-		if t.id == 0x30 && hasCoord {
+		if _, dup := cur[t.id]; dup {
 			emit()
 		}
 		cur[t.id] = t.val
-		if t.id == 0x30 {
-			hasCoord = true
-		}
 	}
 	emit()
 	if len(records) == 0 {
@@ -242,6 +241,8 @@ func tagSize(tag byte) int {
 		return 2
 	case 0x5a: // REP-500 energy counter
 		return 4
+	case 0x5b: // CAN / expansion block used by 7x (7 bytes)
+		return 7
 	case 0x5c: // PressurePro TPMS (34×2)
 		return 68
 	case 0x5d: // DBG-S11D dosimeter

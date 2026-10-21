@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { splitTrailByJump } from "../lib/gpsJump";
 import { STREET_TILE, streetTileOptions } from "../lib/mapTiles";
 
 type Basemap = "light" | "satellite";
@@ -111,25 +112,29 @@ export function FleetDayTrailMap({
       map.setView([-2.5, 118], 5);
       return;
     }
-    // Soft underlay + dashed core (sample-style route)
-    L.polyline(path, {
-      color: "#0d9488",
-      weight: 8,
-      opacity: 0.28,
-      lineCap: "round",
-      lineJoin: "round",
-    }).addTo(layer);
-    const line = L.polyline(path, {
-      color: "#0f766e",
-      weight: 4,
-      opacity: 0.95,
-      dashArray: "10 8",
-      lineCap: "round",
-      lineJoin: "round",
-    }).addTo(layer);
+    const segments = splitTrailByJump(path);
+    const draw = segments.length ? segments : [path];
+    const bounds = L.latLngBounds(path);
+    for (const seg of draw) {
+      L.polyline(seg, {
+        color: "#0d9488",
+        weight: 8,
+        opacity: 0.28,
+        lineCap: "round",
+        lineJoin: "round",
+      }).addTo(layer);
+      L.polyline(seg, {
+        color: "#0f766e",
+        weight: 4,
+        opacity: 0.95,
+        dashArray: "10 8",
+        lineCap: "round",
+        lineJoin: "round",
+      }).addTo(layer);
+    }
     L.marker(path[0], { icon: startIcon, zIndexOffset: 400 }).addTo(layer);
     L.marker(path[path.length - 1], { icon: endIcon, zIndexOffset: 400 }).addTo(layer);
-    map.fitBounds(line.getBounds().pad(0.18));
+    map.fitBounds(bounds.pad(0.18));
   }, [path]);
 
   useEffect(() => {

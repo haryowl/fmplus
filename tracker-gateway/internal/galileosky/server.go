@@ -61,19 +61,12 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		if _, err := io.ReadFull(conn, hdr); err != nil {
 			return
 		}
-		if hdr[0] != 0x01 {
-			if device != nil {
-				_ = st.PatchLastStatus(ctx, device, map[string]any{
-					"sync_skip": true,
-					"hdr0":      int(hdr[0]),
-				}, nil)
-			}
-			continue
-		}
 		lenRaw := binary.LittleEndian.Uint16(hdr[1:3])
 		archive := lenRaw&0x8000 != 0
 		tagLen := int(lenRaw & 0x7fff)
-		if tagLen < 1 || tagLen > 1000 {
+		// Length field is 15 bits (max 32767). Older docs said 1000; 7x archive
+		// multi-record frames regularly exceed that and must not drop the TCP session.
+		if tagLen < 1 || tagLen > 0x7fff {
 			if device != nil {
 				_ = st.PatchLastStatus(ctx, device, map[string]any{
 					"tag_len_invalid": true,
@@ -82,7 +75,6 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			}
 			return
 		}
-		// tags + 2-byte CRC
 		body := make([]byte, tagLen+2)
 		if _, err := io.ReadFull(conn, body); err != nil {
 			return
@@ -91,6 +83,46 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		gotCRC := binary.LittleEndian.Uint16(body[tagLen : tagLen+2])
 		packetForCRC := append(append([]byte{}, hdr...), tagsBytes...)
 		calc := crc16Modbus(packetForCRC)
+
+		switch hdr[0] {
+		case 0x07:
+			// Photo / media part — ack so the device does not stall the GPS stream.
+			if calc == gotCRC {
+				_ = writeAckHdr(conn, 0x07, gotCRC)
+			}
+			continue
+		case 0x08:
+			if calc != gotCRC {
+				metrics.DecodeErr()
+				_ = writeAck(conn, gotCRC)
+				continue
+			}
+			if device != nil {
+				for _, fix := range parseCompressedPositions(tagsBytes, time.Now().UTC()) {
+					fix.SourceProtocol = "galileosky"
+					if fix.RawAttrs == nil {
+						fix.RawAttrs = map[string]any{}
+					}
+					applyPacketMeta(fix.RawAttrs, archive, 0)
+					if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
+						log.Printf("[galileosky] compressed ingest %s: %v", imei, err)
+					}
+				}
+				flushPending(ctx, conn, st, device.ID)
+			}
+			_ = writeAck(conn, gotCRC)
+			continue
+		case 0x01:
+			// main / archive tag packet
+		default:
+			if device != nil {
+				_ = st.PatchLastStatus(ctx, device, map[string]any{
+					"sync_skip": true,
+					"hdr0":      int(hdr[0]),
+				}, nil)
+			}
+			continue
+		}
 		if calc != gotCRC {
 			metrics.DecodeErr()
 			log.Printf("[galileosky] bad CRC from %s got=%04x want=%04x — ack only, skip ingest", conn.RemoteAddr(), gotCRC, calc)
@@ -130,27 +162,26 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				}
 			}
 			fix, hasFix := fixFromTags(tags)
-			if device != nil && (hasFix || len(tags) > 0) {
-				if !hasFix {
+			deviceTime, hasDeviceTime := deviceTimeFromTags(tags)
+			ingestOK := false
+			if device != nil {
+				if hasFix && !hasDeviceTime {
+					log.Printf("[galileosky] skip GPS without device time (tag 0x20) imei=%s — likely a split/partial row", imei)
+					_ = st.TouchSeen(ctx, device)
+				} else if hasFix {
+					ingestOK = true
+				} else if hasDeviceTime {
 					fix = store.Fix{
-						RecordedAt:     time.Now().UTC(),
+						RecordedAt:     deviceTime,
 						SourceProtocol: "galileosky",
 						RawAttrs:       map[string]any{"gps.valid": false},
 					}
-					// Still cook time from 0x20/0x21 when the packet has no 0x30.
-					if dt, ok := tags[0x20]; ok && len(dt) >= 4 {
-						sec := binary.LittleEndian.Uint32(dt[0:4])
-						if sec > 1_000_000_000 && sec < 4_000_000_000 {
-							fix.RecordedAt = time.Unix(int64(sec), 0).UTC()
-						}
-					}
-					if ms, ok := tags[0x21]; ok && len(ms) >= 2 {
-						msec := binary.LittleEndian.Uint16(ms[0:2])
-						if msec < 1000 {
-							fix.RecordedAt = fix.RecordedAt.Add(time.Duration(msec) * time.Millisecond)
-						}
-					}
+					ingestOK = true
+				} else if len(tags) > 0 {
+					_ = st.TouchSeen(ctx, device)
 				}
+			}
+			if device != nil && ingestOK {
 				fix.SourceProtocol = "galileosky"
 				if fix.RawAttrs == nil {
 					fix.RawAttrs = map[string]any{}
@@ -254,10 +285,35 @@ func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID 
 }
 
 func writeAck(conn net.Conn, packetCRC uint16) error {
-	buf := []byte{0x02, 0x00, 0x00}
+	return writeAckHdr(conn, 0x02, packetCRC)
+}
+
+func writeAckHdr(conn net.Conn, hdr byte, packetCRC uint16) error {
+	buf := []byte{hdr, 0x00, 0x00}
 	binary.LittleEndian.PutUint16(buf[1:3], packetCRC)
 	_, err := conn.Write(buf)
 	return err
+}
+
+// deviceTimeFromTags reads Galileosky tag 0x20 (unix seconds UTC, device clock)
+// plus optional 0x21 milliseconds. It never falls back to server receive time.
+func deviceTimeFromTags(tags map[byte][]byte) (time.Time, bool) {
+	dt, ok := tags[0x20]
+	if !ok || len(dt) < 4 {
+		return time.Time{}, false
+	}
+	sec := binary.LittleEndian.Uint32(dt[0:4])
+	if sec <= 1_000_000_000 || sec >= 4_000_000_000 {
+		return time.Time{}, false
+	}
+	recorded := time.Unix(int64(sec), 0).UTC()
+	if ms, ok := tags[0x21]; ok && len(ms) >= 2 {
+		msec := binary.LittleEndian.Uint16(ms[0:2])
+		if msec < 1000 {
+			recorded = recorded.Add(time.Duration(msec) * time.Millisecond)
+		}
+	}
+	return recorded, true
 }
 
 func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
@@ -268,34 +324,23 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 	// Official: flags(1) + lat int32/1e6 + lon int32/1e6
 	flags := coords[0]
 	validNibble := (flags >> 4) & 0x0f
-	// 0 = GNSS OK, 2 = LBS OK; other = invalid GPS — still return a fix so IO/status ingest.
-	gpsOK := validNibble == 0 || validNibble == 2
 	sats := int(flags & 0x0f)
 	latRaw := int32(binary.LittleEndian.Uint32(coords[1:5]))
 	lonRaw := int32(binary.LittleEndian.Uint32(coords[5:9]))
 	lat := float64(latRaw) / 1_000_000.0
 	lon := float64(lonRaw) / 1_000_000.0
-	if !gpsOK || !store.ValidCoords(lat, lon) {
+	coordsOK := store.ValidCoords(lat, lon)
+	// 0 = GNSS OK. 2 = LBS (cell) — keep coords for Terminal but never as a map fix.
+	gnssOK := validNibble == 0 && coordsOK
+	lbsOK := validNibble == 2 && coordsOK
+	if !gnssOK && !lbsOK {
 		lat, lon = 0, 0
 	}
 
-	var recorded time.Time
-	if dt, ok := tags[0x20]; ok && len(dt) >= 4 {
-		sec := binary.LittleEndian.Uint32(dt[0:4])
-		if sec > 1_000_000_000 && sec < 4_000_000_000 {
-			recorded = time.Unix(int64(sec), 0).UTC()
-		}
-	}
-	if recorded.IsZero() {
-		recorded = time.Now().UTC()
-	}
+	recorded, _ := deviceTimeFromTags(tags)
 	var timeMs int
 	if ms, ok := tags[0x21]; ok && len(ms) >= 2 {
-		msec := binary.LittleEndian.Uint16(ms[0:2])
-		timeMs = int(msec)
-		if msec < 1000 {
-			recorded = recorded.Add(time.Duration(msec) * time.Millisecond)
-		}
+		timeMs = int(binary.LittleEndian.Uint16(ms[0:2]))
 	}
 	fix := store.Fix{
 		Lat:            lat,
@@ -307,16 +352,16 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 			"gnss.sats":         sats,
 			"gnss_sats":         sats,
 			"gnss.valid_nibble": validNibble,
-			"gps.valid":         gpsOK && store.ValidCoords(lat, lon),
+			"gps.valid":         gnssOK,
 		},
 	}
 	if timeMs > 0 || tags[0x21] != nil {
 		fix.RawAttrs["time.ms"] = timeMs
 		fix.RawAttrs["tag.0x21"] = timeMs
 	}
-	if validNibble == 2 {
+	if lbsOK {
 		fix.RawAttrs["gnss.lbs"] = true
-	} else if gpsOK {
+	} else if gnssOK {
 		fix.RawAttrs["gnss.fix"] = true
 	} else {
 		fix.RawAttrs["gnss.invalid"] = true

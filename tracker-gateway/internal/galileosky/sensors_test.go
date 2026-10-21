@@ -220,7 +220,10 @@ func TestTagSize_UnknownOpaque(t *testing.T) {
 	if tagSize(0x48) != 2 {
 		t.Fatalf("0x48 extended status size=%d", tagSize(0x48))
 	}
-	if tagSize(0x78) != -1 || tagSize(0x5b) != -1 {
-		t.Fatalf("unknown/opaque expected -1: 0x78=%d 0x5b=%d", tagSize(0x78), tagSize(0x5b))
+	if tagSize(0x5b) != 7 {
+		t.Fatalf("0x5b size=%d", tagSize(0x5b))
+	}
+	if tagSize(0x78) != -1 {
+		t.Fatalf("unknown/opaque expected -1: 0x78=%d", tagSize(0x78))
 	}
 }

@@ -57,7 +57,8 @@ export function deviceIdByStatusRowId(fixes: TrackerLastFix[]): Map<number, stri
   return map;
 }
 
-/** Map a device last-fix into the Live Ops / Last Status row shape. */
+/** Map a device last-fix into the Live Ops / Last Status row shape.
+ * lastMs is vehicle_last_fix.recorded_at (device clock / Galileosky 0x20), not server receive time. */
 export function trackerFixToStatusRow(fix: TrackerLastFix): LastStatusRow {
   const id = fix.armadaUserId != null && fix.armadaUserId > 0 ? fix.armadaUserId : hashDeviceId(fix.deviceId);
   const lastMs = fix.recordedAt ? Date.parse(fix.recordedAt) : null;

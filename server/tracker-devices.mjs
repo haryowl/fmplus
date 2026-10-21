@@ -1269,6 +1269,9 @@ export async function deviceTrailsByArmadaDays(tenantId, days) {
          AND d.armada_user_id = $2
          AND vf.recorded_at >= ($3::date AT TIME ZONE 'Asia/Jakarta')
          AND vf.recorded_at < (($3::date + 1) AT TIME ZONE 'Asia/Jakarta')
+         AND (abs(vf.lat) > 0.01 OR abs(vf.lon) > 0.01)
+         AND COALESCE(vf.mapped_attrs->>'gps.valid', 'true') <> 'false'
+         AND COALESCE(vf.mapped_attrs->>'gnss.lbs', 'false') <> 'true'
        ORDER BY vf.recorded_at ASC
        LIMIT 2000`,
       [tenantId, uid, date],
@@ -1320,6 +1323,9 @@ export async function listDeviceDayFixes(tenantId, deviceId, opts = {}) {
        AND device_id = $2::uuid
        AND recorded_at >= $3::timestamptz
        AND recorded_at < $4::timestamptz
+       AND (abs(lat) > 0.01 OR abs(lon) > 0.01)
+       AND COALESCE(mapped_attrs->>'gps.valid', 'true') <> 'false'
+       AND COALESCE(mapped_attrs->>'gnss.lbs', 'false') <> 'true'
      ORDER BY recorded_at ASC
      LIMIT $5`,
     [tenantId, device, new Date(startMs).toISOString(), new Date(endMs).toISOString(), limit],
