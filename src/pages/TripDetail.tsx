@@ -19,7 +19,12 @@ import { formatHours, formatKm, formatLiters, formatRpm, formatSpeed } from "../
 import { describeLoadProgress } from "../lib/dayTracks";
 import { writeLastVehicle } from "../lib/lastUsed";
 import { pickDriverFromCustomFields } from "../lib/driverFields";
-import { armadaTripViewRedirectHref, writeLocationSearch } from "../lib/routing";
+import {
+  armadaTripViewRedirectHref,
+  devicesOnlyViewHref,
+  writeLocationSearch,
+} from "../lib/routing";
+import { fetchTelematicsSource } from "../lib/trackerDevices";
 import {
   addressAt,
   coordsFromSegments,
@@ -140,7 +145,19 @@ export default function TripDetail() {
 
   useEffect(() => {
     const href = armadaTripViewRedirectHref();
-    if (href) window.location.replace(href);
+    if (href) {
+      window.location.replace(href);
+      return;
+    }
+    let cancelled = false;
+    void fetchTelematicsSource().then((source) => {
+      if (cancelled) return;
+      const next = devicesOnlyViewHref(source);
+      if (next) window.location.replace(next);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const selectedCustomFields = customFields.filter((cf) => columns.customFieldNames.includes(cf.name));

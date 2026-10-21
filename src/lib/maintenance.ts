@@ -896,6 +896,21 @@ export async function endMaintenanceSeries(
   return data;
 }
 
+/** Prefer GPS device end-open on devices-only tenants or unlinked jobs. */
+export function preferDeviceEndOpen(opts: {
+  armadaUserId?: number | null;
+  trackerDeviceId?: string | null;
+  telematicsSource?: "armada" | "devices" | "both" | null;
+}): "device" | "vehicle" | null {
+  const deviceId = String(opts.trackerDeviceId || "").trim();
+  const hasDevice = /^[0-9a-f-]{36}$/i.test(deviceId);
+  const hasArmada = opts.armadaUserId != null && Number(opts.armadaUserId) > 0;
+  if (hasDevice && (opts.telematicsSource === "devices" || !hasArmada)) return "device";
+  if (hasArmada) return "vehicle";
+  if (hasDevice) return "device";
+  return null;
+}
+
 export async function endOpenMaintenanceForVehicle(
   armadaUserId: number,
   reason = "Vehicle maintenance stopped",

@@ -124,6 +124,17 @@ describe("vehicleTrackHref", () => {
     expect(href).toContain("section=history");
     expect(href).not.toContain("userId=");
   });
+
+  it("stamps tenant key onto Fleet Live hrefs", () => {
+    const href = vehicleTrackHref({
+      rowId: 0,
+      deviceId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      kind: "full",
+      tenantKey: "acme-tenant-key-1",
+    });
+    expect(href).toContain("k=acme-tenant-key-1");
+    expect(href).toContain("/fleet-live");
+  });
 });
 
 describe("withSearch", () => {

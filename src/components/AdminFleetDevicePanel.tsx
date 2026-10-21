@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { vehicleTrackHref } from "../lib/routing";
 
 export type FleetDeviceRow = {
   id: string;
@@ -55,6 +56,7 @@ type Props = {
   onDelete: (deviceId: string, imei: string) => Promise<void>;
   onCreateField: (body: Record<string, unknown>) => Promise<void>;
   onDeleteField: (fieldId: string) => Promise<void>;
+  tenantKey?: string | null;
 };
 
 const VEHICLE_TYPES = ["", "truck", "van", "car", "bus", "motorcycle", "trailer", "other"];
@@ -86,6 +88,7 @@ export function AdminFleetDevicePanel({
   onDelete,
   onCreateField,
   onDeleteField,
+  tenantKey,
 }: Props) {
   const [query, setQuery] = useState("");
   const [protocolFilter, setProtocolFilter] = useState("");
@@ -281,14 +284,32 @@ export function AdminFleetDevicePanel({
                   ) : null}
                 </div>
                 {!creating && selected ? (
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    disabled={busy}
-                    onClick={() => void onDelete(selected.id, selected.imei)}
-                  >
-                    Delete
-                  </button>
+                  <div className="admin-actions">
+                    {tenantKey ? (
+                      <a
+                        className="btn-link"
+                        href={vehicleTrackHref({
+                          rowId: selected.armadaUserId || 0,
+                          deviceId: selected.id,
+                          kind: "full",
+                          telematicsSource: "devices",
+                          tenantKey,
+                        })}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Fleet Live
+                      </a>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={busy}
+                      onClick={() => void onDelete(selected.id, selected.imei)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 ) : null}
               </header>
 

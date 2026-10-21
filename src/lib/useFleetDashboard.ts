@@ -21,7 +21,12 @@ import {
   type FleetVehicleRow,
 } from "./fleet";
 import { defaultFleetUserIds, parseUserIdsSearch, writeFleetSelection } from "./lastUsed";
-import { armadaTripViewRedirectHref, writeLocationSearch } from "./routing";
+import {
+  armadaTripViewRedirectHref,
+  devicesOnlyViewHref,
+  writeLocationSearch,
+} from "./routing";
+import { fetchTelematicsSource } from "./trackerDevices";
 import { computePeriodMetrics, sumMetrics } from "./metrics";
 import { addDays, todayKeyInOffset } from "./time";
 import type { Group, LoadProgress, Period, Trip, User } from "./types";
@@ -70,7 +75,19 @@ export function useFleetDashboard() {
 
   useEffect(() => {
     const href = armadaTripViewRedirectHref();
-    if (href) window.location.replace(href);
+    if (href) {
+      window.location.replace(href);
+      return;
+    }
+    let cancelled = false;
+    void fetchTelematicsSource().then((source) => {
+      if (cancelled) return;
+      const next = devicesOnlyViewHref(source);
+      if (next) window.location.replace(next);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const vehicles: FleetVehicleRow[] = useMemo(() => {

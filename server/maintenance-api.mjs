@@ -4,6 +4,7 @@
 import crypto from "node:crypto";
 import { databaseUrlConfigured, dbQuery } from "./db.mjs";
 import { tenantFromRequest } from "./tenants.mjs";
+import { fieldFromRequest } from "./field-auth.mjs";
 import { securityHeaders } from "./proxy-lt.mjs";
 import { getObject, objectStorageConfigured, putObject } from "./storage.mjs";
 import { armadaFetch } from "./armada-fetch.mjs";
@@ -106,8 +107,9 @@ async function readJson(req) {
 
 export async function resolveDbTenant(req) {
   if (!databaseUrlConfigured()) return null;
+  const header = String(req.headers["x-fms-tenant"] || "").trim();
   const fromHeader = tenantFromRequest(req);
-  let key = fromHeader?.key || "";
+  let key = header || fromHeader?.key || "";
   if (!key) {
     try {
       const url = new URL(req.url || "/", "http://localhost");
@@ -116,7 +118,13 @@ export async function resolveDbTenant(req) {
       key = "";
     }
   }
-  if (!key) return null;
+  if (!key) {
+    const field = await fieldFromRequest(req).catch(() => null);
+    if (field?.tenantId && field.tenantKey) {
+      return { id: field.tenantId, key: field.tenantKey };
+    }
+    return null;
+  }
   const found = await dbQuery(
     `SELECT id, key FROM tenants WHERE key = $1 AND enabled = true`,
     [key],

@@ -171,6 +171,18 @@ export async function fetchTrackerLastStatus(
   };
 }
 
+let telematicsSourceCache: Promise<TelematicsSource> | null = null;
+
+/** Tenant telematics source (cached per page load). */
+export function fetchTelematicsSource(signal?: AbortSignal): Promise<TelematicsSource> {
+  if (!telematicsSourceCache) {
+    telematicsSourceCache = fetchTrackerLastStatus(signal)
+      .then((s) => s.telematicsSource || "both")
+      .catch(() => "both" as TelematicsSource);
+  }
+  return telematicsSourceCache;
+}
+
 export async function fetchTrackerDeviceGroups(
   signal?: AbortSignal,
   opts?: { members?: boolean },

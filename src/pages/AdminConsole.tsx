@@ -3630,6 +3630,7 @@ export default function AdminConsole() {
                     onDelete={(id, imei) => deleteTrackerDevice(id, imei)}
                     onCreateField={(body) => createDeviceFieldDefBody(body)}
                     onDeleteField={(id) => deleteDeviceFieldDefBody(id)}
+                    tenantKey={selected?.key}
                   />
                   <p className="muted" style={{ marginTop: 8, fontSize: "0.72rem" }}>
                     Ingest · <code>{selected?.trackerIngestUrl || "/api/tracker/ingest/v1/fix"}</code>

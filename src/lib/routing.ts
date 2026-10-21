@@ -1,3 +1,5 @@
+import { currentTenantKey } from "./tenant";
+
 export type AppView =
   | "full"
   | "compact"
@@ -128,10 +130,14 @@ export function vehicleTrackHref(opts: {
   kind?: "trips" | "full" | "history";
   /** When "devices", prefer Fleet Live even if rowId > 0 (linked Armada id). */
   telematicsSource?: "armada" | "devices" | "both" | null;
+  /** Stamp `k=` when the current URL (or configured tenant) does not have it. */
+  tenantKey?: string | null;
 }): string {
   const params = new URLSearchParams(
     typeof window !== "undefined" ? window.location.search : "",
   );
+  const tenantKey = String(opts.tenantKey || params.get("k") || currentTenantKey() || "").trim();
+  if (tenantKey) params.set("k", tenantKey);
   const deviceId = String(opts.deviceId || "").trim();
   const kind = opts.kind || "full";
   const preferFleetLive =
@@ -176,6 +182,18 @@ export function armadaTripViewRedirectHref(
     return vehicleTrackHref({ rowId: uid, deviceId: null, kind: "trips" });
   }
   return null;
+}
+
+/** Devices-only tenants: send Armada trip/full/fleet views to Fleet Live. */
+export function devicesOnlyViewHref(
+  telematicsSource: "armada" | "devices" | "both" | null | undefined,
+  search = typeof window !== "undefined" ? window.location.search : "",
+): string | null {
+  if (telematicsSource !== "devices") return null;
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  params.set("section", "live");
+  const q = params.toString();
+  return fleetLiveHref(q ? `?${q}` : "");
 }
 
 export function exceptionsHref(search: string): string {

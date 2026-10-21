@@ -20,6 +20,7 @@ import { prepareImageDataUrl } from "../lib/imageUpload";
 import {
   emptyLine,
   eventVehicleLabel,
+  preferDeviceEndOpen,
   SERVICE_STATUS_LABELS,
   type CatalogGroup,
   type CatalogItem,
@@ -30,6 +31,8 @@ import {
   type ServicePhoto,
 } from "../lib/maintenance";
 import { fieldHref, vehicleTrackHref } from "../lib/routing";
+import { configureTenant } from "../lib/tenant";
+import { fetchTelematicsSource } from "../lib/trackerDevices";
 
 type ManagerUser = {
   id: string;
@@ -117,6 +120,7 @@ export default function ManagerMaintenance() {
     codeFormat?: string;
   } | null>(null);
   const [vehicleConfirmedJobId, setVehicleConfirmedJobId] = useState<string | null>(null);
+  const [telematicsSource, setTelematicsSource] = useState<"armada" | "devices" | "both">("both");
 
   const refreshMe = useCallback(async () => {
     try {
@@ -167,6 +171,12 @@ export default function ManagerMaintenance() {
     document.title = "Manager · ARMADA M.1";
     void refreshMe();
   }, [refreshMe]);
+
+  useEffect(() => {
+    if (!user) return;
+    configureTenant(user.tenantKey, user.appId);
+    void fetchTelematicsSource().then(setTelematicsSource);
+  }, [user]);
 
   useEffect(() => {
     if (user && managerMaintenance) void loadJobs();
@@ -483,17 +493,21 @@ export default function ManagerMaintenance() {
     setError("");
     setNotice("");
     try {
+      const via = preferDeviceEndOpen({
+        armadaUserId: detail.armadaUserId,
+        trackerDeviceId: detail.trackerDeviceId,
+        telematicsSource,
+      });
+      if (!via) return;
       const path =
-        detail.armadaUserId != null
-          ? `/api/manager/maintenance/vehicles/${detail.armadaUserId}/end-open`
-          : `/api/manager/maintenance/devices/${encodeURIComponent(String(detail.trackerDeviceId))}/end-open`;
+        via === "device"
+          ? `/api/manager/maintenance/devices/${encodeURIComponent(String(detail.trackerDeviceId))}/end-open`
+          : `/api/manager/maintenance/vehicles/${detail.armadaUserId}/end-open`;
       const result = await api<{ count: number }>(path, {
         method: "POST",
         body: JSON.stringify({
           reason:
-            detail.armadaUserId != null
-              ? "Vehicle maintenance stopped"
-              : "Device maintenance stopped",
+            via === "device" ? "Device maintenance stopped" : "Vehicle maintenance stopped",
         }),
       });
       setNotice(
@@ -622,6 +636,8 @@ export default function ManagerMaintenance() {
                       rowId: detail.armadaUserId || 0,
                       deviceId: detail.trackerDeviceId,
                       kind: "trips",
+                      telematicsSource,
+                      tenantKey: user?.tenantKey,
                     })}
                   >
                     Trips
@@ -632,6 +648,8 @@ export default function ManagerMaintenance() {
                       rowId: detail.armadaUserId || 0,
                       deviceId: detail.trackerDeviceId,
                       kind: "full",
+                      telematicsSource,
+                      tenantKey: user?.tenantKey,
                     })}
                   >
                     Full

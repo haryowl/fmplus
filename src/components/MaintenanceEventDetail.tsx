@@ -4,6 +4,7 @@ import {
   endMaintenanceSeries,
   endOpenMaintenanceForDevice,
   endOpenMaintenanceForVehicle,
+  preferDeviceEndOpen,
   eventIsScheduled,
   eventVehicleLabel,
   fetchHoursAccrued,
@@ -30,6 +31,7 @@ import {
 import { prepareImageDataUrl } from "../lib/imageUpload";
 import { formatKm } from "../lib/format";
 import { vehicleTrackHref } from "../lib/routing";
+import { fetchTelematicsSource } from "../lib/trackerDevices";
 import { tenantHeaders } from "../lib/tenant";
 import { CatalogLineEditor } from "./CatalogLineEditor";
 import { CatalogScanButton } from "./CatalogScanButton";
@@ -88,6 +90,7 @@ export function MaintenanceEventDetail({
   const [notice, setNotice] = useState("");
   const [fieldUsers, setFieldUsers] = useState<FieldUserOption[]>([]);
   const [pointHints, setPointHints] = useState<ServicePoint[]>([]);
+  const [telematicsSource, setTelematicsSource] = useState<"armada" | "devices" | "both">("both");
 
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
@@ -129,6 +132,10 @@ export function MaintenanceEventDetail({
   const [kmLoading, setKmLoading] = useState(false);
   const [lines, setLines] = useState<ServiceLine[]>([emptyLine()]);
   const [catalog, setCatalog] = useState<CatalogGroup[]>([]);
+
+  useEffect(() => {
+    void fetchTelematicsSource().then(setTelematicsSource);
+  }, []);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -469,12 +476,21 @@ export function MaintenanceEventDetail({
     setError("");
     setNotice("");
     try {
-      const result = event.armadaUserId != null
-        ? await endOpenMaintenanceForVehicle(event.armadaUserId, "Vehicle maintenance stopped")
-        : await endOpenMaintenanceForDevice(
-            String(event.trackerDeviceId),
-            "Device maintenance stopped",
-          );
+      const via = preferDeviceEndOpen({
+        armadaUserId: event.armadaUserId,
+        trackerDeviceId: event.trackerDeviceId,
+        telematicsSource,
+      });
+      const result =
+        via === "device"
+          ? await endOpenMaintenanceForDevice(
+              String(event.trackerDeviceId),
+              "Device maintenance stopped",
+            )
+          : await endOpenMaintenanceForVehicle(
+              Number(event.armadaUserId),
+              "Vehicle maintenance stopped",
+            );
       setNotice(
         result.count
           ? `Stopped ${result.count} open job${result.count === 1 ? "" : "s"} for this vehicle.`
@@ -547,6 +563,7 @@ export function MaintenanceEventDetail({
                   rowId: event.armadaUserId || 0,
                   deviceId: event.trackerDeviceId,
                   kind: "trips",
+                  telematicsSource,
                 })}
               >
                 Trips
@@ -557,6 +574,7 @@ export function MaintenanceEventDetail({
                   rowId: event.armadaUserId || 0,
                   deviceId: event.trackerDeviceId,
                   kind: "full",
+                  telematicsSource,
                 })}
               >
                 Full

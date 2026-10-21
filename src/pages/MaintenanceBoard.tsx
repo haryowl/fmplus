@@ -7,6 +7,7 @@ import {
   downloadMaintenanceExcel,
   endOpenMaintenanceForDevice,
   endOpenMaintenanceForVehicle,
+  preferDeviceEndOpen,
   eventVehicleLabel,
   eventWhen,
   eventIsScheduled,
@@ -1608,15 +1609,20 @@ export default function MaintenanceBoard() {
                         }
                         const stopKey = sample.armadaUserId ?? sample.trackerDeviceId;
                         setBusyId(`stop-vehicle-${stopKey}`);
+                        const via = preferDeviceEndOpen({
+                          armadaUserId: sample.armadaUserId,
+                          trackerDeviceId: sample.trackerDeviceId,
+                          telematicsSource,
+                        });
                         const stopPromise =
-                          sample.armadaUserId != null
-                            ? endOpenMaintenanceForVehicle(
-                                sample.armadaUserId,
-                                "Vehicle maintenance stopped",
-                              )
-                            : endOpenMaintenanceForDevice(
+                          via === "device"
+                            ? endOpenMaintenanceForDevice(
                                 String(sample.trackerDeviceId),
                                 "Device maintenance stopped",
+                              )
+                            : endOpenMaintenanceForVehicle(
+                                Number(sample.armadaUserId),
+                                "Vehicle maintenance stopped",
                               );
                         void stopPromise
                           .then((result) => {

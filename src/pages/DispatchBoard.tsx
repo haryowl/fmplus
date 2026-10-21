@@ -1169,50 +1169,51 @@ export default function DispatchBoard() {
       setJobPhoneTrail([]);
     }
 
-    if (selected.armadaUserId != null) {
-      const day = { userId: selected.armadaUserId, date };
+    if (selected.armadaUserId != null || selected.trackerDeviceId) {
+      const day =
+        selected.armadaUserId != null
+          ? { userId: selected.armadaUserId, date }
+          : null;
+      const nativePromise = selected.trackerDeviceId
+        ? fetchTrackerDeviceDay(
+            { deviceId: selected.trackerDeviceId, date },
+            ac.signal,
+          )
+            .then((dayTrack) =>
+              (dayTrack.points || [])
+                .filter(
+                  (p) =>
+                    Number.isFinite(Number(p.lat)) &&
+                    Number.isFinite(Number(p.lon)) &&
+                    typeof p.recordedAt === "string",
+                )
+                .map((p) => ({
+                  lat: Number(p.lat),
+                  lon: Number(p.lon),
+                  recordedAt: p.recordedAt,
+                })),
+            )
+            .catch(() => [])
+        : Promise.resolve([]);
+      const linkedPromise = day
+        ? Promise.all([
+            fetchArmadaDayTracks([day], ac.signal).catch(() => new Map()),
+            fetchDeviceDayTracks([day], ac.signal).catch(() => new Map()),
+          ]).then(([armadaMap, deviceMap]) => {
+            const key = `${day.userId}|${date}`;
+            const deviceTimed = deviceMap.get(key) || [];
+            const armadaTimed = armadaMap.get(key) || [];
+            return deviceTimed.length >= 2 ? deviceTimed : armadaTimed;
+          })
+        : Promise.resolve([]);
       tasks.push(
-        Promise.all([
-          fetchArmadaDayTracks([day], ac.signal).catch(() => new Map()),
-          fetchDeviceDayTracks([day], ac.signal).catch(() => new Map()),
-        ]).then(([armadaMap, deviceMap]) => {
+        Promise.all([nativePromise, linkedPromise]).then(([nativeTimed, linkedTimed]) => {
           if (cancelled) return;
-          const key = `${selected.armadaUserId}|${date}`;
-          const deviceTimed = deviceMap.get(key) || [];
-          const armadaTimed = armadaMap.get(key) || [];
-          const timed = deviceTimed.length >= 2 ? deviceTimed : armadaTimed;
+          const timed = nativeTimed.length >= 2 ? nativeTimed : linkedTimed;
           setJobArmadaTrack(
             clipTimedTrackToWindow(timed, selected.startedAt, selected.completedAt),
           );
         }),
-      );
-    } else if (selected.trackerDeviceId) {
-      tasks.push(
-        fetchTrackerDeviceDay(
-          { deviceId: selected.trackerDeviceId, date },
-          ac.signal,
-        )
-          .then((dayTrack) => {
-            if (cancelled) return;
-            const timed = (dayTrack.points || [])
-              .filter(
-                (p) =>
-                  Number.isFinite(Number(p.lat)) &&
-                  Number.isFinite(Number(p.lon)) &&
-                  typeof p.recordedAt === "string",
-              )
-              .map((p) => ({
-                lat: Number(p.lat),
-                lon: Number(p.lon),
-                recordedAt: p.recordedAt,
-              }));
-            setJobArmadaTrack(
-              clipTimedTrackToWindow(timed, selected.startedAt, selected.completedAt),
-            );
-          })
-          .catch(() => {
-            if (!cancelled) setJobArmadaTrack([]);
-          }),
       );
     } else {
       setJobArmadaTrack([]);

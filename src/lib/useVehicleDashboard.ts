@@ -17,7 +17,12 @@ import { addDays, todayKeyInOffset } from "./time";
 import type { Group, LoadProgress, Period, Trip, User } from "./types";
 import { EMBED_READY, embedOriginAllowlist, parseHostMessage, type EmbedConfig } from "./embed";
 import { writeLastVehicle } from "./lastUsed";
-import { armadaTripViewRedirectHref, writeLocationSearch } from "./routing";
+import {
+  armadaTripViewRedirectHref,
+  devicesOnlyViewHref,
+  writeLocationSearch,
+} from "./routing";
+import { fetchTelematicsSource } from "./trackerDevices";
 import { useEmbedTenant } from "./useEmbedTenant";
 
 export function useVehicleDashboard() {
@@ -62,7 +67,19 @@ export function useVehicleDashboard() {
 
   useEffect(() => {
     const href = armadaTripViewRedirectHref();
-    if (href) window.location.replace(href);
+    if (href) {
+      window.location.replace(href);
+      return;
+    }
+    let cancelled = false;
+    void fetchTelematicsSource().then((source) => {
+      if (cancelled) return;
+      const next = devicesOnlyViewHref(source);
+      if (next) window.location.replace(next);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
