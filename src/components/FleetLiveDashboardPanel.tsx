@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { assetCopy } from "../lib/assetCopy";
+import { isRuleSeverityAlert, isSafetyWarningEvent } from "../lib/eventClass";
+import type { FleetRuleEvent } from "../lib/fleetAlertRules";
 import { useUnitSystem } from "../lib/unitSystem";
 import { ageLabel, ageTone, type LastStatusRow } from "../lib/lastStatus";
 import {
@@ -49,12 +51,14 @@ export type FleetDashAlert = {
   alarmType: string;
   alarmLevel: number;
   recordedAt: string;
+  eventClass?: "safety" | "warning" | "asset" | "none";
 };
 
 type Props = {
   rows: LastStatusRow[];
   fixMeta: Record<number, FleetDashFixMeta>;
   alerts: FleetDashAlert[];
+  ruleAlerts?: FleetRuleEvent[];
   maintUserIds: Set<number>;
   alertDeviceIds: Set<string>;
   now: number;
@@ -149,6 +153,7 @@ export function FleetLiveDashboardPanel({
   rows,
   fixMeta,
   alerts,
+  ruleAlerts = [],
   maintUserIds,
   alertDeviceIds,
   now,
@@ -222,9 +227,18 @@ export function FleetLiveDashboardPanel({
     const map = new Map<string, number>();
     let total = 0;
     for (const a of alerts) {
+      if (!isSafetyWarningEvent(a)) continue;
       const t = Date.parse(a.recordedAt);
       if (!Number.isFinite(t) || t < recent) continue;
       const key = a.alarmType || "unknown";
+      map.set(key, (map.get(key) || 0) + 1);
+      total += 1;
+    }
+    for (const r of ruleAlerts) {
+      if (!isRuleSeverityAlert(r.severity)) continue;
+      const t = Date.parse(r.firedAt);
+      if (!Number.isFinite(t) || t < recent) continue;
+      const key = r.ruleName || r.title || "rule";
       map.set(key, (map.get(key) || 0) + 1);
       total += 1;
     }
@@ -233,19 +247,31 @@ export function FleetLiveDashboardPanel({
       .sort((a, b) => b.n - a.n)
       .slice(0, 6);
     return { list, total };
-  }, [alerts, now]);
+  }, [alerts, ruleAlerts, now]);
 
   const latestAlertByDevice = useMemo(() => {
     const recent = now - 24 * 60 * 60 * 1000;
-    const map = new Map<string, FleetDashAlert>();
+    const map = new Map<string, { alarmType: string; recordedAt: string }>();
     for (const a of alerts) {
+      if (!isSafetyWarningEvent(a)) continue;
       const t = Date.parse(a.recordedAt);
       if (!Number.isFinite(t) || t < recent) continue;
       const prev = map.get(a.deviceId);
-      if (!prev || Date.parse(prev.recordedAt) < t) map.set(a.deviceId, a);
+      if (!prev || Date.parse(prev.recordedAt) < t) {
+        map.set(a.deviceId, { alarmType: a.alarmType, recordedAt: a.recordedAt });
+      }
+    }
+    for (const r of ruleAlerts) {
+      if (!r.deviceId || !isRuleSeverityAlert(r.severity)) continue;
+      const t = Date.parse(r.firedAt);
+      if (!Number.isFinite(t) || t < recent) continue;
+      const prev = map.get(r.deviceId);
+      if (!prev || Date.parse(prev.recordedAt) < t) {
+        map.set(r.deviceId, { alarmType: r.title || r.ruleName || "rule", recordedAt: r.firedAt });
+      }
     }
     return map;
-  }, [alerts, now]);
+  }, [alerts, ruleAlerts, now]);
 
   const protocolMix = useMemo(() => {
     const map = new Map<string, number>();
@@ -641,7 +667,9 @@ export function FleetLiveDashboardPanel({
             <h3>
               <IcoFleet /> Snapshot
             </h3>
-            <em className="fleet-dash-pill">{snapRows.length} vehicles</em>
+            <em className="fleet-dash-pill">
+              {snapRows.length} {snapRows.length === 1 ? assetCopy.assetLower : assetCopy.assetsLower}
+            </em>
           </div>
           <div className="fleet-dash-snap-tools">
             <label className="fleet-dash-snap-search">

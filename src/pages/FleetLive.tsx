@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TIMEZONES } from "../lib/config";
 import { assetCopy } from "../lib/assetCopy";
-import { eventClassLabel } from "../lib/eventClass";
+import { eventClassLabel, isRuleSeverityAlert, isSafetyWarningEvent } from "../lib/eventClass";
 import { useUnitSystem } from "../lib/unitSystem";
 import { UnitSystemSelect } from "../components/UnitSystemSelect";
 import { ageLabel, type LastStatusRow } from "../lib/lastStatus";
@@ -523,22 +523,26 @@ export default function FleetLive() {
     return () => window.clearInterval(id);
   }, [ready, loadStatus]);
 
+  const liveAlertEvents = useMemo(() => alerts.filter(isSafetyWarningEvent), [alerts]);
+  const liveRuleAlerts = useMemo(
+    () => ruleFires.filter((r) => isRuleSeverityAlert(r.severity)),
+    [ruleFires],
+  );
+
   const alertDeviceIds = useMemo(() => {
     const recent = Date.now() - 24 * 60 * 60 * 1000;
     const set = new Set<string>();
-    for (const a of alerts) {
-      if (a.raiseAlert === false) continue;
+    for (const a of liveAlertEvents) {
       const t = Date.parse(a.recordedAt);
       if (Number.isFinite(t) && t >= recent) set.add(a.deviceId);
     }
-    for (const r of ruleFires) {
+    for (const r of liveRuleAlerts) {
       if (r.deviceId) set.add(r.deviceId);
     }
     return set;
-  }, [alerts, ruleFires]);
+  }, [liveAlertEvents, liveRuleAlerts]);
 
-  const drawerAlertCount =
-    alerts.filter((a) => a.raiseAlert !== false).length + ruleFires.length;
+  const drawerAlertCount = liveAlertEvents.length + liveRuleAlerts.length;
 
   const drawerFeed = useMemo(() => {
     type Item = {
@@ -553,8 +557,7 @@ export default function FleetLive() {
       pill: string;
     };
     const items: Item[] = [];
-    for (const a of alerts) {
-      if (a.raiseAlert === false) continue;
+    for (const a of liveAlertEvents) {
       const atMs = Date.parse(a.recordedAt);
       items.push({
         key: `s-${a.id}`,
@@ -567,7 +570,7 @@ export default function FleetLive() {
         pill: eventClassLabel(a.eventClass || "warning"),
       });
     }
-    for (const r of ruleFires) {
+    for (const r of liveRuleAlerts) {
       const atMs = Date.parse(r.firedAt);
       items.push({
         key: `r-${r.id}`,
@@ -578,23 +581,29 @@ export default function FleetLive() {
         atMs: Number.isFinite(atMs) ? atMs : 0,
         atLabel: r.firedAt ? new Date(r.firedAt).toLocaleString() : "—",
         level: r.severity === "critical" ? 3 : r.severity === "warning" ? 2 : 1,
-        pill: "Open",
+        pill: r.severity || "Open",
       });
     }
     items.sort((a, b) => b.atMs - a.atMs);
     return items.slice(0, 12);
-  }, [alerts, ruleFires]);
+  }, [liveAlertEvents, liveRuleAlerts]);
 
   const alertCounts24h = useMemo(() => {
     const recent = Date.now() - 24 * 60 * 60 * 1000;
     const map: Record<string, number> = {};
-    for (const a of alerts) {
+    for (const a of liveAlertEvents) {
       const t = Date.parse(a.recordedAt);
       if (!Number.isFinite(t) || t < recent) continue;
       map[a.deviceId] = (map[a.deviceId] || 0) + 1;
     }
+    for (const r of liveRuleAlerts) {
+      if (!r.deviceId) continue;
+      const t = Date.parse(r.firedAt);
+      if (Number.isFinite(t) && t < recent) continue;
+      map[r.deviceId] = (map[r.deviceId] || 0) + 1;
+    }
     return map;
-  }, [alerts]);
+  }, [liveAlertEvents, liveRuleAlerts]);
 
   const counts = useMemo(() => countLiveByClass(rows, now), [rows, now]);
 
@@ -1037,7 +1046,8 @@ export default function FleetLive() {
         <FleetLiveDashboardPanel
           rows={searchFiltered}
           fixMeta={fixMeta}
-          alerts={alerts}
+          alerts={liveAlertEvents}
+          ruleAlerts={liveRuleAlerts}
           maintUserIds={maintUserIds}
           alertDeviceIds={alertDeviceIds}
           now={now}
@@ -1509,11 +1519,11 @@ export default function FleetLive() {
             <IcoAlerts />
             <strong>{drawerAlertCount}</strong>
             <span className="muted">alerts</span>
-            {ruleFires.length > 0 ? (
+            {liveRuleAlerts.length > 0 ? (
               <>
                 <span className="fleet-cc-drawer-sep" />
                 <IcoRules />
-                <strong>{ruleFires.length}</strong>
+                <strong>{liveRuleAlerts.length}</strong>
                 <span className="muted">rules</span>
               </>
             ) : null}

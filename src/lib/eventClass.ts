@@ -92,3 +92,28 @@ export function classifyAlarmType(
 export function eventClassLabel(cls: EventClass): string {
   return EVENT_CLASS_LABELS[cls] || cls;
 }
+
+export function resolvedEventClass(
+  alarmType: string | null | undefined,
+  eventClass?: EventClass | null,
+): EventClass {
+  if (eventClass === "safety" || eventClass === "warning" || eventClass === "asset" || eventClass === "none") {
+    return eventClass;
+  }
+  return classifyAlarmType(alarmType).eventClass;
+}
+
+/** Live Alerts KPI / drawer: Safety and Warning only. Asset and hidden types stay on Events. */
+export function isSafetyWarningEvent(event: {
+  alarmType?: string | null;
+  eventClass?: EventClass | null;
+}): boolean {
+  const cls = resolvedEventClass(event.alarmType, event.eventClass);
+  return cls === "safety" || cls === "warning";
+}
+
+/** Rule-created alerts that belong on Dashboard Alerts (not info). */
+export function isRuleSeverityAlert(severity: string | null | undefined): boolean {
+  const s = String(severity || "").toLowerCase();
+  return s === "critical" || s === "warning" || s === "warn";
+}
