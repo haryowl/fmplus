@@ -1,3 +1,5 @@
+import { classifyAlarmType } from "./eventClass";
+import { avlIoLabel, avlIoNumber } from "./avlIoEnums";
 import { tenantHeaders } from "./tenant";
 
 export type FleetMediaKind = "picture" | "video" | "audio" | "other";
@@ -19,6 +21,7 @@ export type FleetMediaEvent = {
   mediaChannel?: number | null;
   mediaId?: number | string | null;
   mappedAttrs?: Record<string, unknown>;
+  rawAttrs?: Record<string, unknown>;
   eventClass?: "safety" | "warning" | "asset" | "none";
   raiseAlert?: boolean;
 };
@@ -93,7 +96,51 @@ export async function fetchFleetAlerts(
 }
 
 export function alarmLabel(type: string): string {
+  const seeded = classifyAlarmType(type).label;
+  if (seeded) return seeded;
   return String(type || "alert")
     .replace(/[._]/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Prefer official AVL Description text (harsh braking, crash trace type, …). */
+export function eventDisplayTitle(
+  alarmType: string,
+  rawAttrs?: Record<string, unknown> | null,
+): string {
+  const attrs = rawAttrs && typeof rawAttrs === "object" ? rawAttrs : {};
+  const stored = String(
+    attrs.io_label ||
+      attrs["green_driving.label"] ||
+      attrs["crash.label"] ||
+      attrs["ignition.label"] ||
+      attrs["movement.label"] ||
+      "",
+  ).trim();
+  const value = avlIoNumber(
+    attrs,
+    "io_value",
+    "green_driving.value",
+    "crash.value",
+    "ignition.value",
+    "movement.value",
+    "253",
+    "247",
+    "239",
+    "240",
+  );
+  const decoded = avlIoLabel(alarmType, value);
+  const detail = stored || decoded;
+  const base = alarmLabel(alarmType);
+  if (!detail) return base;
+  if (detail.toLowerCase() === base.toLowerCase()) return base;
+  if (
+    alarmType === "green_driving" ||
+    alarmType.startsWith("harsh_") ||
+    alarmType === "ignition" ||
+    alarmType === "movement"
+  ) {
+    return detail;
+  }
+  return `${base} · ${detail}`;
 }

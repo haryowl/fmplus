@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TIMEZONES } from "../lib/config";
 import { assetCopy } from "../lib/assetCopy";
 import { eventClassLabel, isRuleSeverityAlert, isSafetyWarningEvent } from "../lib/eventClass";
+import { eventDisplayTitle } from "../lib/fleetMedia";
 import { useUnitSystem } from "../lib/unitSystem";
 import { UnitSystemSelect } from "../components/UnitSystemSelect";
 import { ageLabel, type LastStatusRow } from "../lib/lastStatus";
@@ -117,6 +118,7 @@ type SafetyEvent = {
   sourceProtocol?: string;
   eventClass?: "safety" | "warning" | "asset" | "none";
   raiseAlert?: boolean;
+  rawAttrs?: Record<string, unknown>;
 };
 
 type FixMeta = {
@@ -184,12 +186,6 @@ async function fetchOpenMaintenanceMarks(signal?: AbortSignal): Promise<{
     if (deviceId) deviceIds.add(deviceId);
   }
   return { userIds, deviceIds };
-}
-
-function alarmLabel(type: string): string {
-  return String(type || "alert")
-    .replace(/[._]/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function clockLabel(tz: string): string {
@@ -562,7 +558,7 @@ export default function FleetLive() {
       items.push({
         key: `s-${a.id}`,
         kind: "safety",
-        title: alarmLabel(a.alarmType),
+        title: eventDisplayTitle(a.alarmType, a.rawAttrs),
         device: a.deviceLabel || a.imei || a.deviceId.slice(0, 8),
         atMs: Number.isFinite(atMs) ? atMs : 0,
         atLabel: a.recordedAt ? new Date(a.recordedAt).toLocaleString() : "—",
@@ -744,7 +740,7 @@ export default function FleetLive() {
     .map((col) => {
       const v = readDisplayPin(selectedMeta?.displayParams, col);
       if (v == null) return null;
-      return { id: col.id, label: col.label, value: formatDisplayPinValue(v) };
+      return { id: col.id, label: col.label, value: formatDisplayPinValue(v, col.id) };
     })
     .filter((p): p is { id: string; label: string; value: string } => p != null);
 

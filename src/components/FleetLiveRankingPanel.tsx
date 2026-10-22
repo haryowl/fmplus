@@ -371,7 +371,7 @@ export function FleetLiveRankingPanel({
                     <td>{item.fuel != null ? `${Math.round(item.fuel)}%` : "—"}</td>
                     {pinColumns.map((col) => (
                       <td key={col.id} className="fleet-dash-pin" title={col.id}>
-                        {formatDisplayPinValue(readDisplayPin(pins, col))}
+                        {formatDisplayPinValue(readDisplayPin(pins, col), col.id)}
                       </td>
                     ))}
                     <td>

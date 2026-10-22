@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { assetCopy } from "../lib/assetCopy";
 import { isRuleSeverityAlert, isSafetyWarningEvent } from "../lib/eventClass";
 import type { FleetRuleEvent } from "../lib/fleetAlertRules";
+import { eventDisplayTitle } from "../lib/fleetMedia";
 import { useUnitSystem } from "../lib/unitSystem";
 import { ageLabel, ageTone, type LastStatusRow } from "../lib/lastStatus";
 import {
@@ -52,6 +53,7 @@ export type FleetDashAlert = {
   alarmLevel: number;
   recordedAt: string;
   eventClass?: "safety" | "warning" | "asset" | "none";
+  rawAttrs?: Record<string, unknown>;
 };
 
 type Props = {
@@ -72,12 +74,6 @@ type Props = {
 type SnapFilter = "all" | "idle" | "stale" | "alert";
 
 const PROTO_COLORS = ["#0d9488", "#7c3aed", "#2563eb", "#db2777", "#ca8a04", "#64748b"];
-
-function alarmLabel(type: string): string {
-  const t = (type || "").trim();
-  if (!t) return "Alarm";
-  return t.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -230,7 +226,7 @@ export function FleetLiveDashboardPanel({
       if (!isSafetyWarningEvent(a)) continue;
       const t = Date.parse(a.recordedAt);
       if (!Number.isFinite(t) || t < recent) continue;
-      const key = a.alarmType || "unknown";
+      const key = eventDisplayTitle(a.alarmType, a.rawAttrs) || "unknown";
       map.set(key, (map.get(key) || 0) + 1);
       total += 1;
     }
@@ -258,7 +254,10 @@ export function FleetLiveDashboardPanel({
       if (!Number.isFinite(t) || t < recent) continue;
       const prev = map.get(a.deviceId);
       if (!prev || Date.parse(prev.recordedAt) < t) {
-        map.set(a.deviceId, { alarmType: a.alarmType, recordedAt: a.recordedAt });
+        map.set(a.deviceId, {
+          alarmType: eventDisplayTitle(a.alarmType, a.rawAttrs),
+          recordedAt: a.recordedAt,
+        });
       }
     }
     for (const r of ruleAlerts) {
@@ -307,7 +306,7 @@ export function FleetLiveDashboardPanel({
       if (!reasons.length) continue;
       const latest = meta ? latestAlertByDevice.get(meta.deviceId) : undefined;
       const detail = latest
-        ? alarmLabel(latest.alarmType)
+        ? latest.alarmType
         : reasons.filter((r) => r !== "Alert 24h").join(" · ") || "Needs review";
       list.push({ id: row.id, name: row.name, reasons, cls, detail });
     }
@@ -604,7 +603,7 @@ export function FleetLiveDashboardPanel({
                 {alertByType.list.slice(0, 4).map((row, idx) => (
                   <li key={row.type} className={idx === 0 ? "is-critical" : "is-warn"}>
                     <div>
-                      <strong>{alarmLabel(row.type)}</strong>
+                      <strong>{row.type}</strong>
                       <span className="muted">{row.n} events</span>
                     </div>
                     <em>{row.pct}%</em>
@@ -773,7 +772,7 @@ export function FleetLiveDashboardPanel({
                       <td>
                         {meta?.fuelLevel != null
                           ? `${Math.round(meta.fuelLevel)}%`
-                          : formatDisplayPinValue(readDisplayPin(pins, { id: "fuel_level" }))}
+                          : formatDisplayPinValue(readDisplayPin(pins, { id: "fuel_level" }), "fuel_level")}
                       </td>
                       <td>
                         {meta?.odometerKm != null
@@ -784,7 +783,7 @@ export function FleetLiveDashboardPanel({
                       </td>
                       {pinColumns.map((col) => (
                         <td key={col.id} className="fleet-dash-pin" title={col.id}>
-                          {formatDisplayPinValue(readDisplayPin(pins, col))}
+                          {formatDisplayPinValue(readDisplayPin(pins, col), col.id)}
                         </td>
                       ))}
                       <td className="fleet-dash-flags">

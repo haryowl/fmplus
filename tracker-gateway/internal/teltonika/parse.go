@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/haryowl/fmplus/tracker-gateway/internal/avl"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
@@ -806,6 +807,9 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	// AVL 48 = OBD Fuel Level (%) on FMB wiki — do not remap (hoist/constraint).
 	if v, ok := io["239"]; ok {
 		raw["status.ignition"] = asIOBool(v)
+		if l := avl.IgnitionLabel(int(asIOFloat(v))); l != "" {
+			raw["ignition.label"] = l
+		}
 	} else if v, ok := io["1"]; ok {
 		raw["status.ignition"] = asIOBool(v)
 	}
@@ -899,6 +903,9 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	// Green driving / eco metrics (AVL IDs — config dependent).
 	if v, ok := io["253"]; ok {
 		raw["green_driving.value"] = asIOFloat(v)
+		if l := avl.GreenDrivingLabel(int(asIOFloat(v))); l != "" {
+			raw["green_driving.label"] = l
+		}
 	}
 	if v, ok := io["243"]; ok {
 		raw["green_driving.duration"] = asIOFloat(v)
@@ -938,7 +945,11 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 		raw["status.towing"] = asIOBool(v)
 	}
 	if v, ok := io["247"]; ok {
+		raw["crash.value"] = asIOFloat(v)
 		raw["status.crash"] = asIOBool(v)
+		if l := avl.CrashLabel(int(asIOFloat(v))); l != "" {
+			raw["crash.label"] = l
+		}
 	}
 	if v, ok := io["248"]; ok {
 		raw["status.geofence"] = asIOBool(v)
@@ -951,6 +962,9 @@ func promoteTeltonikaScalars(raw map[string]any, io map[string]any) {
 	}
 	if v, ok := io["240"]; ok {
 		raw["status.movement"] = asIOBool(v)
+		if l := avl.PermanentLabel(240, int(asIOFloat(v))); l != "" {
+			raw["movement.label"] = l
+		}
 	}
 }
 

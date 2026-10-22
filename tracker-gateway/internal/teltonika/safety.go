@@ -3,6 +3,7 @@ package teltonika
 import (
 	"fmt"
 
+	"github.com/haryowl/fmplus/tracker-gateway/internal/avl"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/store"
 )
 
@@ -97,9 +98,11 @@ func safetyFromEventIO(fix store.Fix) *store.SafetyEvent {
 		"alarm_level": k.level,
 		k.key:         true,
 	}
+	val, has := lookupIOValue(fix.RawAttrs, eid)
+	name := avl.EnrichSafetyRaw(raw, k.name, eid, val, has)
 	return &store.SafetyEvent{
 		RecordedAt:     fix.RecordedAt,
-		AlarmType:      k.name,
+		AlarmType:      name,
 		AlarmLevel:     k.level,
 		Lat:            &lat,
 		Lon:            &lon,
@@ -130,21 +133,78 @@ func safetyFromIO(fix store.Fix) *store.SafetyEvent {
 			continue
 		}
 		lat, lon := fix.Lat, fix.Lon
+		raw := map[string]any{
+			"io_id":       id,
+			"alarm_level": k.level,
+			k.key:         true,
+		}
+		val, has := lookupIOValue(fix.RawAttrs, id)
+		name := avl.EnrichSafetyRaw(raw, k.name, id, val, has)
 		return &store.SafetyEvent{
-			RecordedAt: fix.RecordedAt,
-			AlarmType:  k.name,
-			AlarmLevel: k.level,
-			Lat:        &lat,
-			Lon:        &lon,
-			RawAttrs: map[string]any{
-				"io_id":       id,
-				"alarm_level": k.level,
-				k.key:         true,
-			},
+			RecordedAt:     fix.RecordedAt,
+			AlarmType:      name,
+			AlarmLevel:     k.level,
+			Lat:            &lat,
+			Lon:            &lon,
+			RawAttrs:       raw,
 			SourceProtocol: "teltonika",
 		}
 	}
 	return nil
+}
+
+func lookupIOValue(raw map[string]any, id int) (int, bool) {
+	if raw == nil {
+		return 0, false
+	}
+	if io, ok := raw["io"].(map[string]any); ok {
+		if v, ok := io[fmt.Sprintf("%d", id)]; ok {
+			return ioInt(v), true
+		}
+	}
+	switch id {
+	case 253:
+		if v, ok := raw["green_driving.value"]; ok {
+			return ioInt(v), true
+		}
+	case 247:
+		if v, ok := raw["crash.value"]; ok {
+			return ioInt(v), true
+		}
+	case 239:
+		if v, ok := raw["ignition.value"]; ok {
+			return ioInt(v), true
+		}
+		if v, ok := raw["status.ignition"]; ok {
+			return ioInt(v), true
+		}
+	case 240:
+		if v, ok := raw["movement.value"]; ok {
+			return ioInt(v), true
+		}
+		if v, ok := raw["status.movement"]; ok {
+			return ioInt(v), true
+		}
+	}
+	return 0, false
+}
+
+func ioInt(v any) int {
+	switch t := v.(type) {
+	case bool:
+		if t {
+			return 1
+		}
+		return 0
+	case int:
+		return t
+	case int64:
+		return int(t)
+	case float64:
+		return int(t)
+	default:
+		return int(asIOFloat(v))
+	}
 }
 
 func asIOTruth(v any) bool {

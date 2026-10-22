@@ -1,6 +1,7 @@
 /**
  * Device Manager: canonical params, profiles, remap rules, commands, safety events.
  */
+import { formatAvlParamValue } from "./avl-io-enums.mjs";
 import { dbQuery } from "./db.mjs";
 
 /** Protocol-scoped command types (mirrors Admin COMMAND_TYPE_OPTIONS). */
@@ -533,7 +534,7 @@ export function flattenFixParamRows({
       paramLabel: def?.label || fallbackLabel || paramId,
       category: def?.category || category || "position",
       unit: def?.unit || "",
-      value: formatParamValue(value),
+      value: formatParamValue(formatAvlParamValue(paramId, value)),
       source: "typed",
       updatedAt,
     });
@@ -555,7 +556,7 @@ export function flattenFixParamRows({
       paramLabel: def?.label || protoKeys.get(paramId) || paramId,
       category: def?.category || "mapped",
       unit: def?.unit || "",
-      value: formatParamValue(value),
+      value: formatParamValue(formatAvlParamValue(paramId, value)),
       source: def ? "mapped" : "mapped_extra",
       updatedAt,
     });
@@ -580,7 +581,7 @@ export function flattenFixParamRows({
       paramLabel: def?.label || protoLabel || vendorKey,
       category: def?.category || "mapped",
       unit: def?.unit || "",
-      value: formatParamValue(value),
+      value: formatParamValue(formatAvlParamValue(vendorKey, value)),
       source: def ? "mapped" : "mapped_extra",
       updatedAt,
     });
@@ -600,7 +601,7 @@ export function flattenFixParamRows({
         paramLabel: vendorKey,
         category: "raw",
         unit: "",
-        value: formatParamValue(value),
+        value: formatParamValue(formatAvlParamValue(vendorKey, value)),
         source: "raw",
         updatedAt,
       });

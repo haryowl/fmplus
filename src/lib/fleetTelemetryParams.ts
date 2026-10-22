@@ -1,3 +1,4 @@
+import { formatAvlParamValue } from "./avlIoEnums";
 import { tenantHeaders } from "./tenant";
 
 export type TelemetryParamRow = {
@@ -135,13 +136,17 @@ export function readDisplayPin(
   return null;
 }
 
-export function formatDisplayPinValue(v: string | number | boolean | null): string {
+export function formatDisplayPinValue(
+  v: string | number | boolean | null,
+  paramId?: string,
+): string {
   if (v == null) return "—";
-  if (typeof v === "boolean") return v ? "yes" : "no";
-  if (typeof v === "number") {
-    return Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
+  const decoded = paramId ? formatAvlParamValue(paramId, v) : v;
+  if (typeof decoded === "boolean") return decoded ? "yes" : "no";
+  if (typeof decoded === "number") {
+    return Number.isInteger(decoded) ? String(decoded) : String(Math.round(decoded * 100) / 100);
   }
-  return String(v);
+  return String(decoded);
 }
 
 /** Parse Admin textarea (comma / whitespace / newline separated). Blank → null (defaults). */

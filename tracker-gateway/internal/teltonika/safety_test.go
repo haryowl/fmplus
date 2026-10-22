@@ -133,6 +133,46 @@ func TestFlattenEventAlarm_GreenDriving(t *testing.T) {
 	if ev == nil || ev.AlarmType != "green_driving" {
 		t.Fatalf("%+v", ev)
 	}
+	typed := safetyFromEventIO(store.Fix{
+		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{
+			"event_io":            253,
+			"green_driving.value": 2,
+			"io":                  map[string]any{"253": 2},
+		},
+	})
+	if typed == nil || typed.AlarmType != "harsh_brake" {
+		t.Fatalf("typed=%+v", typed)
+	}
+	if typed.RawAttrs["io_label"] != "Harsh braking" {
+		t.Fatalf("label=%v", typed.RawAttrs)
+	}
+}
+
+func TestSafetyFromEventIO_IgnitionPermanentLabel(t *testing.T) {
+	fromIO := safetyFromEventIO(store.Fix{
+		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{
+			"event_io": 239,
+			"io":       map[string]any{"239": 0},
+		},
+	})
+	if fromIO == nil || fromIO.AlarmType != "ignition" {
+		t.Fatalf("fromIO=%+v", fromIO)
+	}
+	if fromIO.RawAttrs["io_label"] != "Ignition off" {
+		t.Fatalf("io label=%v", fromIO.RawAttrs)
+	}
+	fromStatus := safetyFromEventIO(store.Fix{
+		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{
+			"event_io":         239,
+			"status.ignition":  true,
+		},
+	})
+	if fromStatus == nil || fromStatus.RawAttrs["io_label"] != "Ignition on" {
+		t.Fatalf("status label=%v", fromStatus)
+	}
 }
 
 func TestFlattenEventAlarm_GeofenceUnplug(t *testing.T) {

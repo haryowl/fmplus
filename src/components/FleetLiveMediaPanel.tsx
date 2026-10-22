@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { todayKeyInOffset, zonedEndMs, zonedStartMs } from "../lib/time";
 import {
-  alarmLabel,
+  eventDisplayTitle,
   attachmentIsUrl,
   fetchFleetMedia,
   type FleetMediaEvent,
@@ -206,7 +206,7 @@ export function FleetLiveMediaPanel({
                   </div>
                   <div className="fleet-media-meta">
                     <strong>{ev.deviceLabel || ev.imei || ev.deviceId.slice(0, 8)}</strong>
-                    <span className="muted">{alarmLabel(ev.alarmType)}</span>
+                    <span className="muted">{eventDisplayTitle(ev.alarmType, ev.rawAttrs)}</span>
                     <span className="muted">{formatWhen(ev.recordedAt, timezone)}</span>
                   </div>
                 </button>
@@ -229,7 +229,7 @@ export function FleetLiveMediaPanel({
               <div>
                 <strong>{active.deviceLabel || active.imei}</strong>
                 <p className="muted">
-                  {alarmLabel(active.alarmType)} · {formatWhen(active.recordedAt, timezone)}
+                  {eventDisplayTitle(active.alarmType, active.rawAttrs)} · {formatWhen(active.recordedAt, timezone)}
                   {active.mediaChannel != null ? ` · ch ${active.mediaChannel}` : ""}
                 </p>
               </div>

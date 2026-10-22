@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/haryowl/fmplus/tracker-gateway/internal/avl"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/deviceauth"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/metrics"
 	"github.com/haryowl/fmplus/tracker-gateway/internal/protocol"
@@ -574,6 +575,9 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	}
 	if v, ok := io["239"]; ok {
 		raw["status.ignition"] = asTruthy(v)
+		if l := avl.IgnitionLabel(int(asFloat64(v))); l != "" {
+			raw["ignition.label"] = l
+		}
 	} else if v, ok := io["5"]; ok {
 		raw["status.ignition"] = asTruthy(v)
 	}
@@ -832,7 +836,11 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 		raw["status.towing"] = asTruthy(v)
 	}
 	if v, ok := io["247"]; ok {
+		raw["crash.value"] = asFloat64(v)
 		raw["status.crash"] = asTruthy(v)
+		if l := avl.CrashLabel(int(asFloat64(v))); l != "" {
+			raw["crash.label"] = l
+		}
 	}
 	if v, ok := io["248"]; ok {
 		raw["status.geofence"] = asTruthy(v)
@@ -845,6 +853,9 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	}
 	if v, ok := io["240"]; ok {
 		raw["status.movement"] = asTruthy(v)
+		if l := avl.PermanentLabel(240, int(asFloat64(v))); l != "" {
+			raw["movement.label"] = l
+		}
 	}
 	if v, ok := io["24"]; ok {
 		raw["speed.io"] = asFloat64(v)
@@ -920,6 +931,9 @@ func promoteRuptelaScalars(raw map[string]any, io map[string]any) {
 	}
 	if v, ok := io["253"]; ok {
 		raw["green_driving.value"] = asFloat64(v)
+		if l := avl.GreenDrivingLabel(int(asFloat64(v))); l != "" {
+			raw["green_driving.label"] = l
+		}
 	}
 	if v, ok := io["243"]; ok {
 		raw["green_driving.duration"] = asFloat64(v)

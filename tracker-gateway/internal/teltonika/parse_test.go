@@ -350,7 +350,7 @@ func TestPromoteTeltonikaScalars_GreenDriving(t *testing.T) {
 	raw := map[string]any{}
 	promoteTeltonikaScalars(raw, map[string]any{"253": 3, "243": 12, "15": 85})
 	// AVL 15 Eco Score ×0.01
-	if raw["green_driving.value"] != 3.0 || raw["green_driving.duration"] != 12.0 || raw["eco.score"] != 0.85 {
+	if raw["green_driving.value"] != 3.0 || raw["green_driving.label"] != "Harsh cornering" || raw["green_driving.duration"] != 12.0 || raw["eco.score"] != 0.85 {
 		t.Fatalf("%v", raw)
 	}
 }
@@ -378,6 +378,9 @@ func TestPromoteTeltonikaScalars_FuelIgnitionOdo(t *testing.T) {
 	// AVL 16 metres → km
 	if raw["fuel.level"] != 75.0 || raw["status.ignition"] != true || raw["odometer"] != 12.345 {
 		t.Fatalf("%v", raw)
+	}
+	if raw["ignition.label"] != "Ignition on" {
+		t.Fatalf("ignition.label=%v", raw["ignition.label"])
 	}
 	if raw["fuel.used"] != 10.0 || raw["fuel.rate"] != 2.5 {
 		t.Fatalf("fuel avl=%v", raw)
@@ -751,6 +754,9 @@ func TestPromoteTeltonikaScalars_SafetyStatus(t *testing.T) {
 	}
 	if raw["status.jamming"] != true || raw["status.unplug"] != true || raw["status.movement"] != true {
 		t.Fatalf("%v", raw)
+	}
+	if raw["movement.label"] != "Movement on" {
+		t.Fatalf("movement.label=%v", raw["movement.label"])
 	}
 }
 

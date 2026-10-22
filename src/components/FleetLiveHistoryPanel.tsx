@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { classifyAlarmType } from "../lib/eventClass";
+import { eventDisplayTitle } from "../lib/fleetMedia";
 import { useUnitSystem } from "../lib/unitSystem";
 import { slimDayPoints } from "../lib/deviceDayTrips";
 import { todayKeyInOffset } from "../lib/time";
@@ -32,6 +33,7 @@ type SafetyEvent = {
   alarmLevel: number;
   recordedAt: string;
   eventClass?: "safety" | "warning" | "asset" | "none";
+  rawAttrs?: Record<string, unknown>;
 };
 
 type TimelineItem =
@@ -55,12 +57,6 @@ type Props = {
   timezone: string;
   initialDeviceId?: string;
 };
-
-function alarmLabel(type: string): string {
-  return String(type || "alert")
-    .replace(/[._]/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 function formatStamp(ms: number, tz: string): string {
   try {
@@ -355,7 +351,7 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
                           <IcoAlerts />
                         </span>
                         <div>
-                          <strong>{alarmLabel(item.event.alarmType)}</strong>
+                          <strong>{eventDisplayTitle(item.event.alarmType, item.event.rawAttrs)}</strong>
                           <span className="muted"> · L{item.event.alarmLevel}</span>
                         </div>
                       </div>

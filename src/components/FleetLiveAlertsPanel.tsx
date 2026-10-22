@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { addDays, todayKeyInOffset, zonedEndMs, zonedStartMs } from "../lib/time";
 import { classifyAlarmType, eventClassLabel, type EventClass } from "../lib/eventClass";
 import {
-  alarmLabel,
+  eventDisplayTitle,
   fetchFleetAlerts,
   type FleetMediaEvent,
 } from "../lib/fleetMedia";
@@ -810,7 +810,7 @@ export function FleetLiveAlertsPanel({
                         className={`fleet-cc-alert-lvl is-l${Math.min(3, Math.max(0, e.alarmLevel || 0))}`}
                       />
                       <div>
-                        <strong>{alarmLabel(e.alarmType)}</strong>
+                        <strong>{eventDisplayTitle(e.alarmType, e.rawAttrs)}</strong>
                         <span className="muted">
                           {" "}
                           · {e.deviceLabel || e.imei || e.deviceId.slice(0, 8)}
