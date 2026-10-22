@@ -6,7 +6,12 @@ import crypto from "node:crypto";
 import { dbQuery } from "./db.mjs";
 import { applyDeviceRemap } from "./device-manager.mjs";
 import { emitParamEdgeEvents } from "./event-class.mjs";
-import { gpsStepKm } from "./gps-odometer.mjs";
+import {
+  applyGpsOdometerDelta,
+  gpsStepKm,
+  hydrateGpsOdometer,
+  resolveOdometerKm,
+} from "./gps-odometer.mjs";
 import { mergeEntitlements } from "./entitlements.mjs";
 import {
   deviceIdsInGroups,
@@ -767,23 +772,17 @@ export async function ingestVehicleFix(deviceRow, fix) {
     [deviceRow.id, deviceRow.tenant_id, recordedAt.toISOString()],
   );
 
-  if (prevFix) {
-    const delta = gpsStepKm(
-      { lat: prevFix.lat, lon: prevFix.lon, recordedAt: prevFix.recorded_at },
-      { lat: coords.lat, lon: coords.lon, recordedAt },
-    );
-    if (delta > 0) {
-      try {
-        await dbQuery(
-          `UPDATE tracker_devices
-           SET gps_odometer_km = COALESCE(gps_odometer_km, 0) + $2
-           WHERE id = $1`,
-          [deviceRow.id, delta],
-        );
-      } catch {
-        /* column may not exist mid-migrate */
-      }
-    }
+  try {
+    const delta =
+      prevFix && recordedAt >= new Date(prevFix.recorded_at)
+        ? gpsStepKm(
+            { lat: prevFix.lat, lon: prevFix.lon, recordedAt: prevFix.recorded_at },
+            { lat: coords.lat, lon: coords.lon, recordedAt },
+          )
+        : 0;
+    await applyGpsOdometerDelta(deviceRow.id, delta);
+  } catch {
+    /* column may not exist mid-migrate */
   }
   void emitParamEdgeEvents(deviceRow, prevFix, {
     lat: coords.lat,
@@ -1001,19 +1000,11 @@ export function enrichFixTelemetry(row, pinIds = FLEET_DISPLAY_PIN_IDS) {
     row.mapped_attrs && typeof row.mapped_attrs === "object" && !Array.isArray(row.mapped_attrs)
       ? row.mapped_attrs
       : {};
-  let odometerKm = row.odometer == null ? null : Number(row.odometer);
-  if (!Number.isFinite(odometerKm)) {
-    const fromMapped = Number(mapped.odometer_km);
-    odometerKm = Number.isFinite(fromMapped) ? fromMapped : null;
-  }
-  let odometerSource = Number.isFinite(odometerKm) ? "device" : null;
-  if (!Number.isFinite(odometerKm)) {
-    const gpsOdo = Number(row.gps_odometer_km ?? mapped.gps_odometer_km);
-    if (Number.isFinite(gpsOdo)) {
-      odometerKm = gpsOdo;
-      odometerSource = "gps";
-    }
-  }
+  const { odometerKm, odometerSource } = resolveOdometerKm(
+    row.odometer,
+    row.gps_odometer_km ?? mapped.gps_odometer_km,
+    mapped,
+  );
   let fuelLevel = null;
   const fl = Number(mapped.fuel_level);
   if (Number.isFinite(fl)) fuelLevel = fl;
@@ -1057,6 +1048,7 @@ export async function lastFixesByDeviceIds(tenantId, deviceIds) {
     [tenantId, ids],
   );
   const now = Date.now();
+  await hydrateGpsOdometer(rows.rows).catch(() => {});
   const groupsByDevice = await groupSummariesByDeviceIds(
     tenantId,
     rows.rows.map((r) => r.device_id),
@@ -1116,6 +1108,7 @@ export async function lastFixesByArmadaUserIds(tenantId, armadaUserIds) {
     [tenantId, ids],
   );
   const now = Date.now();
+  await hydrateGpsOdometer(rows.rows).catch(() => {});
   const deviceIds = rows.rows.map((r) => r.device_id);
   const groupsByDevice = await groupSummariesByDeviceIds(tenantId, deviceIds).catch(() => new Map());
   for (const r of rows.rows) {
@@ -1326,6 +1319,7 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
      ORDER BY lf.recorded_at DESC NULLS LAST`,
     [tenantId, groupFilter],
   );
+  await hydrateGpsOdometer(rows.rows).catch(() => {});
   const now = Date.now();
   return rows.rows.map((r) => {
     const recordedAt = r.recorded_at ? new Date(r.recorded_at).toISOString() : null;

@@ -18,3 +18,19 @@ func TestGpsStepKmKeepsHighwayAndDropsTeleport(t *testing.T) {
 		t.Fatalf("teleport should be 0, got %v", jump)
 	}
 }
+
+func TestSumGpsTrackKmAddsHighwaySteps(t *testing.T) {
+	t0 := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
+	points := []gpsPoint{
+		{Lat: -6.2, Lon: 106.8, At: t0},
+		{Lat: -6.35, Lon: 106.8, At: t0.Add(20 * time.Minute)},
+		{Lat: -6.55, Lon: 106.8, At: t0.Add(50 * time.Minute)},
+	}
+	d := sumGpsTrackKm(points)
+	if d < 30 || d > 50 {
+		t.Fatalf("track sum=%v", d)
+	}
+	if sumGpsTrackKm(points[:1]) != 0 {
+		t.Fatalf("single point should be 0")
+	}
+}

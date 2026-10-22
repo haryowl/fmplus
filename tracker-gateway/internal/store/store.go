@@ -361,14 +361,12 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 		return err
 	}
 
-	if gpsOK && prev.Has {
-		delta := gpsStepKm(prev.Lat, prev.Lon, prev.RecordedAt, fix.Lat, fix.Lon, fix.RecordedAt)
-		if delta > 0 {
-			_, _ = s.pool.Exec(ctx, `
-				UPDATE tracker_devices
-				SET gps_odometer_km = COALESCE(gps_odometer_km, 0) + $2
-				WHERE id = $1::uuid`, device.ID, delta)
+	if gpsOK {
+		delta := 0.0
+		if prev.Has && !fix.RecordedAt.Before(prev.RecordedAt) {
+			delta = gpsStepKm(prev.Lat, prev.Lon, prev.RecordedAt, fix.Lat, fix.Lon, fix.RecordedAt)
 		}
+		s.applyGpsOdometer(ctx, device.ID, delta)
 	}
 	s.emitParamEdges(ctx, device, prev, fix)
 	return nil

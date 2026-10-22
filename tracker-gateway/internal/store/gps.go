@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"math"
 	"time"
 )
@@ -51,4 +52,76 @@ func gpsStepKm(prevLat, prevLon float64, prevAt time.Time, lat, lon float64, at 
 		return 0
 	}
 	return d
+}
+
+type gpsPoint struct {
+	Lat float64
+	Lon float64
+	At  time.Time
+}
+
+func sumGpsTrackKm(points []gpsPoint) float64 {
+	if len(points) < 2 {
+		return 0
+	}
+	total := 0.0
+	for i := 1; i < len(points); i++ {
+		total += gpsStepKm(points[i-1].Lat, points[i-1].Lon, points[i-1].At, points[i].Lat, points[i].Lon, points[i].At)
+	}
+	return total
+}
+
+func (s *Store) applyGpsOdometer(ctx context.Context, deviceID string, delta float64) {
+	if s == nil || s.pool == nil || deviceID == "" {
+		return
+	}
+	if delta > 0 {
+		tag, err := s.pool.Exec(ctx, `
+			UPDATE tracker_devices
+			SET gps_odometer_km = gps_odometer_km + $2
+			WHERE id = $1::uuid AND gps_odometer_km IS NOT NULL`, deviceID, delta)
+		if err == nil && tag.RowsAffected() > 0 {
+			return
+		}
+		if err != nil {
+			return
+		}
+	}
+	s.ensureGpsOdometer(ctx, deviceID)
+}
+
+func (s *Store) ensureGpsOdometer(ctx context.Context, deviceID string) {
+	if s == nil || s.pool == nil || deviceID == "" {
+		return
+	}
+	var cur *float64
+	err := s.pool.QueryRow(ctx, `
+		SELECT gps_odometer_km FROM tracker_devices WHERE id = $1::uuid`, deviceID).Scan(&cur)
+	if err != nil || cur != nil {
+		return
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT lat, lon, recorded_at
+		FROM vehicle_fixes
+		WHERE device_id = $1::uuid
+		  AND lat IS NOT NULL AND lon IS NOT NULL
+		  AND ABS(lat) >= 0.01 AND ABS(lon) >= 0.01
+		ORDER BY recorded_at ASC`, deviceID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	var points []gpsPoint
+	for rows.Next() {
+		var p gpsPoint
+		if scanErr := rows.Scan(&p.Lat, &p.Lon, &p.At); scanErr != nil {
+			continue
+		}
+		points = append(points, p)
+	}
+	km := sumGpsTrackKm(points)
+	_, _ = s.pool.Exec(ctx, `
+		UPDATE tracker_devices
+		SET gps_odometer_km = $2
+		WHERE id = $1::uuid AND gps_odometer_km IS NULL`, deviceID, km)
 }
