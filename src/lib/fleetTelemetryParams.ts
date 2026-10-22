@@ -33,14 +33,12 @@ export const FLEET_DISPLAY_PIN_LABELS: Record<string, string> = {
   "gps.valid": "GPS",
 };
 
-/** Built-in pin order when tenant has no Admin override. */
+/** Built-in pin order when tenant has no Admin override (one id per alias family). */
 export const FLEET_DISPLAY_PIN_IDS = [
   "fuel_level",
   "can.fuel_l",
   "ext_voltage",
-  "voltage.ext",
   "battery_voltage",
-  "voltage.batt",
   "pcb.temp",
   "gps.valid",
 ];
@@ -52,8 +50,26 @@ const PIN_ALIASES: Record<string, string[]> = {
   "voltage.batt": ["battery_voltage"],
 };
 
+/** Keep the first id of each alias family (lookup still uses PIN_ALIASES). */
+export function uniqueDisplayPinIds(pinIds: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of pinIds) {
+    const id = String(raw || "").trim();
+    if (!id || seen.has(id)) continue;
+    const aliases = PIN_ALIASES[id] || [];
+    if (aliases.some((a) => seen.has(a))) continue;
+    seen.add(id);
+    for (const a of aliases) seen.add(a);
+    out.push(id);
+  }
+  return out;
+}
+
 /** Preferred pin order / de-dupe aliases for Dashboard columns (defaults). */
-export const FLEET_DASH_PIN_COLUMNS: DisplayPinColumn[] = FLEET_DISPLAY_PIN_IDS.map((id) => ({
+export const FLEET_DASH_PIN_COLUMNS: DisplayPinColumn[] = uniqueDisplayPinIds(
+  FLEET_DISPLAY_PIN_IDS,
+).map((id) => ({
   id,
   aliases: PIN_ALIASES[id],
   label: FLEET_DISPLAY_PIN_LABELS[id] || id,
@@ -75,8 +91,9 @@ export function buildDisplayPinColumns(
   pinIds?: string[] | null,
   labels?: Record<string, string> | null,
 ): DisplayPinColumn[] {
-  const ids =
-    Array.isArray(pinIds) && pinIds.length > 0 ? pinIds : FLEET_DISPLAY_PIN_IDS;
+  const ids = uniqueDisplayPinIds(
+    Array.isArray(pinIds) && pinIds.length > 0 ? pinIds : FLEET_DISPLAY_PIN_IDS,
+  );
   return ids.map((id) => ({
     id,
     aliases: PIN_ALIASES[id],

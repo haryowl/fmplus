@@ -837,9 +837,7 @@ export const FLEET_DISPLAY_PIN_IDS = [
   "fuel_level",
   "can.fuel_l",
   "ext_voltage",
-  "voltage.ext",
   "battery_voltage",
-  "voltage.batt",
   "pcb.temp",
   "gps.valid",
 ];
@@ -854,6 +852,34 @@ export const FLEET_DISPLAY_PIN_ALIASES = {
   "can.fuel_l": ["fuel_liters"],
 };
 
+/** Same-column names (do not treat one-way lookups like fuel_liters as duplicates). */
+const FLEET_DISPLAY_PIN_COLUMN_ALIASES = {
+  ext_voltage: ["voltage.ext"],
+  "voltage.ext": ["ext_voltage"],
+  battery_voltage: ["voltage.batt"],
+  "voltage.batt": ["battery_voltage"],
+};
+
+/**
+ * Keep the first pin of each alias family so Ext V / Batt V are not listed twice.
+ * @param {string[]} pinIds
+ * @returns {string[]}
+ */
+export function uniqueFleetDisplayPinIds(pinIds) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of pinIds || []) {
+    const id = String(raw || "").trim();
+    if (!id || seen.has(id)) continue;
+    const aliases = FLEET_DISPLAY_PIN_COLUMN_ALIASES[id] || [];
+    if (aliases.some((a) => seen.has(a))) continue;
+    seen.add(id);
+    for (const a of aliases) seen.add(a);
+    out.push(id);
+  }
+  return out;
+}
+
 /**
  * Resolve effective pin ids for a tenant (Admin override or built-in defaults).
  * @param {unknown} entitlements
@@ -862,9 +888,9 @@ export const FLEET_DISPLAY_PIN_ALIASES = {
 export function resolveFleetLiveDisplayPins(entitlements) {
   const merged = mergeEntitlements(entitlements);
   if (Array.isArray(merged.fleetLiveDisplayPins)) {
-    return merged.fleetLiveDisplayPins.slice();
+    return uniqueFleetDisplayPinIds(merged.fleetLiveDisplayPins);
   }
-  return FLEET_DISPLAY_PIN_IDS.slice();
+  return uniqueFleetDisplayPinIds(FLEET_DISPLAY_PIN_IDS);
 }
 
 export async function tenantFleetLiveDisplayPins(tenantId) {
@@ -944,7 +970,9 @@ export function invalidateFleetLiveDisplayPinMeta(tenantId) {
 export function pickDisplayParams(mappedAttrs, pinIds = FLEET_DISPLAY_PIN_IDS) {
   const mapped =
     mappedAttrs && typeof mappedAttrs === "object" && !Array.isArray(mappedAttrs) ? mappedAttrs : {};
-  const ids = Array.isArray(pinIds) && pinIds.length ? pinIds : FLEET_DISPLAY_PIN_IDS;
+  const ids = uniqueFleetDisplayPinIds(
+    Array.isArray(pinIds) && pinIds.length ? pinIds : FLEET_DISPLAY_PIN_IDS,
+  );
   /** @type {Record<string, string | number | boolean>} */
   const out = {};
   for (const id of ids) {
