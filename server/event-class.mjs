@@ -1,4 +1,5 @@
 import { dbQuery } from "./db.mjs";
+import { permanentIoLabel } from "./avl-io-enums.mjs";
 
 export const EVENT_CLASSES = ["safety", "warning", "asset", "none"];
 export const EVENT_EMIT_ON = ["event", "rising", "falling", "change", "none"];
@@ -358,6 +359,13 @@ export async function emitParamEdgeEvents(deviceRow, prevFix, nextFix) {
       );
       if (recent.rows[0]) continue;
       const recordedAt = nextFix?.recordedAt || nextFix?.recorded_at || new Date();
+      const val = pair.next ? 1 : 0;
+      const label = permanentIoLabel(pair.type, val);
+      const raw = { [pair.type]: pair.next, emit_on: info.emitOn, [`${pair.type}.value`]: val };
+      if (label) {
+        raw.io_label = label;
+        raw[`${pair.type}.label`] = label;
+      }
       await dbQuery(
         `INSERT INTO tracker_safety_events (
            tenant_id, device_id, recorded_at, alarm_type, alarm_level, lat, lon,
@@ -372,7 +380,7 @@ export async function emitParamEdgeEvents(deviceRow, prevFix, nextFix) {
           nextFix?.lat ?? null,
           nextFix?.lon ?? null,
           nextFix?.sourceProtocol || deviceRow.protocol || "json",
-          JSON.stringify({ [pair.type]: pair.next, emit_on: info.emitOn }),
+          JSON.stringify(raw),
           JSON.stringify({ [pair.type]: pair.next }),
         ],
       );

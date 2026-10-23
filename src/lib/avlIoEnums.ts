@@ -143,8 +143,8 @@ export function avlIoNumber(raw: Record<string, unknown> | null | undefined, ...
   if (!raw) return null;
   for (const key of keys) {
     if (raw[key] == null || raw[key] === "") continue;
-    const n = Number(raw[key]);
-    if (Number.isFinite(n)) return n;
+    const n = toInt(raw[key]);
+    if (n != null) return n;
   }
   const io = raw.io;
   if (io && typeof io === "object" && !Array.isArray(io)) {
@@ -152,11 +152,92 @@ export function avlIoNumber(raw: Record<string, unknown> | null | undefined, ...
     for (const key of keys) {
       const leaf = key.startsWith("io.") ? key.slice(3) : key;
       if (nested[leaf] == null) continue;
-      const n = Number(nested[leaf]);
-      if (Number.isFinite(n)) return n;
+      const n = toInt(nested[leaf]);
+      if (n != null) return n;
     }
   }
   return null;
+}
+
+const IO_ATTR_KEYS = [
+  "io_value",
+  "io_label",
+  "event_io",
+  "green_driving.value",
+  "green_driving.label",
+  "crash.value",
+  "crash.label",
+  "ignition.value",
+  "ignition.label",
+  "status.ignition",
+  "ignition",
+  "movement.value",
+  "movement.label",
+  "status.movement",
+  "status.moving",
+  "movement",
+  "253",
+  "247",
+  "239",
+  "240",
+  "io.253",
+  "io.247",
+  "io.239",
+  "io.240",
+  "io.243",
+];
+
+function pickNestedIo(src: Record<string, unknown>, out: Record<string, unknown>) {
+  const io = src.io;
+  if (!io || typeof io !== "object" || Array.isArray(io)) return;
+  const nested = io as Record<string, unknown>;
+  for (const id of ["253", "247", "239", "240", "243"]) {
+    if (nested[id] != null && out[`io.${id}`] == null) out[`io.${id}`] = nested[id];
+  }
+}
+
+/** Merge event + matching-fix attrs so Alerts/History can decode Description enums. */
+export function mergeAvlEventAttrs(
+  ...sources: Array<Record<string, unknown> | null | undefined>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const src of sources) {
+    if (!src || typeof src !== "object" || Array.isArray(src)) continue;
+    for (const key of IO_ATTR_KEYS) {
+      if (src[key] != null && src[key] !== "") out[key] = src[key];
+    }
+    pickNestedIo(src, out);
+  }
+  return out;
+}
+
+export function eventIoValue(
+  alarmType: string,
+  attrs: Record<string, unknown> | null | undefined,
+): number | null {
+  const type = String(alarmType || "").toLowerCase();
+  if (type === "green_driving" || type.startsWith("harsh_")) {
+    return avlIoNumber(attrs, "green_driving.value", "io.253", "io_value", "253");
+  }
+  if (type === "crash") {
+    return avlIoNumber(attrs, "crash.value", "io.247", "io_value", "247");
+  }
+  if (type === "ignition") {
+    return avlIoNumber(attrs, "ignition.value", "io.239", "io_value", "239", "status.ignition", "ignition");
+  }
+  if (type === "movement") {
+    return avlIoNumber(
+      attrs,
+      "movement.value",
+      "io.240",
+      "io_value",
+      "240",
+      "status.movement",
+      "status.moving",
+      "movement",
+    );
+  }
+  return avlIoNumber(attrs, "io_value", "green_driving.value", "crash.value", "253", "247");
 }
 
 export function avlIoLabel(alarmType: string, value: number | null | undefined): string {

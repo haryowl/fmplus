@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/haryowl/fmplus/tracker-gateway/internal/avl"
 )
 
 func (s *Store) loadLastFixSnap(ctx context.Context, deviceID string) lastFixSnap {
@@ -165,6 +167,23 @@ func (s *Store) emitParamEdges(ctx context.Context, device *Device, prev lastFix
 			return
 		}
 		lat, lon := fix.Lat, fix.Lon
+		val := 0
+		if nextB {
+			val = 1
+		}
+		raw := map[string]any{alarmType: nextB, "emit_on": string(on), alarmType + ".value": val}
+		if alarmType == "ignition" {
+			if l := avl.PermanentLabel(239, val); l != "" {
+				raw["io_label"] = l
+				raw["ignition.label"] = l
+			}
+		}
+		if alarmType == "movement" {
+			if l := avl.PermanentLabel(240, val); l != "" {
+				raw["io_label"] = l
+				raw["movement.label"] = l
+			}
+		}
 		_ = s.InsertSafetyEvent(ctx, device, SafetyEvent{
 			RecordedAt:     fix.RecordedAt,
 			AlarmType:      alarmType,
@@ -172,7 +191,7 @@ func (s *Store) emitParamEdges(ctx context.Context, device *Device, prev lastFix
 			Lat:            &lat,
 			Lon:            &lon,
 			SourceProtocol: fix.SourceProtocol,
-			RawAttrs:       map[string]any{alarmType: nextB, "emit_on": string(on)},
+			RawAttrs:       raw,
 		})
 	}
 

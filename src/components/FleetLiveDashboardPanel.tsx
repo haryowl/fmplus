@@ -226,7 +226,7 @@ export function FleetLiveDashboardPanel({
       if (!isSafetyWarningEvent(a)) continue;
       const t = Date.parse(a.recordedAt);
       if (!Number.isFinite(t) || t < recent) continue;
-      const key = eventDisplayTitle(a.alarmType, a.rawAttrs) || "unknown";
+      const key = eventDisplayTitle(a.alarmType, a.rawAttrs, a.mappedAttrs) || "unknown";
       map.set(key, (map.get(key) || 0) + 1);
       total += 1;
     }
@@ -255,7 +255,7 @@ export function FleetLiveDashboardPanel({
       const prev = map.get(a.deviceId);
       if (!prev || Date.parse(prev.recordedAt) < t) {
         map.set(a.deviceId, {
-          alarmType: eventDisplayTitle(a.alarmType, a.rawAttrs),
+          alarmType: eventDisplayTitle(a.alarmType, a.rawAttrs, a.mappedAttrs),
           recordedAt: a.recordedAt,
         });
       }

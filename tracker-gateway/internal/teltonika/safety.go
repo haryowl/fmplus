@@ -153,7 +153,7 @@ func safetyFromIO(fix store.Fix) *store.SafetyEvent {
 	return nil
 }
 
-func lookupIOValue(raw map[string]any, id int) (int, bool) {
+func lookupDirectIO(raw map[string]any, id int) (int, bool) {
 	if raw == nil {
 		return 0, false
 	}
@@ -162,11 +162,32 @@ func lookupIOValue(raw map[string]any, id int) (int, bool) {
 			return ioInt(v), true
 		}
 	}
+	if v, ok := raw[fmt.Sprintf("io.%d", id)]; ok {
+		return ioInt(v), true
+	}
+	return 0, false
+}
+
+func lookupGreenDrivingType(raw map[string]any) (int, bool) {
+	if v, ok := lookupDirectIO(raw, 253); ok {
+		return v, true
+	}
+	if v, ok := raw["green_driving.value"]; ok {
+		return ioInt(v), true
+	}
+	return 0, false
+}
+
+func lookupIOValue(raw map[string]any, id int) (int, bool) {
+	if id == 243 {
+		return lookupGreenDrivingType(raw)
+	}
+	if v, ok := lookupDirectIO(raw, id); ok {
+		return v, true
+	}
 	switch id {
 	case 253:
-		if v, ok := raw["green_driving.value"]; ok {
-			return ioInt(v), true
-		}
+		return lookupGreenDrivingType(raw)
 	case 247:
 		if v, ok := raw["crash.value"]; ok {
 			return ioInt(v), true

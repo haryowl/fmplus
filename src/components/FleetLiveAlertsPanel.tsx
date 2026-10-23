@@ -810,7 +810,7 @@ export function FleetLiveAlertsPanel({
                         className={`fleet-cc-alert-lvl is-l${Math.min(3, Math.max(0, e.alarmLevel || 0))}`}
                       />
                       <div>
-                        <strong>{eventDisplayTitle(e.alarmType, e.rawAttrs)}</strong>
+                        <strong>{eventDisplayTitle(e.alarmType, e.rawAttrs, e.mappedAttrs)}</strong>
                         <span className="muted">
                           {" "}
                           · {e.deviceLabel || e.imei || e.deviceId.slice(0, 8)}

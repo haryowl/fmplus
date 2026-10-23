@@ -558,7 +558,7 @@ export default function FleetLive() {
       items.push({
         key: `s-${a.id}`,
         kind: "safety",
-        title: eventDisplayTitle(a.alarmType, a.rawAttrs),
+        title: eventDisplayTitle(a.alarmType, a.rawAttrs, a.mappedAttrs),
         device: a.deviceLabel || a.imei || a.deviceId.slice(0, 8),
         atMs: Number.isFinite(atMs) ? atMs : 0,
         atLabel: a.recordedAt ? new Date(a.recordedAt).toLocaleString() : "—",

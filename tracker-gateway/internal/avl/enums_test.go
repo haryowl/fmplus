@@ -51,4 +51,11 @@ func TestEnrichSafetyRaw(t *testing.T) {
 	if raw["io_label"] != "Harsh cornering" || raw["green_driving.value"] != 3 {
 		t.Fatalf("raw=%v", raw)
 	}
+	dur := map[string]any{}
+	if EnrichSafetyRaw(dur, "green_driving", 243, 2, true) != "harsh_brake" {
+		t.Fatalf("243 name=%v", dur)
+	}
+	if dur["green_driving.label"] != "Harsh braking" {
+		t.Fatalf("243 raw=%v", dur)
+	}
 }

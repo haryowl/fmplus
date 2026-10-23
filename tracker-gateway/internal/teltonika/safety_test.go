@@ -105,6 +105,29 @@ func TestFlattenEventAlarm_GreenDrivingDuration(t *testing.T) {
 	if ev == nil || ev.AlarmType != "green_driving" {
 		t.Fatalf("%+v", ev)
 	}
+	typed := safetyFromEventIO(store.Fix{
+		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{
+			"event_io": 243,
+			"io":       map[string]any{"243": 1500, "253": 2},
+		},
+	})
+	if typed == nil || typed.AlarmType != "harsh_brake" {
+		t.Fatalf("243+253 typed=%+v", typed)
+	}
+	if typed.RawAttrs["io_label"] != "Harsh braking" {
+		t.Fatalf("243+253 label=%v", typed.RawAttrs)
+	}
+	flat := safetyFromEventIO(store.Fix{
+		Lat: 1, Lon: 2, RecordedAt: time.Now().UTC(),
+		RawAttrs: map[string]any{
+			"event_io": 253,
+			"io.253":   3,
+		},
+	})
+	if flat == nil || flat.AlarmType != "harsh_corner" {
+		t.Fatalf("io.253=%+v", flat)
+	}
 }
 
 func TestFlattenEventAlarm_SOS(t *testing.T) {

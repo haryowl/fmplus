@@ -115,3 +115,49 @@ export function permanentIoLabel(paramId, value) {
 export function formatAvlParamValue(paramId, value) {
   return permanentIoLabel(paramId, value) || value;
 }
+
+const IO_ATTR_KEYS = [
+  "io_value",
+  "io_label",
+  "event_io",
+  "green_driving.value",
+  "green_driving.label",
+  "crash.value",
+  "crash.label",
+  "ignition.value",
+  "ignition.label",
+  "status.ignition",
+  "ignition",
+  "movement.value",
+  "movement.label",
+  "status.movement",
+  "status.moving",
+  "movement",
+  "253",
+  "247",
+  "239",
+  "240",
+  "io.253",
+  "io.247",
+  "io.239",
+  "io.240",
+  "io.243",
+];
+
+/** Merge event + matching-fix attrs so Alerts/History can decode Description enums. */
+export function mergeAvlEventAttrs(...sources) {
+  const out = {};
+  for (const src of sources) {
+    if (!src || typeof src !== "object" || Array.isArray(src)) continue;
+    for (const key of IO_ATTR_KEYS) {
+      if (src[key] != null && src[key] !== "") out[key] = src[key];
+    }
+    const io = src.io;
+    if (io && typeof io === "object" && !Array.isArray(io)) {
+      for (const id of ["253", "247", "239", "240", "243"]) {
+        if (io[id] != null && out[`io.${id}`] == null) out[`io.${id}`] = io[id];
+      }
+    }
+  }
+  return out;
+}

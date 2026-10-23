@@ -1,5 +1,5 @@
 import { classifyAlarmType } from "./eventClass";
-import { avlIoLabel, avlIoNumber } from "./avlIoEnums";
+import { avlIoLabel, eventIoValue, mergeAvlEventAttrs } from "./avlIoEnums";
 import { tenantHeaders } from "./tenant";
 
 export type FleetMediaKind = "picture" | "video" | "audio" | "other";
@@ -107,8 +107,9 @@ export function alarmLabel(type: string): string {
 export function eventDisplayTitle(
   alarmType: string,
   rawAttrs?: Record<string, unknown> | null,
+  mappedAttrs?: Record<string, unknown> | null,
 ): string {
-  const attrs = rawAttrs && typeof rawAttrs === "object" ? rawAttrs : {};
+  const attrs = mergeAvlEventAttrs(mappedAttrs, rawAttrs);
   const stored = String(
     attrs.io_label ||
       attrs["green_driving.label"] ||
@@ -117,18 +118,7 @@ export function eventDisplayTitle(
       attrs["movement.label"] ||
       "",
   ).trim();
-  const value = avlIoNumber(
-    attrs,
-    "io_value",
-    "green_driving.value",
-    "crash.value",
-    "ignition.value",
-    "movement.value",
-    "253",
-    "247",
-    "239",
-    "240",
-  );
+  const value = eventIoValue(alarmType, attrs);
   const decoded = avlIoLabel(alarmType, value);
   const detail = stored || decoded;
   const base = alarmLabel(alarmType);

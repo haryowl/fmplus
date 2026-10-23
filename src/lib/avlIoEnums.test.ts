@@ -38,6 +38,24 @@ describe("Teltonika AVL descriptions", () => {
     expect(eventDisplayTitle("movement", { io_label: "Movement off" })).toBe("Movement off");
   });
 
+  it("decodes Description from slim events plus matching-fix attrs", () => {
+    expect(eventDisplayTitle("green_driving", { event_io: 243 }, { "io.253": 2 })).toBe(
+      "Harsh braking",
+    );
+    expect(
+      eventDisplayTitle("green_driving", { event_io: 253, "alarm.green_driving": true }, {
+        io: { "253": 1 },
+      }),
+    ).toBe("Harsh acceleration");
+    expect(eventDisplayTitle("ignition", { event_io: 239, ignition: true })).toBe("Ignition on");
+    expect(
+      eventDisplayTitle("ignition", { event_io: 239 }, { "status.ignition": false }),
+    ).toBe("Ignition off");
+    expect(
+      eventDisplayTitle("movement", { event_io: 240 }, { "status.movement": true }),
+    ).toBe("Movement on");
+  });
+
   it("formats dashboard pins with Permanent I/O descriptions", () => {
     expect(formatDisplayPinValue(1, "gnss.status")).toBe("GNSS on with fix");
     expect(formatDisplayPinValue(true, "ignition")).toBe("Ignition on");

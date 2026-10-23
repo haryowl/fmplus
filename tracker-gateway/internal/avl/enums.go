@@ -102,7 +102,7 @@ func EnrichSafetyRaw(raw map[string]any, base string, ioID, value int, hasValue 
 			raw["io_label"] = label
 		}
 		switch ioID {
-		case 253:
+		case 253, 243:
 			raw["green_driving.value"] = value
 			if label != "" {
 				raw["green_driving.label"] = label

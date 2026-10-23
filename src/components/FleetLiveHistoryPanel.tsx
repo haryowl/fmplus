@@ -351,7 +351,7 @@ export function FleetLiveHistoryPanel({ devices, timezone, initialDeviceId }: Pr
                           <IcoAlerts />
                         </span>
                         <div>
-                          <strong>{eventDisplayTitle(item.event.alarmType, item.event.rawAttrs)}</strong>
+                          <strong>{eventDisplayTitle(item.event.alarmType, item.event.rawAttrs, item.event.mappedAttrs)}</strong>
                           <span className="muted"> · L{item.event.alarmLevel}</span>
                         </div>
                       </div>

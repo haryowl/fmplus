@@ -1,7 +1,7 @@
 /**
  * Device Manager: canonical params, profiles, remap rules, commands, safety events.
  */
-import { formatAvlParamValue } from "./avl-io-enums.mjs";
+import { formatAvlParamValue, mergeAvlEventAttrs } from "./avl-io-enums.mjs";
 import { dbQuery } from "./db.mjs";
 
 /** Protocol-scoped command types (mirrors Admin COMMAND_TYPE_OPTIONS). */
@@ -1186,8 +1186,18 @@ export async function listSafetyEvents(
 
   params.push(lim);
   const rows = await dbQuery(
-    `SELECT e.*
+    `SELECT e.*, vf.mapped_attrs AS fix_mapped, vf.raw_attrs AS fix_raw
      FROM tracker_safety_events e
+     LEFT JOIN LATERAL (
+       SELECT mapped_attrs, raw_attrs
+       FROM vehicle_fixes vf
+       WHERE vf.tenant_id = e.tenant_id
+         AND vf.device_id = e.device_id
+         AND vf.recorded_at BETWEEN e.recorded_at - interval '2 seconds'
+                                AND e.recorded_at + interval '2 seconds'
+       ORDER BY abs(extract(epoch from (vf.recorded_at - e.recorded_at)))
+       LIMIT 1
+     ) vf ON true
      WHERE ${where.join(" AND ")}
      ORDER BY e.recorded_at DESC
      LIMIT $${params.length}`,
@@ -1195,55 +1205,39 @@ export async function listSafetyEvents(
   );
 
   const filtered = mediaOnly ? rows.rows.filter((r) => safetyEventHasMedia(r)) : rows.rows;
-  let classIndex = null;
+  const toDto = (r, cls) => ({
+    id: String(r.id),
+    deviceId: r.device_id,
+    recordedAt: r.recorded_at,
+    alarmType: r.alarm_type,
+    alarmLevel: r.alarm_level,
+    lat: r.lat == null ? null : Number(r.lat),
+    lon: r.lon == null ? null : Number(r.lon),
+    attachmentId: r.attachment_id || "",
+    sourceProtocol: r.source_protocol,
+    rawAttrs: {
+      ...(r.raw_attrs && typeof r.raw_attrs === "object" && !Array.isArray(r.raw_attrs)
+        ? r.raw_attrs
+        : {}),
+      ...mergeAvlEventAttrs(r.fix_raw, r.fix_mapped, r.mapped_attrs, r.raw_attrs),
+    },
+    mappedAttrs: r.mapped_attrs,
+    mediaKind: classifySafetyMediaKind(r),
+    eventClass: cls.eventClass,
+    raiseAlert: cls.raiseAlert,
+    emitOn: cls.emitOn,
+  });
   try {
     const { loadEventClassIndex, resolveEventClass } = await import("./event-class.mjs");
-    classIndex = await loadEventClassIndex(tenantId);
-    const out = filtered.map((r) => {
-      const cls = resolveEventClass(classIndex, r.alarm_type, { deviceId: r.device_id });
-      return {
-        id: String(r.id),
-        deviceId: r.device_id,
-        recordedAt: r.recorded_at,
-        alarmType: r.alarm_type,
-        alarmLevel: r.alarm_level,
-        lat: r.lat == null ? null : Number(r.lat),
-        lon: r.lon == null ? null : Number(r.lon),
-        attachmentId: r.attachment_id || "",
-        sourceProtocol: r.source_protocol,
-        rawAttrs: r.raw_attrs,
-        mappedAttrs: r.mapped_attrs,
-        mediaKind: classifySafetyMediaKind(r),
-        eventClass: cls.eventClass,
-        raiseAlert: cls.raiseAlert,
-        emitOn: cls.emitOn,
-      };
-    });
-    return out;
+    const classIndex = await loadEventClassIndex(tenantId);
+    return filtered.map((r) =>
+      toDto(r, resolveEventClass(classIndex, r.alarm_type, { deviceId: r.device_id })),
+    );
   } catch {
     const { classifyAlarmType } = await import("./event-class.mjs").catch(() => ({
       classifyAlarmType: () => ({ eventClass: "warning", raiseAlert: true, emitOn: "event" }),
     }));
-    return filtered.map((r) => {
-      const cls = classifyAlarmType(r.alarm_type);
-      return {
-        id: String(r.id),
-        deviceId: r.device_id,
-        recordedAt: r.recorded_at,
-        alarmType: r.alarm_type,
-        alarmLevel: r.alarm_level,
-        lat: r.lat == null ? null : Number(r.lat),
-        lon: r.lon == null ? null : Number(r.lon),
-        attachmentId: r.attachment_id || "",
-        sourceProtocol: r.source_protocol,
-        rawAttrs: r.raw_attrs,
-        mappedAttrs: r.mapped_attrs,
-        mediaKind: classifySafetyMediaKind(r),
-        eventClass: cls.eventClass,
-        raiseAlert: cls.raiseAlert,
-        emitOn: cls.emitOn,
-      };
-    });
+    return filtered.map((r) => toDto(r, classifyAlarmType(r.alarm_type)));
   }
 }
 
