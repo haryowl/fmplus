@@ -34,6 +34,7 @@ type SafetyEvent = {
   recordedAt: string;
   eventClass?: "safety" | "warning" | "asset" | "none";
   rawAttrs?: Record<string, unknown>;
+  mappedAttrs?: Record<string, unknown>;
 };
 
 type TimelineItem =

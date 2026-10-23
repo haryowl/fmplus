@@ -119,6 +119,7 @@ type SafetyEvent = {
   eventClass?: "safety" | "warning" | "asset" | "none";
   raiseAlert?: boolean;
   rawAttrs?: Record<string, unknown>;
+  mappedAttrs?: Record<string, unknown>;
 };
 
 type FixMeta = {
