@@ -81,6 +81,11 @@ describe("scan capabilities", () => {
 
     const field1 = resolveFieldScan(scan, "field1");
     expect(field1.vehicleOpen).toBe(true);
+
+    const deskUser = resolveFieldScan(scan, "user");
+    expect(deskUser.cargoAdd).toBe(false);
+    expect(deskUser.partAdd).toBe(false);
+    expect(fieldScanCanCargo(deskUser)).toBe(false);
   });
 
   it("treats a missing /me scan payload as Phase 1 still allowed", () => {

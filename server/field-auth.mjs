@@ -18,6 +18,7 @@ export const FIELD_ROLES = [
   "worker2",
   "field1",
   "field2",
+  "user",
 ];
 
 export function fieldCookieName() {

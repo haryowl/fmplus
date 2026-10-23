@@ -48,7 +48,7 @@ export function DeskAuthChip() {
       {open ? (
         <form className="desk-auth-pop" onSubmit={(e) => void onSubmit(e)}>
           <p className="desk-auth-pop-title">Desk sign in</p>
-          <p className="muted desk-auth-pop-hint">Use a Field user account for this tenant.</p>
+          <p className="muted desk-auth-pop-hint">Use a User or Field account for this tenant.</p>
           <label>
             Username
             <input

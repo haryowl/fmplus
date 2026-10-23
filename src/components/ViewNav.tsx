@@ -23,6 +23,8 @@ import { isNativeDispatchApp } from "../lib/nativeField";
 import { useEffect, useState } from "react";
 import { useEmbedTenant } from "../lib/useEmbedTenant";
 import { fetchTelematicsSource } from "../lib/trackerDevices";
+import { deskNavAllowed } from "../lib/deskHome";
+import { useDeskSession } from "../lib/deskSession";
 import { DeskAuthChip } from "./DeskAuthChip";
 import { ThemePicker } from "./ThemePicker";
 
@@ -72,6 +74,7 @@ function navHref(
 export function ViewNav({ current }: Props) {
   const search = typeof window !== "undefined" ? window.location.search : "";
   const { ready, moduleAllowed, entitlements } = useEmbedTenant();
+  const { user: deskUser, privileges: deskPrivileges } = useDeskSession();
   const profiles = dispatchProfiles(entitlements);
   const base = isNativeDispatchApp() ? DISPATCH_APP_LINKS : LINKS;
   const [telematicsSource, setTelematicsSource] = useState<"armada" | "devices" | "both">("both");
@@ -95,6 +98,7 @@ export function ViewNav({ current }: Props) {
     if (!moduleAllowed(moduleKeyForView(link.view))) return false;
     // Goods & Stock is cargo-only admin
     if (link.view === "dispatchGoods" && !profiles.cargo) return false;
+    if (!deskNavAllowed(deskUser, deskPrivileges, link.view)) return false;
     return true;
   });
 

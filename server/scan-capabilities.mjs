@@ -55,6 +55,20 @@ export function defaultScanRoleActions() {
   };
 }
 
+export function emptyScanRoleActions() {
+  return {
+    cargoAdd: false,
+    partAdd: false,
+    cargoConfirm: false,
+    cargoSerial: false,
+    stopRequireScan: false,
+    partSerial: false,
+    jobRequireScan: false,
+    vehicleOpen: false,
+    locationSet: false,
+  };
+}
+
 export function defaultScanEntitlements() {
   return {
     inputs: { camera: true, typed: true, nfc: false },
@@ -93,9 +107,12 @@ export function mergeScanEntitlements(raw) {
 }
 
 export function resolveFieldScan(scan, role) {
-  const key = SCAN_ROLES.includes(role) ? role : "operator";
+  const actions =
+    String(role || "") === "user"
+      ? emptyScanRoleActions()
+      : scan.roles[SCAN_ROLES.includes(role) ? role : "operator"];
   return {
-    ...scan.roles[key],
+    ...actions,
     camera: scan.inputs.camera === true,
     typed: scan.inputs.typed === true,
     nfc: scan.inputs.nfc === true,

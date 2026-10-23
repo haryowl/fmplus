@@ -31,6 +31,8 @@ import {
   type ServiceLine,
   type ServicePhoto,
 } from "../lib/maintenance";
+import { isDeskUserRole, postLoginHref } from "../lib/deskHome";
+import { mergeDeskPrivileges, type DeskPrivileges } from "../lib/deskPrivileges";
 import { fieldHref, vehicleTrackHref } from "../lib/routing";
 import { configureTenant } from "../lib/tenant";
 import { fetchTelematicsSource } from "../lib/trackerDevices";
@@ -43,6 +45,7 @@ type ManagerUser = {
   tenantKey: string;
   tenantDisplayName?: string;
   appId: number;
+  privileges?: DeskPrivileges;
 };
 
 type JobFilter = "all" | "open" | "awaiting" | "approved";
@@ -130,6 +133,12 @@ export default function ManagerMaintenance() {
         managerMaintenance?: boolean;
         scan?: FieldScanCapabilities;
       }>("/api/field/me");
+      if (isDeskUserRole(me.user.role)) {
+        window.location.replace(
+          postLoginHref(me.user.role, mergeDeskPrivileges(me.user.privileges), me.user.tenantKey),
+        );
+        return false;
+      }
       if (me.user.role !== "manager") {
         setUser(null);
         setManagerMaintenance(false);
@@ -319,6 +328,12 @@ export default function ManagerMaintenance() {
         body: JSON.stringify({ tenantKey: tenantKey.trim(), username, password }),
       });
       setPassword("");
+      if (isDeskUserRole(data.user.role)) {
+        window.location.replace(
+          postLoginHref(data.user.role, mergeDeskPrivileges(data.user.privileges), data.user.tenantKey),
+        );
+        return;
+      }
       if (data.user.role !== "manager") {
         await api("/api/field/logout", { method: "POST", body: "{}" });
         setUser(null);

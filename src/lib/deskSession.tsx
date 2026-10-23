@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { applyFieldSessionTenant } from "./deskHome";
 import { emptyDeskPrivileges, mergeDeskPrivileges, type DeskPrivileges } from "./deskPrivileges";
 import { currentTenantKey } from "./tenant";
 
@@ -16,6 +17,7 @@ export type DeskUser = {
   role: string;
   displayName: string;
   tenantKey: string;
+  appId: number;
   privileges: DeskPrivileges;
 };
 
@@ -26,6 +28,7 @@ type DeskMeResponse = {
     role: string;
     displayName?: string;
     tenantKey?: string;
+    appId?: number;
     privileges?: unknown;
   };
 };
@@ -37,7 +40,7 @@ type DeskSessionValue = {
   error: string;
   setError: (msg: string) => void;
   privileges: DeskPrivileges;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string, tenantKey?: string) => Promise<boolean>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -47,12 +50,14 @@ const DeskSessionContext = createContext<DeskSessionValue | null>(null);
 function mapUser(raw: DeskMeResponse["user"]): DeskUser | null {
   const tenantKey = String(raw.tenantKey || "").trim();
   if (!raw.id || !tenantKey) return null;
+  const appId = Number(raw.appId);
   return {
     id: String(raw.id),
     username: String(raw.username || ""),
     role: String(raw.role || ""),
     displayName: String(raw.displayName || raw.username || ""),
     tenantKey,
+    appId: Number.isInteger(appId) && appId > 0 ? appId : 0,
     privileges: mergeDeskPrivileges(raw.privileges),
   };
 }
@@ -81,7 +86,9 @@ export function DeskSessionProvider({ children }: { children: ReactNode }) {
         return;
       }
       const body = (await res.json()) as DeskMeResponse;
-      setUser(clearIfWrongTenant(mapUser(body.user)));
+      const next = clearIfWrongTenant(mapUser(body.user));
+      if (next) applyFieldSessionTenant(next.tenantKey, next.appId);
+      setUser(next);
     } catch {
       setUser(null);
     } finally {
@@ -94,10 +101,10 @@ export function DeskSessionProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const login = useCallback(
-    async (username: string, password: string) => {
-      const tenantKey = currentTenantKey();
+    async (username: string, password: string, tenantKeyArg?: string) => {
+      const tenantKey = String(tenantKeyArg || currentTenantKey() || "").trim();
       if (!tenantKey) {
-        setError("Embed tenant key (k=) is required before signing in");
+        setError("Tenant key is required before signing in");
         return false;
       }
       setBusy(true);
@@ -121,6 +128,7 @@ export function DeskSessionProvider({ children }: { children: ReactNode }) {
           setUser(null);
           return false;
         }
+        applyFieldSessionTenant(next.tenantKey, next.appId);
         setUser(next);
         return true;
       } catch (err) {

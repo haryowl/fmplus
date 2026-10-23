@@ -34,6 +34,7 @@ import {
   mergeDeskPrivileges,
   type DeskPrivileges,
 } from "../lib/deskPrivileges";
+import { postLoginHref } from "../lib/deskHome";
 
 type AdminTenant = {
   id: string;
@@ -512,6 +513,7 @@ type TrackerMapRule = {
 };
 
 const FIELD_ROLE_OPTIONS = [
+  { value: "user", label: "User (desk)" },
   { value: "operator", label: "Operator" },
   { value: "driver", label: "Driver" },
   { value: "dispatcher", label: "Dispatcher" },
@@ -758,6 +760,13 @@ export default function AdminConsole() {
   const [username, setUsername] = useState<string | null>(null);
   const [loginUser, setLoginUser] = useState("");
   const [loginPass, setLoginPass] = useState("");
+  const [loginTenantKey, setLoginTenantKey] = useState(() => {
+    try {
+      return localStorage.getItem("fmplus.login.tenantKey") || "";
+    } catch {
+      return "";
+    }
+  });
   const [tenants, setTenants] = useState<AdminTenant[]>([]);
   const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
   const [adminSection, setAdminSection] = useState<
@@ -1140,7 +1149,38 @@ export default function AdminConsole() {
     e.preventDefault();
     setBusy(true);
     setError("");
+    const tenantKey = loginTenantKey.trim();
     try {
+      if (tenantKey) {
+        try {
+          localStorage.setItem("fmplus.login.tenantKey", tenantKey);
+        } catch {
+          /* ignore */
+        }
+        try {
+          const field = await api<{
+            user: {
+              role: string;
+              tenantKey: string;
+              privileges?: unknown;
+            };
+          }>("/api/field/login", {
+            method: "POST",
+            body: JSON.stringify({ tenantKey, username: loginUser, password: loginPass }),
+          });
+          setLoginPass("");
+          window.location.assign(
+            postLoginHref(
+              field.user.role,
+              mergeDeskPrivileges(field.user.privileges),
+              field.user.tenantKey || tenantKey,
+            ),
+          );
+          return;
+        } catch {
+          /* Not a field user — try Admin next. */
+        }
+      }
       await api("/api/admin/login", {
         method: "POST",
         body: JSON.stringify({ username: loginUser, password: loginPass }),
@@ -2037,22 +2077,31 @@ export default function AdminConsole() {
             <div className="auth-login-brand-copy">
               <h1>Control plane</h1>
               <p className="muted">
-                Tenants, Armada tokens, entitlements, and notify channels — one place to run the
-                embed.
+                Admins leave the tenant key blank. Desk Users enter their tenant key and open Fleet
+                Live, Jobs, and the rest of the platform under their privileges.
               </p>
             </div>
             <ul className="auth-login-points" aria-hidden="true">
-              <li>Tenant keys &amp; tokens</li>
-              <li>Module entitlements</li>
-              <li>Notify / WhatsApp channels</li>
+              <li>Admin · tenants &amp; devices</li>
+              <li>User · desk modules by privilege</li>
+              <li>Field / Manager still use /m and /mm</li>
             </ul>
           </div>
           <form className="admin-login auth-login-form" onSubmit={(e) => void handleLogin(e)}>
             <header className="auth-login-form-head">
               <h2>Sign in</h2>
-              <p className="muted">Admin access for this ARMADA M.1 server</p>
+              <p className="muted">Admin, or a tenant User / Field account</p>
             </header>
             {error && <p className="admin-error">{error}</p>}
+            <label>
+              Tenant key
+              <input
+                value={loginTenantKey}
+                onChange={(e) => setLoginTenantKey(e.target.value)}
+                autoComplete="organization"
+                placeholder="Required for User / Field"
+              />
+            </label>
             <label>
               Username
               <input value={loginUser} onChange={(e) => setLoginUser(e.target.value)} autoComplete="username" />
@@ -2783,8 +2832,8 @@ export default function AdminConsole() {
                               <fieldset className="span-2 admin-fieldset">
                                 <legend>Desk privileges</legend>
                                 <p className="admin-hint">
-                                  Goods/Customers need sign-in. Jobs/plan/orders/live/settings apply when the user is signed
-                                  in on the desk.
+                                  Role User signs in on the main Login page (/) with this tenant key, then only sees desk
+                                  modules you tick here. Other roles still use /m or /mm.
                                 </p>
                                 <div className="admin-toggle-grid" role="group" aria-label="Desk privileges">
                                   {DESK_PRIVILEGE_KEYS.map((key) => (
@@ -2888,8 +2937,8 @@ export default function AdminConsole() {
                       <fieldset className="span-2 admin-fieldset">
                         <legend>Desk privileges</legend>
                         <p className="admin-hint">
-                          Goods/Customers need sign-in. Jobs/plan/orders/live/settings apply when the user is signed in on
-                          the desk.
+                          Role User signs in on the main Login page (/) with this tenant key, then only sees desk modules
+                          you tick here. Other roles still use /m or /mm.
                         </p>
                         <div className="admin-toggle-grid" role="group" aria-label="Desk privileges">
                           {DESK_PRIVILEGE_KEYS.map((key) => (

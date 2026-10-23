@@ -31,6 +31,8 @@ import {
 } from "../lib/maintenance";
 import { applyDutyLocationPolicy, stopDutyTracking } from "../lib/driverLocation";
 import type { DutyLocationPolicy } from "../lib/dutyLocationPolicy";
+import { isDeskUserRole, postLoginHref } from "../lib/deskHome";
+import { mergeDeskPrivileges, type DeskPrivileges } from "../lib/deskPrivileges";
 import { FieldDispatchPanel } from "./FieldDispatchPanel";
 
 type FieldUser = {
@@ -41,6 +43,7 @@ type FieldUser = {
   tenantKey: string;
   tenantDisplayName?: string;
   appId: number;
+  privileges?: DeskPrivileges;
 };
 
 type JobListFilter = "all" | "due" | "in_progress" | "completed";
@@ -171,6 +174,12 @@ export default function FieldLogin() {
         setScan(null);
         setShowMoneyOnField(false);
         setError("Manager accounts sign in at /mm, not /m.");
+        return false;
+      }
+      if (isDeskUserRole(me.user.role)) {
+        window.location.replace(
+          postLoginHref(me.user.role, mergeDeskPrivileges(me.user.privileges), me.user.tenantKey),
+        );
         return false;
       }
       setUser(me.user);
@@ -397,6 +406,12 @@ export default function FieldLogin() {
         setScan(null);
         setShowMoneyOnField(false);
         setError("Manager accounts sign in at /mm, not /m.");
+        return;
+      }
+      if (isDeskUserRole(data.user.role)) {
+        window.location.replace(
+          postLoginHref(data.user.role, mergeDeskPrivileges(data.user.privileges), data.user.tenantKey),
+        );
         return;
       }
       setUser(data.user);

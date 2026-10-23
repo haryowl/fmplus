@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import { applyFieldSessionTenant } from "./deskHome";
 import { parseEmbedSearch } from "./embed";
 import { defaultEntitlements, type Entitlements } from "./entitlements";
 import { bootTenantFromSearch, fetchEmbedContext } from "./tenant";
+import { useDeskSession } from "./deskSession";
 
 export function useEmbedTenant() {
   const query = useMemo(() => parseEmbedSearch(window.location.search), []);
+  const { user: deskUser, ready: deskReady } = useDeskSession();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
   const [allowedUserIds, setAllowedUserIds] = useState<number[]>([]);
@@ -12,11 +15,13 @@ export function useEmbedTenant() {
   const [entitlements, setEntitlements] = useState<Entitlements>(() => defaultEntitlements());
 
   useEffect(() => {
-    bootTenantFromSearch(window.location.search);
+    if (!deskReady) return;
+    if (deskUser?.tenantKey) applyFieldSessionTenant(deskUser.tenantKey, deskUser.appId);
+    else bootTenantFromSearch(window.location.search);
     const ac = new AbortController();
     fetchEmbedContext(ac.signal)
       .then((ctx) => {
-        if (query.tenantKey && !ctx) {
+        if ((query.tenantKey || deskUser?.tenantKey) && !ctx) {
           setError("Unknown embed tenant. Check k= in the iframe URL.");
           return;
         }
@@ -35,7 +40,7 @@ export function useEmbedTenant() {
         if (err.name !== "AbortError") setError(err.message);
       });
     return () => ac.abort();
-  }, [query.tenantKey, query.appId]);
+  }, [deskReady, deskUser?.tenantKey, deskUser?.appId, query.tenantKey, query.appId]);
 
   const allowsUser = (id: string | number) =>
     allowedUserIds.length === 0 || allowedUserIds.includes(Number(id));
