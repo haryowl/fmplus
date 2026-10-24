@@ -86,6 +86,15 @@ function markerIcon(
   return icon;
 }
 
+function formatPopupAddress(address?: string): string {
+  const parts = String(address || "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length >= 2) return `${parts[0]} · ${parts[1]}`;
+  return parts[0] || "";
+}
+
 function popupHtml(
   row: LastStatusRow,
   opsClass: LiveOpsClass,
@@ -108,22 +117,52 @@ function popupHtml(
     telematicsSource,
   });
   const ign = row.ignition === true ? "On" : row.ignition === false ? "Off" : "—";
+  const rawCoords =
+    row.lat != null && row.lon != null ? `${row.lat.toFixed(6)},${row.lon.toFixed(6)}` : "";
   const coords =
     row.lat != null && row.lon != null ? formatCoord(row.lat, row.lon, unitSystem) : "";
-  const addr = (address || "").trim();
+  const addr = formatPopupAddress(address);
   const speed =
     row.speedKmh == null || !Number.isFinite(row.speedKmh)
       ? "—"
       : formatSpeedValue(row.speedKmh, unitSystem);
+  const live = row.lastMs != null && now - row.lastMs < 10 * 60 * 1000;
+  const color = LIVE_OPS_COLORS[opsClass];
   return `<div class="live-ops-popup">
-    <strong>${escapeHtml(row.name)}</strong>
-    <div class="muted">${escapeHtml(LIVE_OPS_LABELS[opsClass])} · ${escapeHtml(ageLabel(row.lastMs, now))}</div>
-    <div>Speed ${escapeHtml(speed)} · Ign ${ign}</div>
-    ${coords ? `<div class="muted live-ops-popup-coords">${escapeHtml(coords)}</div>` : ""}
-    ${addr ? `<div class="live-ops-popup-addr" title="${escapeHtml(addr)}">${escapeHtml(addr)}</div>` : ""}
+    <header class="live-ops-popup-head">
+      <strong>${escapeHtml(row.name)}</strong>
+      <i class="live-ops-popup-dot" style="background:${color}"></i>
+    </header>
+    <div class="live-ops-popup-sub">
+      <span>${escapeHtml(LIVE_OPS_LABELS[opsClass])} · ${escapeHtml(ageLabel(row.lastMs, now))}</span>
+      ${live ? `<em class="live-ops-popup-live">LIVE</em>` : ""}
+    </div>
+    <div class="live-ops-popup-row">
+      <span>${escapeHtml(speed)}</span>
+      <i></i>
+      <span>Ign ${ign}</span>
+    </div>
+    ${
+      coords
+        ? `<div class="live-ops-popup-coords">
+      <span>${escapeHtml(coords)}</span>
+      <button type="button" class="live-ops-popup-copy" data-copy="${escapeHtml(rawCoords)}" title="Copy coordinates" aria-label="Copy coordinates">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="8" y="8" width="11" height="13" rx="2"/><path d="M5 16V5a2 2 0 0 1 2-2h8"/></svg>
+      </button>
+    </div>`
+        : ""
+    }
+    ${
+      addr
+        ? `<div class="live-ops-popup-addr" title="${escapeHtml(address || addr)}">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 21s7-6.2 7-11.2A7 7 0 1 0 5 9.8C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.2"/></svg>
+      <span>${escapeHtml(addr)}</span>
+    </div>`
+        : ""
+    }
     <div class="live-ops-popup-links">
       <a href="${escapeHtml(trips)}">Trips</a>
-      <a href="${escapeHtml(full)}">Full</a>
+      <a href="${escapeHtml(full)}">Full <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M9 5h10v10M9 15 19 5"/></svg></a>
     </div>
   </div>`;
 }
@@ -221,6 +260,19 @@ export function LiveOpsMap({
     layerRef.current = L.layerGroup().addTo(map);
     fencesRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
+    const onPopupOpen = (ev: L.PopupEvent) => {
+      const root = ev.popup.getElement();
+      const btn = root?.querySelector<HTMLButtonElement>("[data-copy]");
+      if (!btn || btn.dataset.bound === "1") return;
+      btn.dataset.bound = "1";
+      btn.addEventListener("click", (click) => {
+        click.preventDefault();
+        click.stopPropagation();
+        const text = btn.getAttribute("data-copy") || "";
+        if (text) void navigator.clipboard?.writeText(text);
+      });
+    };
+    map.on("popupopen", onPopupOpen);
     setMapReady(true);
 
     const invalidate = () => map.invalidateSize({ animate: false });
@@ -238,6 +290,7 @@ export function LiveOpsMap({
       window.clearTimeout(t1);
       window.clearTimeout(t2);
       ro?.disconnect();
+      map.off("popupopen", onPopupOpen);
       markersRef.current.clear();
       map.remove();
       mapRef.current = null;
@@ -326,23 +379,32 @@ export function LiveOpsMap({
           zIndexOffset: selected ? 600 : 0,
         });
         marker.on("click", () => onSelectRef.current(row.id));
-        marker.bindPopup(() => {
-          const latest = rowsByIdRef.current.get(row.id) || row;
-          const cls = classifyLiveRow(latest, nowRef.current);
-          const addr =
-            latest.lat != null && latest.lon != null
-              ? addressesRef.current?.[geocodeCacheKey(latest.lat, latest.lon)] || ""
-              : "";
-          return popupHtml(
-            latest,
-            cls,
-            nowRef.current,
-            deviceIdByRowIdRef.current?.get(latest.id),
-            telematicsSourceRef.current,
-            addr,
-            unitSystemRef.current,
-          );
-        });
+        marker.bindPopup(
+          () => {
+            const latest = rowsByIdRef.current.get(row.id) || row;
+            const cls = classifyLiveRow(latest, nowRef.current);
+            const addr =
+              latest.lat != null && latest.lon != null
+                ? addressesRef.current?.[geocodeCacheKey(latest.lat, latest.lon)] || ""
+                : "";
+            return popupHtml(
+              latest,
+              cls,
+              nowRef.current,
+              deviceIdByRowIdRef.current?.get(latest.id),
+              telematicsSourceRef.current,
+              addr,
+              unitSystemRef.current,
+            );
+          },
+          {
+            className: "live-ops-leaflet-popup",
+            closeButton: false,
+            maxWidth: 300,
+            minWidth: 240,
+            autoPanPadding: [24, 24],
+          },
+        );
         marker.addTo(layer);
         markersRef.current.set(row.id, {
           marker,

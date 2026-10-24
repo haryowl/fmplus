@@ -368,6 +368,52 @@ export function IcoSortDesc(p: IconProps) {
   );
 }
 
+export function IcoFilter(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 6h16l-6.2 7.4V18l-3.6 2v-6.6L4 6z" />
+    </Svg>
+  );
+}
+
+export function IcoCopy(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="8" y="8" width="11" height="13" rx="2" />
+      <path d="M5 16V5a2 2 0 0 1 2-2h8" />
+    </Svg>
+  );
+}
+
+export function IcoPin(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 21s7-6.2 7-11.2A7 7 0 1 0 5 9.8C5 14.8 12 21 12 21z" />
+      <circle cx="12" cy="9.8" r="2.2" />
+    </Svg>
+  );
+}
+
+export function IcoSignal(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M5 18a9 9 0 0 1 14 0" />
+      <path d="M8.2 14.8a5 5 0 0 1 7.6 0" />
+      <circle cx="12" cy="18" r="1.2" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+export function IcoUnits(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 8h16" />
+      <path d="M4 16h16" />
+      <path d="M8 5v6M16 13v6" />
+    </Svg>
+  );
+}
+
 export const SECTION_ICONS = {
   live: IcoLive,
   dashboard: IcoDash,

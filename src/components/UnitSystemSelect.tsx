@@ -1,13 +1,15 @@
 import { UNIT_SYSTEM_OPTIONS } from "../lib/units";
 import { useUnitSystem } from "../lib/unitSystem";
+import { IcoUnits } from "./fleetLiveIcons";
 
 type Props = {
   id?: string;
   className?: string;
   compact?: boolean;
+  pill?: boolean;
 };
 
-export function UnitSystemSelect({ id = "unit-system", className, compact }: Props) {
+export function UnitSystemSelect({ id = "unit-system", className, compact, pill }: Props) {
   const { system, setSystem } = useUnitSystem();
   const select = (
     <select
@@ -22,6 +24,15 @@ export function UnitSystemSelect({ id = "unit-system", className, compact }: Pro
       ))}
     </select>
   );
+  if (pill) {
+    return (
+      <label className={className || "fleet-cc-pill"}>
+        <IcoUnits />
+        <span className="sr-only">Units</span>
+        {select}
+      </label>
+    );
+  }
   if (compact) {
     return (
       <label className={className || "fleet-cc-field"}>

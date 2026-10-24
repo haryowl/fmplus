@@ -6,7 +6,24 @@ type Props = {
   emptyText?: string;
   compact?: boolean;
   showDevice?: boolean;
+  pills?: boolean;
 };
+
+function isAlarmParam(row: TelemetryParamRow): boolean {
+  const key = `${row.paramId} ${row.paramLabel}`.toLowerCase();
+  return /sos|crash|alarm|panic|alert|jamming|unplug|towing/.test(key);
+}
+
+function valueTone(row: TelemetryParamRow): "alert" | "on" | "off" | "" {
+  const v = row.value;
+  const truth =
+    v === true || v === 1 || String(v).toLowerCase() === "true" || String(v).toLowerCase() === "on";
+  const falsy =
+    v === false || v === 0 || String(v).toLowerCase() === "false" || String(v).toLowerCase() === "off";
+  if (truth) return isAlarmParam(row) ? "alert" : "on";
+  if (falsy) return "off";
+  return "";
+}
 
 function formatCellValue(row: TelemetryParamRow): string {
   if (row.value == null) return "—";
@@ -24,6 +41,7 @@ export function TelemetryParamTable({
   emptyText = "No mapper parameters on this uplink.",
   compact = false,
   showDevice = false,
+  pills = false,
 }: Props) {
   if (loading && rows.length === 0) {
     return <p className="muted fleet-params-empty">Loading parameters…</p>;
@@ -48,7 +66,13 @@ export function TelemetryParamTable({
               {showDevice ? <td>{row.label || row.imei || "—"}</td> : null}
               <td title={row.paramId}>{row.paramLabel || row.paramId}</td>
               <td>
-                <strong>{formatCellValue(row)}</strong>
+                {pills && valueTone(row) ? (
+                  <strong className={`fleet-params-pill is-${valueTone(row)}`}>
+                    {formatCellValue(row)}
+                  </strong>
+                ) : (
+                  <strong>{formatCellValue(row)}</strong>
+                )}
               </td>
             </tr>
           ))}

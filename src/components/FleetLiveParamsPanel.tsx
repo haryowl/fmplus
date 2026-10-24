@@ -4,9 +4,10 @@ import {
   fetchFixParamValues,
   type TelemetryParamRow,
 } from "../lib/fleetTelemetryParams";
+import { IcoCopy, IcoSearch } from "./fleetLiveIcons";
 import { TelemetryParamTable } from "./TelemetryParamTable";
 
-type Props =
+type Props = (
   | {
       mode: "live";
       deviceId: string | null | undefined;
@@ -16,7 +17,11 @@ type Props =
       mode: "fix";
       deviceId: string | null | undefined;
       recordedAt: string | null | undefined;
-    };
+    }
+) & {
+  variant?: "default" | "inspector";
+  protocol?: string;
+};
 
 function categoryLabel(cat: string): string {
   const c = (cat || "").trim().toLowerCase();
@@ -37,6 +42,8 @@ export function FleetLiveParamsPanel(props: Props) {
   const recordedAt = props.mode === "fix" ? props.recordedAt || "" : "";
   const pollMs = props.mode === "live" ? props.pollMs ?? 4000 : 0;
   const filterNorm = filter.trim().toLowerCase();
+  const inspector = props.variant === "inspector";
+  const protocol = (props.protocol || rows[0]?.protocol || "").trim();
 
   const categories = useMemo(() => {
     const counts = new Map<string, number>();
@@ -133,27 +140,39 @@ export function FleetLiveParamsPanel(props: Props) {
     return <p className="muted fleet-params-empty">Select a device to see mapper parameters.</p>;
   }
 
+  const countLabel = loading
+    ? "Updating…"
+    : filterNorm || category !== "all"
+      ? `${visibleRows.length}/${rows.length} params`
+      : `${rows.length} params`;
+  const prettyProto = protocol
+    ? protocol.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : "";
+
   return (
-    <div className="fleet-params-panel">
-      <div className="fleet-params-toolbar">
-        <label className="fleet-rules-check">
+    <div className={`fleet-params-panel${inspector ? " is-inspector" : ""}`}>
+      <div className="fleet-params-tools">
+        <label className="fleet-params-filter">
+          <IcoSearch />
+          <span className="sr-only">Filter parameters</span>
           <input
-            type="checkbox"
-            checked={includeRaw}
-            onChange={(e) => setIncludeRaw(e.target.checked)}
+            type="search"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter params"
+            autoComplete="off"
           />
-          Include raw vendor keys
         </label>
-        <span className="muted">
-          {loading
-            ? "Updating…"
-            : filterNorm || category !== "all"
-              ? `${visibleRows.length}/${rows.length} params`
-              : `${rows.length} params`}
-          {props.mode === "fix" && recordedAt
-            ? ` · ${new Date(recordedAt).toLocaleString()}`
-            : ""}
-        </span>
+        <button
+          type="button"
+          className="fleet-params-copy"
+          onClick={() => void copyVisible()}
+          disabled={!visibleRows.length}
+          title="Copy Label and Value as tab-separated text"
+        >
+          <IcoCopy />
+          {copied ? "Copied" : "Copy"}
+        </button>
       </div>
       {categories.length > 1 ? (
         <div className="fleet-params-cats" role="tablist" aria-label="Param categories">
@@ -180,38 +199,32 @@ export function FleetLiveParamsPanel(props: Props) {
           ))}
         </div>
       ) : null}
-      <div className="fleet-params-tools">
-        <label className="fleet-params-filter">
-          <span className="sr-only">Filter parameters</span>
-          <input
-            type="search"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter params…"
-            autoComplete="off"
-          />
-        </label>
-        <button
-          type="button"
-          className="btn btn-ghost btn-compact"
-          onClick={() => void copyVisible()}
-          disabled={!visibleRows.length}
-          title="Copy Label and Value as tab-separated text"
-        >
-          {copied ? "Copied" : "Copy"}
-        </button>
-      </div>
+      <label className="fleet-rules-check fleet-params-raw">
+        <input
+          type="checkbox"
+          checked={includeRaw}
+          onChange={(e) => setIncludeRaw(e.target.checked)}
+        />
+        Include raw vendor keys
+      </label>
       {error ? <div className="banner error fleet-cc-banner">{error}</div> : null}
       <TelemetryParamTable
         rows={visibleRows}
         loading={loading}
         compact
+        pills={inspector}
         emptyText={
           (filterNorm || category !== "all") && rows.length
             ? "No parameters match this filter."
             : undefined
         }
       />
+      <footer className="fleet-params-foot">
+        <span>
+          {props.mode === "live" ? "live" : "fix"} · {countLabel}
+        </span>
+        {prettyProto ? <span>{prettyProto}</span> : null}
+      </footer>
     </div>
   );
 }
