@@ -297,6 +297,7 @@ export default function DispatchBoard() {
   const [fieldUsers, setFieldUsers] = useState<DispatchFieldUser[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
   const [groupId, setGroupId] = useState(query.groupId);
   const [deviceGroups, setDeviceGroups] = useState<TrackerDeviceGroup[]>([]);
   const [deviceGroupId, setDeviceGroupId] = useState(() => {
@@ -410,6 +411,32 @@ export default function DispatchBoard() {
 
   const selectedGroup = groups.find((g) => String(g.id) === groupId);
   const selectedUser = users.find((u) => String(u.id) === userId);
+  const groupUserIdSet = useMemo(() => new Set(users.map((u) => Number(u.id))), [users]);
+  const groupVehicleRows = useMemo(() => {
+    if (!selectedGroup) return [];
+    const fromStatus = deviceStatusRows.filter((r) => r.id > 0 && groupUserIdSet.has(r.id));
+    const seen = new Set(fromStatus.map((r) => r.id));
+    const extras: LastStatusRow[] = users
+      .filter((u) => !seen.has(Number(u.id)))
+      .map((u) => ({
+        id: Number(u.id),
+        name: String(u.name || u.username || u.id),
+        username: u.username || "",
+        utc: "",
+        deviceActivity: "",
+        lastMs: null,
+        lat: null,
+        lon: null,
+        altitude: null,
+        heading: null,
+        speedKmh: null,
+        ignition: null,
+        fuelLevel: null,
+        odometerKm: null,
+      }));
+    return [...fromStatus, ...extras];
+  }, [selectedGroup, deviceStatusRows, groupUserIdSet, users]);
+  const vehiclePickerRows = groups.length ? groupVehicleRows : deviceStatusRows;
   const selected = useMemo(() => jobs.find((j) => j.id === selectedId) || null, [jobs, selectedId]);
   const draftPin =
     orderForm.lat != null && orderForm.lon != null
@@ -886,14 +913,22 @@ export default function DispatchBoard() {
   useEffect(() => {
     if (!selectedGroup) {
       setUsers([]);
+      setUsersLoading(false);
       return;
     }
     const ac = new AbortController();
+    setUsersLoading(true);
     fetchUsersForGroup(selectedGroup, ac.signal)
       .then((list) => {
+        if (ac.signal.aborted) return;
         setUsers(allowedUserIds.length ? list.filter((u) => allowsUser(u.id)) : list);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!ac.signal.aborted) setUsers([]);
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setUsersLoading(false);
+      });
     return () => ac.abort();
   }, [selectedGroup?.id]);
 
@@ -2523,6 +2558,26 @@ export default function DispatchBoard() {
               </button>
             ) : null}
           </div>
+          {groups.length ? (
+            <label className="field">
+              <span className="visually-hidden">Armada group</span>
+              <select
+                value={groupId}
+                onChange={(e) => {
+                  setGroupId(e.target.value);
+                  setUserId("");
+                }}
+                title="Filter vehicles by Armada group"
+              >
+                <option value="">Armada group</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {groupOptionLabel(g)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label className="field">
             <span className="visually-hidden">Device group</span>
             <select
@@ -3530,75 +3585,61 @@ export default function DispatchBoard() {
               </label>
               {!isSales ? (
                 <>
-                  {deviceStatusRows.length ? (
+                  {groups.length ? (
                     <label className="field">
-                      Device / vehicle
-                      <select value={userId} onChange={(e) => setUserId(e.target.value)}>
-                        <option value="">Select device</option>
-                        {deviceStatusRows.map((r) => {
-                          const cap = capacityForVehicle(
-                            vehicleCaps,
-                            r.id > 0 ? r.id : null,
-                            deviceIdByRowId.get(r.id),
-                          );
-                          return (
-                            <option key={r.id} value={r.id}>
-                              {r.name}
-                              {r.username ? ` (${r.username})` : ""}
-                              {r.id > 0 ? ` · #${r.id}` : " · GPS"}
-                              {" · "}
-                              {isPassenger
-                                ? `${cap.seatCapacity ?? cap.volumeCapacityM3 ?? 4} seats / ${cap.luggageCapacityKg ?? cap.weightCapacityKg ?? 50} kg`
-                                : `${cap.volumeCapacityM3} m³ / ${cap.weightCapacityKg} kg`}
-                            </option>
-                          );
-                        })}
+                      Armada group
+                      <select
+                        value={groupId}
+                        onChange={(e) => {
+                          setGroupId(e.target.value);
+                          setUserId("");
+                        }}
+                      >
+                        <option value="">Pick group first</option>
+                        {groups.map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {groupOptionLabel(g)}
+                          </option>
+                        ))}
                       </select>
                     </label>
-                  ) : (
-                    <>
-                      <label className="field">
-                        Group
-                        <select
-                          value={groupId}
-                          onChange={(e) => {
-                            setGroupId(e.target.value);
-                            setUserId("");
-                          }}
-                        >
-                          <option value="">None</option>
-                          {groups.map((g) => (
-                            <option key={g.id} value={g.id}>
-                              {groupOptionLabel(g)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="field">
-                        {assetCopy.asset}
-                        <select
-                          value={userId}
-                          onChange={(e) => setUserId(e.target.value)}
-                          disabled={!selectedGroup}
-                        >
-                          <option value="">
-                            {selectedGroup ? assetCopy.selectAsset : "Pick group first"}
+                  ) : null}
+                  <label className="field">
+                    Device / vehicle
+                    <select
+                      value={userId}
+                      onChange={(e) => setUserId(e.target.value)}
+                      disabled={Boolean(groups.length) && !selectedGroup}
+                    >
+                      <option value="">
+                        {groups.length && !selectedGroup
+                          ? "Pick group first"
+                          : usersLoading
+                            ? "Loading vehicles…"
+                            : vehiclePickerRows.length
+                              ? "Select vehicle"
+                              : "No vehicles in this group"}
+                      </option>
+                      {vehiclePickerRows.map((r) => {
+                        const cap = capacityForVehicle(
+                          vehicleCaps,
+                          r.id > 0 ? r.id : null,
+                          deviceIdByRowId.get(r.id),
+                        );
+                        return (
+                          <option key={r.id} value={r.id}>
+                            {r.name}
+                            {r.username ? ` (${r.username})` : ""}
+                            {r.id > 0 ? ` · #${r.id}` : " · GPS"}
+                            {" · "}
+                            {isPassenger
+                              ? `${cap.seatCapacity ?? cap.volumeCapacityM3 ?? 4} seats / ${cap.luggageCapacityKg ?? cap.weightCapacityKg ?? 50} kg`
+                              : `${cap.volumeCapacityM3} m³ / ${cap.weightCapacityKg} kg`}
                           </option>
-                          {users.map((u) => {
-                            const cap = capacityForVehicle(vehicleCaps, Number(u.id));
-                            return (
-                              <option key={u.id} value={u.id}>
-                                {userOptionLabel(u)} ·{" "}
-                                {isPassenger
-                                  ? `${cap.seatCapacity ?? cap.volumeCapacityM3 ?? 4} seats / ${cap.luggageCapacityKg ?? cap.weightCapacityKg ?? 50} kg`
-                                  : `${cap.volumeCapacityM3} m³ / ${cap.weightCapacityKg} kg`}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </label>
-                    </>
-                  )}
+                        );
+                      })}
+                    </select>
+                  </label>
                   <div className="field">
                     <label htmlFor="dispatch-new-cap-vol">
                       {isPassenger ? "Seat capacity" : "Volume capacity (m³)"}
@@ -4978,56 +5019,112 @@ export default function DispatchBoard() {
                   ) : null}
                 </p>
 
-                {!isSales && deviceStatusRows.length ? (
-                  <label className="field" style={{ marginBottom: 12 }}>
-                    Device / vehicle
-                    <select
-                      value={(() => {
-                        if (selected.armadaUserId != null && selected.armadaUserId > 0) {
-                          return String(selected.armadaUserId);
-                        }
-                        if (selected.trackerDeviceId) {
-                          for (const [rowId, deviceId] of deviceIdByRowId) {
-                            if (deviceId === selected.trackerDeviceId) return String(rowId);
+                {!isSales ? (
+                  <div className="dispatch-create-grid" style={{ marginBottom: 12 }}>
+                    {groups.length ? (
+                      <label className="field">
+                        Armada group
+                        <select
+                          value={groupId}
+                          onChange={(e) => setGroupId(e.target.value)}
+                          disabled={
+                            busy || selected.status === "done" || selected.status === "cancelled"
                           }
+                        >
+                          <option value="">Pick group first</option>
+                          {groups.map((g) => (
+                            <option key={g.id} value={g.id}>
+                              {groupOptionLabel(g)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                    <label className="field">
+                      Device / vehicle
+                      <select
+                        value={(() => {
+                          if (selected.armadaUserId != null && selected.armadaUserId > 0) {
+                            return String(selected.armadaUserId);
+                          }
+                          if (selected.trackerDeviceId) {
+                            for (const [rowId, deviceId] of deviceIdByRowId) {
+                              if (deviceId === selected.trackerDeviceId) return String(rowId);
+                            }
+                          }
+                          return "";
+                        })()}
+                        disabled={
+                          busy ||
+                          selected.status === "done" ||
+                          selected.status === "cancelled" ||
+                          (Boolean(groups.length) && !selectedGroup)
                         }
-                        return "";
-                      })()}
-                      disabled={
-                        busy || selected.status === "done" || selected.status === "cancelled"
-                      }
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        if (!raw) {
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (!raw) {
+                            void updateJob(selected.id, {
+                              trackerDeviceId: null,
+                              armadaUserId: null,
+                              armadaUsername: "",
+                              userDisplayName: "",
+                            });
+                            return;
+                          }
+                          const rowId = Number(raw);
+                          const row =
+                            vehiclePickerRows.find((r) => r.id === rowId) ||
+                            deviceStatusRows.find((r) => r.id === rowId);
+                          const trackerDeviceId = deviceIdByRowId.get(rowId) || null;
                           void updateJob(selected.id, {
-                            trackerDeviceId: null,
-                            armadaUserId: null,
-                            armadaUsername: "",
-                            userDisplayName: "",
+                            trackerDeviceId,
+                            armadaUserId: rowId > 0 ? rowId : null,
+                            armadaUsername: row?.username || "",
+                            userDisplayName: row?.name || "",
                           });
-                          return;
-                        }
-                        const rowId = Number(raw);
-                        const row = deviceStatusRows.find((r) => r.id === rowId);
-                        const trackerDeviceId = deviceIdByRowId.get(rowId) || null;
-                        void updateJob(selected.id, {
-                          trackerDeviceId,
-                          armadaUserId: rowId > 0 ? rowId : null,
-                          armadaUsername: row?.username || "",
-                          userDisplayName: row?.name || "",
-                        });
-                      }}
-                    >
-                      <option value="">Unassigned</option>
-                      {deviceStatusRows.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.name}
-                          {r.username ? ` (${r.username})` : ""}
-                          {r.id > 0 ? ` · #${r.id}` : " · GPS"}
+                        }}
+                      >
+                        <option value="">
+                          {groups.length && !selectedGroup ? "Pick group first" : "Unassigned"}
                         </option>
-                      ))}
-                    </select>
-                  </label>
+                        {(() => {
+                          const currentId =
+                            selected.armadaUserId != null && selected.armadaUserId > 0
+                              ? selected.armadaUserId
+                              : null;
+                          const rows =
+                            currentId && !vehiclePickerRows.some((r) => r.id === currentId)
+                              ? [
+                                  deviceStatusRows.find((r) => r.id === currentId) || {
+                                    id: currentId,
+                                    name: selected.userDisplayName || selected.armadaUsername || `#${currentId}`,
+                                    username: selected.armadaUsername || "",
+                                    utc: "",
+                                    deviceActivity: "",
+                                    lastMs: null,
+                                    lat: null,
+                                    lon: null,
+                                    altitude: null,
+                                    heading: null,
+                                    speedKmh: null,
+                                    ignition: null,
+                                    fuelLevel: null,
+                                    odometerKm: null,
+                                  },
+                                  ...vehiclePickerRows,
+                                ]
+                              : vehiclePickerRows;
+                          return rows.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.name}
+                              {r.username ? ` (${r.username})` : ""}
+                              {r.id > 0 ? ` · #${r.id}` : " · GPS"}
+                            </option>
+                          ));
+                        })()}
+                      </select>
+                    </label>
+                  </div>
                 ) : null}
 
                 {!isSales ? (
