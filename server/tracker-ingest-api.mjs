@@ -131,7 +131,14 @@ export async function handleTrackerIngestRequest(req, res) {
           .map((s) => s.trim())
           .filter(Boolean),
       ];
-      const fixes = await listTenantLastFixes(dbTenant.id, { groupIds, displayPinIds });
+      const includeNoFix =
+        url.searchParams.get("includeIdle") === "1" ||
+        url.searchParams.get("includeNoFix") === "1";
+      const fixes = await listTenantLastFixes(dbTenant.id, {
+        groupIds,
+        displayPinIds,
+        includeNoFix,
+      });
       json(res, 200, {
         fixes,
         telematicsSource: source,

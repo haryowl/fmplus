@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deviceIdByStatusRowId,
+  dispatchVehiclePickerRows,
   hashDeviceId,
   mergeArmadaRowsWithDeviceFixes,
   trackerFixToStatusRow,
@@ -39,6 +40,13 @@ describe("trackerFixToStatusRow", () => {
     const row = trackerFixToStatusRow(fix({ deviceId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", imei: "3520" }));
     expect(row.id).toBeLessThan(0);
   });
+
+  it("can ignore a linked Armada user id", () => {
+    const row = trackerFixToStatusRow(fix({ deviceId: "d1", imei: "3520", armadaUserId: 99 }), {
+      ignoreArmadaLink: true,
+    });
+    expect(row.id).toBe(hashDeviceId("d1"));
+  });
 });
 
 describe("deviceIdByStatusRowId", () => {
@@ -50,6 +58,15 @@ describe("deviceIdByStatusRowId", () => {
     ]);
     expect(map.get(42)).toBe("linked-dev");
     expect(map.get(hashDeviceId(orphanId))).toBe(orphanId);
+  });
+
+  it("ignores Armada links when telematics_source is devices", () => {
+    const map = deviceIdByStatusRowId(
+      [fix({ deviceId: "linked-dev", imei: "1", armadaUserId: 42 })],
+      { ignoreArmadaLink: true },
+    );
+    expect(map.get(42)).toBeUndefined();
+    expect(map.get(hashDeviceId("linked-dev"))).toBe("linked-dev");
   });
 });
 
@@ -113,5 +130,58 @@ describe("mergeArmadaRowsWithDeviceFixes", () => {
     );
     expect(merged).toHaveLength(1);
     expect(merged[0].username).toBe("3520");
+    expect(merged[0].id).toBe(hashDeviceId("d1"));
+    expect(merged[0].id).not.toBe(99);
+  });
+});
+
+describe("dispatchVehiclePickerRows", () => {
+  const armadaRow: LastStatusRow = {
+    id: 99,
+    name: "Armada truck",
+    username: "truck",
+    utc: "",
+    deviceActivity: "",
+    lastMs: null,
+    lat: null,
+    lon: null,
+    altitude: null,
+    heading: null,
+    speedKmh: null,
+    ignition: null,
+    fuelLevel: null,
+    odometerKm: null,
+  };
+  const gpsRow: LastStatusRow = { ...armadaRow, id: -200, name: "GPS van", username: "3520" };
+
+  it("lists Device Source rows when source is devices", () => {
+    const rows = dispatchVehiclePickerRows({
+      source: "devices",
+      deviceRows: [gpsRow],
+      groupRows: [armadaRow],
+      hasArmadaGroups: true,
+      armadaGroupSelected: true,
+    });
+    expect(rows.map((r) => r.id)).toEqual([-200]);
+  });
+
+  it("does not hide GPS devices behind an Armada group in both mode", () => {
+    const unset = dispatchVehiclePickerRows({
+      source: "both",
+      deviceRows: [armadaRow, gpsRow],
+      groupRows: [armadaRow],
+      hasArmadaGroups: true,
+      armadaGroupSelected: false,
+    });
+    expect(unset.some((r) => r.id < 0)).toBe(true);
+
+    const picked = dispatchVehiclePickerRows({
+      source: "both",
+      deviceRows: [armadaRow, gpsRow],
+      groupRows: [armadaRow],
+      hasArmadaGroups: true,
+      armadaGroupSelected: true,
+    });
+    expect(picked.map((r) => r.id).sort()).toEqual([-200, 99]);
   });
 });

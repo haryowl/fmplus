@@ -3,14 +3,16 @@ import { tenantHeaders } from "./tenant";
 
 export type TrackerDeviceGroupRef = { id: string; name: string };
 
+export type TrackerFixRowOpts = { ignoreArmadaLink?: boolean };
+
 export type TrackerLastFix = {
   deviceId: string;
   imei: string;
   label: string;
   armadaUserId: number | null;
   protocol: string;
-  lat: number;
-  lon: number;
+  lat: number | null;
+  lon: number | null;
   recordedAt: string | null;
   ageSec: number | null;
   speed: number | null;
@@ -48,23 +50,24 @@ export function hashDeviceId(id: string): number {
 }
 
 /** Map status-row ids (Armada or synthetic) → tracker device UUID from last fixes. */
-export function deviceIdByStatusRowId(fixes: TrackerLastFix[]): Map<number, string> {
+export function deviceIdByStatusRowId(
+  fixes: TrackerLastFix[],
+  opts?: TrackerFixRowOpts,
+): Map<number, string> {
   const map = new Map<number, string>();
   for (const fix of fixes) {
     if (!fix.deviceId) continue;
-    if (fix.armadaUserId != null && fix.armadaUserId > 0) {
-      map.set(fix.armadaUserId, fix.deviceId);
-    } else {
-      map.set(hashDeviceId(fix.deviceId), fix.deviceId);
-    }
+    const linked = !opts?.ignoreArmadaLink && fix.armadaUserId != null && fix.armadaUserId > 0;
+    map.set(linked ? fix.armadaUserId! : hashDeviceId(fix.deviceId), fix.deviceId);
   }
   return map;
 }
 
 /** Map a device last-fix into the Live Ops / Last Status row shape.
  * lastMs is vehicle_last_fix.recorded_at (device clock / Galileosky 0x20), not server receive time. */
-export function trackerFixToStatusRow(fix: TrackerLastFix): LastStatusRow {
-  const id = fix.armadaUserId != null && fix.armadaUserId > 0 ? fix.armadaUserId : hashDeviceId(fix.deviceId);
+export function trackerFixToStatusRow(fix: TrackerLastFix, opts?: TrackerFixRowOpts): LastStatusRow {
+  const linked = !opts?.ignoreArmadaLink && fix.armadaUserId != null && fix.armadaUserId > 0;
+  const id = linked ? fix.armadaUserId! : hashDeviceId(fix.deviceId);
   const lastMs = fix.recordedAt ? Date.parse(fix.recordedAt) : null;
   return {
     id,
@@ -73,8 +76,8 @@ export function trackerFixToStatusRow(fix: TrackerLastFix): LastStatusRow {
     utc: fix.recordedAt || "",
     deviceActivity: fix.recordedAt || "",
     lastMs: Number.isFinite(lastMs) ? lastMs : null,
-    lat: fix.lat,
-    lon: fix.lon,
+    lat: fix.lat == null || !Number.isFinite(fix.lat) ? null : fix.lat,
+    lon: fix.lon == null || !Number.isFinite(fix.lon) ? null : fix.lon,
     altitude: null,
     heading: fix.heading,
     speedKmh: fix.speed,
@@ -96,7 +99,9 @@ export function mergeArmadaRowsWithDeviceFixes(
   const useArmada = telematicsSource === "armada" || telematicsSource === "both";
   const useDevices = telematicsSource === "devices" || telematicsSource === "both";
   if (!useDevices) return useArmada ? armadaRows : [];
-  if (!useArmada) return fixes.map(trackerFixToStatusRow);
+  if (!useArmada) {
+    return fixes.map((f) => trackerFixToStatusRow(f, { ignoreArmadaLink: true }));
+  }
 
   const byId = new Map<number, LastStatusRow>();
   for (const row of armadaRows) byId.set(row.id, row);
@@ -135,9 +140,29 @@ export function mergeArmadaRowsWithDeviceFixes(
   return [...byId.values()];
 }
 
+/** Vehicles shown on Dispatch assign / New job, honoring telematics source. */
+export function dispatchVehiclePickerRows(opts: {
+  source: TelematicsSource | null;
+  deviceRows: LastStatusRow[];
+  groupRows: LastStatusRow[];
+  hasArmadaGroups: boolean;
+  armadaGroupSelected: boolean;
+}): LastStatusRow[] {
+  const { source, deviceRows, groupRows, hasArmadaGroups, armadaGroupSelected } = opts;
+  if (source === "devices" || source == null) return deviceRows;
+  if (source === "armada") return hasArmadaGroups ? groupRows : deviceRows;
+  const gpsOnly = deviceRows.filter((r) => r.id < 0);
+  if (hasArmadaGroups && armadaGroupSelected) {
+    const seen = new Set(groupRows.map((r) => r.id));
+    return [...groupRows, ...gpsOnly.filter((r) => !seen.has(r.id))];
+  }
+  if (hasArmadaGroups && !armadaGroupSelected) return gpsOnly.length ? gpsOnly : deviceRows;
+  return deviceRows;
+}
+
 export async function fetchTrackerLastStatus(
   signal?: AbortSignal,
-  opts?: { groupIds?: string[] },
+  opts?: { groupIds?: string[]; includeIdle?: boolean },
 ): Promise<{
   fixes: TrackerLastFix[];
   telematicsSource: TelematicsSource;
@@ -148,6 +173,7 @@ export async function fetchTrackerLastStatus(
   for (const id of opts?.groupIds || []) {
     if (id) q.append("groupId", id);
   }
+  if (opts?.includeIdle) q.set("includeIdle", "1");
   const qs = q.toString();
   const res = await fetch(`/api/tracker/last-status${qs ? `?${qs}` : ""}`, {
     credentials: "include",
@@ -168,9 +194,12 @@ export async function fetchTrackerLastStatus(
           Object.entries(data.displayPinLabels).map(([k, v]) => [k, String(v)]),
         )
       : {};
+  const src = data.telematicsSource;
+  const telematicsSource: TelematicsSource | undefined =
+    src === "armada" || src === "devices" || src === "both" ? src : undefined;
   return {
     fixes: data.fixes || [],
-    telematicsSource: data.telematicsSource || "both",
+    telematicsSource: telematicsSource || "devices",
     displayPinIds: Array.isArray(data.displayPinIds) ? data.displayPinIds.map(String) : [],
     displayPinLabels: labels,
   };
@@ -178,14 +207,41 @@ export async function fetchTrackerLastStatus(
 
 let telematicsSourceCache: Promise<TelematicsSource> | null = null;
 
-/** Tenant telematics source (cached per page load). */
+export function invalidateTelematicsSourceCache() {
+  telematicsSourceCache = null;
+}
+
+function abortError(): Error {
+  return Object.assign(new Error("Aborted"), { name: "AbortError" });
+}
+
+/** Tenant telematics source (cached per page load). Failures are not cached as "both". */
 export function fetchTelematicsSource(signal?: AbortSignal): Promise<TelematicsSource> {
   if (!telematicsSourceCache) {
-    telematicsSourceCache = fetchTrackerLastStatus(signal)
-      .then((s) => s.telematicsSource || "both")
-      .catch(() => "both" as TelematicsSource);
+    telematicsSourceCache = fetchTrackerLastStatus()
+      .then((s) => s.telematicsSource || "devices")
+      .catch((err) => {
+        telematicsSourceCache = null;
+        throw err;
+      });
   }
-  return telematicsSourceCache;
+  const pending = telematicsSourceCache;
+  if (!signal) return pending;
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(abortError());
+    signal.addEventListener("abort", onAbort, { once: true });
+    pending.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      },
+    );
+  });
 }
 
 export async function fetchTrackerDeviceGroups(

@@ -35,6 +35,7 @@ import {
   type DeskPrivileges,
 } from "../lib/deskPrivileges";
 import { postLoginHref } from "../lib/deskHome";
+import { invalidateTelematicsSourceCache } from "../lib/trackerDevices";
 
 type AdminTenant = {
   id: string;
@@ -1281,6 +1282,7 @@ export default function AdminConsole() {
           }),
         });
         setNotice(`Created tenant ${created.tenant.key}`);
+        invalidateTelematicsSourceCache();
         await loadTenants();
         selectTenant(created.tenant);
       } else if (selectedId) {
@@ -1289,6 +1291,7 @@ export default function AdminConsole() {
           body: JSON.stringify(payload),
         });
         setNotice(`Saved ${updated.tenant.key}`);
+        invalidateTelematicsSourceCache();
         setDraft(draftFromTenant(updated.tenant));
         await loadTenants();
       }

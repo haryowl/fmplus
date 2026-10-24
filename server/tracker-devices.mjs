@@ -1279,14 +1279,16 @@ export async function buildTelematicsPosMap(tenantId, vaultTenant, opts = {}) {
 /**
  * All last fixes for a tenant (Fleet Live / Live Ops overlay / device-only fleet).
  * @param {string} tenantId
- * @param {{ groupIds?: string[] }} [opts]
+ * @param {{ groupIds?: string[], includeNoFix?: boolean }} [opts]
  */
 export async function listTenantLastFixes(tenantId, opts = {}) {
   const groupIds = Array.isArray(opts.groupIds) ? opts.groupIds.filter(Boolean) : [];
   const groupFilter = groupIds.length ? groupIds : null;
+  const includeNoFix = Boolean(opts.includeNoFix);
   const pinIds = Array.isArray(opts.displayPinIds)
     ? opts.displayPinIds
     : await tenantFleetLiveDisplayPins(tenantId);
+  const fixJoin = includeNoFix ? "LEFT JOIN" : "JOIN";
 
   // Single round-trip: filter by group membership + aggregate group labels.
   // Avoids deviceIdsInGroups + groupSummariesByDeviceIds (2 extra queries per poll).
@@ -1297,7 +1299,7 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
             lf.odometer, lf.mapped_attrs, lf.source_protocol,
             COALESCE(gs.groups_json, '[]'::json) AS groups_json
      FROM tracker_devices d
-     JOIN vehicle_last_fix lf ON lf.device_id = d.id
+     ${fixJoin} vehicle_last_fix lf ON lf.device_id = d.id
      LEFT JOIN LATERAL (
        SELECT json_agg(
                 json_build_object('id', g.id, 'name', g.name)
@@ -1339,6 +1341,8 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
         .filter((g) => g && g.id && g.name)
         .map((g) => ({ id: String(g.id), name: String(g.name) }));
     }
+    const lat = r.lat == null ? null : Number(r.lat);
+    const lon = r.lon == null ? null : Number(r.lon);
     return {
       deviceId: r.device_id,
       imei: r.imei,
@@ -1347,8 +1351,8 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
       vehicleType: r.vehicle_type || "",
       armadaUserId: r.armada_user_id == null ? null : Number(r.armada_user_id),
       protocol: r.protocol,
-      lat: Number(r.lat),
-      lon: Number(r.lon),
+      lat: lat != null && Number.isFinite(lat) ? lat : null,
+      lon: lon != null && Number.isFinite(lon) ? lon : null,
       recordedAt,
       ageSec,
       speed: r.speed == null ? null : Number(r.speed),

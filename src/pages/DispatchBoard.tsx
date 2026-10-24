@@ -32,11 +32,14 @@ import { isNativeDispatchApp } from "../lib/nativeField";
 import { customersHref, goodsHref, navigateView, writeLocationSearch } from "../lib/routing";
 import {
   deviceIdByStatusRowId,
+  dispatchVehiclePickerRows,
   fetchDeviceGroupScope,
   fetchTrackerDeviceDay,
   fetchTrackerDeviceGroups,
+  fetchTelematicsSource,
   fetchTrackerLastStatus,
   mergeArmadaRowsWithDeviceFixes,
+  type TelematicsSource,
   type TrackerDeviceGroup,
 } from "../lib/trackerDevices";
 import { nextDatedCode } from "../lib/datedCode";
@@ -309,6 +312,7 @@ export default function DispatchBoard() {
   const [deviceGroupMemberCount, setDeviceGroupMemberCount] = useState(0);
   const [deviceStatusRows, setDeviceStatusRows] = useState<LastStatusRow[]>([]);
   const [deviceIdByRowId, setDeviceIdByRowId] = useState<Map<number, string>>(() => new Map());
+  const [telematicsSource, setTelematicsSource] = useState<TelematicsSource | null>(null);
   const [userId, setUserId] = useState(query.userId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
@@ -436,7 +440,16 @@ export default function DispatchBoard() {
       }));
     return [...fromStatus, ...extras];
   }, [selectedGroup, deviceStatusRows, groupUserIdSet, users]);
-  const vehiclePickerRows = groups.length ? groupVehicleRows : deviceStatusRows;
+  const devicesOnly = telematicsSource === "devices";
+  const showArmadaPicker = telematicsSource === "armada" || telematicsSource === "both";
+  const vehiclePickerRows = dispatchVehiclePickerRows({
+    source: telematicsSource,
+    deviceRows: deviceStatusRows,
+    groupRows: groupVehicleRows,
+    hasArmadaGroups: groups.length > 0,
+    armadaGroupSelected: Boolean(selectedGroup),
+  });
+  const needArmadaGroup = telematicsSource === "armada" && groups.length > 0;
   const selected = useMemo(() => jobs.find((j) => j.id === selectedId) || null, [jobs, selectedId]);
   const draftPin =
     orderForm.lat != null && orderForm.lon != null
@@ -818,12 +831,28 @@ export default function DispatchBoard() {
   useEffect(() => {
     writeLocationSearch({
       deviceGroupId: deviceGroupId || null,
-      groupId: groupId || null,
+      groupId: telematicsSource === "devices" ? null : groupId || null,
     });
-  }, [deviceGroupId, groupId]);
+  }, [deviceGroupId, groupId, telematicsSource]);
 
   useEffect(() => {
     if (!ready) return;
+    const ac = new AbortController();
+    fetchTelematicsSource(ac.signal)
+      .then(setTelematicsSource)
+      .catch((err: Error) => {
+        if (err.name === "AbortError") return;
+      });
+    return () => ac.abort();
+  }, [ready]);
+
+  useEffect(() => {
+    if (!ready || !telematicsSource || telematicsSource === "devices") {
+      setGroups([]);
+      setUsers([]);
+      if (telematicsSource === "devices") setGroupId("");
+      return;
+    }
     const ac = new AbortController();
     fetchGroups(ac.signal)
       .then((list) => {
@@ -837,7 +866,7 @@ export default function DispatchBoard() {
         setGroups([]);
       });
     return () => ac.abort();
-  }, [ready]);
+  }, [ready, telematicsSource]);
 
   useEffect(() => {
     if (!ready) return;
@@ -851,46 +880,56 @@ export default function DispatchBoard() {
   useEffect(() => {
     if (!ready) return;
     const ac = new AbortController();
+    const source = telematicsSource;
     Promise.all([
       deviceGroupId
         ? fetchDeviceGroupScope([deviceGroupId], ac.signal).catch(() => null)
         : Promise.resolve(null),
       fetchTrackerLastStatus(ac.signal, {
         groupIds: deviceGroupId ? [deviceGroupId] : undefined,
+        includeIdle: source !== "armada",
       }).catch(() => ({
         fixes: [],
-        telematicsSource: "both" as const,
+        telematicsSource: source,
         displayPinIds: [] as string[],
         displayPinLabels: {} as Record<string, string>,
       })),
-      fetchUsersStatus({ signal: ac.signal }).catch(() => [] as LastStatusRow[]),
+      source === "devices" || source == null
+        ? Promise.resolve([] as LastStatusRow[])
+        : fetchUsersStatus({ signal: ac.signal }).catch(() => [] as LastStatusRow[]),
     ])
       .then(([scope, deviceStatus, armadaRows]) => {
+        const liveSource = deviceStatus.telematicsSource || source;
+        if (liveSource) setTelematicsSource(liveSource);
+        if (!liveSource) {
+          setDeviceStatusRows([]);
+          setDeviceIdByRowId(new Map());
+          return;
+        }
+        const devicesOnlyLive = liveSource === "devices";
+        const rowIdOpts = devicesOnlyLive ? { ignoreArmadaLink: true } : undefined;
         if (deviceGroupId) {
           setDeviceGroupArmadaIds(new Set(scope?.armadaUserIds || []));
           setDeviceGroupDeviceIds(new Set(scope?.deviceIds || []));
           setDeviceGroupMemberCount(scope?.memberCount || scope?.deviceIds?.length || 0);
           const allow = new Set(scope?.armadaUserIds || []);
-          const armadaScoped = allow.size ? armadaRows.filter((r) => allow.has(r.id)) : [];
-          setDeviceIdByRowId(deviceIdByStatusRowId(deviceStatus.fixes));
+          const armadaScoped =
+            devicesOnlyLive ? [] : allow.size ? armadaRows.filter((r) => allow.has(r.id)) : [];
+          setDeviceIdByRowId(deviceIdByStatusRowId(deviceStatus.fixes, rowIdOpts));
           setDeviceStatusRows(
-            mergeArmadaRowsWithDeviceFixes(
-              armadaScoped,
-              deviceStatus.fixes,
-              deviceStatus.telematicsSource === "armada" ? "devices" : deviceStatus.telematicsSource,
-            ),
+            mergeArmadaRowsWithDeviceFixes(armadaScoped, deviceStatus.fixes, liveSource),
           );
           return;
         }
         setDeviceGroupArmadaIds(null);
         setDeviceGroupDeviceIds(null);
         setDeviceGroupMemberCount(0);
-        setDeviceIdByRowId(deviceIdByStatusRowId(deviceStatus.fixes));
+        setDeviceIdByRowId(deviceIdByStatusRowId(deviceStatus.fixes, rowIdOpts));
         setDeviceStatusRows(
           mergeArmadaRowsWithDeviceFixes(
-            armadaRows,
+            devicesOnlyLive ? [] : armadaRows,
             deviceStatus.fixes,
-            deviceStatus.telematicsSource,
+            liveSource,
           ),
         );
       })
@@ -908,10 +947,10 @@ export default function DispatchBoard() {
         setDeviceIdByRowId(new Map());
       });
     return () => ac.abort();
-  }, [ready, deviceGroupId]);
+  }, [ready, deviceGroupId, telematicsSource]);
 
   useEffect(() => {
-    if (!selectedGroup) {
+    if (!selectedGroup || devicesOnly) {
       setUsers([]);
       setUsersLoading(false);
       return;
@@ -930,7 +969,7 @@ export default function DispatchBoard() {
         if (!ac.signal.aborted) setUsersLoading(false);
       });
     return () => ac.abort();
-  }, [selectedGroup?.id]);
+  }, [selectedGroup?.id, devicesOnly]);
 
   useEffect(() => {
     if (!ready || !query.tenantKey) return;
@@ -2090,11 +2129,11 @@ export default function DispatchBoard() {
       const trackerDeviceId =
         !isSales && userId ? deviceIdByRowId.get(Number(userId)) || null : null;
       const armadaFromUser =
-        !isSales && selectedUser && String(selectedUser.id) === userId
+        !isSales && !devicesOnly && selectedUser && String(selectedUser.id) === userId
           ? Number(selectedUser.id)
           : null;
       const armadaFromDevice =
-        deviceRow && deviceRow.id > 0 ? deviceRow.id : null;
+        !devicesOnly && deviceRow && deviceRow.id > 0 ? deviceRow.id : null;
       const job = await createDispatchJob({
         title: jobTitle.trim(),
         serviceDate: planDate,
@@ -2558,7 +2597,7 @@ export default function DispatchBoard() {
               </button>
             ) : null}
           </div>
-          {groups.length ? (
+          {showArmadaPicker && groups.length ? (
             <label className="field">
               <span className="visually-hidden">Armada group</span>
               <select
@@ -2579,7 +2618,7 @@ export default function DispatchBoard() {
             </label>
           ) : null}
           <label className="field">
-            <span className="visually-hidden">Device group</span>
+            <span className={devicesOnly ? undefined : "visually-hidden"}>Device group</span>
             <select
               value={deviceGroupId}
               onChange={(e) => setDeviceGroupId(e.target.value)}
@@ -3585,7 +3624,7 @@ export default function DispatchBoard() {
               </label>
               {!isSales ? (
                 <>
-                  {groups.length ? (
+                  {showArmadaPicker && groups.length ? (
                     <label className="field">
                       Armada group
                       <select
@@ -3609,16 +3648,18 @@ export default function DispatchBoard() {
                     <select
                       value={userId}
                       onChange={(e) => setUserId(e.target.value)}
-                      disabled={Boolean(groups.length) && !selectedGroup}
+                      disabled={needArmadaGroup && !selectedGroup}
                     >
                       <option value="">
-                        {groups.length && !selectedGroup
+                        {needArmadaGroup && !selectedGroup
                           ? "Pick group first"
                           : usersLoading
                             ? "Loading vehicles…"
                             : vehiclePickerRows.length
                               ? "Select vehicle"
-                              : "No vehicles in this group"}
+                              : devicesOnly
+                                ? "No tracker devices"
+                                : "No vehicles in this group"}
                       </option>
                       {vehiclePickerRows.map((r) => {
                         const cap = capacityForVehicle(
@@ -3630,7 +3671,7 @@ export default function DispatchBoard() {
                           <option key={r.id} value={r.id}>
                             {r.name}
                             {r.username ? ` (${r.username})` : ""}
-                            {r.id > 0 ? ` · #${r.id}` : " · GPS"}
+                            {devicesOnly || r.id < 0 ? " · GPS" : ` · #${r.id}`}
                             {" · "}
                             {isPassenger
                               ? `${cap.seatCapacity ?? cap.volumeCapacityM3 ?? 4} seats / ${cap.luggageCapacityKg ?? cap.weightCapacityKg ?? 50} kg`
@@ -5021,7 +5062,7 @@ export default function DispatchBoard() {
 
                 {!isSales ? (
                   <div className="dispatch-create-grid" style={{ marginBottom: 12 }}>
-                    {groups.length ? (
+                    {showArmadaPicker && groups.length ? (
                       <label className="field">
                         Armada group
                         <select
@@ -5044,13 +5085,13 @@ export default function DispatchBoard() {
                       Device / vehicle
                       <select
                         value={(() => {
-                          if (selected.armadaUserId != null && selected.armadaUserId > 0) {
-                            return String(selected.armadaUserId);
-                          }
                           if (selected.trackerDeviceId) {
                             for (const [rowId, deviceId] of deviceIdByRowId) {
                               if (deviceId === selected.trackerDeviceId) return String(rowId);
                             }
+                          }
+                          if (!devicesOnly && selected.armadaUserId != null && selected.armadaUserId > 0) {
+                            return String(selected.armadaUserId);
                           }
                           return "";
                         })()}
@@ -5058,7 +5099,7 @@ export default function DispatchBoard() {
                           busy ||
                           selected.status === "done" ||
                           selected.status === "cancelled" ||
-                          (Boolean(groups.length) && !selectedGroup)
+                          (needArmadaGroup && !selectedGroup)
                         }
                         onChange={(e) => {
                           const raw = e.target.value;
@@ -5078,18 +5119,18 @@ export default function DispatchBoard() {
                           const trackerDeviceId = deviceIdByRowId.get(rowId) || null;
                           void updateJob(selected.id, {
                             trackerDeviceId,
-                            armadaUserId: rowId > 0 ? rowId : null,
+                            armadaUserId: devicesOnly ? null : rowId > 0 ? rowId : null,
                             armadaUsername: row?.username || "",
                             userDisplayName: row?.name || "",
                           });
                         }}
                       >
                         <option value="">
-                          {groups.length && !selectedGroup ? "Pick group first" : "Unassigned"}
+                          {needArmadaGroup && !selectedGroup ? "Pick group first" : "Unassigned"}
                         </option>
                         {(() => {
                           const currentId =
-                            selected.armadaUserId != null && selected.armadaUserId > 0
+                            !devicesOnly && selected.armadaUserId != null && selected.armadaUserId > 0
                               ? selected.armadaUserId
                               : null;
                           const rows =
@@ -5118,7 +5159,7 @@ export default function DispatchBoard() {
                             <option key={r.id} value={r.id}>
                               {r.name}
                               {r.username ? ` (${r.username})` : ""}
-                              {r.id > 0 ? ` · #${r.id}` : " · GPS"}
+                              {devicesOnly || r.id < 0 ? " · GPS" : ` · #${r.id}`}
                             </option>
                           ));
                         })()}
