@@ -35,6 +35,8 @@ import {
 import { BrandMark } from "../components/BrandMark";
 import { FleetLiveAlertsPanel } from "../components/FleetLiveAlertsPanel";
 import { FleetLiveDashboardPanel } from "../components/FleetLiveDashboardPanel";
+import { FleetLiveFleetPanel } from "../components/FleetLiveFleetPanel";
+import { FleetLiveFullPanel } from "../components/FleetLiveFullPanel";
 import { FleetLiveHistoryPanel } from "../components/FleetLiveHistoryPanel";
 import { FleetLiveMediaPanel } from "../components/FleetLiveMediaPanel";
 import { FleetLiveRankingPanel } from "../components/FleetLiveRankingPanel";
@@ -88,7 +90,16 @@ import {
 } from "../lib/fleetAlertRules";
 
 type ListTab = "all" | LiveOpsClass | "alert" | "maintenance";
-type FleetSection = "live" | "dashboard" | "ranking" | "trips" | "history" | "media" | "alerts";
+type FleetSection =
+  | "live"
+  | "full"
+  | "fleet"
+  | "dashboard"
+  | "ranking"
+  | "trips"
+  | "history"
+  | "media"
+  | "alerts";
 
 const FLEET_SECTIONS: Array<{
   id: FleetSection;
@@ -104,6 +115,8 @@ const FLEET_SECTIONS: Array<{
     | "ackFleetAlerts";
 }> = [
   { id: "live", label: "Live", privilege: "viewFleetLive" },
+  { id: "full", label: "Full", feature: "fleetLiveFull", privilege: "viewFleetLive" },
+  { id: "fleet", label: "Fleet", feature: "fleetLiveFleet", privilege: "viewFleetLive" },
   { id: "dashboard", label: "Dashboard", feature: "fleetLiveDashboard", privilege: "viewFleetDashboard" },
   { id: "ranking", label: "Ranking", feature: "fleetLiveRanking", privilege: "viewFleetRanking" },
   { id: "trips", label: "Trips", feature: "fleetLiveTrips", privilege: "viewFleetTrips" },
@@ -1092,6 +1105,22 @@ export default function FleetLive() {
       {(bootError || fetchError) && (
         <div className="banner error fleet-cc-banner">{bootError || fetchError}</div>
       )}
+
+      {section === "full" && fleetModuleOk && canViewLive ? (
+        <FleetLiveFullPanel
+          devices={tripDevices}
+          timezone={timezone}
+          initialDeviceId={initialTripDeviceId}
+        />
+      ) : null}
+
+      {section === "fleet" && fleetModuleOk && canViewLive ? (
+        <FleetLiveFleetPanel
+          devices={tripDevices}
+          timezone={timezone}
+          initialDeviceIds={initialTripDeviceId ? [initialTripDeviceId] : undefined}
+        />
+      ) : null}
 
       {section === "dashboard" && fleetModuleOk ? (
         <FleetLiveDashboardPanel

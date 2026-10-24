@@ -146,7 +146,10 @@ export function vehicleTrackHref(opts: {
     params.set("deviceId", deviceId);
     params.delete("userId");
     params.delete("userIds");
-    params.set("section", kind === "trips" ? "trips" : "history");
+    params.set(
+      "section",
+      kind === "trips" ? "trips" : kind === "history" ? "history" : "full",
+    );
     const q = params.toString();
     return fleetLiveHref(q ? `?${q}` : "");
   }

@@ -121,7 +121,7 @@ describe("vehicleTrackHref", () => {
       telematicsSource: "devices",
     });
     expect(href).toContain("/fleet-live");
-    expect(href).toContain("section=history");
+    expect(href).toContain("section=full");
     expect(href).not.toContain("userId=");
   });
 

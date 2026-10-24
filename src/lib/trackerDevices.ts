@@ -252,6 +252,7 @@ export type TrackerDayPoint = {
   heading: number | null;
   ignition: boolean | null;
   odometerKm: number | null;
+  altitude?: number | null;
   recordedAt: string;
   sourceProtocol?: string;
 };

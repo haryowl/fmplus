@@ -416,6 +416,8 @@ export function IcoUnits(p: IconProps) {
 
 export const SECTION_ICONS = {
   live: IcoLive,
+  full: IcoOdo,
+  fleet: IcoUtil,
   dashboard: IcoDash,
   ranking: IcoRank,
   trips: IcoTrips,

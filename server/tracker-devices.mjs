@@ -1456,7 +1456,7 @@ export async function listDeviceDayFixes(tenantId, deviceId, opts = {}) {
   if (!own.rows[0]) return { deviceId: device, date, points: [], error: "Device not found" };
 
   const rows = await dbQuery(
-    `SELECT lat, lon, speed, heading, ignition, odometer, recorded_at, source_protocol
+    `SELECT lat, lon, speed, heading, ignition, odometer, altitude, recorded_at, source_protocol
      FROM vehicle_fixes
      WHERE tenant_id = $1
        AND device_id = $2::uuid
@@ -1486,6 +1486,7 @@ export async function listDeviceDayFixes(tenantId, deviceId, opts = {}) {
       heading: r.heading == null ? null : Number(r.heading),
       ignition: r.ignition == null ? null : Boolean(r.ignition),
       odometerKm: r.odometer == null ? null : Number(r.odometer),
+      altitude: r.altitude == null ? null : Number(r.altitude),
       recordedAt:
         r.recorded_at instanceof Date ? r.recorded_at.toISOString() : String(r.recorded_at),
       sourceProtocol: r.source_protocol || "",

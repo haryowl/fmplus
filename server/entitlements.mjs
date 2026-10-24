@@ -37,6 +37,8 @@ export const FEATURE_KEYS = [
   /** Show goods sell / fare amounts on Field / POD / WhatsApp */
   "dispatchShowMoneyOnField",
   /** Fleet Live section features (module.fleetLive must be on) */
+  "fleetLiveFull",
+  "fleetLiveFleet",
   "fleetLiveDashboard",
   "fleetLiveRanking",
   "fleetLiveTrips",
@@ -110,6 +112,8 @@ export function defaultEntitlements() {
       dispatchPassenger: false,
       dispatchSales: false,
       dispatchShowMoneyOnField: false,
+      fleetLiveFull: true,
+      fleetLiveFleet: true,
       fleetLiveDashboard: true,
       fleetLiveRanking: true,
       fleetLiveTrips: true,

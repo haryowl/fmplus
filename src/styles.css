@@ -3975,6 +3975,55 @@ html.onesheet-root body {
   background: var(--surface, #fff);
 }
 
+.fleet-cc-analytics {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding-bottom: 8px;
+}
+
+.fleet-cc-analytics-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.fleet-cc-analytics-hint {
+  margin: 0;
+  font-size: 0.74rem;
+}
+
+.fleet-cc-device-picks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.fleet-cc-insight-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 4px 8px;
+  display: grid;
+  gap: 10px;
+}
+
+.fleet-cc-insight-list strong {
+  display: block;
+  font-size: 0.84rem;
+}
+
+.fleet-cc-insight-list p {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  color: var(--ink-soft, #3e5966);
+}
+
 /* Shared section shell for Dashboard / Ranking / Trips / History / Media / Alerts */
 .fleet-sec {
   display: flex;
@@ -7498,6 +7547,10 @@ html.onesheet-root body {
   background-image: none !important;
   padding-right: 0 !important;
   font-weight: 550;
+}
+
+.fleet-cc-pill input[type="date"] {
+  min-width: 132px;
 }
 
 .fleet-cc-pill select:focus,

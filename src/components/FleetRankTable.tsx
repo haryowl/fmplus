@@ -29,6 +29,7 @@ type Props = {
   dense?: boolean;
   /** Armada custom-field driver name by user id (optional). */
   drivers?: Record<number, string>;
+  hrefFor?: (userId: number) => string;
 };
 
 function formatCell(id: RankColumnId, n: number): string {
@@ -41,7 +42,7 @@ function formatCell(id: RankColumnId, n: number): string {
   return formatKm(n);
 }
 
-export function FleetRankTable({ vehicles, dense, drivers }: Props) {
+export function FleetRankTable({ vehicles, dense, drivers, hrefFor }: Props) {
   const [sortId, setSortId] = useState<RankColumnId>("gps");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
 
@@ -101,7 +102,7 @@ export function FleetRankTable({ vehicles, dense, drivers }: Props) {
                   {row.label}
                 </span>
                 {!dense && (
-                  <a className="rank-open" href={openVehicleHref(row.userId)}>
+                  <a className="rank-open" href={(hrefFor || openVehicleHref)(row.userId)}>
                     Open
                   </a>
                 )}
