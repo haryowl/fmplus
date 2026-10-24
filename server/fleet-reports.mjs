@@ -97,7 +97,7 @@ function normalizeColumns(raw, grain) {
 export function normalizeReportSpec(raw) {
   const s = raw && typeof raw === "object" ? raw : {};
   const grain = s.grain === "daily" ? "daily" : "fixes";
-  const rangeKind = ["today", "last7", "last30", "custom"].includes(s.rangeKind) ? s.rangeKind : "today";
+  const rangeKind = ["today", "last7", "last30", "custom"].includes(s.rangeKind) ? s.rangeKind : "last7";
   const scopeKind = ["all", "group", "devices"].includes(s.scopeKind) ? s.scopeKind : "all";
   const deviceIds = Array.isArray(s.scopeDeviceIds)
     ? s.scopeDeviceIds.filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, 80)
@@ -287,6 +287,53 @@ export async function listReportColumnCatalog(tenantId, specLike = {}) {
     if (mapped.length >= 80) break;
   }
   return { columns: [...REPORT_FIX_COLUMNS, ...mapped] };
+}
+
+export async function estimateFleetReport(tenantId, specLike = {}) {
+  const spec = normalizeReportSpec(specLike);
+  const range = resolveReportRange(spec);
+  const startMs = Date.parse(`${range.from}T00:00:00${range.timezone}`);
+  const endMs = Date.parse(`${range.to}T23:59:59.999${range.timezone}`);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
+    return { rows: 0, bytes: 0, range };
+  }
+  const params = [tenantId, new Date(startMs).toISOString(), new Date(endMs).toISOString()];
+  const extra = scopeWhere(spec, params);
+  let rows = 0;
+  if (spec.grain === "daily") {
+    params.push(range.timezone);
+    const tzIdx = params.length;
+    const q = await dbQuery(
+      `SELECT COUNT(*)::int AS n FROM (
+         SELECT 1
+         FROM vehicle_fixes vf
+         JOIN tracker_devices d ON d.id = vf.device_id AND d.tenant_id = vf.tenant_id
+         WHERE vf.tenant_id = $1
+           AND vf.recorded_at >= $2::timestamptz
+           AND vf.recorded_at <= $3::timestamptz
+           AND d.enabled = true
+           ${extra}
+         GROUP BY d.id, to_char((vf.recorded_at AT TIME ZONE 'UTC') + ($${tzIdx}::interval), 'YYYY-MM-DD')
+       ) t`,
+      params,
+    );
+    rows = Number(q.rows[0]?.n) || 0;
+  } else {
+    const q = await dbQuery(
+      `SELECT COUNT(*)::int AS n
+       FROM vehicle_fixes vf
+       JOIN tracker_devices d ON d.id = vf.device_id AND d.tenant_id = vf.tenant_id
+       WHERE vf.tenant_id = $1
+         AND vf.recorded_at >= $2::timestamptz
+         AND vf.recorded_at <= $3::timestamptz
+         AND d.enabled = true
+         ${extra}`,
+      params,
+    );
+    rows = Number(q.rows[0]?.n) || 0;
+  }
+  const bytes = rows * Math.max(1, spec.columns.length) * 22;
+  return { rows, bytes, range };
 }
 
 export async function runFleetReport(tenantId, specLike, opts = {}) {

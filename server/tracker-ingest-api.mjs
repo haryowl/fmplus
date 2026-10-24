@@ -657,6 +657,26 @@ export async function handleTrackerIngestRequest(req, res) {
     }
   }
 
+  if (url.pathname === "/api/tracker/reports/estimate" && req.method === "POST") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      if (!(await requireFleetFeature(res, dbTenant.id, "fleetLiveReports"))) return true;
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "viewFleetLive"))) return true;
+      const raw = await readBody(req);
+      const body = raw.trim() ? JSON.parse(raw) : {};
+      const { estimateFleetReport } = await import("./fleet-reports.mjs");
+      json(res, 200, await estimateFleetReport(dbTenant.id, body.spec || body));
+      return true;
+    } catch (err) {
+      json(res, err.status || 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
   if (url.pathname === "/api/tracker/reports/run" && req.method === "POST") {
     try {
       const dbTenant = await resolveDbTenant(req);

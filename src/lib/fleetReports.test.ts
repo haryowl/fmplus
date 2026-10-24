@@ -1,15 +1,42 @@
 import { describe, expect, it } from "vitest";
 import {
+  categorizeReportColumn,
+  formatReportBytes,
+  parseReportEmails,
+} from "./fleetReports";
+import {
   normalizeReportSpec,
   reportToCsv,
   resolveReportRange,
 } from "../../server/fleet-reports.mjs";
 
+describe("categorizeReportColumn", () => {
+  it("groups cooked and mapped keys", () => {
+    expect(categorizeReportColumn("device")).toBe("essential");
+    expect(categorizeReportColumn("heading")).toBe("location");
+    expect(categorizeReportColumn("mapped.speed.gps")).toBe("location");
+    expect(categorizeReportColumn("mapped.battery_voltage")).toBe("power");
+    expect(categorizeReportColumn("mapped.din13")).toBe("io");
+    expect(categorizeReportColumn("mapped.gps.valid")).toBe("gnss");
+    expect(categorizeReportColumn("protocol")).toBe("system");
+  });
+});
+
+describe("parseReportEmails / formatReportBytes", () => {
+  it("tokenizes emails and formats size", () => {
+    expect(parseReportEmails("ops@example.com, night@example.com")).toEqual([
+      "ops@example.com",
+      "night@example.com",
+    ]);
+    expect(formatReportBytes(4.2 * 1024 * 1024)).toBe("4.2 MB");
+  });
+});
+
 describe("normalizeReportSpec", () => {
   it("defaults Device Source fixes columns", () => {
     const spec = normalizeReportSpec({});
     expect(spec.grain).toBe("fixes");
-    expect(spec.rangeKind).toBe("today");
+    expect(spec.rangeKind).toBe("last7");
     expect(spec.columns).toEqual(["device", "recorded_at", "lat", "lon", "speed", "ignition"]);
   });
 

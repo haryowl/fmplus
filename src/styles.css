@@ -6279,20 +6279,462 @@ html.onesheet-root body {
   margin: 0;
 }
 
-.fleet-reports-cols {
+.fleet-rpt-builder {
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #d5e0e6);
+  border-radius: 16px;
+  padding: 18px 20px 16px;
+  box-shadow: var(--shadow, 0 1px 0 rgba(14, 46, 58, 0.06));
   display: grid;
-  gap: 8px;
-  margin: 12px 0;
+  gap: 16px;
 }
 
-.fleet-reports-cols h4 {
+.fleet-rpt-builder .fleet-cc-field > span {
+  font-size: 0.64rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.fleet-rpt-builder .fleet-cc-field input,
+.fleet-rpt-builder .fleet-cc-field select {
+  height: 38px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.fleet-rpt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fleet-rpt-head-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fleet-rpt-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 750;
+}
+
+.fleet-rpt-draft {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ink, #0f2a33);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-style: normal;
+}
+
+.fleet-rpt-keys {
+  margin: 0;
+  font-size: 0.72rem;
+}
+
+.fleet-rpt-fields {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.fleet-rpt-fields .fleet-cc-field input,
+.fleet-rpt-fields .fleet-cc-field select {
+  min-width: 0;
+  width: 100%;
+}
+
+.fleet-rpt-cols {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line, #d5e0e6);
+}
+
+.fleet-rpt-cols-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fleet-rpt-cols-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.fleet-rpt-pill {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line, #d5e0e6);
+  border-radius: 999px;
+  background: #fff;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ink, #0f2a33);
+  cursor: pointer;
+}
+
+.fleet-rpt-pill:hover {
+  border-color: var(--ink-soft, #5a6570);
+}
+
+.fleet-rpt-col-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fleet-rpt-cols-body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 280px;
+}
+
+.fleet-rpt-cats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fleet-rpt-cats h4 {
+  margin: 0 8px 6px;
+  font-size: 0.64rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint, #6d8794);
+}
+
+.fleet-rpt-cats button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-soft, #5a6570);
+  cursor: pointer;
+  text-align: left;
+}
+
+.fleet-rpt-cats button em {
+  font-style: normal;
+  font-size: 0.7rem;
+  color: var(--ink-faint, #6d8794);
+}
+
+.fleet-rpt-cats button.is-active {
+  background: var(--ink, #0f2a33);
+  color: #fff;
+}
+
+.fleet-rpt-cats button.is-active em {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.fleet-rpt-tip {
+  margin: 10px 2px 0;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.fleet-rpt-picker {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fleet-rpt-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--line, #d5e0e6);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink-faint, #6d8794);
+}
+
+.fleet-rpt-search kbd {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--ink-faint, #6d8794);
+  border: 1px solid var(--line, #d5e0e6);
+  border-radius: 6px;
+  padding: 0 6px;
+  line-height: 18px;
+}
+
+.fleet-rpt-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.84rem;
+  color: var(--ink, #0f2a33);
+}
+
+.fleet-rpt-search input:focus {
+  outline: none;
+}
+
+.fleet-rpt-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fleet-rpt-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 8px;
+  border: 1px solid var(--line, #d5e0e6);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.76rem;
+  cursor: grab;
+}
+
+.fleet-rpt-chips li.is-dragging {
+  opacity: 0.5;
+}
+
+.fleet-rpt-chips strong {
+  font-weight: 650;
+}
+
+.fleet-rpt-chips code,
+.fleet-rpt-checks code {
+  font-size: 0.68rem;
+  color: var(--ink-faint, #6d8794);
+}
+
+.fleet-rpt-grip {
+  width: 8px;
+  height: 10px;
+  background: radial-gradient(circle, var(--ink-faint, #6d8794) 1px, transparent 1.4px);
+  background-size: 4px 4px;
+}
+
+.fleet-rpt-chip-x {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint, #6d8794);
+  padding: 0;
+  cursor: pointer;
+}
+
+.fleet-rpt-empty-sel {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.fleet-rpt-cat-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.78rem;
+}
+
+.fleet-rpt-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 16px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.fleet-rpt-checks label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.fleet-rpt-checks label span {
+  min-width: 0;
+}
+
+.fleet-rpt-mail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) 140px 140px;
+  gap: 10px;
+  align-items: start;
+}
+
+.fleet-rpt-recip {
+  min-width: 0;
+}
+
+.fleet-rpt-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 4px 8px;
+  border: 1px solid var(--line, #d5e0e6);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.fleet-rpt-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--line, #d5e0e6);
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.fleet-rpt-token button {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--ink-faint, #6d8794);
+  cursor: pointer;
+}
+
+.fleet-rpt-tokens input {
+  flex: 1 1 140px;
+  min-width: 120px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.84rem;
+}
+
+.fleet-rpt-tokens input:focus {
+  outline: none;
+}
+
+.fleet-rpt-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fleet-rpt-estimate {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #fff7e0;
+  color: #8a5a10;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.fleet-rpt-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line, #d5e0e6);
+}
+
+.fleet-rpt-foot p {
   margin: 0;
 }
 
-.fleet-reports-col-grid {
+.fleet-rpt-foot-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 12px;
+  gap: 8px;
+}
+
+.fleet-rpt-save,
+.fleet-rpt-preview-btn {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.fleet-rpt-save {
+  border: 1px solid var(--line, #d5e0e6);
+  background: #fff;
+  color: var(--ink, #0f2a33);
+}
+
+.fleet-rpt-preview-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: var(--ink, #0f2a33);
+  color: #fff;
+}
+
+.fleet-rpt-preview-btn:disabled,
+.fleet-rpt-save:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+@media (max-width: 1100px) {
+  .fleet-rpt-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .fleet-rpt-fields,
+  .fleet-rpt-mail,
+  .fleet-rpt-cols-body,
+  .fleet-rpt-checks {
+    grid-template-columns: 1fr;
+  }
 }
 
 .fleet-reports-table-wrap {

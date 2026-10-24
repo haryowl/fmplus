@@ -378,6 +378,15 @@ export function IcoSortDesc(p: IconProps) {
   );
 }
 
+export function IcoEye(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M2.5 12s3.6-6 9.5-6 9.5 6 9.5 6-3.6 6-9.5 6-9.5-6-9.5-6z" />
+      <circle cx="12" cy="12" r="2.4" />
+    </Svg>
+  );
+}
+
 export function IcoFilter(p: IconProps) {
   return (
     <Svg {...p}>

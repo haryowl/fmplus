@@ -41,6 +41,81 @@ export type FleetReport = {
 
 export type ReportColumn = { id: string; label: string };
 
+export type ReportColCategory = "essential" | "location" | "power" | "io" | "gnss" | "system";
+
+export const REPORT_COL_CATEGORIES: { id: ReportColCategory | "all"; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "essential", label: "Essential" },
+  { id: "location", label: "Location & Motion" },
+  { id: "power", label: "Power & Battery" },
+  { id: "io", label: "Inputs/Outputs" },
+  { id: "gnss", label: "GNSS" },
+  { id: "system", label: "System" },
+];
+
+export const ESSENTIAL_FIX_IDS = [
+  "device",
+  "imei",
+  "recorded_at",
+  "lat",
+  "lon",
+  "speed",
+  "ignition",
+] as const;
+
+export const LOCATION_FIX_IDS = ["heading", "odometer_km", "altitude"] as const;
+
+export function reportColumnKey(id: string): string {
+  return String(id || "").startsWith("mapped.") ? String(id).slice(7) : String(id || "");
+}
+
+export function categorizeReportColumn(
+  id: string,
+  grain: ReportGrain = "fixes",
+): ReportColCategory {
+  const key = reportColumnKey(id).toLowerCase();
+  if (grain === "daily") {
+    if (["device", "imei", "date", "fix_count"].includes(id)) return "essential";
+    if (
+      ["avg_speed", "max_speed", "first_at", "last_at", "odo_start", "odo_end", "ignition_on"].includes(
+        id,
+      )
+    ) {
+      return "location";
+    }
+    return "system";
+  }
+  if ((ESSENTIAL_FIX_IDS as readonly string[]).includes(id)) return "essential";
+  if ((LOCATION_FIX_IDS as readonly string[]).includes(id)) return "location";
+  if (/(battery|voltage|power|ext.?volt|\bbatt\b|fuel)/.test(key)) return "power";
+  if (/(^|[._-])(din|dout|ain|dio|io|input|output)(\d|[._-]|$)/.test(key)) return "io";
+  if (/(lat|lon|heading|altitude|odometer|moving|movement|speed|ignition|status\.acc)/.test(key)) {
+    return "location";
+  }
+  if (/(gnss|gps|satellit|hdop|pdop|vdop)/.test(key)) return "gnss";
+  return "system";
+}
+
+export function parseReportEmails(raw: string): string[] {
+  return String(raw || "")
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
+}
+
+export function formatReportBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export type ReportEstimate = {
+  rows: number;
+  bytes: number;
+  range: { from: string; to: string; timezone: string };
+};
+
 export type ReportRunResult = {
   columns: string[];
   headers: string[];
@@ -53,7 +128,7 @@ export type ReportRunResult = {
 
 export const DEFAULT_REPORT_SPEC: ReportSpec = {
   grain: "fixes",
-  rangeKind: "today",
+  rangeKind: "last7",
   dateFrom: "",
   dateTo: "",
   timezone: "+07:00",
@@ -127,6 +202,33 @@ export async function fetchReportColumns(
   const data = await parseJson(res);
   if (!res.ok) throw new Error(String(data.error || `Columns ${res.status}`));
   return Array.isArray(data.columns) ? (data.columns as ReportColumn[]) : [];
+}
+
+export async function estimateFleetReport(
+  spec: Partial<ReportSpec>,
+  signal?: AbortSignal,
+): Promise<ReportEstimate> {
+  const res = await fetch("/api/tracker/reports/estimate", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      ...tenantHeaders(),
+    },
+    body: JSON.stringify({ spec }),
+    signal,
+  });
+  const data = await parseJson(res);
+  if (!res.ok) throw new Error(String(data.error || `Estimate ${res.status}`));
+  return {
+    rows: Number(data.rows) || 0,
+    bytes: Number(data.bytes) || 0,
+    range:
+      data.range && typeof data.range === "object"
+        ? (data.range as ReportEstimate["range"])
+        : { from: "", to: "", timezone: "" },
+  };
 }
 
 export async function runFleetReport(
