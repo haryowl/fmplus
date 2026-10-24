@@ -6253,6 +6253,76 @@ html.onesheet-root body {
   margin-bottom: 12px;
 }
 
+.fleet-rules-group {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px dashed var(--line, #d5e0e6);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-2, #f6fbfa);
+}
+
+.fleet-rules-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.fleet-rules-preview .fleet-cc-field {
+  min-width: 220px;
+}
+
+.fleet-rules-preview-out {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.fleet-reports-cols {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.fleet-reports-cols h4 {
+  margin: 0;
+}
+
+.fleet-reports-col-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.fleet-reports-table-wrap {
+  overflow: auto;
+  max-height: 480px;
+}
+
+.fleet-reports-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.fleet-reports-table th,
+.fleet-reports-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line, #d5e0e6);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.fleet-reports-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2, #f6fbfa);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 .fleet-rules-cond-row {
   display: grid;
   grid-template-columns: 1.2fr 0.6fr 1fr auto;
@@ -6624,6 +6694,12 @@ html.onesheet-root body {
   color: var(--admin-ink-faint);
   font-weight: 700;
   background: #f8fbfc;
+}
+
+.admin-remap-help {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
 }
 
 .admin-remap-grid {

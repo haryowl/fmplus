@@ -207,6 +207,18 @@ async function boot() {
       })
       .catch((err) => console.error("[vehicle-fixes]", err instanceof Error ? err.message : err));
   }, fixPruneMs).unref?.();
+
+  const reportMs = Math.max(60_000, Number(process.env.FLEET_REPORT_INTERVAL_MS) || 15 * 60_000);
+  setInterval(() => {
+    void import("./server/fleet-reports.mjs")
+      .then((m) => m.evaluateDueFleetReports())
+      .then((r) => {
+        if (r.sent > 0 || r.failed > 0) {
+          console.log(`[fleet-reports] sent=${r.sent} failed=${r.failed} tenants=${r.tenants}`);
+        }
+      })
+      .catch((err) => console.error("[fleet-reports]", err instanceof Error ? err.message : err));
+  }, reportMs).unref?.();
 }
 
 void boot();

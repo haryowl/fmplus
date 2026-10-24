@@ -92,19 +92,25 @@ function cmpValues(left, cmp, right) {
   }
 }
 
-export function evalFormula(formula, snap) {
+export function evalFormula(formula, snap, depth = 0) {
+  if (depth > 4) return false;
   const f = formula && typeof formula === "object" ? formula : {};
   const conditions = Array.isArray(f.conditions) ? f.conditions : [];
-  if (!conditions.length) return false;
+  const groups = Array.isArray(f.groups) ? f.groups : [];
+  if (!conditions.length && !groups.length) return false;
   const op = String(f.op || "and").toLowerCase() === "or" ? "or" : "and";
-  const results = conditions.map((c) => {
-    if (!c || typeof c !== "object") return false;
-    return cmpValues(readField(snap, c.field), String(c.cmp || "=="), c.value);
-  });
+  const results = [
+    ...conditions.map((c) => {
+      if (!c || typeof c !== "object") return false;
+      return cmpValues(readField(snap, c.field), String(c.cmp || "=="), c.value);
+    }),
+    ...groups.map((g) => evalFormula(g, snap, depth + 1)),
+  ];
   return op === "or" ? results.some(Boolean) : results.every(Boolean);
 }
 
-function normalizeFormula(raw) {
+function normalizeFormula(raw, depth = 0) {
+  if (depth > 4) return { op: "and", conditions: [], groups: [], durationSec: 0 };
   const f = raw && typeof raw === "object" ? raw : {};
   const conditions = Array.isArray(f.conditions)
     ? f.conditions
@@ -115,12 +121,40 @@ function normalizeFormula(raw) {
           value: c.value,
         }))
     : [];
-  const durationSec = Math.max(0, Math.min(86400, Number(f.durationSec) || 0));
+  const groups = Array.isArray(f.groups)
+    ? f.groups
+        .filter((g) => g && typeof g === "object")
+        .map((g) => {
+          const nested = normalizeFormula({ ...g, durationSec: 0 }, depth + 1);
+          return { op: nested.op, conditions: nested.conditions, groups: nested.groups };
+        })
+        .filter((g) => g.conditions.length || g.groups.length)
+    : [];
+  const durationSec = depth === 0 ? Math.max(0, Math.min(86400, Number(f.durationSec) || 0)) : 0;
   return {
     op: String(f.op || "and").toLowerCase() === "or" ? "or" : "and",
     conditions,
+    groups,
     durationSec,
   };
+}
+
+function formulaHasTerms(formula) {
+  return Boolean(formula?.conditions?.length || formula?.groups?.length);
+}
+
+function formulaDetail(formula) {
+  const f = formula && typeof formula === "object" ? formula : {};
+  const conds = Array.isArray(f.conditions)
+    ? f.conditions.map((c) => `${c.field} ${c.cmp} ${JSON.stringify(c.value)}`)
+    : [];
+  const groups = Array.isArray(f.groups)
+    ? f.groups.map((g) => {
+        const inner = formulaDetail(g);
+        return inner ? `(${inner})` : "";
+      }).filter(Boolean)
+    : [];
+  return [...conds, ...groups].join(f.op === "or" ? " OR " : " AND ");
 }
 
 function mapRule(r) {
@@ -165,7 +199,7 @@ export async function createFleetAlertRule(tenantId, body) {
     throw err;
   }
   const formula = normalizeFormula(body.formula);
-  if (!formula.conditions.length) {
+  if (!formulaHasTerms(formula)) {
     const err = new Error("At least one condition required");
     err.status = 400;
     throw err;
@@ -209,7 +243,7 @@ export async function updateFleetAlertRule(tenantId, ruleId, body) {
   }
   const name = body.name !== undefined ? String(body.name || "").trim().slice(0, 120) : cur.name;
   const formula = body.formula !== undefined ? normalizeFormula(body.formula) : cur.formula;
-  if (!name || !formula.conditions.length) {
+  if (!name || !formulaHasTerms(formula)) {
     const err = new Error("name and conditions required");
     err.status = 400;
     throw err;
@@ -546,9 +580,9 @@ export async function evaluateRulesForDevice(tenantId, deviceRow, fixRow) {
 
       const fingerprint = `${rule.id}:${deviceRow.id}`;
       const title = rule.name;
-      const detailParts = rule.formula.conditions.map(
-        (c) => `${c.field} ${c.cmp} ${JSON.stringify(c.value)}`,
-      );
+      const detailParts = [];
+      const matchText = formulaDetail(rule.formula);
+      if (matchText) detailParts.push(matchText);
       if (durationSec > 0) detailParts.push(`held ${heldSec}s (need ${durationSec}s)`);
       const detail = `${deviceRow.label || deviceRow.imei || deviceRow.id} · ${detailParts.join(" · ")}`;
 
@@ -586,4 +620,48 @@ export async function evaluateRulesForDevice(tenantId, deviceRow, fixRow) {
       console.error("[fleet-alert-rules] eval", rule.id, err?.message || err);
     }
   }
+}
+
+/** Evaluate a draft formula against a device's last fix (desk preview). */
+export async function previewFleetAlertRule(tenantId, deviceId, formula) {
+  const id = String(deviceId || "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    const err = new Error("deviceId required");
+    err.status = 400;
+    throw err;
+  }
+  const rows = await dbQuery(
+    `SELECT d.id, d.label, d.imei, d.protocol,
+            lf.lat, lf.lon, lf.recorded_at, lf.speed, lf.heading, lf.ignition,
+            lf.odometer, lf.mapped_attrs, lf.source_protocol
+     FROM tracker_devices d
+     JOIN vehicle_last_fix lf ON lf.device_id = d.id
+     WHERE d.tenant_id = $1 AND d.id = $2::uuid AND d.enabled = true`,
+    [tenantId, id],
+  );
+  const row = rows.rows[0];
+  if (!row) {
+    const err = new Error("No last fix for this device");
+    err.status = 404;
+    throw err;
+  }
+  const snap = cookedSnapshot(row, row);
+  const fences = await listTenantGeofences(tenantId, { enabledOnly: true }).catch(() => []);
+  Object.assign(snap, geofenceSnapFields(snap.lat, snap.lon, fences));
+  const f = normalizeFormula(formula);
+  return {
+    result: evalFormula(f, snap),
+    label: row.label || row.imei || id,
+    snap: {
+      speed: snap.speed,
+      ignition: snap.ignition,
+      age_sec: snap.age_sec,
+      fuel_level: snap.fuel_level,
+      odometer_km: snap.odometer_km,
+      heading: snap.heading,
+      inside_geofence: snap.inside_geofence ?? null,
+      geofence_name: snap.geofence_name || "",
+      mapped: snap.mapped,
+    },
+  };
 }

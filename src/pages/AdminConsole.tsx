@@ -177,6 +177,15 @@ type Draft = {
 /** Collapsed remap-rule cards shown before “Show more” (≈2 rows of 4). */
 const MAP_RULES_COLLAPSED = 8;
 
+const TRANSFORM_HELP: Record<string, string> = {
+  identity: "Pass the vendor value through unchanged. Arg is unused.",
+  scale: 'Multiply: result = value × scale. Arg: {"scale":0.001} (e.g. metres → km).',
+  offset: 'Add: result = value + offset. Arg: {"offset":-40} (temperature, etc.).',
+  bit_mask: 'True when those bits are set. Arg: {"mask":1} or {"mask":4}.',
+  invert_bool: "Flip 0/1 or true/false. Arg is unused.",
+  enum_map: 'Lookup table. Arg: {"map":{"0":"off","1":"on"}}.',
+};
+
 const TRACKER_PROTOCOL_OPTIONS = [
   { value: "json", label: "JSON / HTTP (:5080) · partial" },
   { value: "teltonika", label: "Teltonika (:5027) · partial" },
@@ -3281,6 +3290,12 @@ export default function AdminConsole() {
                         placeholder='{"scale":0.001} / {"mask":1} / {"map":{"0":false}}'
                       />
                     </label>
+                    <p className="muted span-2 admin-remap-help">
+                      One vendor key → one app param per packet. Device overrides beat the
+                      profile.{" "}
+                      {TRANSFORM_HELP[dmTransform] || TRANSFORM_HELP.identity} There is no
+                      script or if/else here — use Event Rules for conditions after mapping.
+                    </p>
                     <div className="span-2 admin-actions">
                       <button
                         type="submit"

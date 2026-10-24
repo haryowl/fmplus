@@ -210,3 +210,34 @@ export function exportMetricsPdf(options: {
 
   doc.save(`vehicle_metrics_${safeName(vehicle)}_${dateFrom}_${dateTo}.pdf`);
 }
+
+export function exportTablePdf(options: {
+  title: string;
+  subtitle?: string;
+  filename: string;
+  headers: string[];
+  rows: Array<Array<string | number | boolean | null | undefined>>;
+}): void {
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(23, 22, 20);
+  doc.text(options.title, 14, 16);
+  if (options.subtitle) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(94, 88, 79);
+    doc.text(options.subtitle, 14, 22);
+  }
+  autoTable(doc, {
+    startY: options.subtitle ? 26 : 22,
+    head: [options.headers],
+    body: options.rows.map((row) => row.map((cell) => (cell == null ? "" : String(cell)))),
+    styles: { fontSize: 7, cellPadding: 1.4, textColor: [23, 22, 20] },
+    headStyles: { fillColor: [11, 107, 98], textColor: 255, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [243, 239, 231] },
+    margin: { left: 14, right: 14 },
+  });
+  const name = options.filename.endsWith(".pdf") ? options.filename : `${options.filename}.pdf`;
+  doc.save(safeName(name.replace(/\.pdf$/i, "")) + ".pdf");
+}

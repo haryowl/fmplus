@@ -74,6 +74,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   fleetLiveMedia: "Fleet Live: Media (video/picture)",
   fleetLiveAlerts: "Fleet Live: Events",
   fleetLiveRules: "Fleet Live: Alert rules editor",
+  fleetLiveReports: "Fleet Live: Reports",
 };
 
 export function defaultEntitlements(): Entitlements {
@@ -114,6 +115,7 @@ export function defaultEntitlements(): Entitlements {
       fleetLiveMedia: true,
       fleetLiveAlerts: true,
       fleetLiveRules: true,
+      fleetLiveReports: true,
     },
     actions: {
       ackException: false,

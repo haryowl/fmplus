@@ -9,6 +9,7 @@ export type AlertCondition = {
 export type AlertFormula = {
   op: "and" | "or";
   conditions: AlertCondition[];
+  groups?: AlertFormula[];
   durationSec?: number;
 };
 
@@ -88,6 +89,50 @@ export async function fetchAlertRules(signal?: AbortSignal): Promise<FleetAlertR
   const data = await parseJson(res);
   if (!res.ok) throw new Error(String(data.error || `Rules ${res.status}`));
   return Array.isArray(data.rules) ? (data.rules as FleetAlertRule[]) : [];
+}
+
+export function formatAlertFormula(formula: AlertFormula | null | undefined): string {
+  const f = formula && typeof formula === "object" ? formula : null;
+  if (!f) return "";
+  const conds = Array.isArray(f.conditions)
+    ? f.conditions.map((c) => `${c.field} ${c.cmp} ${JSON.stringify(c.value)}`)
+    : [];
+  const groups = Array.isArray(f.groups)
+    ? f.groups.map((g) => {
+        const inner = formatAlertFormula({ ...g, durationSec: undefined });
+        return inner ? `(${inner})` : "";
+      }).filter(Boolean)
+    : [];
+  const joiner = f.op === "or" ? " OR " : " AND ";
+  return [...conds, ...groups].join(joiner);
+}
+
+export type AlertRulePreview = {
+  result: boolean;
+  label: string;
+  snap: Record<string, unknown>;
+};
+
+export async function previewAlertRule(
+  body: { deviceId: string; formula: AlertFormula },
+): Promise<AlertRulePreview> {
+  const res = await fetch("/api/tracker/alert-rules/preview", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      ...tenantHeaders(),
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson(res);
+  if (!res.ok) throw new Error(String(data.error || `Preview ${res.status}`));
+  return {
+    result: data.result === true,
+    label: String(data.label || ""),
+    snap: data.snap && typeof data.snap === "object" ? (data.snap as Record<string, unknown>) : {},
+  };
 }
 
 export async function saveAlertRule(

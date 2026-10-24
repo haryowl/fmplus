@@ -46,6 +46,7 @@ export const FEATURE_KEYS = [
   "fleetLiveMedia",
   "fleetLiveAlerts",
   "fleetLiveRules",
+  "fleetLiveReports",
 ];
 
 export const ACTION_KEYS = [
@@ -121,6 +122,7 @@ export function defaultEntitlements() {
       fleetLiveMedia: true,
       fleetLiveAlerts: true,
       fleetLiveRules: true,
+      fleetLiveReports: true,
     },
     actions: {
       ackException: false,

@@ -396,6 +396,26 @@ export async function handleTrackerIngestRequest(req, res) {
     }
   }
 
+  if (url.pathname === "/api/tracker/alert-rules/preview" && req.method === "POST") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      if (!(await requireFleetFeature(res, dbTenant.id, "fleetLiveRules"))) return true;
+      const raw = await readBody(req);
+      const body = raw.trim() ? JSON.parse(raw) : {};
+      const { previewFleetAlertRule } = await import("./fleet-alert-rules.mjs");
+      const preview = await previewFleetAlertRule(dbTenant.id, body.deviceId, body.formula);
+      json(res, 200, preview);
+      return true;
+    } catch (err) {
+      json(res, err.status || 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
   if (url.pathname === "/api/tracker/alert-rules" && req.method === "POST") {
     try {
       const dbTenant = await resolveDbTenant(req);
@@ -575,6 +595,124 @@ export async function handleTrackerIngestRequest(req, res) {
       json(res, status >= 400 && status < 600 ? status : 500, {
         error: err instanceof Error ? err.message : String(err),
       });
+      return true;
+    }
+  }
+
+  if (url.pathname === "/api/tracker/reports" && req.method === "GET") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      if (!(await requireFleetFeature(res, dbTenant.id, "fleetLiveReports"))) return true;
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "viewFleetLive"))) return true;
+      const { listFleetReports } = await import("./fleet-reports.mjs");
+      json(res, 200, { reports: await listFleetReports(dbTenant.id) });
+      return true;
+    } catch (err) {
+      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
+  if (url.pathname === "/api/tracker/reports" && req.method === "POST") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      if (!(await requireFleetFeature(res, dbTenant.id, "fleetLiveReports"))) return true;
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "viewFleetLive"))) return true;
+      const raw = await readBody(req);
+      const body = raw.trim() ? JSON.parse(raw) : {};
+      const { createFleetReport } = await import("./fleet-reports.mjs");
+      json(res, 201, { report: await createFleetReport(dbTenant.id, body) });
+      return true;
+    } catch (err) {
+      json(res, err.status || 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
+  if (url.pathname === "/api/tracker/reports/columns" && req.method === "POST") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      if (!(await requireFleetFeature(res, dbTenant.id, "fleetLiveReports"))) return true;
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "viewFleetLive"))) return true;
+      const raw = await readBody(req);
+      const body = raw.trim() ? JSON.parse(raw) : {};
+      const { listReportColumnCatalog } = await import("./fleet-reports.mjs");
+      json(res, 200, await listReportColumnCatalog(dbTenant.id, body.spec || body));
+      return true;
+    } catch (err) {
+      json(res, err.status || 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
+  if (url.pathname === "/api/tracker/reports/run" && req.method === "POST") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      if (!(await requireFleetFeature(res, dbTenant.id, "fleetLiveReports"))) return true;
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "viewFleetLive"))) return true;
+      const raw = await readBody(req);
+      const body = raw.trim() ? JSON.parse(raw) : {};
+      const { runFleetReport } = await import("./fleet-reports.mjs");
+      const limit = Number(body.limit) || 5000;
+      json(res, 200, await runFleetReport(dbTenant.id, body.spec || {}, { limit }));
+      return true;
+    } catch (err) {
+      json(res, err.status || 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+
+  const reportMatch = /^\/api\/tracker\/reports\/([0-9a-f-]{36})$/i.exec(url.pathname);
+  if (reportMatch && (req.method === "PUT" || req.method === "PATCH")) {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      if (!(await requireFleetFeature(res, dbTenant.id, "fleetLiveReports"))) return true;
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "viewFleetLive"))) return true;
+      const raw = await readBody(req);
+      const body = raw.trim() ? JSON.parse(raw) : {};
+      const { updateFleetReport } = await import("./fleet-reports.mjs");
+      json(res, 200, { report: await updateFleetReport(dbTenant.id, reportMatch[1], body) });
+      return true;
+    } catch (err) {
+      json(res, err.status || 500, { error: err instanceof Error ? err.message : String(err) });
+      return true;
+    }
+  }
+  if (reportMatch && req.method === "DELETE") {
+    try {
+      const dbTenant = await resolveDbTenant(req);
+      if (!dbTenant) {
+        json(res, 401, { error: "Tenant key required (k=)" });
+        return true;
+      }
+      if (!(await requireFleetFeature(res, dbTenant.id, "fleetLiveReports"))) return true;
+      if (!(await requireDeskPrivilege(req, res, dbTenant.id, "viewFleetLive"))) return true;
+      const { deleteFleetReport } = await import("./fleet-reports.mjs");
+      const ok = await deleteFleetReport(dbTenant.id, reportMatch[1]);
+      json(res, ok ? 200 : 404, ok ? { ok: true } : { error: "Report not found" });
+      return true;
+    } catch (err) {
+      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
       return true;
     }
   }

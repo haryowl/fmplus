@@ -41,6 +41,7 @@ import { FleetLiveFullPanel } from "../components/FleetLiveFullPanel";
 import { FleetLiveHistoryPanel } from "../components/FleetLiveHistoryPanel";
 import { FleetLiveMediaPanel } from "../components/FleetLiveMediaPanel";
 import { FleetLiveRankingPanel } from "../components/FleetLiveRankingPanel";
+import { FleetLiveReportsPanel } from "../components/FleetLiveReportsPanel";
 import { FleetLiveTripsPanel } from "../components/FleetLiveTripsPanel";
 import {
   IcoAlerts,
@@ -100,7 +101,8 @@ type FleetSection =
   | "trips"
   | "history"
   | "media"
-  | "alerts";
+  | "alerts"
+  | "reports";
 
 type FleetNavPrivilege =
   | "viewFleetLive"
@@ -140,6 +142,7 @@ const FLEET_SECTIONS: FleetNavItem[] = [
   { id: "history", label: "History", feature: "fleetLiveHistory", privilege: "viewFleetHistory" },
   { id: "media", label: "Media", feature: "fleetLiveMedia", privilege: "viewFleetMedia" },
   { id: "alerts", label: "Events", feature: "fleetLiveAlerts", privilege: "ackFleetAlerts" },
+  { id: "reports", label: "Reports", feature: "fleetLiveReports", privilege: "viewFleetLive" },
 ];
 
 type SafetyEvent = {
@@ -1290,6 +1293,16 @@ export default function FleetLive() {
           canViewRules={canViewRules}
           canManageRules={canManageRules}
           canAckAlerts={canAckAlerts}
+        />
+      ) : null}
+
+      {section === "reports" && fleetModuleOk && canViewLive ? (
+        <FleetLiveReportsPanel
+          devices={tripDevices}
+          groups={deviceGroups}
+          groupId={groupId}
+          timezone={timezone}
+          canManage={canViewLive}
         />
       ) : null}
 

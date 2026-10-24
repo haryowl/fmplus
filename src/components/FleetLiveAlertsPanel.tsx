@@ -13,12 +13,15 @@ import {
   fetchRuleEvents,
   fetchRuleHolds,
   formatHoldClock,
+  formatAlertFormula,
   isMappedField,
+  previewAlertRule,
   resolveRuleEvent,
   RULE_CMPS,
   RULE_FIELDS,
   saveAlertRule,
   type AlertCondition,
+  type AlertFormula,
   type FleetAlertRule,
   type FleetRuleEvent,
   type FleetRuleHold,
@@ -78,6 +81,139 @@ const emptyCondition = (): AlertCondition => ({
   value: 80,
 });
 
+const emptyGroup = (): AlertFormula => ({
+  op: "and",
+  conditions: [emptyCondition()],
+});
+
+function coerceSavedCondition(c: AlertCondition): AlertCondition {
+  let value: string | number | boolean = c.value;
+  if (c.field === "ignition") {
+    value = String(c.value) === "true" || c.value === true;
+  } else if (
+    c.cmp !== "in" &&
+    c.cmp !== "contains" &&
+    typeof c.value === "string" &&
+    c.value.trim() !== "" &&
+    !Number.isNaN(Number(c.value))
+  ) {
+    value = Number(c.value);
+  }
+  return { field: c.field, cmp: c.cmp, value };
+}
+
+function ConditionList({
+  conditions,
+  onChange,
+  min = 0,
+}: {
+  conditions: AlertCondition[];
+  onChange: (next: AlertCondition[]) => void;
+  min?: number;
+}) {
+  return (
+    <>
+      {conditions.map((c, idx) => (
+        <div key={idx} className="fleet-rules-cond-row">
+          <select
+            value={isMappedField(c.field) ? "__mapped__" : c.field}
+            onChange={(e) => {
+              const next = [...conditions];
+              const v = e.target.value;
+              if (v === "__mapped__") {
+                next[idx] = {
+                  ...c,
+                  field: isMappedField(c.field) ? c.field : "mapped.",
+                  cmp: c.cmp === "in" || c.cmp === "contains" ? c.cmp : "==",
+                };
+              } else {
+                next[idx] = {
+                  ...c,
+                  field: v,
+                  value: v === "ignition" ? "true" : c.value,
+                };
+              }
+              onChange(next);
+            }}
+          >
+            {RULE_FIELDS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+            <option value="__mapped__">Mapped attr…</option>
+          </select>
+          {isMappedField(c.field) ? (
+            <input
+              className="fleet-rules-mapped-key"
+              placeholder="attr key (e.g. alarm)"
+              value={c.field.slice("mapped.".length)}
+              onChange={(e) => {
+                const key = e.target.value.replace(/^mapped\./i, "").trim();
+                const next = [...conditions];
+                next[idx] = { ...c, field: `mapped.${key}` };
+                onChange(next);
+              }}
+            />
+          ) : null}
+          <select
+            value={c.cmp}
+            onChange={(e) => {
+              const next = [...conditions];
+              next[idx] = { ...c, cmp: e.target.value };
+              onChange(next);
+            }}
+          >
+            {RULE_CMPS.map((cmp) => (
+              <option key={cmp} value={cmp}>
+                {cmp}
+              </option>
+            ))}
+          </select>
+          {c.field === "ignition" ? (
+            <select
+              value={String(c.value)}
+              onChange={(e) => {
+                const next = [...conditions];
+                next[idx] = { ...c, value: e.target.value };
+                onChange(next);
+              }}
+            >
+              <option value="true">On</option>
+              <option value="false">Off</option>
+            </select>
+          ) : (
+            <input
+              value={String(c.value)}
+              placeholder={c.cmp === "in" ? "a, b, c" : c.cmp === "contains" ? "text" : ""}
+              onChange={(e) => {
+                const next = [...conditions];
+                next[idx] = { ...c, value: e.target.value };
+                onChange(next);
+              }}
+            />
+          )}
+          <button
+            type="button"
+            className="fleet-cc-icon-btn"
+            disabled={conditions.length <= min}
+            onClick={() => onChange(conditions.filter((_, i) => i !== idx))}
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="fleet-cc-icon-btn"
+        onClick={() => onChange([...conditions, emptyCondition()])}
+      >
+        Add condition
+      </button>
+    </>
+  );
+}
+
 export function FleetLiveAlertsPanel({
   devices,
   groups = [],
@@ -113,6 +249,10 @@ export function FleetLiveAlertsPanel({
   const [draftWa, setDraftWa] = useState(false);
   const [draftOp, setDraftOp] = useState<"and" | "or">("and");
   const [draftConditions, setDraftConditions] = useState<AlertCondition[]>([emptyCondition()]);
+  const [draftGroups, setDraftGroups] = useState<AlertFormula[]>([]);
+  const [previewDeviceId, setPreviewDeviceId] = useState("");
+  const [previewing, setPreviewing] = useState(false);
+  const [previewText, setPreviewText] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
 
   const reloadRules = () =>
@@ -201,8 +341,17 @@ export function FleetLiveAlertsPanel({
     setDraftWa(rule.notifyWhatsapp);
     setDraftOp(rule.formula.op === "or" ? "or" : "and");
     setDraftConditions(
-      rule.formula.conditions.length ? rule.formula.conditions.map((c) => ({ ...c })) : [emptyCondition()],
+      rule.formula.conditions.length ? rule.formula.conditions.map((c) => ({ ...c })) : [],
     );
+    setDraftGroups(
+      Array.isArray(rule.formula.groups)
+        ? rule.formula.groups.map((g) => ({
+            op: g.op === "or" ? "or" : "and",
+            conditions: g.conditions?.length ? g.conditions.map((c) => ({ ...c })) : [emptyCondition()],
+          }))
+        : [],
+    );
+    setPreviewText("");
   };
 
   const resetDraft = () => {
@@ -218,6 +367,8 @@ export function FleetLiveAlertsPanel({
     setDraftWa(false);
     setDraftOp("and");
     setDraftConditions([emptyCondition()]);
+    setDraftGroups([]);
+    setPreviewText("");
   };
 
   const onSaveRule = async () => {
@@ -233,8 +384,16 @@ export function FleetLiveAlertsPanel({
       setError("Select a device group");
       return;
     }
-    if (draftConditions.some((c) => isMappedField(c.field) && c.field === "mapped.")) {
+    const allConds = [
+      ...draftConditions,
+      ...draftGroups.flatMap((g) => g.conditions || []),
+    ];
+    if (allConds.some((c) => isMappedField(c.field) && c.field === "mapped.")) {
       setError("Enter a mapped attribute key");
+      return;
+    }
+    if (!draftConditions.length && !draftGroups.length) {
+      setError("Add at least one condition or group");
       return;
     }
     setSaving(true);
@@ -250,21 +409,11 @@ export function FleetLiveAlertsPanel({
           scopeDeviceIds: draftScope === "devices" ? draftDeviceIds : [],
           formula: {
             op: draftOp,
-            conditions: draftConditions.map((c) => {
-              let value: string | number | boolean = c.value;
-              if (c.field === "ignition") {
-                value = String(c.value) === "true" || c.value === true;
-              } else if (
-                c.cmp !== "in" &&
-                c.cmp !== "contains" &&
-                typeof c.value === "string" &&
-                c.value.trim() !== "" &&
-                !Number.isNaN(Number(c.value))
-              ) {
-                value = Number(c.value);
-              }
-              return { field: c.field, cmp: c.cmp, value };
-            }),
+            conditions: draftConditions.map(coerceSavedCondition),
+            groups: draftGroups.map((g) => ({
+              op: g.op === "or" ? "or" : "and",
+              conditions: (g.conditions || []).map(coerceSavedCondition),
+            })),
             durationSec: Math.max(0, draftDurationMin) * 60,
           },
           notifyEmail: draftEmail,
@@ -433,105 +582,107 @@ export function FleetLiveAlertsPanel({
                   </select>
                 </label>
               </div>
-              {draftConditions.map((c, idx) => (
-                <div key={idx} className="fleet-rules-cond-row">
-                  <select
-                    value={isMappedField(c.field) ? "__mapped__" : c.field}
-                    onChange={(e) => {
-                      const next = [...draftConditions];
-                      const v = e.target.value;
-                      if (v === "__mapped__") {
-                        next[idx] = {
-                          ...c,
-                          field: isMappedField(c.field) ? c.field : "mapped.",
-                          cmp: c.cmp === "in" || c.cmp === "contains" ? c.cmp : "==",
-                        };
-                      } else {
-                        next[idx] = {
-                          ...c,
-                          field: v,
-                          value: v === "ignition" ? "true" : c.value,
-                        };
-                      }
-                      setDraftConditions(next);
-                    }}
-                  >
-                    {RULE_FIELDS.map((f) => (
-                      <option key={f.value} value={f.value}>
-                        {f.label}
-                      </option>
-                    ))}
-                    <option value="__mapped__">Mapped attr…</option>
-                  </select>
-                  {isMappedField(c.field) ? (
-                    <input
-                      className="fleet-rules-mapped-key"
-                      placeholder="attr key (e.g. alarm)"
-                      value={c.field.slice("mapped.".length)}
-                      onChange={(e) => {
-                        const key = e.target.value.replace(/^mapped\./i, "").trim();
-                        const next = [...draftConditions];
-                        next[idx] = { ...c, field: `mapped.${key}` };
-                        setDraftConditions(next);
-                      }}
-                    />
-                  ) : null}
-                  <select
-                    value={c.cmp}
-                    onChange={(e) => {
-                      const next = [...draftConditions];
-                      next[idx] = { ...c, cmp: e.target.value };
-                      setDraftConditions(next);
-                    }}
-                  >
-                    {RULE_CMPS.map((cmp) => (
-                      <option key={cmp} value={cmp}>
-                        {cmp}
-                      </option>
-                    ))}
-                  </select>
-                  {c.field === "ignition" ? (
-                    <select
-                      value={String(c.value)}
-                      onChange={(e) => {
-                        const next = [...draftConditions];
-                        next[idx] = { ...c, value: e.target.value };
-                        setDraftConditions(next);
-                      }}
+              <ConditionList
+                conditions={draftConditions}
+                onChange={setDraftConditions}
+                min={draftGroups.length ? 0 : 1}
+              />
+              {draftGroups.map((g, gi) => (
+                <div key={gi} className="fleet-rules-group">
+                  <div className="fleet-rules-op-row">
+                    <h4>Group {gi + 1}</h4>
+                    <label className="fleet-cc-field fleet-rules-op">
+                      <span>Match</span>
+                      <select
+                        value={g.op}
+                        onChange={(e) => {
+                          const next = [...draftGroups];
+                          next[gi] = { ...g, op: e.target.value === "or" ? "or" : "and" };
+                          setDraftGroups(next);
+                        }}
+                      >
+                        <option value="and">All (AND)</option>
+                        <option value="or">Any (OR)</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="fleet-cc-icon-btn"
+                      onClick={() => setDraftGroups(draftGroups.filter((_, i) => i !== gi))}
                     >
-                      <option value="true">On</option>
-                      <option value="false">Off</option>
-                    </select>
-                  ) : (
-                    <input
-                      value={String(c.value)}
-                      placeholder={c.cmp === "in" ? "a, b, c" : c.cmp === "contains" ? "text" : ""}
-                      onChange={(e) => {
-                        const next = [...draftConditions];
-                        next[idx] = { ...c, value: e.target.value };
-                        setDraftConditions(next);
-                      }}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    className="fleet-cc-icon-btn"
-                    disabled={draftConditions.length <= 1}
-                    onClick={() =>
-                      setDraftConditions(draftConditions.filter((_, i) => i !== idx))
-                    }
-                  >
-                    Remove
-                  </button>
+                      Remove group
+                    </button>
+                  </div>
+                  <ConditionList
+                    conditions={g.conditions || []}
+                    min={1}
+                    onChange={(conditions) => {
+                      const next = [...draftGroups];
+                      next[gi] = { ...g, conditions };
+                      setDraftGroups(next);
+                    }}
+                  />
                 </div>
               ))}
               <button
                 type="button"
                 className="fleet-cc-icon-btn"
-                onClick={() => setDraftConditions([...draftConditions, emptyCondition()])}
+                onClick={() => setDraftGroups([...draftGroups, emptyGroup()])}
               >
-                Add condition
+                Add group
               </button>
+            </div>
+
+            <div className="fleet-rules-preview">
+              <label className="fleet-cc-field">
+                <span>Preview last fix</span>
+                <select
+                  value={previewDeviceId}
+                  onChange={(e) => setPreviewDeviceId(e.target.value)}
+                >
+                  <option value="">Select device…</option>
+                  {devices.map((d) => (
+                    <option key={d.deviceId} value={d.deviceId}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="fleet-cc-icon-btn"
+                disabled={previewing || !previewDeviceId}
+                onClick={() => {
+                  setPreviewing(true);
+                  setPreviewText("");
+                  void previewAlertRule({
+                    deviceId: previewDeviceId,
+                    formula: {
+                      op: draftOp,
+                      conditions: draftConditions.map(coerceSavedCondition),
+                      groups: draftGroups.map((g) => ({
+                        op: g.op === "or" ? "or" : "and",
+                        conditions: (g.conditions || []).map(coerceSavedCondition),
+                      })),
+                    },
+                  })
+                    .then((p) => {
+                      const bits = [
+                        `speed=${p.snap.speed ?? "—"}`,
+                        `ign=${p.snap.ignition ?? "—"}`,
+                        `age=${p.snap.age_sec ?? "—"}s`,
+                      ];
+                      setPreviewText(
+                        `${p.result ? "MATCH" : "no match"} on ${p.label} · ${bits.join(" · ")}`,
+                      );
+                    })
+                    .catch((err: Error) => setPreviewText(err.message || "Preview failed"))
+                    .finally(() => setPreviewing(false));
+                }}
+              >
+                {previewing ? "Testing…" : "Test last fix"}
+              </button>
+              {previewText ? <p className="muted fleet-rules-preview-out">{previewText}</p> : null}
             </div>
 
             <div className="fleet-rules-actions">
@@ -649,9 +800,7 @@ export function FleetLiveAlertsPanel({
                         ) : null}
                       </span>
                       <div className="muted">
-                        {r.formula.conditions
-                          .map((c) => `${c.field} ${c.cmp} ${JSON.stringify(c.value)}`)
-                          .join(r.formula.op === "or" ? " OR " : " AND ")}
+                        {formatAlertFormula(r.formula)}
                         {r.formula.durationSec
                           ? ` · hold ${Math.round(r.formula.durationSec / 60)}m`
                           : ""}

@@ -116,4 +116,40 @@ describe("evalFormula", () => {
       evalFormula({ op: "and", conditions: [{ field: "speed", cmp: "~~", value: 1 }] }, snap),
     ).toBe(false);
   });
+
+  it("evaluates nested AND/OR groups", () => {
+    const crash = { field: "mapped.alarm", cmp: "==", value: "overspeed" };
+    const slow = { field: "speed", cmp: "<", value: 50 };
+    const ign = { field: "ignition", cmp: "==", value: true };
+    expect(
+      evalFormula(
+        {
+          op: "or",
+          conditions: [crash],
+          groups: [{ op: "and", conditions: [slow, ign] }],
+        },
+        snap,
+      ),
+    ).toBe(true);
+    expect(
+      evalFormula(
+        {
+          op: "and",
+          conditions: [{ field: "speed", cmp: ">", value: 80 }],
+          groups: [{ op: "and", conditions: [{ field: "ignition", cmp: "==", value: false }] }],
+        },
+        snap,
+      ),
+    ).toBe(false);
+    expect(
+      evalFormula(
+        {
+          op: "and",
+          conditions: [],
+          groups: [{ op: "or", conditions: [crash, slow] }],
+        },
+        snap,
+      ),
+    ).toBe(true);
+  });
 });

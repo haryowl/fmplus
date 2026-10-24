@@ -255,6 +255,16 @@ export function IcoVideo(p: IconProps) {
   );
 }
 
+export function IcoReport(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M7 3h8l4 4v14H7z" />
+      <path d="M15 3v4h4" />
+      <path d="M10 12h6M10 16h6M10 8h2" />
+    </Svg>
+  );
+}
+
 export function IcoMail(p: IconProps) {
   return (
     <Svg {...p}>
@@ -424,4 +434,5 @@ export const SECTION_ICONS = {
   history: IcoHistory,
   media: IcoMedia,
   alerts: IcoAlerts,
+  reports: IcoReport,
 } as const;

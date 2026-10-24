@@ -19,8 +19,55 @@ export function parseEmails(raw) {
     .filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
 }
 
+function mimePayload({ from, to, cc, subject, text, attachments }) {
+  const headers = [
+    `From: ${from}`,
+    `To: ${to.join(", ")}`,
+    cc.length ? `Cc: ${cc.join(", ")}` : "",
+    `Subject: ${subject}`,
+    "MIME-Version: 1.0",
+  ].filter(Boolean);
+  const files = Array.isArray(attachments) ? attachments : [];
+  if (!files.length) {
+    return [
+      ...headers,
+      'Content-Type: text/plain; charset="utf-8"',
+      "",
+      text.replace(/^\./gm, ".."),
+      ".",
+    ].join("\r\n");
+  }
+  const boundary = `fmplus-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const parts = [
+    ...headers,
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="utf-8"',
+    "",
+    text.replace(/^\./gm, ".."),
+  ];
+  for (const att of files) {
+    const name = String(att?.filename || "attachment").replace(/["\r\n]+/g, "_");
+    const type = String(att?.contentType || "application/octet-stream").replace(/[\r\n]+/g, "");
+    const buf = Buffer.isBuffer(att?.content)
+      ? att.content
+      : Buffer.from(att?.content == null ? "" : String(att.content), "utf8");
+    parts.push(
+      `--${boundary}`,
+      `Content-Type: ${type}; name="${name}"`,
+      "Content-Transfer-Encoding: base64",
+      `Content-Disposition: attachment; filename="${name}"`,
+      "",
+      buf.toString("base64").replace(/(.{76})/g, "$1\r\n"),
+    );
+  }
+  parts.push(`--${boundary}--`, ".");
+  return parts.join("\r\n");
+}
+
 /**
- * @param {{ to: string|string[], subject: string, text: string }} opts
+ * @param {{ to: string|string[], cc?: string|string[], subject: string, text: string, attachments?: Array<{ filename: string, contentType?: string, content: Buffer|string }> }} opts
  */
 export async function sendSmtpMail(opts) {
   if (!smtpConfigured()) {
@@ -31,11 +78,21 @@ export async function sendSmtpMail(opts) {
   const user = env("SMTP_USER");
   const pass = env("SMTP_PASS");
   const from = env("SMTP_FROM", user || "fmplus@localhost");
-  const recipients = Array.isArray(opts.to) ? opts.to.flatMap(parseEmails) : parseEmails(opts.to);
+  const toList = Array.isArray(opts.to) ? opts.to.flatMap(parseEmails) : parseEmails(opts.to);
+  const ccList = opts.cc == null ? [] : Array.isArray(opts.cc) ? opts.cc.flatMap(parseEmails) : parseEmails(opts.cc);
+  const recipients = [...new Set([...toList, ...ccList])];
   if (!recipients.length) return { skipped: true, reason: "no_recipients" };
 
   const subject = String(opts.subject || "").replace(/[\r\n]+/g, " ");
   const text = String(opts.text || "");
+  const payload = mimePayload({
+    from,
+    to: toList.length ? toList : recipients,
+    cc: toList.length ? ccList : [],
+    subject,
+    text,
+    attachments: opts.attachments,
+  });
 
   return new Promise((resolve, reject) => {
     const sock = tls.connect({ host, port, servername: host }, () => {});
@@ -117,16 +174,6 @@ export async function sendSmtpMail(opts) {
             }
           } else if (step === 7) {
             if (code !== 354) throw new Error(line);
-            const payload = [
-              `From: ${from}`,
-              `To: ${recipients.join(", ")}`,
-              `Subject: ${subject}`,
-              "MIME-Version: 1.0",
-              'Content-Type: text/plain; charset="utf-8"',
-              "",
-              text.replace(/^\./gm, ".."),
-              ".",
-            ].join("\r\n");
             sock.write(`${payload}\r\n`);
             step = 8;
           } else if (step === 8) {
