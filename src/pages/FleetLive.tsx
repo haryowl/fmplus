@@ -35,6 +35,7 @@ import {
 import { BrandMark } from "../components/BrandMark";
 import { FleetLiveAlertsPanel } from "../components/FleetLiveAlertsPanel";
 import { FleetLiveDashboardPanel } from "../components/FleetLiveDashboardPanel";
+import { FleetLiveDashSubnav, type DashSubnavId } from "../components/FleetLiveDashSubnav";
 import { FleetLiveFleetPanel } from "../components/FleetLiveFleetPanel";
 import { FleetLiveFullPanel } from "../components/FleetLiveFullPanel";
 import { FleetLiveHistoryPanel } from "../components/FleetLiveHistoryPanel";
@@ -101,23 +102,39 @@ type FleetSection =
   | "media"
   | "alerts";
 
-const FLEET_SECTIONS: Array<{
+type FleetNavPrivilege =
+  | "viewFleetLive"
+  | "viewFleetDashboard"
+  | "viewFleetRanking"
+  | "viewFleetTrips"
+  | "viewFleetHistory"
+  | "viewFleetMedia"
+  | "ackFleetAlerts";
+
+type FleetNavChild = {
   id: FleetSection;
   label: string;
   feature?: string;
-  privilege?:
-    | "viewFleetLive"
-    | "viewFleetDashboard"
-    | "viewFleetRanking"
-    | "viewFleetTrips"
-    | "viewFleetHistory"
-    | "viewFleetMedia"
-    | "ackFleetAlerts";
-}> = [
+  privilege?: FleetNavPrivilege;
+};
+
+type FleetNavItem = FleetNavChild & {
+  children?: FleetNavChild[];
+};
+
+const FLEET_SECTIONS: FleetNavItem[] = [
   { id: "live", label: "Live", privilege: "viewFleetLive" },
-  { id: "full", label: "Full", feature: "fleetLiveFull", privilege: "viewFleetLive" },
-  { id: "fleet", label: "Fleet", feature: "fleetLiveFleet", privilege: "viewFleetLive" },
-  { id: "dashboard", label: "Dashboard", feature: "fleetLiveDashboard", privilege: "viewFleetDashboard" },
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    feature: "fleetLiveDashboard",
+    privilege: "viewFleetDashboard",
+    children: [
+      { id: "dashboard", label: "Overview" },
+      { id: "full", label: "Full", feature: "fleetLiveFull", privilege: "viewFleetLive" },
+      { id: "fleet", label: "Fleet", feature: "fleetLiveFleet", privilege: "viewFleetLive" },
+    ],
+  },
   { id: "ranking", label: "Ranking", feature: "fleetLiveRanking", privilege: "viewFleetRanking" },
   { id: "trips", label: "Trips", feature: "fleetLiveTrips", privilege: "viewFleetTrips" },
   { id: "history", label: "History", feature: "fleetLiveHistory", privilege: "viewFleetHistory" },
@@ -268,7 +285,12 @@ export default function FleetLive() {
   const [section, setSection] = useState<FleetSection>(() => {
     const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
     const s = params.get("section") || "live";
-    return (FLEET_SECTIONS.some((x) => x.id === s) ? s : "live") as FleetSection;
+    const known = new Set<string>();
+    for (const item of FLEET_SECTIONS) {
+      known.add(item.id);
+      for (const child of item.children || []) known.add(child.id);
+    }
+    return (known.has(s) ? s : "live") as FleetSection;
   });
   const [timezone, setTimezone] = useState(query.tz);
   const [bootError, setBootError] = useState("");
@@ -324,20 +346,40 @@ export default function FleetLive() {
   });
 
   const allowedSections = useMemo(() => {
-    return FLEET_SECTIONS.filter((s) => {
-      if (s.feature && entitlements.features[s.feature] === false) return false;
-      if (s.privilege && deskUser?.id && !deskCanWrite(deskUser, deskPrivileges, s.privilege)) {
+    const itemOk = (item: FleetNavChild) => {
+      if (item.feature && entitlements.features[item.feature] === false) return false;
+      if (item.privilege && deskUser?.id && !deskCanWrite(deskUser, deskPrivileges, item.privilege)) {
         return false;
       }
       return true;
-    });
+    };
+    return FLEET_SECTIONS.reduce<FleetNavItem[]>((acc, s) => {
+      if (s.children?.length) {
+        const selfOk = itemOk({ id: s.id, label: s.label, feature: s.feature, privilege: s.privilege });
+        const children = s.children.filter((c) => (c.id === s.id ? selfOk : itemOk(c)));
+        if (!children.length) return acc;
+        acc.push({ ...s, children });
+        return acc;
+      }
+      if (itemOk(s)) acc.push(s);
+      return acc;
+    }, []);
   }, [entitlements.features, deskUser, deskPrivileges]);
 
+  const allowedSectionIds = useMemo(() => {
+    const ids = new Set<FleetSection>();
+    for (const s of allowedSections) {
+      if (!s.children?.length) ids.add(s.id);
+      for (const child of s.children || []) ids.add(child.id);
+    }
+    return ids;
+  }, [allowedSections]);
+
   useEffect(() => {
-    if (!allowedSections.some((s) => s.id === section) && allowedSections[0]) {
+    if (!allowedSectionIds.has(section) && allowedSections[0]) {
       setSection(allowedSections[0].id);
     }
-  }, [allowedSections, section]);
+  }, [allowedSectionIds, allowedSections, section]);
 
   useEffect(() => {
     const selectedDeviceId =
@@ -382,7 +424,18 @@ export default function FleetLive() {
   const canViewRules = entitlements.features.fleetLiveRules !== false;
   const canManageRules = deskCanWrite(deskUser, deskPrivileges, "manageFleetRules");
   const canAckAlerts = deskCanWrite(deskUser, deskPrivileges, "ackFleetAlerts");
-  const sectionLabel = FLEET_SECTIONS.find((s) => s.id === section)?.label || section;
+  const sectionLabel = (() => {
+    for (const s of FLEET_SECTIONS) {
+      const child = s.children?.find((c) => c.id === section);
+      if (child) return child.id === s.id ? s.label : `${s.label} · ${child.label}`;
+      if (s.id === section) return s.label;
+    }
+    return section;
+  })();
+  const dashSubnavItems = allowedSections.find((s) => s.id === "dashboard")?.children ?? [];
+  const showDashSubnav =
+    dashSubnavItems.length > 1 &&
+    (section === "dashboard" || section === "full" || section === "fleet");
 
   useEffect(() => {
     document.title = "Fleet Live · ARMADA M.1";
@@ -1010,6 +1063,38 @@ export default function FleetLive() {
           <nav className="fleet-cc-sidenav-nav">
             {allowedSections.map((s) => {
               const Icon = SECTION_ICONS[s.id];
+              if (s.children?.length) {
+                const groupActive = s.children.some((c) => c.id === section);
+                return (
+                  <div key={s.id} className="fleet-cc-sidenav-group">
+                    <button
+                      type="button"
+                      className={`fleet-cc-sidenav-parent${groupActive ? " is-open" : ""}`}
+                      onClick={() => setSection(s.children![0].id)}
+                      disabled={!fleetModuleOk}
+                      title={s.label}
+                    >
+                      <Icon />
+                      <span>{s.label}</span>
+                    </button>
+                    <div className="fleet-cc-sidenav-sub">
+                      {s.children.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className={section === c.id ? "is-active" : ""}
+                          onClick={() => setSection(c.id)}
+                          disabled={!fleetModuleOk}
+                          aria-current={section === c.id ? "page" : undefined}
+                          title={c.label}
+                        >
+                          <span>{c.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
               return (
                 <button
                   key={s.id}
@@ -1106,6 +1191,14 @@ export default function FleetLive() {
         <div className="banner error fleet-cc-banner">{bootError || fetchError}</div>
       )}
 
+      {showDashSubnav ? (
+        <FleetLiveDashSubnav
+          current={section as DashSubnavId}
+          items={dashSubnavItems.map((c) => ({ id: c.id as DashSubnavId, label: c.label }))}
+          onChange={(id) => setSection(id)}
+        />
+      ) : null}
+
       {section === "full" && fleetModuleOk && canViewLive ? (
         <FleetLiveFullPanel
           devices={tripDevices}
@@ -1119,6 +1212,12 @@ export default function FleetLive() {
           devices={tripDevices}
           timezone={timezone}
           initialDeviceIds={initialTripDeviceId ? [initialTripDeviceId] : undefined}
+          onOpenFull={(deviceId) => {
+            const match = Object.entries(fixMeta).find(([, meta]) => meta.deviceId === deviceId);
+            if (match) setSelectedId(Number(match[0]));
+            else pendingDeviceIdRef.current = deviceId;
+            setSection("full");
+          }}
         />
       ) : null}
 

@@ -26,6 +26,8 @@ type Props = {
   data: TrackMapData;
   refills?: RefillEvent[];
   timezone?: string;
+  /** Skip Armada panel chrome when hosted inside Fleet Live cards. */
+  embedded?: boolean;
 };
 
 type Basemap = "satellite" | "streets" | "terrain";
@@ -138,7 +140,7 @@ function popupHtml(event: RefillEvent, timezone: string, nearby: string): string
   </div>`;
 }
 
-export function TrackMap({ data, refills = [], timezone = "+08:00" }: Props) {
+export function TrackMap({ data, refills = [], timezone = "+08:00", embedded }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const tileRef = useRef<L.TileLayer | null>(null);
@@ -292,39 +294,33 @@ export function TrackMap({ data, refills = [], timezone = "+08:00" }: Props) {
       ? `Showing ${drawnCount.toLocaleString("en-US")} of ${data.pointCount.toLocaleString("en-US")} points — zoom in for full detail`
       : `${data.pointCount.toLocaleString("en-US")} points`;
 
-  return (
-    <section className="panel">
-      <div className="panel-head">
-        <div>
-          <h2>Track map</h2>
-          <p>
-            Satellite, streets, or OpenTopoMap terrain under the same GPS path. Blue S is the first point in the range, red E is the last. Orange pins are tank-rise refills.
-            Click a pin for time and Google Maps. Station names are the nearest mapped fuel amenity, not a guaranteed pump name.
-          </p>
-        </div>
-        <div className="map-toggles">
-          <div className="field">
-            <label htmlFor="map-basemap">Basemap</label>
-            <select
-              id="map-basemap"
-              value={basemap}
-              onChange={(e) => setBasemap(e.target.value as Basemap)}
-            >
-              <option value="satellite">Satellite</option>
-              <option value="streets">Streets</option>
-              <option value="terrain">Terrain</option>
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="map-mode">Colour by</label>
-            <select id="map-mode" value={mode} onChange={(e) => setMode(e.target.value as MapMode)}>
-              <option value="path">Track</option>
-              {data.hasAltitude && <option value="elevation">Elevation</option>}
-              {data.hasRoad && <option value="road">Road condition</option>}
-            </select>
-          </div>
-        </div>
+  const tools = (
+    <div className={embedded ? "fleet-an-track-tools" : "map-toggles"}>
+      <div className={embedded ? "fleet-cc-field" : "field"}>
+        <label htmlFor="map-basemap">Basemap</label>
+        <select
+          id="map-basemap"
+          value={basemap}
+          onChange={(e) => setBasemap(e.target.value as Basemap)}
+        >
+          <option value="satellite">Satellite</option>
+          <option value="streets">Streets</option>
+          <option value="terrain">Terrain</option>
+        </select>
       </div>
+      <div className={embedded ? "fleet-cc-field" : "field"}>
+        <label htmlFor="map-mode">{embedded ? "Colour" : "Colour by"}</label>
+        <select id="map-mode" value={mode} onChange={(e) => setMode(e.target.value as MapMode)}>
+          <option value="path">Track</option>
+          {data.hasAltitude && <option value="elevation">Elevation</option>}
+          {data.hasRoad && <option value="road">Road condition</option>}
+        </select>
+      </div>
+    </div>
+  );
+
+  const legends = (
+    <>
       {mode === "elevation" && (
         <div className="legend terrain-legend">
           <span>
@@ -368,13 +364,44 @@ export function TrackMap({ data, refills = [], timezone = "+08:00" }: Props) {
           </span>
         )}
       </div>
-      <div ref={hostRef} className="map-wrap" />
+    </>
+  );
+
+  const mapBody = (
+    <>
+      {legends}
+      <div ref={hostRef} className={embedded ? "map-wrap fleet-an-map" : "map-wrap"} />
       <p className="map-caption">
         {sampled}
         {data.hasAltitude && data.altMin !== null && data.altMax !== null
           ? ` · altitude ${Math.round(data.altMin)}–${Math.round(data.altMax)} m`
           : ""}
       </p>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="fleet-an-track">
+        {tools}
+        {mapBody}
+      </div>
+    );
+  }
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <h2>Track map</h2>
+          <p>
+            Satellite, streets, or OpenTopoMap terrain under the same GPS path. Blue S is the first point in the range, red E is the last. Orange pins are tank-rise refills.
+            Click a pin for time and Google Maps. Station names are the nearest mapped fuel amenity, not a guaranteed pump name.
+          </p>
+        </div>
+        {tools}
+      </div>
+      {mapBody}
     </section>
   );
 }

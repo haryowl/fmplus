@@ -11,7 +11,7 @@ import { FleetLiveSectionHead } from "./FleetLiveSectionHead";
 import type { FleetTripDeviceOption } from "./FleetLiveTripsPanel";
 import { TrackMap } from "./TrackMap";
 import { UtilizationChart } from "./UtilizationChart";
-import { IcoCalendar, IcoDevice } from "./fleetLiveIcons";
+import { IcoCalendar, IcoDevice, IcoHistory, IcoIgnition, IcoOdo, IcoPin, IcoUtil } from "./fleetLiveIcons";
 
 type Props = {
   devices: FleetTripDeviceOption[];
@@ -113,137 +113,163 @@ export function FleetLiveFullPanel({ devices, timezone, initialDeviceId }: Props
   }
 
   return (
-    <div className="fleet-cc-analytics">
+    <div className="fleet-sec fleet-dash fleet-an">
       <FleetLiveSectionHead
         section="full"
         title="Full"
-        subtitle="Single-asset metrics from Device Source (GPS distance, utilization, track)."
+        subtitle="Single-asset kilometres, hours, and track from Device Source."
         badge="DEVICE"
         meta={
-          selected
-            ? `${selected.label} · ${dateFrom} → ${dateTo}`
-            : "Pick a device and load a range"
+          <>
+            <IcoHistory />
+            {selected
+              ? `${selected.label} · ${dateFrom} → ${dateTo}`
+              : `Pick a device · max ${DEVICE_METRICS_MAX_DAYS} days`}
+          </>
+        }
+        actions={
+          <div className="fleet-an-filters">
+            <label className="fleet-cc-field fleet-cc-field-ico">
+              <span>
+                <IcoDevice /> Device
+              </span>
+              <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+                {devices.length === 0 ? <option value="">No devices</option> : null}
+                {devices.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="fleet-cc-field fleet-cc-field-ico">
+              <span>
+                <IcoCalendar /> From
+              </span>
+              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            </label>
+            <label className="fleet-cc-field fleet-cc-field-ico">
+              <span>
+                <IcoCalendar /> To
+              </span>
+              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            </label>
+            <div className="fleet-an-period" role="tablist" aria-label="Period">
+              {(["daily", "weekly", "monthly"] as Period[]).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className={period === item ? "is-active" : ""}
+                  onClick={() => setPeriod(item)}
+                >
+                  {item[0].toUpperCase() + item.slice(1)}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="fleet-an-go"
+              disabled={!deviceId || loading}
+              onClick={() => void handleLoad()}
+            >
+              {loading
+                ? progress
+                  ? `Loading ${progress.loaded}/${progress.total}`
+                  : "Loading…"
+                : "Load"}
+            </button>
+          </div>
         }
       />
-      <div className="fleet-cc-analytics-filters">
-        <label className="fleet-cc-pill">
-          <IcoDevice />
-          <span className="sr-only">Device</span>
-          <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
-            {devices.length === 0 ? <option value="">No devices</option> : null}
-            {devices.map((d) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                {d.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="fleet-cc-pill">
-          <IcoCalendar />
-          <span className="sr-only">From</span>
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-        </label>
-        <label className="fleet-cc-pill">
-          <IcoCalendar />
-          <span className="sr-only">To</span>
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-        </label>
-        <div className="period-switch" role="tablist" aria-label="Period">
-          {(["daily", "weekly", "monthly"] as Period[]).map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={period === item ? "active" : ""}
-              onClick={() => setPeriod(item)}
-            >
-              {item[0].toUpperCase() + item.slice(1)}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="btn btn-primary btn-compact"
-          disabled={!deviceId || loading}
-          onClick={() => void handleLoad()}
-        >
-          {loading
-            ? progress
-              ? `Loading ${progress.loaded}/${progress.total}`
-              : "Loading…"
-            : "Load metrics"}
-        </button>
-      </div>
-      <p className="muted fleet-cc-analytics-hint">
-        Uses tracker fixes only (max {DEVICE_METRICS_MAX_DAYS} days). Fuel and RPM stay empty unless
-        the mapper stored those values on the fix.
-      </p>
+
       {error ? <div className="banner error fleet-cc-banner">{error}</div> : null}
 
-      <section className="kpis">
-        <article className="kpi" style={{ ["--tick" as string]: "var(--gps)" }}>
-          <div className="label">GPS distance</div>
-          <div className="value">{trips ? units.distance(totals.gps, false) : "—"}</div>
-          <div className="unit">{units.distanceUnit} · all points</div>
+      <section className="fleet-dash-kpis fleet-an-kpis" aria-label="Full KPIs">
+        <article className="fleet-dash-kpi is-util">
+          <header>
+            <span className="fleet-dash-kpi-ico is-util">
+              <IcoOdo />
+            </span>
+            <em className="fleet-dash-pill">GPS</em>
+          </header>
+          <span className="fleet-dash-kpi-label">Distance</span>
+          <strong>{trips ? units.distance(totals.gps, false) : "—"}</strong>
+          <p className="muted">{units.distanceUnit} · all points</p>
         </article>
-        <article className="kpi" style={{ ["--tick" as string]: "var(--ign)" }}>
-          <div className="label">Ignition distance</div>
-          <div className="value">{trips ? units.distance(totals.ignition, false) : "—"}</div>
-          <div className="unit">{units.distanceUnit} · engine on</div>
+        <article className="fleet-dash-kpi">
+          <header>
+            <span className="fleet-dash-kpi-ico is-cover">
+              <IcoIgnition />
+            </span>
+            <em className="fleet-dash-pill">IGN</em>
+          </header>
+          <span className="fleet-dash-kpi-label">Engine on</span>
+          <strong>{trips ? units.distance(totals.ignition, false) : "—"}</strong>
+          <p className="muted">{units.distanceUnit} · ignition</p>
         </article>
-        <article className="kpi" style={{ ["--tick" as string]: "var(--odo)" }}>
-          <div className="label">Odometer</div>
-          <div className="value">{trips ? units.distance(totals.odometer, false) : "—"}</div>
-          <div className="unit">
-            {units.distanceUnit} · {trips ? `vs GPS ${odoGpsDelta(totals.odometer, totals.ignition)}` : "device"}
-          </div>
+        <article className="fleet-dash-kpi">
+          <header>
+            <span className="fleet-dash-kpi-ico is-odo">
+              <IcoOdo />
+            </span>
+            <em className="fleet-dash-pill">{trips ? odoGpsDelta(totals.odometer, totals.ignition) : "ODO"}</em>
+          </header>
+          <span className="fleet-dash-kpi-label">Odometer</span>
+          <strong>{trips ? units.distance(totals.odometer, false) : "—"}</strong>
+          <p className="muted">{units.distanceUnit} · vs GPS</p>
         </article>
-        <article className="kpi" style={{ ["--tick" as string]: "var(--hrs)" }}>
-          <div className="label">Active time</div>
-          <div className="value">{trips ? formatHours(totals.hours) : "—"}</div>
-          <div className="unit">{trips ? `${formatHours(totals.idle)} h idle` : "hours moving"}</div>
+        <article className="fleet-dash-kpi">
+          <header>
+            <span className="fleet-dash-kpi-ico is-fuel">
+              <IcoUtil />
+            </span>
+            <em className="fleet-dash-pill">{trips ? `${formatHours(totals.idle)} idle` : "HRS"}</em>
+          </header>
+          <span className="fleet-dash-kpi-label">Active</span>
+          <strong>{trips ? formatHours(totals.hours) : "—"}</strong>
+          <p className="muted">hours moving</p>
         </article>
       </section>
 
       {rows.length ? (
         <>
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h2>Distance &amp; active time</h2>
-                <p>GPS and ignition-on kilometres from Device Source, with moving hours.</p>
+          <div className="fleet-dash-mid">
+            <article className="fleet-dash-card">
+              <div className="fleet-dash-card-head">
+                <h3>
+                  <IcoOdo /> Distance &amp; time
+                </h3>
               </div>
-            </div>
-            <DistanceChart rows={rows} />
-          </section>
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h2>Utilization</h2>
-                <p>Engine-on hours split into moving versus idle.</p>
+              <DistanceChart rows={rows} />
+            </article>
+            <article className="fleet-dash-card">
+              <div className="fleet-dash-card-head">
+                <h3>
+                  <IcoUtil /> Utilization
+                </h3>
               </div>
-            </div>
-            <UtilizationChart rows={rows} />
-          </section>
+              <UtilizationChart rows={rows} />
+            </article>
+          </div>
           {mapData ? (
-            <section className="panel">
-              <div className="panel-head">
-                <div>
-                  <h2>Track</h2>
-                  <p>GPS path for the loaded range.</p>
-                </div>
+            <article className="fleet-dash-card">
+              <div className="fleet-dash-card-head">
+                <h3>
+                  <IcoPin /> Track
+                </h3>
+                <span className="muted">Start / end for the loaded range</span>
               </div>
-              <TrackMap data={mapData} />
-            </section>
+              <TrackMap data={mapData} embedded />
+            </article>
           ) : null}
           {insights.length ? (
-            <section className="panel">
-              <div className="panel-head">
-                <div>
-                  <h2>Insights</h2>
-                  <p>Template notes from Device Source kilometres and hours.</p>
-                </div>
+            <article className="fleet-dash-card">
+              <div className="fleet-dash-card-head">
+                <h3>
+                  <IcoHistory /> Insights
+                </h3>
               </div>
-              <ul className="fleet-cc-insight-list">
+              <ul className="fleet-an-insights">
                 {insights.map((block) => (
                   <li key={block.id}>
                     <strong>{block.title}</strong>
@@ -251,18 +277,17 @@ export function FleetLiveFullPanel({ devices, timezone, initialDeviceId }: Props
                   </li>
                 ))}
               </ul>
-            </section>
+            </article>
           ) : null}
         </>
       ) : (
-        <section className="panel">
-          <div className="empty">
-            <div>
-              <h3>{loading ? "Loading device days…" : "Load a device range"}</h3>
-              <p>Pick a tracker device, choose dates, then load. Charts use the same metrics engine as Full.</p>
-            </div>
-          </div>
-        </section>
+        <article className="fleet-dash-card fleet-an-empty">
+          <h3>{loading ? "Loading device days…" : "Load a device range"}</h3>
+          <p>
+            Choose a tracker and dates, then load. Charts use the same Device Source metrics as the
+            rest of Fleet Live.
+          </p>
+        </article>
       )}
     </div>
   );
