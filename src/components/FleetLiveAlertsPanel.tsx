@@ -262,6 +262,8 @@ export function FleetLiveAlertsPanel({
   const [draftDeviceIds, setDraftDeviceIds] = useState<string[]>([]);
   const [draftDurationMin, setDraftDurationMin] = useState(0);
   const [draftCooldownMin, setDraftCooldownMin] = useState(5);
+  const [draftEmitOn, setDraftEmitOn] = useState<"level" | "rising" | "falling">("level");
+  const [draftHysteresis, setDraftHysteresis] = useState(0);
   const [draftEmail, setDraftEmail] = useState(false);
   const [draftWa, setDraftWa] = useState(false);
   const [draftOp, setDraftOp] = useState<"and" | "or">("and");
@@ -355,6 +357,12 @@ export function FleetLiveAlertsPanel({
     setDraftDeviceIds(Array.isArray(rule.scopeDeviceIds) ? [...rule.scopeDeviceIds] : []);
     setDraftDurationMin(Math.round((rule.formula.durationSec || 0) / 60));
     setDraftCooldownMin(Math.max(1, Math.round((rule.cooldownSec || 300) / 60)));
+    setDraftEmitOn(
+      rule.formula.emitOn === "rising" || rule.formula.emitOn === "falling"
+        ? rule.formula.emitOn
+        : "level",
+    );
+    setDraftHysteresis(Number(rule.formula.hysteresis) || 0);
     setDraftEmail(rule.notifyEmail);
     setDraftWa(rule.notifyWhatsapp);
     setDraftOp(rule.formula.op === "or" ? "or" : "and");
@@ -413,6 +421,8 @@ export function FleetLiveAlertsPanel({
     setDraftDeviceIds([]);
     setDraftDurationMin(0);
     setDraftCooldownMin(5);
+    setDraftEmitOn("level");
+    setDraftHysteresis(0);
     setDraftEmail(false);
     setDraftWa(false);
     setDraftOp("and");
@@ -431,6 +441,8 @@ export function FleetLiveAlertsPanel({
         conditions: (g.conditions || []).map(coerceSavedCondition),
       })),
       durationSec: Math.max(0, draftDurationMin) * 60,
+      emitOn: draftEmitOn,
+      hysteresis: Math.max(0, draftHysteresis),
     };
     if (!draftElse.length) return when;
     const branches: AlertActionBranch[] = [
@@ -640,6 +652,34 @@ export function FleetLiveAlertsPanel({
                   max={1440}
                   value={draftCooldownMin}
                   onChange={(e) => setDraftCooldownMin(Math.max(1, Number(e.target.value) || 1))}
+                />
+              </label>
+              <label className="fleet-cc-field">
+                <span>Fire</span>
+                <select
+                  value={draftEmitOn}
+                  onChange={(e) =>
+                    setDraftEmitOn(
+                      e.target.value === "rising" || e.target.value === "falling"
+                        ? e.target.value
+                        : "level",
+                    )
+                  }
+                >
+                  <option value="level">While true</option>
+                  <option value="rising">Becomes true</option>
+                  <option value="falling">Becomes false</option>
+                </select>
+              </label>
+              <label className="fleet-cc-field">
+                <span>Hysteresis</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.1"
+                  value={draftHysteresis}
+                  onChange={(e) => setDraftHysteresis(Math.max(0, Number(e.target.value) || 0))}
+                  title="Stay true until the value crosses back this far (speed &gt; 80 with 10 stays true until 70)"
                 />
               </label>
             </div>

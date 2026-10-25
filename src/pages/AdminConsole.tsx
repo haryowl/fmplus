@@ -840,6 +840,7 @@ export default function AdminConsole() {
   const [onlineImeis, setOnlineImeis] = useState<Set<string>>(() => new Set());
   const [previewDeviceId, setPreviewDeviceId] = useState("");
   const [remapPreview, setRemapPreview] = useState<string>("");
+  const [remapPaste, setRemapPaste] = useState("");
   const [safetyEvents, setSafetyEvents] = useState<
     Array<{
       id: string;
@@ -1847,6 +1848,50 @@ export default function AdminConsole() {
       await loadCommandHistory(cmdDeviceId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Cancel failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function previewPastedPacket() {
+    if (!selectedId || selectedId === "new" || !previewDeviceId) {
+      setError("Select a device, then paste a raw packet JSON");
+      return;
+    }
+    let rawAttrs: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(remapPaste) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("Paste a JSON object of raw attrs, e.g. {\"io\":{\"239\":1}}");
+      }
+      rawAttrs = parsed as Record<string, unknown>;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invalid packet JSON");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api<{
+        preview: { mapped: Record<string, unknown>; rulesApplied: number };
+      }>(`/api/admin/tenants/${selectedId}/tracker-devices/${previewDeviceId}/remap-preview`, {
+        method: "POST",
+        body: JSON.stringify({ rawAttrs }),
+      });
+      setRemapPreview(
+        JSON.stringify(
+          {
+            pasted: true,
+            previewMapped: data.preview.mapped,
+            rulesApplied: data.preview.rulesApplied,
+            rawSample: rawAttrs,
+          },
+          null,
+          2,
+        ),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Preview failed");
     } finally {
       setBusy(false);
     }
@@ -3454,6 +3499,15 @@ export default function AdminConsole() {
                         ))}
                       </select>
                     </label>
+                    <label className="span-2">
+                      Paste last packet (JSON)
+                      <textarea
+                        value={remapPaste}
+                        onChange={(e) => setRemapPaste(e.target.value)}
+                        rows={4}
+                        placeholder='{"io":{"239":1,"16":12345},"ignition":1}'
+                      />
+                    </label>
                     <div className="span-2 admin-actions">
                       <button
                         type="button"
@@ -3461,7 +3515,15 @@ export default function AdminConsole() {
                         disabled={busy || !previewDeviceId}
                         onClick={() => void loadRemapPreview()}
                       >
-                        Preview raw → mapped
+                        Preview last stored fix
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={busy || !previewDeviceId || !remapPaste.trim()}
+                        onClick={() => void previewPastedPacket()}
+                      >
+                        Preview pasted packet
                       </button>
                       <button
                         type="button"

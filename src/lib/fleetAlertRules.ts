@@ -21,6 +21,8 @@ export type AlertFormula = {
   durationSec?: number;
   /** First matching WHEN / ELSE WHEN wins. Empty = use this formula + rule actions. */
   branches?: AlertActionBranch[];
+  emitOn?: "level" | "rising" | "falling";
+  hysteresis?: number;
 };
 
 export type FleetAlertRule = {
@@ -105,13 +107,18 @@ export function formatAlertFormula(formula: AlertFormula | null | undefined): st
   const f = formula && typeof formula === "object" ? formula : null;
   if (!f) return "";
   if (Array.isArray(f.branches) && f.branches.length) {
-    return f.branches
+    const core = f.branches
       .map((b, i) => {
         const when = formatAlertFormula({ ...b.formula, branches: undefined, durationSec: undefined });
         const prefix = i === 0 ? "WHEN" : "ELSE WHEN";
         return `${prefix} ${when || "—"} → ${b.severity}`;
       })
       .join(" · ");
+    const extras = [];
+    if (f.emitOn === "rising") extras.push("rising");
+    if (f.emitOn === "falling") extras.push("falling");
+    if (Number(f.hysteresis) > 0) extras.push(`hyst ${f.hysteresis}`);
+    return extras.length ? `${core} · ${extras.join(" · ")}` : core;
   }
   const conds = Array.isArray(f.conditions)
     ? f.conditions.map((c) => `${c.field} ${c.cmp} ${JSON.stringify(c.value)}`)
@@ -123,7 +130,12 @@ export function formatAlertFormula(formula: AlertFormula | null | undefined): st
       }).filter(Boolean)
     : [];
   const joiner = f.op === "or" ? " OR " : " AND ";
-  return [...conds, ...groups].join(joiner);
+  const core = [...conds, ...groups].join(joiner);
+  const extras = [];
+  if (f.emitOn === "rising") extras.push("rising");
+  if (f.emitOn === "falling") extras.push("falling");
+  if (Number(f.hysteresis) > 0) extras.push(`hyst ${f.hysteresis}`);
+  return extras.length ? `${core}${core ? " · " : ""}${extras.join(" · ")}` : core;
 }
 
 export type AlertRulePreview = {

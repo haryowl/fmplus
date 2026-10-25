@@ -684,6 +684,25 @@ export async function handleAdminRequest(req, res) {
         json(res, 200, { last, preview });
         return true;
       }
+      if (req.method === "POST") {
+        let body = {};
+        try {
+          body = await readJson(req);
+        } catch {
+          json(res, 400, { error: "Invalid JSON body" });
+          return true;
+        }
+        const rawAttrs =
+          body.rawAttrs && typeof body.rawAttrs === "object" && !Array.isArray(body.rawAttrs)
+            ? body.rawAttrs
+            : {};
+        const preview = await previewRemap(rawAttrs, { deviceId });
+        json(res, 200, {
+          last: { rawAttrs, pasted: true },
+          preview,
+        });
+        return true;
+      }
       json(res, 405, { error: "Method not allowed" });
       return true;
     }

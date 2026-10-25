@@ -132,11 +132,16 @@ function normalizeFormula(raw, depth = 0) {
     : [];
   const durationSec = depth === 0 ? Math.max(0, Math.min(86400, Number(f.durationSec) || 0)) : 0;
   const branches = depth === 0 ? normalizeBranches(f.branches) : [];
+  const emitOn = depth === 0 && (f.emitOn === "rising" || f.emitOn === "falling") ? f.emitOn : "level";
+  const hysteresis =
+    depth === 0 ? Math.max(0, Math.min(10000, Number(f.hysteresis) || 0)) : 0;
   return {
     op: String(f.op || "and").toLowerCase() === "or" ? "or" : "and",
     conditions,
     groups,
     durationSec,
+    emitOn,
+    hysteresis,
     ...(branches.length ? { branches } : {}),
   };
 }
@@ -170,17 +175,69 @@ function formulaHasTerms(formula) {
   return Boolean(formula?.conditions?.length || formula?.groups?.length);
 }
 
+/** Loosen numeric thresholds once the rule is already latched (hysteresis). */
+export function applyHysteresis(formula, hysteresis) {
+  const h = Number(hysteresis) || 0;
+  if (h <= 0 || !formula || typeof formula !== "object") return formula;
+  const shift = (c) => {
+    const n = asNumber(c.value);
+    if (n == null) return c;
+    if (c.cmp === ">" || c.cmp === ">=") return { ...c, value: n - h };
+    if (c.cmp === "<" || c.cmp === "<=") return { ...c, value: n + h };
+    return c;
+  };
+  return {
+    ...formula,
+    conditions: Array.isArray(formula.conditions) ? formula.conditions.map(shift) : [],
+    groups: Array.isArray(formula.groups)
+      ? formula.groups.map((g) => applyHysteresis(g, h))
+      : [],
+  };
+}
+
 /** First matching WHEN / ELSE WHEN, or the top-level formula when there are no branches. */
-export function matchFormula(formula, snap) {
+export function matchFormula(formula, snap, opts = {}) {
   const f = formula && typeof formula === "object" ? formula : {};
+  const latched = opts.latched === true;
+  const h = Number(f.hysteresis) || 0;
+  const wrap = (node) => (latched && h ? applyHysteresis(node, h) : node);
   const branches = Array.isArray(f.branches) ? f.branches : [];
   if (branches.length) {
     for (const b of branches) {
-      if (evalFormula(b.formula, snap)) return { hit: true, branch: b };
+      if (evalFormula(wrap(b.formula), snap)) return { hit: true, branch: b };
     }
     return { hit: false, branch: null };
   }
-  return { hit: evalFormula(f, snap), branch: null };
+  return { hit: evalFormula(wrap(f), snap), branch: null };
+}
+
+/** Whether this eval should open an event (level / rising / falling + hold + cooldown). */
+export function shouldFireRule({
+  emitOn,
+  hit,
+  wasTrue,
+  trueSinceMs,
+  nowMs,
+  durationSec = 0,
+  lastFiredMs = null,
+  cooldownSec = 0,
+}) {
+  const emit = emitOn === "rising" || emitOn === "falling" ? emitOn : "level";
+  const heldSec =
+    wasTrue && Number.isFinite(trueSinceMs) ? Math.max(0, Math.round((nowMs - trueSinceMs) / 1000)) : 0;
+  if (emit === "falling") {
+    if (hit || !wasTrue) return false;
+    if (durationSec > 0 && heldSec < durationSec) return false;
+  } else if (emit === "rising") {
+    if (!hit) return false;
+    if (durationSec > 0 && heldSec < durationSec) return false;
+    if (wasTrue && lastFiredMs != null && lastFiredMs >= trueSinceMs) return false;
+  } else {
+    if (!hit) return false;
+    if (durationSec > 0 && heldSec < durationSec) return false;
+  }
+  if (lastFiredMs != null && nowMs - lastFiredMs < (Number(cooldownSec) || 0) * 1000) return false;
+  return true;
 }
 
 function formulaDetail(formula) {
@@ -585,9 +642,20 @@ export async function evaluateRulesForDevice(tenantId, deviceRow, fixRow) {
   for (const rule of enabled) {
     try {
       if (!(await deviceInScope(tenantId, rule, deviceRow.id))) continue;
-      const match = matchFormula(rule.formula, snap);
+      const st = await dbQuery(
+        `SELECT true_since, last_fired_at FROM fleet_alert_rule_state
+         WHERE tenant_id = $1 AND rule_id = $2::uuid AND device_id = $3::uuid`,
+        [tenantId, rule.id, deviceRow.id],
+      );
+      const prevTrueSince = st.rows[0]?.true_since ? new Date(st.rows[0].true_since) : null;
+      const lastFired = st.rows[0]?.last_fired_at ? new Date(st.rows[0].last_fired_at) : null;
+      const wasTrue = Boolean(prevTrueSince);
+      const match = matchFormula(rule.formula, snap, { latched: wasTrue });
       const hit = match.hit;
       const durationSec = Number(rule.formula.durationSec) || 0;
+      const emitOn = rule.formula.emitOn === "rising" || rule.formula.emitOn === "falling"
+        ? rule.formula.emitOn
+        : "level";
       const action = {
         ...rule,
         severity: match.branch?.severity || rule.severity,
@@ -595,14 +663,7 @@ export async function evaluateRulesForDevice(tenantId, deviceRow, fixRow) {
         notifyWhatsapp: match.branch ? match.branch.notifyWhatsapp === true : rule.notifyWhatsapp,
       };
 
-      const st = await dbQuery(
-        `SELECT true_since, last_fired_at FROM fleet_alert_rule_state
-         WHERE tenant_id = $1 AND rule_id = $2::uuid AND device_id = $3::uuid`,
-        [tenantId, rule.id, deviceRow.id],
-      );
-      let trueSince = st.rows[0]?.true_since ? new Date(st.rows[0].true_since) : null;
-      const lastFired = st.rows[0]?.last_fired_at ? new Date(st.rows[0].last_fired_at) : null;
-
+      let trueSince = prevTrueSince;
       if (hit) {
         if (!trueSince) trueSince = now;
       } else {
@@ -618,12 +679,23 @@ export async function evaluateRulesForDevice(tenantId, deviceRow, fixRow) {
         [tenantId, rule.id, deviceRow.id, trueSince, lastFired],
       );
 
-      if (!hit || !trueSince) continue;
-      const heldSec = Math.round((now.getTime() - trueSince.getTime()) / 1000);
-      if (durationSec > 0 && heldSec < durationSec) continue;
-
-      const cooldown = rule.cooldownSec || 300;
-      if (lastFired && now.getTime() - lastFired.getTime() < cooldown * 1000) continue;
+      const heldSec = wasTrue && prevTrueSince
+        ? Math.round((now.getTime() - prevTrueSince.getTime()) / 1000)
+        : 0;
+      if (
+        !shouldFireRule({
+          emitOn,
+          hit,
+          wasTrue,
+          trueSinceMs: prevTrueSince ? prevTrueSince.getTime() : null,
+          nowMs: now.getTime(),
+          durationSec,
+          lastFiredMs: lastFired ? lastFired.getTime() : null,
+          cooldownSec: rule.cooldownSec || 300,
+        })
+      ) {
+        continue;
+      }
 
       const fingerprint = `${rule.id}:${deviceRow.id}`;
       const title = rule.name;

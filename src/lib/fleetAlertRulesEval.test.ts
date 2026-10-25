@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { cookedSnapshot, evalFormula, matchFormula } from "../../server/fleet-alert-rules.mjs";
+import {
+  applyHysteresis,
+  cookedSnapshot,
+  evalFormula,
+  matchFormula,
+  shouldFireRule,
+} from "../../server/fleet-alert-rules.mjs";
 
 describe("cookedSnapshot", () => {
   it("maps core fix fields and fuel from mapped attrs", () => {
@@ -179,5 +185,92 @@ describe("evalFormula", () => {
     expect(hit.branch.label).toBe("Warning");
     expect(hit.branch.severity).toBe("warning");
     expect(matchFormula(formula, { ...snap, speed: 10 }).hit).toBe(false);
+  });
+});
+
+describe("applyHysteresis", () => {
+  it("loosens numeric thresholds when latched", () => {
+    const shifted = applyHysteresis(
+      { op: "and", conditions: [{ field: "speed", cmp: ">", value: 80 }] },
+      10,
+    );
+    expect(shifted.conditions[0].value).toBe(70);
+    expect(
+      evalFormula(shifted, { speed: 72, ignition: true, mapped: {} }),
+    ).toBe(true);
+    expect(
+      matchFormula(
+        { op: "and", conditions: [{ field: "speed", cmp: ">", value: 80 }], hysteresis: 10 },
+        { speed: 72, ignition: true, mapped: {} },
+        { latched: true },
+      ).hit,
+    ).toBe(true);
+    expect(
+      matchFormula(
+        { op: "and", conditions: [{ field: "speed", cmp: ">", value: 80 }], hysteresis: 10 },
+        { speed: 72, ignition: true, mapped: {} },
+        { latched: false },
+      ).hit,
+    ).toBe(false);
+  });
+});
+
+describe("shouldFireRule", () => {
+  const base = {
+    hit: true,
+    wasTrue: false,
+    trueSinceMs: null,
+    nowMs: 1_000_000,
+    durationSec: 0,
+    lastFiredMs: null,
+    cooldownSec: 300,
+  };
+
+  it("fires once on rising and not again while still true", () => {
+    expect(shouldFireRule({ ...base, emitOn: "rising" })).toBe(true);
+    expect(
+      shouldFireRule({
+        ...base,
+        emitOn: "rising",
+        wasTrue: true,
+        trueSinceMs: 900_000,
+        lastFiredMs: 950_000,
+      }),
+    ).toBe(false);
+  });
+
+  it("fires on falling after a dwell", () => {
+    expect(
+      shouldFireRule({
+        ...base,
+        emitOn: "falling",
+        hit: false,
+        wasTrue: true,
+        trueSinceMs: 800_000,
+        durationSec: 60,
+      }),
+    ).toBe(true);
+    expect(
+      shouldFireRule({
+        ...base,
+        emitOn: "falling",
+        hit: false,
+        wasTrue: true,
+        trueSinceMs: 980_000,
+        durationSec: 60,
+      }),
+    ).toBe(false);
+  });
+
+  it("retriggers level after cooldown", () => {
+    expect(
+      shouldFireRule({
+        ...base,
+        emitOn: "level",
+        wasTrue: true,
+        trueSinceMs: 100_000,
+        lastFiredMs: 400_000,
+      }),
+    ).toBe(true);
   });
 });
