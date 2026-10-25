@@ -6,11 +6,21 @@ export type AlertCondition = {
   value: string | number | boolean;
 };
 
+export type AlertActionBranch = {
+  label?: string;
+  formula: AlertFormula;
+  severity: "info" | "warning" | "critical";
+  notifyEmail: boolean;
+  notifyWhatsapp: boolean;
+};
+
 export type AlertFormula = {
   op: "and" | "or";
   conditions: AlertCondition[];
   groups?: AlertFormula[];
   durationSec?: number;
+  /** First matching WHEN / ELSE WHEN wins. Empty = use this formula + rule actions. */
+  branches?: AlertActionBranch[];
 };
 
 export type FleetAlertRule = {
@@ -94,12 +104,21 @@ export async function fetchAlertRules(signal?: AbortSignal): Promise<FleetAlertR
 export function formatAlertFormula(formula: AlertFormula | null | undefined): string {
   const f = formula && typeof formula === "object" ? formula : null;
   if (!f) return "";
+  if (Array.isArray(f.branches) && f.branches.length) {
+    return f.branches
+      .map((b, i) => {
+        const when = formatAlertFormula({ ...b.formula, branches: undefined, durationSec: undefined });
+        const prefix = i === 0 ? "WHEN" : "ELSE WHEN";
+        return `${prefix} ${when || "—"} → ${b.severity}`;
+      })
+      .join(" · ");
+  }
   const conds = Array.isArray(f.conditions)
     ? f.conditions.map((c) => `${c.field} ${c.cmp} ${JSON.stringify(c.value)}`)
     : [];
   const groups = Array.isArray(f.groups)
     ? f.groups.map((g) => {
-        const inner = formatAlertFormula({ ...g, durationSec: undefined });
+        const inner = formatAlertFormula({ ...g, durationSec: undefined, branches: undefined });
         return inner ? `(${inner})` : "";
       }).filter(Boolean)
     : [];
@@ -111,6 +130,7 @@ export type AlertRulePreview = {
   result: boolean;
   label: string;
   snap: Record<string, unknown>;
+  branch?: string;
 };
 
 export async function previewAlertRule(
@@ -132,6 +152,7 @@ export async function previewAlertRule(
     result: data.result === true,
     label: String(data.label || ""),
     snap: data.snap && typeof data.snap === "object" ? (data.snap as Record<string, unknown>) : {},
+    branch: typeof data.branch === "string" ? data.branch : "",
   };
 }
 

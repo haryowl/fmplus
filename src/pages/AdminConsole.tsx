@@ -185,6 +185,7 @@ const TRANSFORM_HELP: Record<string, string> = {
   bit_mask: 'True when those bits are set. Arg: {"mask":1} or {"mask":4}.',
   invert_bool: "Flip 0/1 or true/false. Arg is unused.",
   enum_map: 'Lookup table. Arg: {"map":{"0":"off","1":"on"}}.',
+  expr: 'Safe formula (not JS). Arg: {"expr":"value * 0.001"} or {"expr":"io.239 == 1 ? value * 0.1 : 0"}. Use value, io.*, tag.*, add.*, + - * /, comparisons, && ||, ?: and bit(value, n).',
 };
 
 const TRACKER_PROTOCOL_OPTIONS = [
@@ -1786,6 +1787,8 @@ export default function AdminConsole() {
       transformArg = { offset: 0 };
     } else if (dmTransform === "bit_mask") {
       transformArg = { mask: 1 };
+    } else if (dmTransform === "expr") {
+      transformArg = { expr: "value" };
     }
     try {
       await api(`/api/admin/tenants/${selectedId}/tracker-param-maps`, {
@@ -3283,6 +3286,7 @@ export default function AdminConsole() {
                         <option value="bit_mask">bit_mask</option>
                         <option value="invert_bool">invert_bool</option>
                         <option value="enum_map">enum_map</option>
+                        <option value="expr">expr</option>
                       </select>
                     </label>
                     <label>
@@ -3290,14 +3294,16 @@ export default function AdminConsole() {
                       <input
                         value={dmTransformArg}
                         onChange={(e) => setDmTransformArg(e.target.value)}
-                        placeholder='{"scale":0.001} / {"mask":1} / {"map":{"0":false}}'
+                        placeholder='{"scale":0.001} / {"expr":"value * 0.001"} / {"mask":1}'
                       />
                     </label>
                     <p className="muted span-2 admin-remap-help">
                       One vendor key → one app param per packet. Device overrides beat the
                       profile.{" "}
-                      {TRANSFORM_HELP[dmTransform] || TRANSFORM_HELP.identity} There is no
-                      script or if/else here — use Event Rules for conditions after mapping.
+                      {TRANSFORM_HELP[dmTransform] || TRANSFORM_HELP.identity}{" "}
+                      {dmTransform === "expr"
+                        ? "Preview with a last packet below before saving."
+                        : "There is no script upload — use Event Rules for conditions after mapping."}
                     </p>
                     <div className="span-2 admin-actions">
                       <button

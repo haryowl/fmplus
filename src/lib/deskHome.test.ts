@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deskHomePath,
+  deskLogoutHref,
   deskNavAllowed,
   hasAnyDeskPrivilege,
   isDeskUserRole,
@@ -31,6 +32,10 @@ describe("desk user role", () => {
     const priv = mergeDeskPrivileges({ viewFleetLive: true });
     expect(postLoginHref("driver", priv, "tenant01")).toBe("/m?k=tenant01");
     expect(postLoginHref("manager", priv, "tenant01")).toBe("/mm?k=tenant01");
+  });
+
+  it("returns desk Users to the unified login page", () => {
+    expect(deskLogoutHref()).toBe("/admin");
   });
 
   it("hides privileged nav items when the signed-in user lacks them", () => {

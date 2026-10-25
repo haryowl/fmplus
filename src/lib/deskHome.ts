@@ -79,6 +79,11 @@ export function postLoginHref(
   return `/m${q}`;
 }
 
+/** Unified login after a desk User signs out of Fleet Live / Jobs. */
+export function deskLogoutHref(): string {
+  return "/admin";
+}
+
 export function applyFieldSessionTenant(tenantKey: string, appId?: number | null): void {
   const key = String(tenantKey || "").trim();
   if (!key) return;

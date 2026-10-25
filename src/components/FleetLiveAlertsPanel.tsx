@@ -20,6 +20,7 @@ import {
   RULE_CMPS,
   RULE_FIELDS,
   saveAlertRule,
+  type AlertActionBranch,
   type AlertCondition,
   type AlertFormula,
   type FleetAlertRule,
@@ -84,6 +85,22 @@ const emptyCondition = (): AlertCondition => ({
 const emptyGroup = (): AlertFormula => ({
   op: "and",
   conditions: [emptyCondition()],
+});
+
+type ElseDraft = {
+  op: "and" | "or";
+  conditions: AlertCondition[];
+  severity: "info" | "warning" | "critical";
+  notifyEmail: boolean;
+  notifyWhatsapp: boolean;
+};
+
+const emptyElse = (): ElseDraft => ({
+  op: "and",
+  conditions: [emptyCondition()],
+  severity: "warning",
+  notifyEmail: true,
+  notifyWhatsapp: false,
 });
 
 function coerceSavedCondition(c: AlertCondition): AlertCondition {
@@ -250,6 +267,7 @@ export function FleetLiveAlertsPanel({
   const [draftOp, setDraftOp] = useState<"and" | "or">("and");
   const [draftConditions, setDraftConditions] = useState<AlertCondition[]>([emptyCondition()]);
   const [draftGroups, setDraftGroups] = useState<AlertFormula[]>([]);
+  const [draftElse, setDraftElse] = useState<ElseDraft[]>([]);
   const [previewDeviceId, setPreviewDeviceId] = useState("");
   const [previewing, setPreviewing] = useState(false);
   const [previewText, setPreviewText] = useState("");
@@ -351,6 +369,38 @@ export function FleetLiveAlertsPanel({
           }))
         : [],
     );
+    const branches = Array.isArray(rule.formula.branches) ? rule.formula.branches : [];
+    if (branches.length) {
+      const first = branches[0];
+      setDraftOp(first.formula.op === "or" ? "or" : "and");
+      setDraftConditions(
+        first.formula.conditions?.length ? first.formula.conditions.map((c) => ({ ...c })) : [emptyCondition()],
+      );
+      setDraftGroups(
+        Array.isArray(first.formula.groups)
+          ? first.formula.groups.map((g) => ({
+              op: g.op === "or" ? "or" : "and",
+              conditions: g.conditions?.length ? g.conditions.map((c) => ({ ...c })) : [emptyCondition()],
+            }))
+          : [],
+      );
+      setDraftSeverity(first.severity);
+      setDraftEmail(first.notifyEmail);
+      setDraftWa(first.notifyWhatsapp);
+      setDraftElse(
+        branches.slice(1).map((b) => ({
+          op: b.formula.op === "or" ? "or" : "and",
+          conditions: b.formula.conditions?.length
+            ? b.formula.conditions.map((c) => ({ ...c }))
+            : [emptyCondition()],
+          severity: b.severity,
+          notifyEmail: b.notifyEmail,
+          notifyWhatsapp: b.notifyWhatsapp,
+        })),
+      );
+    } else {
+      setDraftElse([]);
+    }
     setPreviewText("");
   };
 
@@ -368,7 +418,41 @@ export function FleetLiveAlertsPanel({
     setDraftOp("and");
     setDraftConditions([emptyCondition()]);
     setDraftGroups([]);
+    setDraftElse([]);
     setPreviewText("");
+  };
+
+  const packDraftFormula = (): AlertFormula => {
+    const when: AlertFormula = {
+      op: draftOp,
+      conditions: draftConditions.map(coerceSavedCondition),
+      groups: draftGroups.map((g) => ({
+        op: g.op === "or" ? "or" : "and",
+        conditions: (g.conditions || []).map(coerceSavedCondition),
+      })),
+      durationSec: Math.max(0, draftDurationMin) * 60,
+    };
+    if (!draftElse.length) return when;
+    const branches: AlertActionBranch[] = [
+      {
+        label: "When",
+        formula: { op: when.op, conditions: when.conditions, groups: when.groups },
+        severity: draftSeverity,
+        notifyEmail: draftEmail,
+        notifyWhatsapp: draftWa,
+      },
+      ...draftElse.map((b, i) => ({
+        label: `Else when ${i + 1}`,
+        formula: {
+          op: b.op,
+          conditions: b.conditions.map(coerceSavedCondition),
+        },
+        severity: b.severity,
+        notifyEmail: b.notifyEmail,
+        notifyWhatsapp: b.notifyWhatsapp,
+      })),
+    ];
+    return { ...when, branches };
   };
 
   const onSaveRule = async () => {
@@ -407,15 +491,7 @@ export function FleetLiveAlertsPanel({
           scopeKind: draftScope,
           scopeGroupId: draftScope === "group" ? draftGroupId || null : null,
           scopeDeviceIds: draftScope === "devices" ? draftDeviceIds : [],
-          formula: {
-            op: draftOp,
-            conditions: draftConditions.map(coerceSavedCondition),
-            groups: draftGroups.map((g) => ({
-              op: g.op === "or" ? "or" : "and",
-              conditions: (g.conditions || []).map(coerceSavedCondition),
-            })),
-            durationSec: Math.max(0, draftDurationMin) * 60,
-          },
+          formula: packDraftFormula(),
           notifyEmail: draftEmail,
           notifyWhatsapp: draftWa,
           cooldownSec: Math.max(60, Math.min(86400, draftCooldownMin * 60)),
@@ -631,6 +707,92 @@ export function FleetLiveAlertsPanel({
               >
                 Add group
               </button>
+              {draftElse.map((b, bi) => (
+                <div key={bi} className="fleet-rules-group">
+                  <div className="fleet-rules-op-row">
+                    <h4>Else when {bi + 1}</h4>
+                    <label className="fleet-cc-field fleet-rules-op">
+                      <span>Match</span>
+                      <select
+                        value={b.op}
+                        onChange={(e) => {
+                          const next = [...draftElse];
+                          next[bi] = { ...b, op: e.target.value === "or" ? "or" : "and" };
+                          setDraftElse(next);
+                        }}
+                      >
+                        <option value="and">All (AND)</option>
+                        <option value="or">Any (OR)</option>
+                      </select>
+                    </label>
+                    <label className="fleet-cc-field fleet-rules-op">
+                      <span>Then</span>
+                      <select
+                        value={b.severity}
+                        onChange={(e) => {
+                          const next = [...draftElse];
+                          next[bi] = {
+                            ...b,
+                            severity: e.target.value as ElseDraft["severity"],
+                          };
+                          setDraftElse(next);
+                        }}
+                      >
+                        <option value="info">info</option>
+                        <option value="warning">warning</option>
+                        <option value="critical">critical</option>
+                      </select>
+                    </label>
+                    <label className="fleet-rules-check">
+                      <input
+                        type="checkbox"
+                        checked={b.notifyEmail}
+                        onChange={(e) => {
+                          const next = [...draftElse];
+                          next[bi] = { ...b, notifyEmail: e.target.checked };
+                          setDraftElse(next);
+                        }}
+                      />
+                      Email
+                    </label>
+                    <label className="fleet-rules-check">
+                      <input
+                        type="checkbox"
+                        checked={b.notifyWhatsapp}
+                        onChange={(e) => {
+                          const next = [...draftElse];
+                          next[bi] = { ...b, notifyWhatsapp: e.target.checked };
+                          setDraftElse(next);
+                        }}
+                      />
+                      WhatsApp
+                    </label>
+                    <button
+                      type="button"
+                      className="fleet-cc-icon-btn"
+                      onClick={() => setDraftElse(draftElse.filter((_, i) => i !== bi))}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <ConditionList
+                    conditions={b.conditions}
+                    min={1}
+                    onChange={(conditions) => {
+                      const next = [...draftElse];
+                      next[bi] = { ...b, conditions };
+                      setDraftElse(next);
+                    }}
+                  />
+                </div>
+              ))}
+              <button
+                type="button"
+                className="fleet-cc-icon-btn"
+                onClick={() => setDraftElse([...draftElse, emptyElse()])}
+              >
+                Add else-when
+              </button>
             </div>
 
             <div className="fleet-rules-preview">
@@ -657,14 +819,7 @@ export function FleetLiveAlertsPanel({
                   setPreviewText("");
                   void previewAlertRule({
                     deviceId: previewDeviceId,
-                    formula: {
-                      op: draftOp,
-                      conditions: draftConditions.map(coerceSavedCondition),
-                      groups: draftGroups.map((g) => ({
-                        op: g.op === "or" ? "or" : "and",
-                        conditions: (g.conditions || []).map(coerceSavedCondition),
-                      })),
-                    },
+                    formula: packDraftFormula(),
                   })
                     .then((p) => {
                       const bits = [
@@ -672,8 +827,9 @@ export function FleetLiveAlertsPanel({
                         `ign=${p.snap.ignition ?? "—"}`,
                         `age=${p.snap.age_sec ?? "—"}s`,
                       ];
+                      const branch = p.branch ? ` · ${p.branch}` : "";
                       setPreviewText(
-                        `${p.result ? "MATCH" : "no match"} on ${p.label} · ${bits.join(" · ")}`,
+                        `${p.result ? "MATCH" : "no match"}${branch} on ${p.label} · ${bits.join(" · ")}`,
                       );
                     })
                     .catch((err: Error) => setPreviewText(err.message || "Preview failed"))

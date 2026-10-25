@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { applyFieldSessionTenant } from "./deskHome";
+import { applyFieldSessionTenant, deskLogoutHref } from "./deskHome";
 import { emptyDeskPrivileges, mergeDeskPrivileges, type DeskPrivileges } from "./deskPrivileges";
 import { currentTenantKey } from "./tenant";
 
@@ -156,6 +156,9 @@ export function DeskSessionProvider({ children }: { children: ReactNode }) {
     } finally {
       setUser(null);
       setBusy(false);
+      if (typeof window !== "undefined") {
+        window.location.assign(deskLogoutHref());
+      }
     }
   }, []);
 

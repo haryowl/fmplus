@@ -19,10 +19,12 @@ import {
   type ReportColCategory,
   type ReportColumn,
   type ReportEstimate,
+  type ReportFilter,
   type ReportRangeKind,
   type ReportRunResult,
   type ReportSpec,
 } from "../lib/fleetReports";
+import { RULE_CMPS, RULE_FIELDS } from "../lib/fleetAlertRules";
 import { downloadXlsx, excelFilename } from "../lib/xlsxDownload";
 import type { TrackerDeviceGroup } from "../lib/trackerDevices";
 import { FleetLiveSectionHead } from "./FleetLiveSectionHead";
@@ -489,6 +491,86 @@ export function FleetLiveReportsPanel({
               </select>
             </label>
           ) : null}
+
+          {draftSpec.grain === "fixes" ? (
+            <div className="fleet-rules-conditions">
+              <div className="fleet-rules-op-row">
+                <h4>Filters (optional)</h4>
+                <button
+                  type="button"
+                  className="fleet-cc-icon-btn"
+                  onClick={() =>
+                    patchSpec({
+                      filters: [
+                        ...draftSpec.filters,
+                        { field: "speed", cmp: ">", value: 80 } satisfies ReportFilter,
+                      ],
+                    })
+                  }
+                >
+                  Add filter
+                </button>
+              </div>
+              {draftSpec.filters.map((f, idx) => (
+                <div key={idx} className="fleet-rules-cond-row">
+                  <select
+                    value={f.field}
+                    onChange={(e) => {
+                      const filters = [...draftSpec.filters];
+                      filters[idx] = { ...f, field: e.target.value };
+                      patchSpec({ filters });
+                    }}
+                  >
+                    {RULE_FIELDS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                    <option value="mapped.alarm">mapped.alarm</option>
+                  </select>
+                  <select
+                    value={f.cmp}
+                    onChange={(e) => {
+                      const filters = [...draftSpec.filters];
+                      filters[idx] = { ...f, cmp: e.target.value };
+                      patchSpec({ filters });
+                    }}
+                  >
+                    {RULE_CMPS.map((cmp) => (
+                      <option key={cmp} value={cmp}>
+                        {cmp}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={String(f.value ?? "")}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const num = Number(raw);
+                      const filters = [...draftSpec.filters];
+                      filters[idx] = {
+                        ...f,
+                        value: raw !== "" && !Number.isNaN(num) ? num : raw,
+                      };
+                      patchSpec({ filters });
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="fleet-cc-icon-btn"
+                    onClick={() =>
+                      patchSpec({ filters: draftSpec.filters.filter((_, i) => i !== idx) })
+                    }
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <p className="muted">Device Source only. Filters apply to fix rows before export.</p>
+            </div>
+          ) : (
+            <p className="muted">Device Source daily totals — no Armada source.</p>
+          )}
 
           <div className="fleet-rpt-cols">
             <header className="fleet-rpt-cols-head">

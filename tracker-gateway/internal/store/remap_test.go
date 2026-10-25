@@ -24,6 +24,20 @@ func TestApplyRemap_IONested(t *testing.T) {
 	}
 }
 
+func TestApplyRemap_Expr(t *testing.T) {
+	raw := map[string]any{
+		"io":  map[string]any{"239": 1.0, "16": 12345.0},
+		"odo": 12345.0,
+	}
+	mapped := ApplyRemap(raw, []RemapRule{
+		{VendorKey: "odo", AppParamID: "odometer_km", Transform: "expr", TransformArg: map[string]any{"expr": "io.239 == 1 ? value * 0.001 : 0"}},
+	})
+	got, _ := mapped["odometer_km"].(float64)
+	if got < 12.3 || got > 12.4 {
+		t.Fatalf("odo=%v", mapped["odometer_km"])
+	}
+}
+
 func TestApplyRemap_InvertBool(t *testing.T) {
 	raw := map[string]any{"flag": 0}
 	mapped := ApplyRemap(raw, []RemapRule{

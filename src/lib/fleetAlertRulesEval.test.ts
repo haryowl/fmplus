@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cookedSnapshot, evalFormula } from "../../server/fleet-alert-rules.mjs";
+import { cookedSnapshot, evalFormula, matchFormula } from "../../server/fleet-alert-rules.mjs";
 
 describe("cookedSnapshot", () => {
   it("maps core fix fields and fuel from mapped attrs", () => {
@@ -151,5 +151,33 @@ describe("evalFormula", () => {
         snap,
       ),
     ).toBe(true);
+  });
+
+  it("picks the first matching ELSE WHEN branch", () => {
+    const formula = {
+      op: "and",
+      conditions: [],
+      branches: [
+        {
+          label: "Critical",
+          severity: "critical",
+          notifyEmail: true,
+          notifyWhatsapp: true,
+          formula: { op: "and", conditions: [{ field: "speed", cmp: ">", value: 120 }] },
+        },
+        {
+          label: "Warning",
+          severity: "warning",
+          notifyEmail: true,
+          notifyWhatsapp: false,
+          formula: { op: "and", conditions: [{ field: "speed", cmp: ">", value: 80 }] },
+        },
+      ],
+    };
+    const hit = matchFormula(formula, snap);
+    expect(hit.hit).toBe(true);
+    expect(hit.branch.label).toBe("Warning");
+    expect(hit.branch.severity).toBe("warning");
+    expect(matchFormula(formula, { ...snap, speed: 10 }).hit).toBe(false);
   });
 });

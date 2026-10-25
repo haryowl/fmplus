@@ -67,7 +67,7 @@ func ApplyRemap(raw map[string]any, rules []RemapRule) map[string]any {
 		if !ok {
 			continue
 		}
-		mapped[rule.AppParamID] = transformValue(val, rule.Transform, rule.TransformArg)
+		mapped[rule.AppParamID] = transformValue(val, rule.Transform, rule.TransformArg, raw)
 	}
 	return mapped
 }
@@ -100,7 +100,7 @@ func lookupRaw(raw map[string]any, key string) (any, bool) {
 	return nil, false
 }
 
-func transformValue(v any, transform string, arg map[string]any) any {
+func transformValue(v any, transform string, arg map[string]any, raw map[string]any) any {
 	switch transform {
 	case "invert_bool":
 		return !asBool(v)
@@ -126,9 +126,54 @@ func transformValue(v any, transform string, arg map[string]any) any {
 			}
 		}
 		return v
+	case "expr":
+		expr := ""
+		if s, ok := arg["expr"].(string); ok {
+			expr = s
+		} else if s, ok := arg["formula"].(string); ok {
+			expr = s
+		}
+		if expr == "" {
+			return v
+		}
+		vars := flattenRaw(raw)
+		vars["value"] = v
+		out, err := evalRemapExpr(expr, vars)
+		if err != nil {
+			return v
+		}
+		return out
 	default:
 		return v
 	}
+}
+
+func flattenRaw(raw map[string]any) map[string]any {
+	out := map[string]any{}
+	if raw == nil {
+		return out
+	}
+	for k, v := range raw {
+		if nest, ok := v.(map[string]any); ok {
+			prefix := ""
+			switch k {
+			case "io":
+				prefix = "io."
+			case "tags":
+				prefix = "tag."
+			case "add":
+				prefix = "add."
+			}
+			if prefix != "" {
+				for ik, iv := range nest {
+					out[prefix+ik] = iv
+				}
+				continue
+			}
+		}
+		out[k] = v
+	}
+	return out
 }
 
 func asFloat(v any) float64 {

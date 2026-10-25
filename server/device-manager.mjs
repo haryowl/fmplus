@@ -3,6 +3,7 @@
  */
 import { formatAvlParamValue, mergeAvlEventAttrs } from "./avl-io-enums.mjs";
 import { dbQuery } from "./db.mjs";
+import { evalRemapExpr, flattenRawAttrs } from "./remap-expr.mjs";
 
 /** Protocol-scoped command types (mirrors Admin COMMAND_TYPE_OPTIONS). */
 const COMMAND_TYPE_PROTOCOLS = {
@@ -830,6 +831,7 @@ export async function upsertMapRule(body) {
     "enum_map",
     "bit_mask",
     "invert_bool",
+    "expr",
   ].includes(body.transform)
     ? body.transform
     : "identity";
@@ -872,7 +874,7 @@ export async function previewRemap(rawAttrs, { deviceId, profileId }) {
     if (!rule.enabled) continue;
     const val = lookupRaw(raw, rule.vendorKey);
     if (val === undefined) continue;
-    mapped[rule.appParamId] = applyTransform(val, rule.transform, rule.transformArg);
+    mapped[rule.appParamId] = applyTransform(val, rule.transform, rule.transformArg, raw);
   }
   return { mapped, rulesApplied: rules.length };
 }
@@ -885,7 +887,7 @@ function lookupRaw(raw, key) {
   return undefined;
 }
 
-function applyTransform(v, transform, arg = {}) {
+function applyTransform(v, transform, arg = {}, raw = {}) {
   const num = Number(v);
   switch (transform) {
     case "invert_bool":
@@ -902,6 +904,15 @@ function applyTransform(v, transform, arg = {}) {
       return arg.map && Object.prototype.hasOwnProperty.call(arg.map, String(v))
         ? arg.map[String(v)]
         : v;
+    case "expr": {
+      const expr = String(arg.expr || arg.formula || "").trim();
+      if (!expr) return v;
+      try {
+        return evalRemapExpr(expr, { value: v, ...flattenRawAttrs(raw) });
+      } catch {
+        return v;
+      }
+    }
     default:
       return v;
   }

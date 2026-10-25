@@ -125,22 +125,62 @@ function normalizeFormula(raw, depth = 0) {
     ? f.groups
         .filter((g) => g && typeof g === "object")
         .map((g) => {
-          const nested = normalizeFormula({ ...g, durationSec: 0 }, depth + 1);
+          const nested = normalizeFormula({ ...g, durationSec: 0, branches: undefined }, depth + 1);
           return { op: nested.op, conditions: nested.conditions, groups: nested.groups };
         })
         .filter((g) => g.conditions.length || g.groups.length)
     : [];
   const durationSec = depth === 0 ? Math.max(0, Math.min(86400, Number(f.durationSec) || 0)) : 0;
+  const branches = depth === 0 ? normalizeBranches(f.branches) : [];
   return {
     op: String(f.op || "and").toLowerCase() === "or" ? "or" : "and",
     conditions,
     groups,
     durationSec,
+    ...(branches.length ? { branches } : {}),
   };
 }
 
+function normalizeBranches(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .slice(0, 6)
+    .map((b, i) => {
+      if (!b || typeof b !== "object") return null;
+      const formula = normalizeFormula(
+        { ...(b.formula && typeof b.formula === "object" ? b.formula : b), durationSec: 0, branches: undefined },
+        1,
+      );
+      if (!formula.conditions.length && !formula.groups.length) return null;
+      return {
+        label: String(b.label || (i === 0 ? "When" : "Else when")).slice(0, 80),
+        formula: { op: formula.op, conditions: formula.conditions, groups: formula.groups },
+        severity: ["info", "warning", "critical"].includes(b.severity) ? b.severity : "warning",
+        notifyEmail: b.notifyEmail === true,
+        notifyWhatsapp: b.notifyWhatsapp === true,
+      };
+    })
+    .filter(Boolean);
+}
+
 function formulaHasTerms(formula) {
+  if (formula?.branches?.length) {
+    return formula.branches.some((b) => formulaHasTerms(b.formula));
+  }
   return Boolean(formula?.conditions?.length || formula?.groups?.length);
+}
+
+/** First matching WHEN / ELSE WHEN, or the top-level formula when there are no branches. */
+export function matchFormula(formula, snap) {
+  const f = formula && typeof formula === "object" ? formula : {};
+  const branches = Array.isArray(f.branches) ? f.branches : [];
+  if (branches.length) {
+    for (const b of branches) {
+      if (evalFormula(b.formula, snap)) return { hit: true, branch: b };
+    }
+    return { hit: false, branch: null };
+  }
+  return { hit: evalFormula(f, snap), branch: null };
 }
 
 function formulaDetail(formula) {
@@ -545,8 +585,15 @@ export async function evaluateRulesForDevice(tenantId, deviceRow, fixRow) {
   for (const rule of enabled) {
     try {
       if (!(await deviceInScope(tenantId, rule, deviceRow.id))) continue;
-      const hit = evalFormula(rule.formula, snap);
+      const match = matchFormula(rule.formula, snap);
+      const hit = match.hit;
       const durationSec = Number(rule.formula.durationSec) || 0;
+      const action = {
+        ...rule,
+        severity: match.branch?.severity || rule.severity,
+        notifyEmail: match.branch ? match.branch.notifyEmail === true : rule.notifyEmail,
+        notifyWhatsapp: match.branch ? match.branch.notifyWhatsapp === true : rule.notifyWhatsapp,
+      };
 
       const st = await dbQuery(
         `SELECT true_since, last_fired_at FROM fleet_alert_rule_state
@@ -581,12 +628,13 @@ export async function evaluateRulesForDevice(tenantId, deviceRow, fixRow) {
       const fingerprint = `${rule.id}:${deviceRow.id}`;
       const title = rule.name;
       const detailParts = [];
-      const matchText = formulaDetail(rule.formula);
+      const matchText = formulaDetail(match.branch?.formula || rule.formula);
+      if (match.branch?.label) detailParts.push(match.branch.label);
       if (matchText) detailParts.push(matchText);
       if (durationSec > 0) detailParts.push(`held ${heldSec}s (need ${durationSec}s)`);
       const detail = `${deviceRow.label || deviceRow.imei || deviceRow.id} · ${detailParts.join(" · ")}`;
 
-      const notified = await sendRuleNotify(tenantId, rule, title, detail);
+      const notified = await sendRuleNotify(tenantId, action, title, detail);
       await dbQuery(
         `INSERT INTO fleet_alert_events (
            tenant_id, rule_id, device_id, severity, title, detail, lat, lon, fingerprint,
@@ -596,7 +644,7 @@ export async function evaluateRulesForDevice(tenantId, deviceRow, fixRow) {
           tenantId,
           rule.id,
           deviceRow.id,
-          rule.severity,
+          action.severity,
           title,
           detail,
           snap.lat,
@@ -649,8 +697,10 @@ export async function previewFleetAlertRule(tenantId, deviceId, formula) {
   const fences = await listTenantGeofences(tenantId, { enabledOnly: true }).catch(() => []);
   Object.assign(snap, geofenceSnapFields(snap.lat, snap.lon, fences));
   const f = normalizeFormula(formula);
+  const match = matchFormula(f, snap);
   return {
-    result: evalFormula(f, snap),
+    result: match.hit,
+    branch: match.branch?.label || "",
     label: row.label || row.imei || id,
     snap: {
       speed: snap.speed,
