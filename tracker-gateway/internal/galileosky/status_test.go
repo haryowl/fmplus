@@ -24,8 +24,11 @@ func TestApplyStatusTags_EngineAndPower(t *testing.T) {
 	st := make([]byte, 2)
 	binary.LittleEndian.PutUint16(st, 0x0100|0x0200) // ext power + engine
 	evs := applyStatusTags(map[byte][]byte{0x40: st}, raw)
-	if raw["status.ignition"] != true || raw["alarm.power_ext"] != true {
+	if raw["status.engine"] != true || raw["alarm.power_ext"] != true {
 		t.Fatalf("raw=%v", raw)
+	}
+	if _, ok := raw["status.ignition"]; ok {
+		t.Fatalf("ignition must not be assumed: %v", raw)
 	}
 	if len(evs) != 1 || evs[0].AlarmType != "power_ext" {
 		t.Fatalf("evs=%+v", evs)

@@ -424,18 +424,24 @@ func TestLooksLikeCommandReply(t *testing.T) {
 	}
 }
 
-func TestIgnitionFromInputStatus(t *testing.T) {
+func TestInputStatusDin0_NoAssumedIgnition(t *testing.T) {
 	tags := map[byte][]byte{
 		0x30: append([]byte{0x07}, append(make([]byte, 4), make([]byte, 4)...)...),
 		0x46: {0x01, 0x00},
 		0x45: {0x05, 0x00}, // outputs (official 0x45)
 	}
 	fix, ok := fixFromTags(tags)
-	if !ok || fix.Ignition == nil || !*fix.Ignition {
-		t.Fatalf("expected ignition from 0x46: %+v", fix)
+	if !ok {
+		t.Fatalf("parse failed: %+v", fix)
 	}
-	if fix.RawAttrs["status.din0"] != true || fix.RawAttrs["status.ignition"] != true {
-		t.Fatalf("din/ign=%v", fix.RawAttrs)
+	if fix.Ignition != nil {
+		t.Fatalf("ignition must be user-mapped, got %+v", fix.Ignition)
+	}
+	if _, ok := fix.RawAttrs["status.ignition"]; ok {
+		t.Fatalf("status.ignition must not be assumed: %v", fix.RawAttrs)
+	}
+	if fix.RawAttrs["status.din0"] != true {
+		t.Fatalf("din0=%v", fix.RawAttrs)
 	}
 	if fix.RawAttrs["status.dout0"] != true || fix.RawAttrs["status.dout2"] != true {
 		t.Fatalf("dout=%v", fix.RawAttrs)

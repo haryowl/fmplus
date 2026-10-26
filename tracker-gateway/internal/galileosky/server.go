@@ -404,11 +404,8 @@ func fixFromTags(tags map[byte][]byte) (store.Fix, bool) {
 		fix.RawAttrs["gnss.vdop"] = v
 		fix.RawAttrs["tag.0x37"] = v
 	}
-	// Input status bit0 = input 0 (common ignition wiring); not tag 0x01 (hw version).
+	// Discrete inputs only. Galileosky has no canonical ignition tag — map in Device Mapper.
 	if st, ok := tags[0x46]; ok && len(st) >= 1 {
-		b := st[0]&0x01 != 0
-		fix.Ignition = &b
-		fix.RawAttrs["status.ignition"] = b
 		fix.RawAttrs["status.inputs"] = int(st[0])
 		fix.RawAttrs["tag.0x46"] = int(st[0])
 		fix.RawAttrs["status.tag.0x46"] = int(st[0])
