@@ -451,12 +451,12 @@ export function FleetLiveAlertsPanel({
         notifyEmail: draftEmail,
         notifyWhatsapp: draftWa,
       },
-      ...draftElse.map((b, i) => ({
+      ...draftElse.map((b, i): AlertActionBranch => ({
         label: `Else when ${i + 1}`,
         formula: {
           op: b.op,
           conditions: b.conditions.map(coerceSavedCondition),
-          groups: (b.groups || []).map((g) => ({
+          groups: (b.groups || []).map((g): AlertFormula => ({
             op: g.op === "or" ? "or" : "and",
             conditions: (g.conditions || []).map(coerceSavedCondition),
           })),
