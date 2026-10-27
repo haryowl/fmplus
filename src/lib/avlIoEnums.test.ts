@@ -83,4 +83,17 @@ describe("Teltonika AVL descriptions", () => {
     expect(byId["status.movement"]).toBe("Movement on");
     expect(byId["status.din1"]).toBe("Off");
   });
+
+  it("omits typed ignition when the last fix has no mapped value", () => {
+    const rows = flattenFixParamRows({
+      deviceId: "d1",
+      protocol: "galileosky",
+      ignition: null,
+      mappedAttrs: { "status.engine": true },
+    });
+    expect(rows.some((r) => r.paramId === "ignition" || r.paramId === "status.ignition")).toBe(
+      false,
+    );
+    expect(rows.find((r) => r.paramId === "status.engine")?.value).toBe(true);
+  });
 });

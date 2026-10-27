@@ -855,7 +855,8 @@ export async function upsertMapRule(body) {
 
 export async function deleteMapRule(ruleId) {
   const deleted = await dbQuery(
-    `DELETE FROM tracker_param_maps WHERE id = $1 RETURNING id`,
+    `DELETE FROM tracker_param_maps WHERE id = $1
+     RETURNING id, app_param_id, profile_id, device_id`,
     [ruleId],
   );
   if (!deleted.rows[0]) {
@@ -863,7 +864,43 @@ export async function deleteMapRule(ruleId) {
     err.status = 404;
     throw err;
   }
+  const row = deleted.rows[0];
+  if (row.app_param_id === "ignition") {
+    await clearUnmappedIgnitionLastFix({
+      profileId: row.profile_id,
+      deviceId: row.device_id,
+    }).catch(() => {});
+  }
   return true;
+}
+
+/** After an ignition remap is removed, drop stale last-fix On/True for devices with no remaining map. */
+export async function clearUnmappedIgnitionLastFix({ profileId = null, deviceId = null } = {}) {
+  await dbQuery(
+    `UPDATE vehicle_last_fix lf
+     SET ignition = NULL,
+         mapped_attrs = COALESCE(lf.mapped_attrs, '{}'::jsonb)
+           - 'ignition' - 'status.ignition' - 'status.acc',
+         raw_attrs = COALESCE(lf.raw_attrs, '{}'::jsonb)
+           - 'ignition' - 'status.ignition' - 'status.acc'
+     FROM tracker_devices d
+     WHERE lf.device_id = d.id
+       AND d.protocol = 'galileosky'
+       AND (
+         ($1::uuid IS NOT NULL AND d.id = $1::uuid)
+         OR ($1::uuid IS NULL AND $2::uuid IS NOT NULL AND d.profile_id = $2::uuid)
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM tracker_param_maps m
+         WHERE m.app_param_id = 'ignition'
+           AND m.enabled = true
+           AND (
+             m.device_id = d.id
+             OR (m.device_id IS NULL AND m.profile_id IS NOT DISTINCT FROM d.profile_id)
+           )
+       )`,
+    [deviceId, profileId],
+  );
 }
 
 export async function previewRemap(rawAttrs, { deviceId, profileId }) {

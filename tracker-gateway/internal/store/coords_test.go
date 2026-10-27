@@ -55,3 +55,32 @@ func TestIsCookedAppParamKey_ExcludesOpaqueIO(t *testing.T) {
 		t.Fatal("semantic cooked keys required")
 	}
 }
+
+func TestStripUnmappedGalileoskyIgnition(t *testing.T) {
+	on := true
+	fix := Fix{
+		Ignition: &on,
+		RawAttrs: map[string]any{"status.ignition": true, "status.engine": true},
+		MappedAttrs: map[string]any{"status.ignition": true, "status.engine": true},
+	}
+	if !stripUnmappedGalileoskyIgnition("galileosky", "galileosky", &fix) {
+		t.Fatal("expected clear")
+	}
+	if fix.Ignition != nil {
+		t.Fatalf("ignition=%v", fix.Ignition)
+	}
+	if _, ok := fix.MappedAttrs["status.ignition"]; ok {
+		t.Fatalf("stale mapped ignition: %v", fix.MappedAttrs)
+	}
+	if fix.MappedAttrs["status.engine"] != true {
+		t.Fatal("engine flag must stay")
+	}
+
+	fix2 := Fix{MappedAttrs: map[string]any{"ignition": true}}
+	if stripUnmappedGalileoskyIgnition("galileosky", "galileosky", &fix2) {
+		t.Fatal("mapped ignition must be kept")
+	}
+	if stripUnmappedGalileoskyIgnition("teltonika", "", &Fix{MappedAttrs: map[string]any{}}) {
+		t.Fatal("non-galileosky must not strip")
+	}
+}

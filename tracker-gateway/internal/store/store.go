@@ -197,6 +197,34 @@ func isCookedAppParamKey(k string) bool {
 	return false
 }
 
+func isGalileoskyProtocol(protocol string) bool {
+	return protocol == "galileosky"
+}
+
+func dropAssumedIgnitionKeys(m map[string]any) {
+	if m == nil {
+		return
+	}
+	delete(m, "ignition")
+	delete(m, "status.ignition")
+	delete(m, "status.acc")
+}
+
+// stripUnmappedGalileoskyIgnition drops leftover ignition when Device Mapper does not
+// produce it. Returns true when last_fix must write NULL instead of COALESCE.
+func stripUnmappedGalileoskyIgnition(deviceProtocol, sourceProtocol string, fix *Fix) bool {
+	if fix == nil || (!isGalileoskyProtocol(deviceProtocol) && !isGalileoskyProtocol(sourceProtocol)) {
+		return false
+	}
+	if _, ok := fix.MappedAttrs["ignition"]; ok {
+		return false
+	}
+	dropAssumedIgnitionKeys(fix.RawAttrs)
+	dropAssumedIgnitionKeys(fix.MappedAttrs)
+	fix.Ignition = nil
+	return true
+}
+
 // NormalizeFixCoords repairs clear Longitude/Latitude swaps (lat out of ±90 but
 // swapping yields a valid point). Teltonika GPS element is Lon then Lat; a one-byte
 // AVL misalignment or stale consumer can leave them inverted in last_fix.
@@ -282,6 +310,7 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 			fix.MappedAttrs[k] = v
 		}
 	}
+	clearIgn := stripUnmappedGalileoskyIgnition(device.Protocol, fix.SourceProtocol, &fix)
 	fix.MappedAttrs["gps.valid"] = gpsOK
 	raw, _ := json.Marshal(fix.RawAttrs)
 	mapped, _ := json.Marshal(fix.MappedAttrs)
@@ -333,18 +362,20 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 			UPDATE vehicle_last_fix SET
 				speed = COALESCE($2, vehicle_last_fix.speed),
 				heading = COALESCE($3, vehicle_last_fix.heading),
-				ignition = COALESCE($4, vehicle_last_fix.ignition),
+				ignition = CASE WHEN $11 THEN NULL ELSE COALESCE($4, vehicle_last_fix.ignition) END,
 				odometer = COALESCE($5, vehicle_last_fix.odometer),
 				altitude = COALESCE($6, vehicle_last_fix.altitude),
 				satellites = COALESCE($7, vehicle_last_fix.satellites),
-				raw_attrs = COALESCE(vehicle_last_fix.raw_attrs, '{}'::jsonb) || $8::jsonb,
-				mapped_attrs = COALESCE(vehicle_last_fix.mapped_attrs, '{}'::jsonb) || $9::jsonb,
+				raw_attrs = CASE WHEN $11 THEN (COALESCE(vehicle_last_fix.raw_attrs, '{}'::jsonb) || $8::jsonb) - 'ignition' - 'status.ignition' - 'status.acc'
+				            ELSE COALESCE(vehicle_last_fix.raw_attrs, '{}'::jsonb) || $8::jsonb END,
+				mapped_attrs = CASE WHEN $11 THEN (COALESCE(vehicle_last_fix.mapped_attrs, '{}'::jsonb) || $9::jsonb) - 'ignition' - 'status.ignition' - 'status.acc'
+				               ELSE COALESCE(vehicle_last_fix.mapped_attrs, '{}'::jsonb) || $9::jsonb END,
 				source_protocol = COALESCE($10, vehicle_last_fix.source_protocol),
 				updated_at = now()
 			WHERE device_id = $1::uuid`,
 			device.ID,
 			fix.Speed, fix.Heading, fix.Ignition, fix.Odometer, fix.Altitude, fix.Satellites,
-			string(raw), string(mapped), fix.SourceProtocol,
+			string(raw), string(mapped), fix.SourceProtocol, clearIgn,
 		)
 	}
 	if err != nil {
@@ -406,16 +437,23 @@ func (s *Store) PatchLastStatus(ctx context.Context, device *Device, rawPatch ma
 			}
 		}
 	}
+	clearIgn := isGalileoskyProtocol(device.Protocol) && ignition == nil
+	if clearIgn {
+		dropAssumedIgnitionKeys(rawPatch)
+		dropAssumedIgnitionKeys(mapped)
+	}
 	rawJSON, _ := json.Marshal(rawPatch)
 	mappedJSON, _ := json.Marshal(mapped)
 	_, err := s.pool.Exec(ctx, `
 		UPDATE vehicle_last_fix
-		SET raw_attrs = COALESCE(raw_attrs, '{}'::jsonb) || $2::jsonb,
-		    mapped_attrs = COALESCE(mapped_attrs, '{}'::jsonb) || $3::jsonb,
-		    ignition = COALESCE($4, ignition),
+		SET raw_attrs = CASE WHEN $5 THEN (COALESCE(raw_attrs, '{}'::jsonb) || $2::jsonb) - 'ignition' - 'status.ignition' - 'status.acc'
+		                 ELSE COALESCE(raw_attrs, '{}'::jsonb) || $2::jsonb END,
+		    mapped_attrs = CASE WHEN $5 THEN (COALESCE(mapped_attrs, '{}'::jsonb) || $3::jsonb) - 'ignition' - 'status.ignition' - 'status.acc'
+		                   ELSE COALESCE(mapped_attrs, '{}'::jsonb) || $3::jsonb END,
+		    ignition = CASE WHEN $5 THEN NULL ELSE COALESCE($4, ignition) END,
 		    updated_at = now()
 		WHERE device_id = $1::uuid`,
-		device.ID, string(rawJSON), string(mappedJSON), ignition)
+		device.ID, string(rawJSON), string(mappedJSON), ignition, clearIgn)
 	return err
 }
 
