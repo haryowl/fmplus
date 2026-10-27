@@ -24,7 +24,7 @@ import {
   type ReportRunResult,
   type ReportSpec,
 } from "../lib/fleetReports";
-import { RULE_CMPS, RULE_FIELDS } from "../lib/fleetAlertRules";
+import { isMappedField, RULE_CMPS, RULE_FIELDS } from "../lib/fleetAlertRules";
 import { downloadXlsx, excelFilename } from "../lib/xlsxDownload";
 import type { TrackerDeviceGroup } from "../lib/trackerDevices";
 import { FleetLiveSectionHead } from "./FleetLiveSectionHead";
@@ -358,7 +358,7 @@ export function FleetLiveReportsPanel({
         section="reports"
         title="Reports"
         badge="DEVICE"
-        subtitle={loading ? "Loading…" : "Device Source columns, export, and scheduled email"}
+        subtitle={loading ? "Loading…" : "Device Source only — columns, filters, export, scheduled email"}
       />
 
       {error ? <div className="banner error fleet-cc-banner">{error}</div> : null}
@@ -511,13 +511,22 @@ export function FleetLiveReportsPanel({
                   Add filter
                 </button>
               </div>
-              {draftSpec.filters.map((f, idx) => (
+              {draftSpec.filters.map((f, idx) => {
+                const mappedOpts = categorized.filter((c) => c.id.startsWith("mapped."));
+                const known =
+                  RULE_FIELDS.some((opt) => opt.value === f.field) ||
+                  mappedOpts.some((c) => c.id === f.field);
+                return (
                 <div key={idx} className="fleet-rules-cond-row">
                   <select
-                    value={f.field}
+                    value={known ? f.field : "__mapped__"}
                     onChange={(e) => {
                       const filters = [...draftSpec.filters];
-                      filters[idx] = { ...f, field: e.target.value };
+                      const v = e.target.value;
+                      filters[idx] = {
+                        ...f,
+                        field: v === "__mapped__" ? "mapped." : v,
+                      };
                       patchSpec({ filters });
                     }}
                   >
@@ -526,8 +535,26 @@ export function FleetLiveReportsPanel({
                         {opt.label}
                       </option>
                     ))}
-                    <option value="mapped.alarm">mapped.alarm</option>
+                    {mappedOpts.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label} (mapped)
+                      </option>
+                    ))}
+                    <option value="__mapped__">Mapped attr…</option>
                   </select>
+                  {isMappedField(f.field) && !known ? (
+                    <input
+                      className="fleet-rules-mapped-key"
+                      placeholder="attr key (e.g. fuel_level)"
+                      value={f.field.slice("mapped.".length)}
+                      onChange={(e) => {
+                        const key = e.target.value.replace(/^mapped\./i, "").trim();
+                        const filters = [...draftSpec.filters];
+                        filters[idx] = { ...f, field: `mapped.${key}` };
+                        patchSpec({ filters });
+                      }}
+                    />
+                  ) : null}
                   <select
                     value={f.cmp}
                     onChange={(e) => {
@@ -565,11 +592,12 @@ export function FleetLiveReportsPanel({
                     Remove
                   </button>
                 </div>
-              ))}
-              <p className="muted">Device Source only. Filters apply to fix rows before export.</p>
+                );
+              })}
+              <p className="muted">Filters apply to Device Source fix rows before export.</p>
             </div>
           ) : (
-            <p className="muted">Device Source daily totals — no Armada source.</p>
+            <p className="muted">Daily totals from Device Source fixes (vehicle_fixes).</p>
           )}
 
           <div className="fleet-rpt-cols">
@@ -953,6 +981,7 @@ export function FleetLiveReportsPanel({
                 <div>
                   <strong>{r.name}</strong>
                   <span className="fleet-rules-flags muted">
+                    <span className="fleet-dash-pill">Device Source</span>
                     <span className="fleet-dash-pill">{r.spec.grain}</span>
                     <span className="fleet-dash-pill">{r.spec.rangeKind}</span>
                     {r.scheduleKind !== "off" ? (

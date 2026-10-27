@@ -90,6 +90,7 @@ const emptyGroup = (): AlertFormula => ({
 type ElseDraft = {
   op: "and" | "or";
   conditions: AlertCondition[];
+  groups: AlertFormula[];
   severity: "info" | "warning" | "critical";
   notifyEmail: boolean;
   notifyWhatsapp: boolean;
@@ -98,10 +99,20 @@ type ElseDraft = {
 const emptyElse = (): ElseDraft => ({
   op: "and",
   conditions: [emptyCondition()],
+  groups: [],
   severity: "warning",
   notifyEmail: true,
   notifyWhatsapp: false,
 });
+
+function cloneGroups(groups: AlertFormula[] | undefined): AlertFormula[] {
+  return Array.isArray(groups)
+    ? groups.map((g) => ({
+        op: g.op === "or" ? "or" : "and",
+        conditions: g.conditions?.length ? g.conditions.map((c) => ({ ...c })) : [emptyCondition()],
+      }))
+    : [];
+}
 
 function coerceSavedCondition(c: AlertCondition): AlertCondition {
   let value: string | number | boolean = c.value;
@@ -369,14 +380,7 @@ export function FleetLiveAlertsPanel({
     setDraftConditions(
       rule.formula.conditions.length ? rule.formula.conditions.map((c) => ({ ...c })) : [],
     );
-    setDraftGroups(
-      Array.isArray(rule.formula.groups)
-        ? rule.formula.groups.map((g) => ({
-            op: g.op === "or" ? "or" : "and",
-            conditions: g.conditions?.length ? g.conditions.map((c) => ({ ...c })) : [emptyCondition()],
-          }))
-        : [],
-    );
+    setDraftGroups(cloneGroups(rule.formula.groups));
     const branches = Array.isArray(rule.formula.branches) ? rule.formula.branches : [];
     if (branches.length) {
       const first = branches[0];
@@ -384,14 +388,7 @@ export function FleetLiveAlertsPanel({
       setDraftConditions(
         first.formula.conditions?.length ? first.formula.conditions.map((c) => ({ ...c })) : [emptyCondition()],
       );
-      setDraftGroups(
-        Array.isArray(first.formula.groups)
-          ? first.formula.groups.map((g) => ({
-              op: g.op === "or" ? "or" : "and",
-              conditions: g.conditions?.length ? g.conditions.map((c) => ({ ...c })) : [emptyCondition()],
-            }))
-          : [],
-      );
+      setDraftGroups(cloneGroups(first.formula.groups));
       setDraftSeverity(first.severity);
       setDraftEmail(first.notifyEmail);
       setDraftWa(first.notifyWhatsapp);
@@ -401,6 +398,7 @@ export function FleetLiveAlertsPanel({
           conditions: b.formula.conditions?.length
             ? b.formula.conditions.map((c) => ({ ...c }))
             : [emptyCondition()],
+          groups: cloneGroups(b.formula.groups),
           severity: b.severity,
           notifyEmail: b.notifyEmail,
           notifyWhatsapp: b.notifyWhatsapp,
@@ -458,6 +456,10 @@ export function FleetLiveAlertsPanel({
         formula: {
           op: b.op,
           conditions: b.conditions.map(coerceSavedCondition),
+          groups: (b.groups || []).map((g) => ({
+            op: g.op === "or" ? "or" : "and",
+            conditions: (g.conditions || []).map(coerceSavedCondition),
+          })),
         },
         severity: b.severity,
         notifyEmail: b.notifyEmail,
@@ -817,13 +819,72 @@ export function FleetLiveAlertsPanel({
                   </div>
                   <ConditionList
                     conditions={b.conditions}
-                    min={1}
+                    min={b.groups.length ? 0 : 1}
                     onChange={(conditions) => {
                       const next = [...draftElse];
                       next[bi] = { ...b, conditions };
                       setDraftElse(next);
                     }}
                   />
+                  {(b.groups || []).map((g, gi) => (
+                    <div key={gi} className="fleet-rules-group">
+                      <div className="fleet-rules-op-row">
+                        <h4>Group {gi + 1}</h4>
+                        <label className="fleet-cc-field fleet-rules-op">
+                          <span>Match</span>
+                          <select
+                            value={g.op}
+                            onChange={(e) => {
+                              const next = [...draftElse];
+                              const groups = [...(b.groups || [])];
+                              groups[gi] = { ...g, op: e.target.value === "or" ? "or" : "and" };
+                              next[bi] = { ...b, groups };
+                              setDraftElse(next);
+                            }}
+                          >
+                            <option value="and">All (AND)</option>
+                            <option value="or">Any (OR)</option>
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          className="fleet-cc-icon-btn"
+                          onClick={() => {
+                            const next = [...draftElse];
+                            next[bi] = {
+                              ...b,
+                              groups: (b.groups || []).filter((_, i) => i !== gi),
+                            };
+                            setDraftElse(next);
+                          }}
+                        >
+                          Remove group
+                        </button>
+                      </div>
+                      <ConditionList
+                        conditions={g.conditions || []}
+                        min={1}
+                        onChange={(conditions) => {
+                          const next = [...draftElse];
+                          const groups = [...(b.groups || [])];
+                          groups[gi] = { ...g, conditions };
+                          next[bi] = { ...b, groups };
+                          setDraftElse(next);
+                        }}
+                      />
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="fleet-cc-icon-btn"
+                    onClick={() => {
+                      const next = [...draftElse];
+                      next[bi] = { ...b, groups: [...(b.groups || []), emptyGroup()] };
+                      setDraftElse(next);
+                    }}
+                  >
+                    Add group
+                  </button>
                 </div>
               ))}
               <button

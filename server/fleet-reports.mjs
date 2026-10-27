@@ -1,5 +1,6 @@
 /**
- * Fleet Live Reports v1 — Device Source column picker, run-now, scheduled CSV email.
+ * Fleet Live Reports — Device Source only (vehicle_fixes / last-fix mapped_attrs).
+ * No Armada track source.
  */
 import { dbQuery } from "./db.mjs";
 import { evalFormula } from "./fleet-alert-rules.mjs";

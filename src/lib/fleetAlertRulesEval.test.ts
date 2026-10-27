@@ -186,6 +186,40 @@ describe("evalFormula", () => {
     expect(hit.branch.severity).toBe("warning");
     expect(matchFormula(formula, { ...snap, speed: 10 }).hit).toBe(false);
   });
+
+  it("evaluates ELSE WHEN branches that use nested groups", () => {
+    const formula = {
+      op: "and",
+      conditions: [],
+      branches: [
+        {
+          label: "Idle",
+          severity: "info",
+          notifyEmail: false,
+          notifyWhatsapp: false,
+          formula: {
+            op: "and",
+            conditions: [{ field: "speed", cmp: "<", value: 5 }],
+            groups: [{ op: "and", conditions: [{ field: "ignition", cmp: "==", value: true }] }],
+          },
+        },
+        {
+          label: "Moving",
+          severity: "warning",
+          notifyEmail: true,
+          notifyWhatsapp: false,
+          formula: { op: "and", conditions: [{ field: "speed", cmp: ">", value: 80 }] },
+        },
+      ],
+    };
+    const idle = matchFormula(formula, { ...snap, speed: 2, ignition: true });
+    expect(idle.hit).toBe(true);
+    expect(idle.branch.label).toBe("Idle");
+    const moving = matchFormula(formula, snap);
+    expect(moving.hit).toBe(true);
+    expect(moving.branch.label).toBe("Moving");
+    expect(matchFormula(formula, { ...snap, speed: 2, ignition: false }).hit).toBe(false);
+  });
 });
 
 describe("applyHysteresis", () => {

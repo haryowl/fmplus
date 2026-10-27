@@ -47,6 +47,20 @@ describe("normalizeReportSpec", () => {
     });
     expect(spec.columns).toEqual(["device", "mapped.fuel_level"]);
   });
+
+  it("keeps Device Source filters including mapped keys", () => {
+    const spec = normalizeReportSpec({
+      filters: [
+        { field: "speed", cmp: ">", value: 80 },
+        { field: "mapped.fuel_level", cmp: "<", value: 20 },
+        { field: "", cmp: "==", value: 1 },
+      ],
+    });
+    expect(spec.filters).toEqual([
+      { field: "speed", cmp: ">", value: 80 },
+      { field: "mapped.fuel_level", cmp: "<", value: 20 },
+    ]);
+  });
 });
 
 describe("resolveReportRange", () => {

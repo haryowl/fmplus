@@ -3349,6 +3349,13 @@ export default function AdminConsole() {
                       {dmTransform === "expr"
                         ? "Preview with a last packet below before saving."
                         : "There is no script upload — use Event Rules for conditions after mapping."}
+                      {(
+                        trackerDevices.find((d) => d.id === dmMapDeviceId)?.protocol ||
+                        trackerProfiles.find((p) => p.id === dmProfileId)?.protocol ||
+                        ""
+                      ).toLowerCase() === "galileosky"
+                        ? " Galileosky has no canonical ignition tag — map status.din0, tag.0x46 (bit_mask), or status.engine (0x40 bit 9 / mhours) to ignition if that is ACC on this device."
+                        : ""}
                     </p>
                     <div className="span-2 admin-actions">
                       <button
