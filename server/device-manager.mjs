@@ -5,6 +5,37 @@ import { formatAvlParamValue, mergeAvlEventAttrs } from "./avl-io-enums.mjs";
 import { dbQuery } from "./db.mjs";
 import { evalRemapExpr, flattenRawAttrs } from "./remap-expr.mjs";
 
+const ASSUMED_IGNITION_KEYS = ["ignition", "status.ignition", "status.acc"];
+
+export const IGNITION_MAPPED_SQL = `EXISTS (
+  SELECT 1 FROM tracker_param_maps m
+  WHERE m.app_param_id = 'ignition'
+    AND m.enabled = true
+    AND (
+      m.device_id = d.id
+      OR (m.device_id IS NULL AND m.profile_id IS NOT DISTINCT FROM d.profile_id)
+    )
+)`;
+
+export function dropAssumedIgnitionAttrs(obj) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
+  const next = { ...obj };
+  for (const key of ASSUMED_IGNITION_KEYS) delete next[key];
+  return next;
+}
+
+/** Live/params must not show Galileosky ignition unless Device Mapper still maps it. */
+export function applyGalileoskyIgnitionVisibility(protocol, ignitionMapped, pack) {
+  if (String(protocol || "") !== "galileosky" || ignitionMapped) return pack;
+  return {
+    ...pack,
+    ignition: null,
+    mappedAttrs: dropAssumedIgnitionAttrs(pack.mappedAttrs),
+    rawAttrs: dropAssumedIgnitionAttrs(pack.rawAttrs),
+    mapped_attrs: dropAssumedIgnitionAttrs(pack.mapped_attrs || pack.mappedAttrs),
+  };
+}
+
 /** Protocol-scoped command types (mirrors Admin COMMAND_TYPE_OPTIONS). */
 const COMMAND_TYPE_PROTOCOLS = {
   jt808_8103: ["jt808", "subiao"],
@@ -693,7 +724,8 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
     dbQuery(
       `SELECT d.id::text AS device_id, d.imei, d.label, d.protocol, d.last_seen_at,
               lf.lat, lf.lon, lf.speed, lf.heading, lf.ignition, lf.recorded_at,
-              lf.raw_attrs, lf.mapped_attrs, lf.updated_at AS last_fix_updated_at
+              lf.raw_attrs, lf.mapped_attrs, lf.updated_at AS last_fix_updated_at,
+              ${IGNITION_MAPPED_SQL} AS ignition_mapped
        FROM tracker_devices d
        LEFT JOIN vehicle_last_fix lf ON lf.device_id = d.id
        WHERE d.tenant_id = $1${deviceClause}
@@ -718,6 +750,11 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
     const protocol = d.protocol || "";
     const protoKeys = protocolVendors.get(protocol) || new Map();
     const updatedAt = d.last_fix_updated_at || d.recorded_at || d.last_seen_at || null;
+    const visible = applyGalileoskyIgnitionVisibility(protocol, d.ignition_mapped, {
+      ignition: d.ignition,
+      mappedAttrs: d.mapped_attrs,
+      rawAttrs: d.raw_attrs,
+    });
     rows.push(
       ...flattenFixParamRows({
         deviceId: d.device_id,
@@ -728,10 +765,10 @@ export async function listDeviceParamValues(tenantId, { deviceId, includeRaw = f
         lon: d.lon,
         speed: d.speed,
         heading: d.heading,
-        ignition: d.ignition,
+        ignition: visible.ignition,
         recordedAt: updatedAt,
-        mappedAttrs: d.mapped_attrs,
-        rawAttrs: d.raw_attrs,
+        mappedAttrs: visible.mappedAttrs,
+        rawAttrs: visible.rawAttrs,
         defById,
         protoKeys,
         includeRaw,

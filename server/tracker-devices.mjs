@@ -4,7 +4,11 @@
  */
 import crypto from "node:crypto";
 import { dbQuery } from "./db.mjs";
-import { applyDeviceRemap } from "./device-manager.mjs";
+import {
+  applyDeviceRemap,
+  applyGalileoskyIgnitionVisibility,
+  IGNITION_MAPPED_SQL,
+} from "./device-manager.mjs";
 import { emitParamEdgeEvents } from "./event-class.mjs";
 import {
   applyGpsOdometerDelta,
@@ -1297,6 +1301,7 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
             d.gps_odometer_km, d.trip_mode, d.trip_min_speed_kmh, d.trip_break_min,
             lf.lat, lf.lon, lf.recorded_at, lf.speed, lf.heading, lf.ignition,
             lf.odometer, lf.mapped_attrs, lf.source_protocol,
+            ${IGNITION_MAPPED_SQL} AS ignition_mapped,
             COALESCE(gs.groups_json, '[]'::json) AS groups_json
      FROM tracker_devices d
      ${fixJoin} vehicle_last_fix lf ON lf.device_id = d.id
@@ -1329,7 +1334,12 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
       recordedAt && !Number.isNaN(Date.parse(recordedAt))
         ? Math.max(0, Math.round((now - Date.parse(recordedAt)) / 1000))
         : null;
-    const tel = enrichFixTelemetry(r, pinIds);
+    const visible = applyGalileoskyIgnitionVisibility(r.protocol, r.ignition_mapped, {
+      ignition: r.ignition,
+      mapped_attrs: r.mapped_attrs,
+      mappedAttrs: r.mapped_attrs,
+    });
+    const tel = enrichFixTelemetry({ ...r, mapped_attrs: visible.mapped_attrs }, pinIds);
     const displayLabel =
       (r.label && String(r.label).trim()) ||
       (r.plate && String(r.plate).trim()) ||
@@ -1357,7 +1367,7 @@ export async function listTenantLastFixes(tenantId, opts = {}) {
       ageSec,
       speed: r.speed == null ? null : Number(r.speed),
       heading: r.heading == null ? null : Number(r.heading),
-      ignition: r.ignition,
+      ignition: visible.ignition,
       sourceProtocol: r.source_protocol,
       odometerKm: tel.odometerKm,
       odometerSource: tel.odometerSource,

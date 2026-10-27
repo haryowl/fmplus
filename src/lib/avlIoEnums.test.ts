@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { flattenFixParamRows } from "../../server/device-manager.mjs";
+import {
+  applyGalileoskyIgnitionVisibility,
+  flattenFixParamRows,
+} from "../../server/device-manager.mjs";
 import { eventDisplayTitle } from "./fleetMedia";
 import { formatDisplayPinValue } from "./fleetTelemetryParams";
 import { avlIoLabel, formatAvlParamValue, permanentIoLabel } from "./avlIoEnums";
@@ -95,5 +98,28 @@ describe("Teltonika AVL descriptions", () => {
       false,
     );
     expect(rows.find((r) => r.paramId === "status.engine")?.value).toBe(true);
+  });
+});
+
+describe("applyGalileoskyIgnitionVisibility", () => {
+  it("hides leftover ignition when Galileosky has no mapper", () => {
+    const out = applyGalileoskyIgnitionVisibility("galileosky", false, {
+      ignition: true,
+      mappedAttrs: { ignition: true, "status.engine": true },
+      rawAttrs: { "status.ignition": true, movement: true },
+    });
+    expect(out.ignition).toBeNull();
+    expect(out.mappedAttrs.ignition).toBeUndefined();
+    expect(out.mappedAttrs["status.engine"]).toBe(true);
+    expect(out.rawAttrs.movement).toBe(true);
+  });
+
+  it("keeps ignition when a remap still exists", () => {
+    const out = applyGalileoskyIgnitionVisibility("galileosky", true, {
+      ignition: true,
+      mappedAttrs: { ignition: true },
+      rawAttrs: {},
+    });
+    expect(out.ignition).toBe(true);
   });
 });

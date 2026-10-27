@@ -201,6 +201,10 @@ func isGalileoskyProtocol(protocol string) bool {
 	return protocol == "galileosky"
 }
 
+func isAssumedIgnitionKey(k string) bool {
+	return k == "ignition" || k == "status.ignition" || k == "status.acc"
+}
+
 func dropAssumedIgnitionKeys(m map[string]any) {
 	if m == nil {
 		return
@@ -210,8 +214,8 @@ func dropAssumedIgnitionKeys(m map[string]any) {
 	delete(m, "status.acc")
 }
 
-// stripUnmappedGalileoskyIgnition drops leftover ignition when Device Mapper does not
-// produce it. Returns true when last_fix must write NULL instead of COALESCE.
+// stripUnmappedGalileoskyIgnition drops leftover ignition when Device Mapper did not
+// produce ignition (cooked raw keys must not count as a remap).
 func stripUnmappedGalileoskyIgnition(deviceProtocol, sourceProtocol string, fix *Fix) bool {
 	if fix == nil || (!isGalileoskyProtocol(deviceProtocol) && !isGalileoskyProtocol(sourceProtocol)) {
 		return false
@@ -300,17 +304,28 @@ func (s *Store) Ingest(ctx context.Context, device *Device, fix Fix) error {
 	if fix.MappedAttrs == nil {
 		fix.MappedAttrs = map[string]any{}
 	}
+	_, remappedIgnition := fix.MappedAttrs["ignition"]
+	galileosky := isGalileoskyProtocol(device.Protocol) || isGalileoskyProtocol(fix.SourceProtocol)
 	// Seed cooked semantic keys (already scaled per protocol tables) into mapped_attrs
 	// so Live values / app params see volts, km/h, °C, etc. — not only raw tag.0xNN.
 	for k, v := range fix.RawAttrs {
 		if !isCookedAppParamKey(k) || !isScalarAttr(v) {
 			continue
 		}
+		if galileosky && isAssumedIgnitionKey(k) && !remappedIgnition {
+			continue
+		}
 		if _, exists := fix.MappedAttrs[k]; !exists {
 			fix.MappedAttrs[k] = v
 		}
 	}
-	clearIgn := stripUnmappedGalileoskyIgnition(device.Protocol, fix.SourceProtocol, &fix)
+	clearIgn := false
+	if galileosky && !remappedIgnition {
+		dropAssumedIgnitionKeys(fix.RawAttrs)
+		dropAssumedIgnitionKeys(fix.MappedAttrs)
+		fix.Ignition = nil
+		clearIgn = true
+	}
 	fix.MappedAttrs["gps.valid"] = gpsOK
 	raw, _ := json.Marshal(fix.RawAttrs)
 	mapped, _ := json.Marshal(fix.MappedAttrs)

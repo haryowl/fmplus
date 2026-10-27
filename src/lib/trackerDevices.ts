@@ -128,7 +128,7 @@ export function mergeArmadaRowsWithDeviceFixes(
           lastMs: deviceRow.lastMs ?? existing.lastMs,
           speedKmh: deviceRow.speedKmh ?? existing.speedKmh,
           heading: deviceRow.heading ?? existing.heading,
-          ignition: deviceRow.ignition ?? existing.ignition,
+          ignition: deviceRow.ignition,
           fuelLevel: deviceRow.fuelLevel ?? existing.fuelLevel,
           odometerKm: deviceRow.odometerKm ?? existing.odometerKm,
         });
