@@ -805,6 +805,7 @@ export default function AdminConsole() {
   const [newGroupDesc, setNewGroupDesc] = useState("");
   const [editGroupId, setEditGroupId] = useState("");
   const [editGroupMembers, setEditGroupMembers] = useState<string[]>([]);
+  const [groupCompact, setGroupCompact] = useState(true);
   const [unassignedTrackers, setUnassignedTrackers] = useState<UnassignedTrackerRow[]>([]);
   const [trackerProfiles, setTrackerProfiles] = useState<TrackerProfileRow[]>([]);
   const [paramDefs, setParamDefs] = useState<TrackerParamDef[]>([]);
@@ -2117,6 +2118,26 @@ export default function AdminConsole() {
         method: "DELETE",
       });
       setNotice(`Dismissed ${imei}`);
+      await loadUnassignedTrackers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Dismiss failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function dismissAllUnassigned() {
+    if (!unassignedTrackers.length) return;
+    if (!window.confirm(`Dismiss all ${unassignedTrackers.length} unknown IMEIs?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await Promise.all(
+        unassignedTrackers.map((u) =>
+          api(`/api/admin/tracker-unassigned/${encodeURIComponent(u.imei)}`, { method: "DELETE" }),
+        ),
+      );
+      setNotice(`Dismissed ${unassignedTrackers.length} IMEIs`);
       await loadUnassignedTrackers();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Dismiss failed");
@@ -3583,49 +3604,45 @@ export default function AdminConsole() {
               )}
 
               {selectedId !== "new" && adminSection === "deviceMgmt" && (
-              <>
-                <section className="admin-panel">
-                  <header className="admin-panel-head">
-                    <h3>
-                      Fleet groups{" "}
-                      <span className="admin-count-badge">{deviceGroups.length}</span>
-                    </h3>
-                    <p className="muted">
-                      Device buckets for Fleet Live / Dispatch / Maintenance · membership by GPS
-                      device (Armada link optional)
-                    </p>
-                  </header>
-                  <form className="admin-form-grid" onSubmit={(e) => void createDeviceGroup(e)}>
-                    <label>
-                      New group name
-                      <input
-                        value={newGroupName}
-                        onChange={(e) => setNewGroupName(e.target.value)}
-                        placeholder="Jakarta north"
-                        required
-                      />
-                    </label>
-                    <label>
-                      Description
-                      <input
-                        value={newGroupDesc}
-                        onChange={(e) => setNewGroupDesc(e.target.value)}
-                        placeholder="Optional"
-                      />
-                    </label>
-                    <div className="span-2 admin-actions">
-                      <button
-                        type="submit"
-                        className="btn btn-secondary"
-                        disabled={busy || !newGroupName.trim()}
-                      >
-                        Create group
-                      </button>
+              <div className="admin-devmgmt">
+                <section className="admin-panel admin-devmgmt-card">
+                  <header className="admin-devmgmt-head">
+                    <div>
+                      <h3>
+                        Fleet groups{" "}
+                        <span className="admin-count-badge">{deviceGroups.length}</span>
+                      </h3>
+                      <p className="muted">
+                        Organize devices for Dispatch and Reports
+                      </p>
                     </div>
+                  </header>
+                  <form className="admin-devmgmt-create" onSubmit={(e) => void createDeviceGroup(e)}>
+                    <input
+                      value={newGroupName}
+                      onChange={(e) => setNewGroupName(e.target.value)}
+                      placeholder="New group name"
+                      required
+                      aria-label="New group name"
+                    />
+                    <input
+                      value={newGroupDesc}
+                      onChange={(e) => setNewGroupDesc(e.target.value)}
+                      placeholder="Optional region, client…"
+                      aria-label="Group description"
+                    />
+                    <button
+                      type="submit"
+                      className="btn btn-primary fleet-dev-pill"
+                      disabled={busy || !newGroupName.trim()}
+                    >
+                      Create group
+                    </button>
                   </form>
                   {deviceGroups.length > 0 ? (
-                    <div className="admin-form-grid" style={{ marginTop: 8 }}>
-                      <label>
+                    <div className="admin-devmgmt-edit">
+                      <div className="admin-devmgmt-edit-row">
+                      <label className="admin-devmgmt-edit-group">
                         Edit group
                         <select
                           value={editGroupId}
@@ -3639,42 +3656,36 @@ export default function AdminConsole() {
                           ))}
                         </select>
                       </label>
-                      <div className="span-2">
-                        <p className="muted" style={{ marginBottom: 4 }}>
-                          Members (multi-select)
-                        </p>
-                        <div className="admin-remap-grid" style={{ maxHeight: 160, overflow: "auto" }}>
-                          {trackerDevices.map((d) => {
-                            const checked = editGroupMembers.includes(d.id);
-                            return (
-                              <label key={d.id} className="admin-check-row">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(e) => {
-                                    setEditGroupMembers((prev) =>
-                                      e.target.checked
-                                        ? [...prev, d.id]
-                                        : prev.filter((id) => id !== d.id),
-                                    );
-                                  }}
-                                />
-                                <span>
-                                  {d.label || d.imei}{" "}
-                                  <span className="muted">· {d.imei}</span>
-                                </span>
-                              </label>
-                            );
-                          })}
-                          {trackerDevices.length === 0 ? (
-                            <p className="muted">Add tracker devices first.</p>
-                          ) : null}
-                        </div>
+                      <div className={`admin-devmgmt-members${groupCompact ? " is-compact" : ""}`}>
+                        {trackerDevices.map((d) => {
+                          const checked = editGroupMembers.includes(d.id);
+                          return (
+                            <button
+                              key={d.id}
+                              type="button"
+                              className={`admin-devmgmt-member${checked ? " is-on" : ""}`}
+                              onClick={() => {
+                                setEditGroupMembers((prev) =>
+                                  checked ? prev.filter((id) => id !== d.id) : [...prev, d.id],
+                                );
+                              }}
+                            >
+                              <span className="admin-devmgmt-member-mark" aria-hidden>
+                                {checked ? "✓" : ""}
+                              </span>
+                              <span className="admin-devmgmt-member-name">{d.label || d.imei}</span>
+                            </button>
+                          );
+                        })}
+                        {trackerDevices.length === 0 ? (
+                          <p className="muted">Add tracker devices first.</p>
+                        ) : null}
                       </div>
-                      <div className="span-2 admin-actions">
+                      </div>
+                      <div className="admin-devmgmt-edit-actions">
                         <button
                           type="button"
-                          className="btn btn-secondary"
+                          className="btn btn-primary fleet-dev-pill"
                           disabled={busy || !editGroupId}
                           onClick={() => void saveGroupMembers()}
                         >
@@ -3682,7 +3693,7 @@ export default function AdminConsole() {
                         </button>
                         <button
                           type="button"
-                          className="btn btn-ghost"
+                          className="btn btn-ghost fleet-dev-pill"
                           disabled={busy || !editGroupId}
                           onClick={() => {
                             const g = deviceGroups.find((x) => x.id === editGroupId);
@@ -3691,6 +3702,13 @@ export default function AdminConsole() {
                         >
                           Delete group
                         </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost fleet-dev-pill"
+                          onClick={() => setGroupCompact((v) => !v)}
+                        >
+                          {groupCompact ? "Comfortable grid" : "Compact grid"}
+                        </button>
                       </div>
                     </div>
                   ) : (
@@ -3698,72 +3716,7 @@ export default function AdminConsole() {
                   )}
                 </section>
 
-                <section className="admin-panel">
-                  {lastDeviceToken ? (
-                    <p className="admin-notice">
-                      Device token (copy now): <code>{lastDeviceToken}</code>{" "}
-                      <button
-                        type="button"
-                        className="btn-ghost btn-compact"
-                        onClick={() => void copyText(lastDeviceToken)}
-                      >
-                        Copy
-                      </button>
-                    </p>
-                  ) : null}
-                  {unassignedTrackers.length > 0 ? (
-                    <div className="admin-unassigned-block">
-                      <h4>
-                        Unassigned IMEIs{" "}
-                        <span className="admin-count-badge">{unassignedTrackers.length}</span>
-                      </h4>
-                      <p className="muted">
-                        Seen by the gateway but not registered — claim into this tenant or dismiss.
-                      </p>
-                      <ul className="admin-field-list">
-                        {unassignedTrackers.map((u) => (
-                          <li key={u.imei}>
-                            <div className="admin-field-summary">
-                              <div className="admin-field-identity">
-                                <div className="admin-field-identity-text">
-                                  <strong>{u.imei}</strong>
-                                  <div className="admin-field-tags">
-                                    <span className="admin-pill is-muted">{u.protocol}</span>
-                                    <span className="admin-pill is-muted">{u.hitCount} hits</span>
-                                  </div>
-                                  <span className="muted">
-                                    {u.lastRemote ? `from ${u.lastRemote} · ` : ""}
-                                    last{" "}
-                                    {u.lastSeenAt
-                                      ? new Date(u.lastSeenAt).toLocaleString()
-                                      : "—"}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="admin-field-row-actions">
-                                <button
-                                  type="button"
-                                  className="btn-secondary"
-                                  disabled={busy}
-                                  onClick={() => void claimUnassignedTracker(u)}
-                                >
-                                  Claim
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn-ghost"
-                                  disabled={busy}
-                                  onClick={() => void dismissUnassignedTracker(u.imei)}
-                                >
-                                  Dismiss
-                                </button>
-                              </div>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
+                <section className="admin-panel admin-devmgmt-card admin-devmgmt-devices">
                   <AdminFleetDevicePanel
                     devices={trackerDevices}
                     profiles={trackerProfiles.map((p) => ({
@@ -3779,6 +3732,7 @@ export default function AdminConsole() {
                       if (!selectedId || selectedId === "new") return;
                       void loadTrackerDevices(selectedId);
                       void loadDeviceFieldDefs(selectedId);
+                      void loadUnassignedTrackers();
                     }}
                     onCreate={(body) => createTrackerDeviceBody(body)}
                     onUpdate={(id, body) => updateTrackerDeviceBody(id, body)}
@@ -3786,22 +3740,72 @@ export default function AdminConsole() {
                     onCreateField={(body) => createDeviceFieldDefBody(body)}
                     onDeleteField={(id) => deleteDeviceFieldDefBody(id)}
                     tenantKey={selected?.key}
+                    ingestUrl={selected?.trackerIngestUrl || "/api/tracker/ingest/v1/fix"}
+                    lastDeviceToken={lastDeviceToken}
+                    onCopyText={(text) => void copyText(text)}
+                    onRotateToken={(id) => rotateDeviceToken(id)}
                   />
-                  <p className="muted" style={{ marginTop: 8, fontSize: "0.72rem" }}>
-                    Ingest · <code>{selected?.trackerIngestUrl || "/api/tracker/ingest/v1/fix"}</code>
-                    {" · "}
-                    <button
-                      type="button"
-                      className="btn-ghost btn-compact"
-                      disabled={busy || !trackerDevices[0]}
-                      onClick={() => trackerDevices[0] && void rotateDeviceToken(trackerDevices[0].id)}
-                      title="Rotate token for the first listed device (select-specific rotate coming next)"
-                    >
-                      Rotate first device token
-                    </button>
-                  </p>
                 </section>
-              </>
+
+                <section className="admin-panel admin-devmgmt-card admin-devmgmt-unassigned">
+                  <header className="admin-devmgmt-head">
+                    <div>
+                      <h3>
+                        Unassigned IMEIs{" "}
+                        <span className="admin-count-badge">{unassignedTrackers.length}</span>
+                      </h3>
+                      <p className="muted">Seen by the gateway but not registered</p>
+                    </div>
+                    {unassignedTrackers.length > 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost fleet-dev-pill"
+                        disabled={busy}
+                        onClick={() => void dismissAllUnassigned()}
+                      >
+                        Dismiss all
+                      </button>
+                    ) : null}
+                  </header>
+                  {unassignedTrackers.length > 0 ? (
+                    <ul className="admin-devmgmt-imei-grid">
+                      {unassignedTrackers.map((u) => (
+                        <li key={u.imei}>
+                          <div className="admin-devmgmt-imei-id">
+                            <strong>{u.imei}</strong>
+                            <span className="muted">
+                              {u.protocol}
+                              {u.lastRemote ? ` · ${u.lastRemote}` : ""}
+                              {" · "}
+                              {u.lastSeenAt ? new Date(u.lastSeenAt).toLocaleString() : "—"}
+                            </span>
+                          </div>
+                          <div className="admin-devmgmt-imei-actions">
+                            <button
+                              type="button"
+                              className="btn btn-ghost fleet-dev-pill"
+                              disabled={busy}
+                              onClick={() => void claimUnassignedTracker(u)}
+                            >
+                              Claim
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-primary fleet-dev-pill"
+                              disabled={busy}
+                              onClick={() => void dismissUnassignedTracker(u.imei)}
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">No unknown IMEIs waiting — new gateway hits will appear here.</p>
+                  )}
+                </section>
+              </div>
               )}
 
               {selectedId !== "new" && adminSection === "live" && (

@@ -3608,10 +3608,251 @@ html.onesheet-root body {
   color: #e2e8f0;
 }
 
+/* —— Device Management (Admin) —— */
+.admin-devmgmt {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-devmgmt-card {
+  padding: 14px 16px 16px;
+  border-radius: 16px;
+  gap: 12px;
+}
+
+.admin-devmgmt-devices {
+  padding: 0;
+  overflow: hidden;
+}
+
+.admin-devmgmt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-devmgmt-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-devmgmt-head p {
+  margin: 2px 0 0;
+}
+
+.admin-devmgmt-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-devmgmt-create input {
+  height: 36px;
+  border: 1px solid var(--admin-line);
+  background: #f7fafb;
+  border-radius: 999px;
+  padding: 0 14px;
+  color: var(--admin-ink);
+  font-size: 0.8rem;
+}
+
+.admin-devmgmt-create input:focus {
+  outline: none;
+  border-color: var(--admin-accent);
+  box-shadow: 0 0 0 3px var(--admin-accent-soft);
+  background: #fff;
+}
+
+.admin-devmgmt-edit {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-devmgmt-edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.admin-devmgmt-edit-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--admin-ink-faint);
+}
+
+.admin-devmgmt-edit-group select {
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--admin-line);
+  padding: 0 12px;
+  font-size: 0.78rem;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  color: var(--admin-ink);
+}
+
+.admin-devmgmt-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.admin-devmgmt-members.is-compact {
+  gap: 6px;
+}
+
+.admin-devmgmt-members.is-compact .admin-devmgmt-member {
+  min-height: 32px;
+  padding: 4px 10px 4px 6px;
+  font-size: 0.72rem;
+}
+
+.admin-devmgmt-member {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  max-width: 16rem;
+  padding: 6px 12px 6px 8px;
+  border: 1px solid var(--admin-line);
+  background: #f7fafb;
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--admin-ink);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.admin-devmgmt-member.is-on {
+  background: #fff;
+  border-color: #b7d0c9;
+  box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.12);
+}
+
+.admin-devmgmt-member-mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid #c5d4dc;
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.68rem;
+  color: #0f766e;
+  flex-shrink: 0;
+  background: #fff;
+}
+
+.admin-devmgmt-member.is-on .admin-devmgmt-member-mark {
+  border-color: #0f766e;
+  background: #ecfdf5;
+}
+
+.admin-devmgmt-member-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-devmgmt-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-devmgmt-imei-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+}
+
+.admin-devmgmt-imei-grid li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 0;
+  border-bottom: 1px solid #eef3f5;
+}
+
+.admin-devmgmt-imei-id {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.admin-devmgmt-imei-id strong {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.admin-devmgmt-imei-id .muted {
+  font-size: 0.66rem;
+}
+
+.admin-devmgmt-imei-actions {
+  display: inline-flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.admin-devmgmt .fleet-dev-pill {
+  height: 32px;
+  min-width: 0;
+  border-radius: 999px;
+  padding: 0 14px;
+  font-size: 0.75rem;
+}
+
+.admin-devmgmt .btn.btn-ghost.fleet-dev-pill,
+.admin-devmgmt a.btn.btn-ghost.fleet-dev-pill {
+  background: #fff;
+  color: var(--admin-ink);
+  border: 1px solid var(--admin-line);
+}
+
+.admin-devmgmt .btn.btn-ghost.fleet-dev-pill:hover:not(:disabled),
+.admin-devmgmt a.btn.btn-ghost.fleet-dev-pill:hover {
+  border-color: #b7c8d0;
+  background: #f7fafb;
+}
+
+.admin-devmgmt .btn.btn-primary.fleet-dev-pill {
+  background: #0f2a33;
+  border-color: #0f2a33;
+  color: #f3fafb;
+}
+
+.admin-devmgmt .btn.btn-primary.fleet-dev-pill:hover:not(:disabled) {
+  background: #163a48;
+  border-color: #163a48;
+}
+
 /* —— Fleet device master (Admin) —— */
 .fleet-dev {
   display: grid;
-  gap: 12px;
+  gap: 0;
 }
 
 .fleet-dev-head {
@@ -3620,46 +3861,66 @@ html.onesheet-root body {
   gap: 10px;
   align-items: flex-start;
   justify-content: space-between;
+  padding: 14px 16px 10px;
 }
 
 .fleet-dev-head h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.95rem;
+}
+
+.fleet-dev-head .muted {
+  margin: 2px 0 0;
+  font-size: 0.7rem;
 }
 
 .fleet-dev-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 320px) 1fr;
-  gap: 12px;
+  grid-template-columns: minmax(200px, 260px) 1fr;
+  gap: 0;
   min-height: 420px;
+  border-top: 1px solid var(--admin-line, #d8e0e8);
 }
 
 @media (max-width: 900px) {
   .fleet-dev-layout {
     grid-template-columns: 1fr;
   }
+
+  .admin-devmgmt-create,
+  .admin-devmgmt-imei-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .fleet-dev-list-pane {
-  border: 1px solid var(--admin-line, #d8e0e8);
-  border-radius: 10px;
-  background: #f4f7fa;
+  border: 0;
+  border-right: 1px solid var(--admin-line, #d8e0e8);
+  border-radius: 0;
+  background: #f7fafb;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  max-height: 640px;
+  max-height: none;
+  min-height: 480px;
 }
 
 .fleet-dev-filters {
   display: grid;
+  grid-template-columns: 1fr auto;
   gap: 6px;
-  padding: 8px;
+  padding: 10px 10px 8px;
   border-bottom: 1px solid var(--admin-line, #d8e0e8);
 }
 
 .fleet-dev-filters input,
 .fleet-dev-filters select {
-  font-size: 0.78rem;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--admin-line);
+  background: #fff;
+  padding: 0 12px;
+  font-size: 0.76rem;
 }
 
 .fleet-dev-list {
@@ -3668,15 +3929,15 @@ html.onesheet-root body {
   padding: 6px;
   overflow: auto;
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .fleet-dev-card {
   width: 100%;
   text-align: left;
   border: 1px solid transparent;
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 10px;
+  background: transparent;
   padding: 8px 10px;
   cursor: pointer;
   display: grid;
@@ -3684,12 +3945,13 @@ html.onesheet-root body {
 }
 
 .fleet-dev-card:hover {
-  border-color: #c5d4e3;
+  background: #fff;
 }
 
 .fleet-dev-card.is-active {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25);
+  background: #fff;
+  border-color: #d5e0e6;
+  box-shadow: 0 1px 0 rgba(15, 42, 51, 0.04);
 }
 
 .fleet-dev-card.is-off {
@@ -3714,24 +3976,25 @@ html.onesheet-root body {
 
 .fleet-dev-dot.is-on {
   background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.18);
 }
 
 .fleet-dev-card-meta {
-  font-size: 0.68rem;
+  font-size: 0.66rem;
 }
 
 .fleet-dev-editor {
-  border: 1px solid var(--admin-line, #d8e0e8);
-  border-radius: 10px;
+  border: 0;
+  border-radius: 0;
   background: #fff;
-  padding: 12px 14px;
+  padding: 14px 16px 16px;
   display: grid;
   gap: 12px;
   align-content: start;
 }
 
 .fleet-dev-empty {
-  padding: 32px 12px;
+  padding: 48px 12px;
   text-align: center;
 }
 
@@ -3755,7 +4018,7 @@ html.onesheet-root body {
 .fleet-dev-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 10px;
+  gap: 10px 14px;
 }
 
 .fleet-dev-form-grid .span-2 {
@@ -3765,15 +4028,42 @@ html.onesheet-root body {
 .fleet-dev-form-grid label {
   display: grid;
   gap: 4px;
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--admin-ink-faint);
 }
 
 .fleet-dev-form-grid input,
 .fleet-dev-form-grid select,
 .fleet-dev-form-grid textarea {
-  font-weight: 400;
+  font-weight: 500;
   font-size: 0.8rem;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--admin-ink);
+  height: 34px;
+  border: 1px solid var(--admin-line);
+  background: #f7fafb;
+  border-radius: 999px;
+  padding: 0 12px;
+}
+
+.fleet-dev-form-grid textarea {
+  height: auto;
+  border-radius: 12px;
+  padding: 8px 12px;
+  resize: vertical;
+}
+
+.fleet-dev-form-grid input:focus,
+.fleet-dev-form-grid select:focus,
+.fleet-dev-form-grid textarea:focus {
+  outline: none;
+  border-color: var(--admin-accent);
+  box-shadow: 0 0 0 3px var(--admin-accent-soft);
+  background: #fff;
 }
 
 .fleet-dev-check {
@@ -3781,7 +4071,19 @@ html.onesheet-root body {
   flex-direction: row !important;
   align-items: center;
   gap: 8px;
-  font-weight: 500 !important;
+  font-weight: 650 !important;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.8rem !important;
+  color: var(--admin-ink);
+}
+
+.fleet-dev-save-row {
+  align-items: center;
+}
+
+.fleet-dev-save-hint {
+  font-size: 0.7rem;
 }
 
 .fleet-dev-custom {
@@ -3800,6 +4102,12 @@ html.onesheet-root body {
   font-size: 0.78rem;
 }
 
+.fleet-dev-fields-fold summary {
+  cursor: pointer;
+  font-weight: 650;
+  color: var(--admin-ink-soft);
+}
+
 .fleet-dev-field-list {
   list-style: none;
   margin: 8px 0 0;
@@ -3815,6 +4123,85 @@ html.onesheet-root body {
   gap: 8px;
   padding: 4px 0;
   border-bottom: 1px solid #eef2f6;
+}
+
+.fleet-dev-ingest {
+  background: #0f2a33;
+  color: #d7e6ea;
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.fleet-dev-ingest-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fleet-dev-ingest-head strong {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9db4be;
+}
+
+.fleet-dev-ingest-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fleet-dev-ingest .btn.btn-ghost.fleet-dev-pill {
+  background: transparent;
+  color: #f3fafb;
+  border-color: #3e5966;
+  height: 28px;
+  font-size: 0.7rem;
+}
+
+.fleet-dev-ingest .btn.btn-ghost.fleet-dev-pill:hover:not(:disabled) {
+  background: #163a48;
+  border-color: #6d8794;
+}
+
+.fleet-dev-ingest > code {
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: #f3fafb;
+  word-break: break-all;
+}
+
+.fleet-dev-ingest > p,
+.fleet-dev-ingest-token {
+  margin: 0;
+  font-size: 0.68rem;
+  color: #9db4be;
+}
+
+.fleet-dev-ingest-token code {
+  color: #ecfdf5;
+}
+
+.fleet-dev-live {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  background: #3e5966;
+  color: #d7e6ea;
+}
+
+.fleet-dev-live.is-on {
+  background: #14532d;
+  color: #bbf7d0;
 }
 
 /* Fleet Live collapsible section side menu */

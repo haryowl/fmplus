@@ -26,6 +26,7 @@ export type FleetDeviceRow = {
   armadaUserId: number | null;
   enabled: boolean;
   profileId?: string | null;
+  hasAuthToken?: boolean;
   lastSeenAt?: string | null;
   lastFix?: {
     lat: number;
@@ -62,6 +63,10 @@ type Props = {
   onCreateField: (body: Record<string, unknown>) => Promise<void>;
   onDeleteField: (fieldId: string) => Promise<void>;
   tenantKey?: string | null;
+  ingestUrl?: string | null;
+  lastDeviceToken?: string;
+  onCopyText?: (text: string) => void;
+  onRotateToken?: (deviceId: string) => Promise<void>;
 };
 
 const VEHICLE_TYPES = ["", "truck", "van", "car", "bus", "motorcycle", "trailer", "other"];
@@ -94,6 +99,10 @@ export function AdminFleetDevicePanel({
   onCreateField,
   onDeleteField,
   tenantKey,
+  ingestUrl,
+  lastDeviceToken,
+  onCopyText,
+  onRotateToken,
 }: Props) {
   const [query, setQuery] = useState("");
   const [protocolFilter, setProtocolFilter] = useState("");
@@ -216,10 +225,10 @@ export function AdminFleetDevicePanel({
           <p className="muted">Name, plate, type, remap profile, and custom fleet fields</p>
         </div>
         <div className="admin-actions">
-          <button type="button" className="btn btn-ghost" disabled={busy} onClick={onRefresh}>
+          <button type="button" className="btn btn-ghost fleet-dev-pill" disabled={busy} onClick={onRefresh}>
             Refresh
           </button>
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={startCreate}>
+          <button type="button" className="btn btn-primary fleet-dev-pill" disabled={busy} onClick={startCreate}>
             + Add device
           </button>
         </div>
@@ -267,12 +276,10 @@ export function AdminFleetDevicePanel({
                       <span className={`fleet-dev-dot${online ? " is-on" : ""}`} title={online ? "Online" : "Offline"} />
                     </span>
                     <span className="fleet-dev-card-meta muted">
-                      {d.plate ? `${d.plate} · ` : ""}
                       {d.protocol}
                       {d.vehicleType ? ` · ${d.vehicleType}` : ""}
-                    </span>
-                    <span className="fleet-dev-card-meta muted">
-                      {d.imei} · seen {ageLabel(d.lastSeenAt || d.lastFix?.recordedAt)}
+                      {" · seen "}
+                      {ageLabel(d.lastSeenAt || d.lastFix?.recordedAt)}
                     </span>
                   </button>
                 </li>
@@ -301,7 +308,7 @@ export function AdminFleetDevicePanel({
                   <div className="admin-actions">
                     {tenantKey ? (
                       <a
-                        className="btn-link"
+                        className="btn btn-ghost fleet-dev-pill"
                         href={vehicleTrackHref({
                           rowId: selected.armadaUserId || 0,
                           deviceId: selected.id,
@@ -317,7 +324,7 @@ export function AdminFleetDevicePanel({
                     ) : null}
                     <button
                       type="button"
-                      className="btn btn-ghost"
+                      className="btn btn-ghost fleet-dev-pill"
                       disabled={busy}
                       onClick={() => void onDelete(selected.id, selected.imei)}
                     >
@@ -577,14 +584,14 @@ export function AdminFleetDevicePanel({
                 </div>
               ) : null}
 
-              <div className="admin-actions">
-                <button type="submit" className="btn btn-primary" disabled={busy}>
-                  {creating ? "Register" : "Save"}
+              <div className="admin-actions fleet-dev-save-row">
+                <button type="submit" className="btn btn-primary fleet-dev-pill" disabled={busy}>
+                  {creating ? "Register device" : "Save device"}
                 </button>
                 {creating ? (
                   <button
                     type="button"
-                    className="btn btn-ghost"
+                    className="btn btn-ghost fleet-dev-pill"
                     onClick={() => {
                       setCreating(false);
                       setDraft({});
@@ -592,7 +599,9 @@ export function AdminFleetDevicePanel({
                   >
                     Cancel
                   </button>
-                ) : null}
+                ) : (
+                  <span className="muted fleet-dev-save-hint">Auto-saves remap on change</span>
+                )}
               </div>
             </form>
           )}
@@ -662,6 +671,51 @@ export function AdminFleetDevicePanel({
               ))}
             </ul>
           </details>
+
+          {ingestUrl ? (
+            <div className="fleet-dev-ingest">
+              <div className="fleet-dev-ingest-head">
+                <strong>Ingest URL · gateway</strong>
+                <div className="fleet-dev-ingest-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost fleet-dev-pill"
+                    onClick={() => onCopyText?.(ingestUrl)}
+                  >
+                    Copy
+                  </button>
+                  {selected && onRotateToken ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost fleet-dev-pill"
+                      disabled={busy}
+                      onClick={() => void onRotateToken(selected.id)}
+                    >
+                      Rotate token
+                    </button>
+                  ) : null}
+                  <span className={`fleet-dev-live${selected?.hasAuthToken || lastDeviceToken ? " is-on" : ""}`}>
+                    LIVE
+                  </span>
+                </div>
+              </div>
+              <code>{ingestUrl}</code>
+              {lastDeviceToken ? (
+                <p className="fleet-dev-ingest-token">
+                  Token (copy now): <code>{lastDeviceToken}</code>{" "}
+                  <button
+                    type="button"
+                    className="btn-ghost btn-compact"
+                    onClick={() => onCopyText?.(lastDeviceToken)}
+                  >
+                    Copy
+                  </button>
+                </p>
+              ) : (
+                <p>Rotate invalidates the previous token immediately.</p>
+              )}
+            </div>
+          ) : null}
         </section>
       </div>
     </div>
