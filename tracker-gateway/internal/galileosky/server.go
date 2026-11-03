@@ -88,11 +88,6 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		_ = conn.Close()
 	}()
 
-	ackWrite := func(hdr byte, crc uint16) error {
-		writeMu.Lock()
-		defer writeMu.Unlock()
-		return writeAckHdr(conn, hdr, crc)
-	}
 	connWrite := func(p []byte) error {
 		writeMu.Lock()
 		defer writeMu.Unlock()
@@ -122,58 +117,73 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 	}()
 
 	remote := conn.RemoteAddr().String()
+	buf := make([]byte, 0, 8192)
+	tmp := make([]byte, 4096)
 	for {
-		_ = conn.SetDeadline(time.Now().Add(5 * time.Minute))
-		hdr := make([]byte, 3)
-		if _, err := io.ReadFull(conn, hdr); err != nil {
-			return
-		}
-		lenRaw := binary.LittleEndian.Uint16(hdr[1:3])
-		archive := lenRaw&0x8000 != 0
-		tagLen := int(lenRaw & 0x7fff)
-		// Length field is 15 bits (max 32767). Length 0 is allowed; do not close.
-		body := make([]byte, tagLen+2)
-		if _, err := io.ReadFull(conn, body); err != nil {
-			return
-		}
-		tagsBytes := body[:tagLen]
-		gotCRC := binary.LittleEndian.Uint16(body[tagLen : tagLen+2])
-		packetForCRC := append(append([]byte{}, hdr...), tagsBytes...)
-		calc := crc16Modbus(packetForCRC)
-		crcOK := calc == gotCRC
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+		n, err := conn.Read(tmp)
+		if n > 0 {
+			buf = append(buf, tmp[:n]...)
+			var frames []frameResult
+			frames, buf = extractFrames(buf)
+			for _, fr := range frames {
+				// Echo the exact CRC bytes from the wire (LinuxOHW buildConfirmation).
+				ackHdr := byte(0x02)
+				if fr.Hdr == 0x07 {
+					ackHdr = 0x07
+				}
+				ack := []byte{ackHdr, fr.CRCRaw[0], fr.CRCRaw[1]}
+				writeMu.Lock()
+				_, werr := conn.Write(ack)
+				writeMu.Unlock()
+				if werr != nil {
+					return
+				}
+				log.Printf("[galileosky] ack %s hdr=0x%02x len=%d archive=%v crc=%02X%02X",
+					remote, fr.Hdr, len(fr.Tags), fr.Archive, fr.CRCRaw[0], fr.CRCRaw[1])
 
-		// Confirm FIRST (LinuxOHW GalileoSkyParser / appORISNEW) — echo device CRC.
-		ackHdr := byte(0x02)
-		if hdr[0] == 0x07 {
-			ackHdr = 0x07
-		}
-		if err := ackWrite(ackHdr, gotCRC); err != nil {
-			return
-		}
+				calc := crc16Modbus(fr.Raw[:len(fr.Raw)-2])
+				if calc != fr.CRC {
+					metrics.DecodeErr()
+					log.Printf("[galileosky] bad CRC from %s hdr=0x%02x got=%04x want=%04x — acked, skip ingest",
+						remote, fr.Hdr, fr.CRC, calc)
+					continue
+				}
+				switch fr.Hdr {
+				case 0x07, 0x15:
+					continue
+				}
 
-		if !crcOK {
-			metrics.DecodeErr()
-			log.Printf("[galileosky] bad CRC from %s hdr=0x%02x got=%04x want=%04x — acked, skip ingest",
-				remote, hdr[0], gotCRC, calc)
-			continue
+				job := packetJob{
+					hdr:       fr.Hdr,
+					archive:   fr.Archive,
+					tags:      fr.Tags,
+					packetHex: fmt.Sprintf("%x", fr.Raw),
+					tagsHex:   fmt.Sprintf("%x", fr.Tags),
+					remote:    remote,
+				}
+				// Never block the read/ACK loop on a full ingest queue (device ~1s window).
+				select {
+				case jobs <- job:
+				default:
+					go func(j packetJob) {
+						defer func() {
+							if r := recover(); r != nil {
+								log.Printf("[galileosky] overflow ingest panic: %v\n%s", r, debug.Stack())
+							}
+						}()
+						processPacketJob(ctx, st, sessions, conn, connWrite, &boundMu, &bound, &device, &imei, j)
+					}(job)
+				}
+			}
 		}
-		switch hdr[0] {
-		case 0x07, 0x15:
-			continue
-		}
-
-		tagsCopy := append([]byte(nil), tagsBytes...)
-		job := packetJob{
-			hdr:       hdr[0],
-			archive:   archive,
-			tags:      tagsCopy,
-			packetHex: fmt.Sprintf("%x", append(append([]byte{}, hdr...), body...)),
-			tagsHex:   fmt.Sprintf("%x", tagsCopy),
-			remote:    remote,
-		}
-		select {
-		case jobs <- job:
-		case <-ctx.Done():
+		if err != nil {
+			if err == io.EOF {
+				return
+			}
+			if ne, ok := err.(net.Error); ok && ne.Timeout() && n == 0 && len(buf) == 0 {
+				continue
+			}
 			return
 		}
 	}
