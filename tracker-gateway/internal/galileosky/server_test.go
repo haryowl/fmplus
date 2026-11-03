@@ -1,6 +1,31 @@
 package galileosky
 
-import "testing"
+import (
+	"encoding/binary"
+	"testing"
+)
+
+func TestWriteAckHdr_EchoesDeviceCRC(t *testing.T) {
+	// Device confirmations must echo the packet CRC bytes (LinuxOHW / protocol).
+	conn := &memConn{}
+	crc := uint16(0xFA3F)
+	if err := writeAckHdr(conn, 0x02, crc); err != nil {
+		t.Fatal(err)
+	}
+	if len(conn.out) != 3 || conn.out[0] != 0x02 {
+		t.Fatalf("ack=%x", conn.out)
+	}
+	if binary.LittleEndian.Uint16(conn.out[1:3]) != crc {
+		t.Fatalf("crc=%x", conn.out[1:3])
+	}
+	conn.out = nil
+	if err := writeAckHdr(conn, 0x07, crc); err != nil {
+		t.Fatal(err)
+	}
+	if conn.out[0] != 0x07 {
+		t.Fatalf("photo ack hdr=%x", conn.out[0])
+	}
+}
 
 func TestApplyPacketMeta_ArchiveAndCount(t *testing.T) {
 	raw := map[string]any{}

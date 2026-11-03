@@ -67,7 +67,8 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		tagLen := int(lenRaw & 0x7fff)
 		// Length field is 15 bits (max 32767). Older docs said 1000; 7x archive
 		// multi-record frames regularly exceed that and must not drop the TCP session.
-		if tagLen < 1 || tagLen > 0x7fff {
+		// Length 0 is allowed (confirm-only / keep-alive style); do not close the socket.
+		if tagLen > 0x7fff {
 			if device != nil {
 				_ = st.PatchLastStatus(ctx, device, map[string]any{
 					"tag_len_invalid": true,
@@ -84,11 +85,24 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		gotCRC := binary.LittleEndian.Uint16(body[tagLen : tagLen+2])
 		packetForCRC := append(append([]byte{}, hdr...), tagsBytes...)
 		calc := crc16Modbus(packetForCRC)
+		crcOK := calc == gotCRC
 
-		if calc != gotCRC {
-			// Never ACK a bad CRC — device would drop the archive row as "delivered".
+		// LinuxOHW (GalileoSkyParser / appORISNEW): confirm IMMEDIATELY after the
+		// frame is complete — before parse/DB. Pending-history dumps time out if the
+		// server waits for multi-row ingest before 0x02. Echo the device CRC bytes.
+		ackHdr := byte(0x02)
+		if hdr[0] == 0x07 {
+			ackHdr = 0x07
+		}
+		if err := writeAckHdr(conn, ackHdr, gotCRC); err != nil {
+			return
+		}
+
+		if !crcOK {
+			// Non-strict like LinuxOHW default (VALIDATE_CHECKSUM != strict): still
+			// confirmed above so the device keeps streaming; skip ingest of bad frame.
 			metrics.DecodeErr()
-			log.Printf("[galileosky] bad CRC from %s hdr=0x%02x got=%04x want=%04x — no ack (device will resend)",
+			log.Printf("[galileosky] bad CRC from %s hdr=0x%02x got=%04x want=%04x — acked, skip ingest",
 				conn.RemoteAddr(), hdr[0], gotCRC, calc)
 			if device != nil {
 				_ = st.PatchLastStatus(ctx, device, map[string]any{
@@ -103,11 +117,12 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 
 		switch hdr[0] {
 		case 0x07:
-			// Photo / media part — ack so the device does not stall the GPS stream.
-			_ = writeAckHdr(conn, 0x07, gotCRC)
+			// Photo / media — already confirmed.
+			continue
+		case 0x15:
+			// Ignorable keep-alive — already confirmed.
 			continue
 		case 0x08:
-			ok := true
 			if device != nil {
 				fixes := parseCompressedPositions(tagsBytes, time.Now().UTC())
 				sort.SliceStable(fixes, func(i, j int) bool {
@@ -121,26 +136,17 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 					}
 					applyPacketMeta(fix.RawAttrs, archive, len(fixes))
 					if err := deviceauth.Ingest(ctx, st, device, *fix); err != nil {
-						ok = false
 						log.Printf("[galileosky] compressed ingest %s: %v", imei, err)
 					}
 				}
 				flushPending(ctx, conn, st, device.ID)
 			}
-			// Confirm only after persist succeeded (LinuxOHW ack-after-save behaviour).
-			if ok {
-				_ = writeAck(conn, gotCRC)
-			}
 			continue
 		case 0x01:
 			// main / archive tag packet
-		case 0x15:
-			// Ignorable keep-alive style packet — confirm and continue.
-			_ = writeAck(conn, gotCRC)
-			continue
 		default:
 			// Extension / vendor headers carry the same tag stream as 0x01
-			// (LinuxOHW treats them as main). Parse below instead of dropping.
+			// (LinuxOHW treats them as main). Already confirmed above.
 			if device != nil {
 				_ = st.PatchLastStatus(ctx, device, map[string]any{
 					"extension_hdr": true,
@@ -226,7 +232,6 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			return toIngest[i].fix.RecordedAt.Before(toIngest[j].fix.RecordedAt)
 		})
 
-		ingestOK := true
 		for i := range toIngest {
 			item := &toIngest[i]
 			fix := &item.fix
@@ -254,7 +259,6 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 				_ = st.InsertSafetyEvent(ctx, device, *ev)
 			}
 			if err := deviceauth.Ingest(ctx, st, device, *fix); err != nil {
-				ingestOK = false
 				log.Printf("[galileosky] ingest %s: %v", imei, err)
 			}
 			if looksLikeCommandReply(tags) {
@@ -264,13 +268,6 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		}
 		if device != nil {
 			flushPending(ctx, conn, st, device.ID)
-		}
-		// Official confirm: 0x02 + CRC. Only after persist (or nothing to save) so
-		// large pending-history dumps are not erased from the device on DB failure.
-		if ingestOK {
-			_ = writeAck(conn, gotCRC)
-		} else {
-			log.Printf("[galileosky] withhold ack imei=%s records=%d — ingest failed, device will resend", imei, len(records))
 		}
 	}
 }
