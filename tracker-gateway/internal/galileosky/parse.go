@@ -8,7 +8,7 @@ import (
 
 // parseTags walks Galileosky Easy/Main tags per official tag length table.
 // Unknown tags keep an opaque remainder under 0xff so Device Manager can still see bytes.
-// Duplicate tags keep the last value (single-record view).
+// Multi-record payloads are merged: last record wins per tag (IMEI still shared).
 func parseTags(payload []byte) map[byte][]byte {
 	recs := parseTagRecords(payload)
 	if len(recs) == 0 {
@@ -29,9 +29,16 @@ func parseTags(payload []byte) map[byte][]byte {
 
 // parseTagRecords splits a Galileosky main/archive payload into records.
 // Official rule: one packet may hold several archive rows, concatenated
-// (tags of row 1, then tags of row 2, …). A repeated tag id starts the next row.
-// 0x20 therefore stays on the same row as the 0x30 it was sent with, whether the
-// device emits time-then-coords or coords-then-time. IMEI (0x03) is copied onto
+// (tags of row 1, then tags of row 2, …).
+//
+// Record boundaries follow the LinuxOHW / manufacturer archive convention:
+//   - tag 0x10 (archive record number) starts a new row when the current row
+//     already has tags (typical history dump: 0x10+0x20+0x30… repeated)
+//   - a second tag 0x20 (device time) starts a new row when the current row
+//     already has 0x20 (multi-point live / archive without 0x10)
+//
+// Other duplicate tags overwrite within the same row (last wins). That avoids
+// falsely splitting a row when a sensor tag repeats. IMEI (0x03) is copied onto
 // later rows in the same packet; device time is not inherited.
 func parseTagRecords(payload []byte) []map[byte][]byte {
 	type tv struct {
@@ -109,8 +116,17 @@ func parseTagRecords(payload []byte) []map[byte][]byte {
 		if t.id == 0x03 {
 			sharedIMEI = t.val
 		}
-		if _, dup := cur[t.id]; dup {
-			emit()
+		if len(cur) > 0 {
+			switch t.id {
+			case 0x10:
+				// Archive record number begins the next history row.
+				emit()
+			case 0x20:
+				// Second datetime in the same packet begins the next row.
+				if _, hasTime := cur[0x20]; hasTime {
+					emit()
+				}
+			}
 		}
 		cur[t.id] = t.val
 	}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"sort"
 	"strings"
 	"time"
 
@@ -84,57 +85,68 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		packetForCRC := append(append([]byte{}, hdr...), tagsBytes...)
 		calc := crc16Modbus(packetForCRC)
 
-		switch hdr[0] {
-		case 0x07:
-			// Photo / media part — ack so the device does not stall the GPS stream.
-			if calc == gotCRC {
-				_ = writeAckHdr(conn, 0x07, gotCRC)
-			}
-			continue
-		case 0x08:
-			if calc != gotCRC {
-				metrics.DecodeErr()
-				_ = writeAck(conn, gotCRC)
-				continue
-			}
-			if device != nil {
-				for _, fix := range parseCompressedPositions(tagsBytes, time.Now().UTC()) {
-					fix.SourceProtocol = "galileosky"
-					if fix.RawAttrs == nil {
-						fix.RawAttrs = map[string]any{}
-					}
-					applyPacketMeta(fix.RawAttrs, archive, 0)
-					if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
-						log.Printf("[galileosky] compressed ingest %s: %v", imei, err)
-					}
-				}
-				flushPending(ctx, conn, st, device.ID)
-			}
-			_ = writeAck(conn, gotCRC)
-			continue
-		case 0x01:
-			// main / archive tag packet
-		default:
-			if device != nil {
-				_ = st.PatchLastStatus(ctx, device, map[string]any{
-					"sync_skip": true,
-					"hdr0":      int(hdr[0]),
-				}, nil)
-			}
-			continue
-		}
 		if calc != gotCRC {
+			// Never ACK a bad CRC — device would drop the archive row as "delivered".
 			metrics.DecodeErr()
-			log.Printf("[galileosky] bad CRC from %s got=%04x want=%04x — ack only, skip ingest", conn.RemoteAddr(), gotCRC, calc)
+			log.Printf("[galileosky] bad CRC from %s hdr=0x%02x got=%04x want=%04x — no ack (device will resend)",
+				conn.RemoteAddr(), hdr[0], gotCRC, calc)
 			if device != nil {
 				_ = st.PatchLastStatus(ctx, device, map[string]any{
 					"crc_invalid": true,
 					"crc_got":     int(gotCRC),
 					"crc_want":    int(calc),
+					"hdr0":        int(hdr[0]),
 				}, nil)
 			}
+			continue
+		}
+
+		switch hdr[0] {
+		case 0x07:
+			// Photo / media part — ack so the device does not stall the GPS stream.
+			_ = writeAckHdr(conn, 0x07, gotCRC)
+			continue
+		case 0x08:
+			ok := true
+			if device != nil {
+				fixes := parseCompressedPositions(tagsBytes, time.Now().UTC())
+				sort.SliceStable(fixes, func(i, j int) bool {
+					return fixes[i].RecordedAt.Before(fixes[j].RecordedAt)
+				})
+				for i := range fixes {
+					fix := &fixes[i]
+					fix.SourceProtocol = "galileosky"
+					if fix.RawAttrs == nil {
+						fix.RawAttrs = map[string]any{}
+					}
+					applyPacketMeta(fix.RawAttrs, archive, len(fixes))
+					if err := deviceauth.Ingest(ctx, st, device, *fix); err != nil {
+						ok = false
+						log.Printf("[galileosky] compressed ingest %s: %v", imei, err)
+					}
+				}
+				flushPending(ctx, conn, st, device.ID)
+			}
+			// Confirm only after persist succeeded (LinuxOHW ack-after-save behaviour).
+			if ok {
+				_ = writeAck(conn, gotCRC)
+			}
+			continue
+		case 0x01:
+			// main / archive tag packet
+		case 0x15:
+			// Ignorable keep-alive style packet — confirm and continue.
 			_ = writeAck(conn, gotCRC)
 			continue
+		default:
+			// Extension / vendor headers carry the same tag stream as 0x01
+			// (LinuxOHW treats them as main). Parse below instead of dropping.
+			if device != nil {
+				_ = st.PatchLastStatus(ctx, device, map[string]any{
+					"extension_hdr": true,
+					"hdr0":          int(hdr[0]),
+				}, nil)
+			}
 		}
 
 		// Full wire packet for Admin Terminal decode (hdr + tags + CRC).
@@ -144,73 +156,108 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		if len(records) == 0 {
 			records = []map[byte][]byte{parseTags(tagsBytes)}
 		}
+
+		// Resolve IMEI once per packet (history dumps can have dozens of rows).
 		for _, tags := range records {
 			if v, ok := tags[0x03]; ok && len(v) >= 15 {
 				imei = strings.TrimSpace(string(v[:15]))
+				break
 			}
-			// Re-resolve every record once IMEI is known so Admin register mid-session works,
-			// and so we never keep a deleted/stale device id after re-claim.
-			if imei != "" {
-				device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "galileosky")
-				if device != nil && sessions != nil {
-					if bound == nil || bound.DeviceID != device.ID {
-						bound = &protocol.ConnSession{
-							DeviceID: device.ID, IMEI: device.IMEI, Protocol: "galileosky", Conn: conn,
-						}
-						sessions.Bind(bound)
+		}
+		if imei != "" {
+			device = deviceauth.FindByIMEI(ctx, st, imei, conn.RemoteAddr().String(), "galileosky")
+			if device != nil && sessions != nil {
+				if bound == nil || bound.DeviceID != device.ID {
+					bound = &protocol.ConnSession{
+						DeviceID: device.ID, IMEI: device.IMEI, Protocol: "galileosky", Conn: conn,
 					}
+					sessions.Bind(bound)
 				}
 			}
+		}
+
+		type pendingFix struct {
+			fix  store.Fix
+			tags map[byte][]byte
+		}
+		var toIngest []pendingFix
+		touched := false
+		for _, tags := range records {
 			fix, hasFix := fixFromTags(tags)
 			deviceTime, hasDeviceTime := deviceTimeFromTags(tags)
-			ingestOK := false
-			if device != nil {
-				if hasFix && !hasDeviceTime {
-					log.Printf("[galileosky] skip GPS without device time (tag 0x20) imei=%s — likely a split/partial row", imei)
+			if device == nil {
+				continue
+			}
+			if hasFix && !hasDeviceTime {
+				log.Printf("[galileosky] skip GPS without device time (tag 0x20) imei=%s — likely a split/partial row", imei)
+				if !touched {
 					_ = st.TouchSeen(ctx, device)
-				} else if hasFix {
-					ingestOK = true
-				} else if hasDeviceTime {
-					fix = store.Fix{
+					touched = true
+				}
+				continue
+			}
+			if hasFix {
+				toIngest = append(toIngest, pendingFix{fix: fix, tags: tags})
+				continue
+			}
+			if hasDeviceTime {
+				toIngest = append(toIngest, pendingFix{
+					fix: store.Fix{
 						RecordedAt:     deviceTime,
 						SourceProtocol: "galileosky",
 						RawAttrs:       map[string]any{"gps.valid": false},
-					}
-					ingestOK = true
-				} else if len(tags) > 0 {
-					_ = st.TouchSeen(ctx, device)
-				}
+					},
+					tags: tags,
+				})
+				continue
 			}
-			if device != nil && ingestOK {
-				fix.SourceProtocol = "galileosky"
-				if fix.RawAttrs == nil {
-					fix.RawAttrs = map[string]any{}
-				}
-				fix.RawAttrs["avl.hex"] = tagsHex
-				fix.RawAttrs["avl.frame_hex"] = packetHex
-				fix.RawAttrs["avl.bytes"] = len(tagsBytes)
-				tagRaw := tagsToRaw(tags)
-				fix.RawAttrs["tags"] = tagRaw
-				applyPacketMeta(fix.RawAttrs, archive, len(records))
-				for k, v := range tagRaw {
-					fix.RawAttrs["tag."+k] = v
-				}
-				// Always promote official tags → cooked remappable keys (not only tag.0xNN).
-				promoteSensorTags(fix.RawAttrs, tags)
-				for _, ev := range applyStatusTags(tags, fix.RawAttrs) {
-					ev.RecordedAt = fix.RecordedAt
-					if store.ValidCoords(fix.Lat, fix.Lon) {
-						lat, lon := fix.Lat, fix.Lon
-						ev.Lat, ev.Lon = &lat, &lon
-					}
-					_ = st.InsertSafetyEvent(ctx, device, *ev)
-				}
-				if err := deviceauth.Ingest(ctx, st, device, fix); err != nil {
-					log.Printf("[galileosky] ingest %s: %v", imei, err)
-				}
+			if len(tags) > 0 && !touched {
+				_ = st.TouchSeen(ctx, device)
+				touched = true
 			}
-			// Command replies often piggyback on a GPS record (tag 0x30 + E0–E6).
-			if device != nil && looksLikeCommandReply(tags) {
+			if looksLikeCommandReply(tags) {
+				text, ok := formatCommandReply(tags)
+				_ = st.AckSoftOrLatest(ctx, device.ID, ok, text)
+			}
+		}
+
+		// Oldest→newest so last_status ends on the freshest point of a history dump.
+		sort.SliceStable(toIngest, func(i, j int) bool {
+			return toIngest[i].fix.RecordedAt.Before(toIngest[j].fix.RecordedAt)
+		})
+
+		ingestOK := true
+		for i := range toIngest {
+			item := &toIngest[i]
+			fix := &item.fix
+			tags := item.tags
+			fix.SourceProtocol = "galileosky"
+			if fix.RawAttrs == nil {
+				fix.RawAttrs = map[string]any{}
+			}
+			fix.RawAttrs["avl.hex"] = tagsHex
+			fix.RawAttrs["avl.frame_hex"] = packetHex
+			fix.RawAttrs["avl.bytes"] = len(tagsBytes)
+			tagRaw := tagsToRaw(tags)
+			fix.RawAttrs["tags"] = tagRaw
+			applyPacketMeta(fix.RawAttrs, archive, len(records))
+			for k, v := range tagRaw {
+				fix.RawAttrs["tag."+k] = v
+			}
+			promoteSensorTags(fix.RawAttrs, tags)
+			for _, ev := range applyStatusTags(tags, fix.RawAttrs) {
+				ev.RecordedAt = fix.RecordedAt
+				if store.ValidCoords(fix.Lat, fix.Lon) {
+					lat, lon := fix.Lat, fix.Lon
+					ev.Lat, ev.Lon = &lat, &lon
+				}
+				_ = st.InsertSafetyEvent(ctx, device, *ev)
+			}
+			if err := deviceauth.Ingest(ctx, st, device, *fix); err != nil {
+				ingestOK = false
+				log.Printf("[galileosky] ingest %s: %v", imei, err)
+			}
+			if looksLikeCommandReply(tags) {
 				text, ok := formatCommandReply(tags)
 				_ = st.AckSoftOrLatest(ctx, device.ID, ok, text)
 			}
@@ -218,8 +265,13 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		if device != nil {
 			flushPending(ctx, conn, st, device.ID)
 		}
-		// Official confirm: header 0x02 + CRC of received packet.
-		_ = writeAck(conn, gotCRC)
+		// Official confirm: 0x02 + CRC. Only after persist (or nothing to save) so
+		// large pending-history dumps are not erased from the device on DB failure.
+		if ingestOK {
+			_ = writeAck(conn, gotCRC)
+		} else {
+			log.Printf("[galileosky] withhold ack imei=%s records=%d — ingest failed, device will resend", imei, len(records))
+		}
 	}
 }
 
@@ -257,11 +309,6 @@ func looksLikeCommandReply(tags map[byte][]byte) bool {
 		return false
 	}
 	return false
-}
-
-func hasCoordTag(tags map[byte][]byte) bool {
-	_, ok := tags[0x30]
-	return ok
 }
 
 func flushPending(ctx context.Context, conn net.Conn, st *store.Store, deviceID string) {

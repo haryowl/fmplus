@@ -32,13 +32,13 @@ func (c *memConn) SetDeadline(time.Time) error      { return nil }
 func (c *memConn) SetReadDeadline(time.Time) error  { return nil }
 func (c *memConn) SetWriteDeadline(time.Time) error { return nil }
 
-func TestWriteAck_OnBadCRC(t *testing.T) {
-	// Build a valid 0x01 packet then flip CRC so Serve's CRC check fails.
+func TestWriteAck_EchoesPacketCRC(t *testing.T) {
+	// Confirmations are 0x02 + the CRC of the received packet (even if that
+	// CRC was wrong — callers must not ACK bad frames during history dump).
 	payload := []byte{0x03, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2', '3', '4', '5'}
 	frame := buildFrame(payload)
 	frame[len(frame)-1] ^= 0xff
 	conn := &memConn{in: frame}
-	// Only exercise writeAck helper path used on bad CRC.
 	gotCRC := binary.LittleEndian.Uint16(frame[len(frame)-2:])
 	if err := writeAck(conn, gotCRC); err != nil {
 		t.Fatal(err)

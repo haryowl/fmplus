@@ -42,7 +42,9 @@ func TestParseTags_IMEIAndCoords(t *testing.T) {
 	}
 }
 
-func TestParseTagRecords_MultiCoords(t *testing.T) {
+func TestParseTagRecords_MultiCoordsNeedsTimeOrArchive(t *testing.T) {
+	// Bare repeated 0x30 without 0x10/0x20 stays one row (last coords win) —
+	// matches LinuxOHW: only archive index / second datetime opens a new record.
 	imei := "352094081234567"
 	coords, _ := hex.DecodeString("07c00e3203b8d72d05")
 	payload := []byte{0x03}
@@ -52,14 +54,30 @@ func TestParseTagRecords_MultiCoords(t *testing.T) {
 	payload = append(payload, 0x30)
 	payload = append(payload, coords...)
 	recs := parseTagRecords(payload)
-	if len(recs) != 2 {
-		t.Fatalf("recs=%d", len(recs))
+	if len(recs) != 1 {
+		t.Fatalf("recs=%d want 1 (no 0x10/0x20 boundary)", len(recs))
 	}
-	if string(recs[0][0x03]) != imei || string(recs[1][0x03]) != imei {
-		t.Fatalf("imei not shared: %q / %q", recs[0][0x03], recs[1][0x03])
+	if string(recs[0][0x03]) != imei || len(recs[0][0x30]) != 9 {
+		t.Fatalf("imei/coords missing: %v", recs[0])
 	}
-	if len(recs[0][0x30]) != 9 || len(recs[1][0x30]) != 9 {
-		t.Fatal("coords")
+
+	// Same packet with per-point time must yield two records.
+	payload2 := []byte{0x03}
+	payload2 = append(payload2, []byte(imei)...)
+	payload2 = append(payload2, 0x20)
+	payload2 = append(payload2, unixLE(1_700_000_000)...)
+	payload2 = append(payload2, 0x30)
+	payload2 = append(payload2, coords...)
+	payload2 = append(payload2, 0x20)
+	payload2 = append(payload2, unixLE(1_700_000_060)...)
+	payload2 = append(payload2, 0x30)
+	payload2 = append(payload2, coords...)
+	recs2 := parseTagRecords(payload2)
+	if len(recs2) != 2 {
+		t.Fatalf("timed recs=%d", len(recs2))
+	}
+	if string(recs2[0][0x03]) != imei || string(recs2[1][0x03]) != imei {
+		t.Fatalf("imei not shared: %q / %q", recs2[0][0x03], recs2[1][0x03])
 	}
 }
 
@@ -120,6 +138,40 @@ func TestParseTagRecords_ArchiveRows(t *testing.T) {
 	}
 	if binary.LittleEndian.Uint16(recs[0][0x10]) != 10 || binary.LittleEndian.Uint16(recs[1][0x10]) != 11 {
 		t.Fatalf("archive index")
+	}
+}
+
+func TestParseTagRecords_LargeHistoryDump(t *testing.T) {
+	// Pending-history style: many 0x10+0x20+0x30 rows in one packet must all split.
+	coords, _ := hex.DecodeString("07c00e3203b8d72d05")
+	var payload []byte
+	const n = 40
+	for i := 0; i < n; i++ {
+		idx := make([]byte, 2)
+		binary.LittleEndian.PutUint16(idx, uint16(100+i))
+		payload = append(payload, 0x10)
+		payload = append(payload, idx...)
+		payload = append(payload, 0x20)
+		payload = append(payload, unixLE(uint32(1_700_000_000+i*30))...)
+		payload = append(payload, 0x30)
+		payload = append(payload, coords...)
+		payload = append(payload, 0x33, 0x00, 0x00, 0x00, 0x00) // speed/course
+	}
+	recs := parseTagRecords(payload)
+	if len(recs) != n {
+		t.Fatalf("recs=%d want %d", len(recs), n)
+	}
+	for i, rec := range recs {
+		ts, ok := deviceTimeFromTags(rec)
+		if !ok || ts.Unix() != int64(1_700_000_000+i*30) {
+			t.Fatalf("row %d time=%v", i, ts)
+		}
+		if _, ok := fixFromTags(rec); !ok {
+			t.Fatalf("row %d missing coords", i)
+		}
+		if binary.LittleEndian.Uint16(rec[0x10]) != uint16(100+i) {
+			t.Fatalf("row %d archive index", i)
+		}
 	}
 }
 
