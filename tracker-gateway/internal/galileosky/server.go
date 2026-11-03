@@ -60,6 +60,8 @@ func Serve(ctx context.Context, addr string, st *store.Store, sessions *protocol
 
 func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *protocol.Registry) {
 	metrics.ConnOpen()
+	remote := conn.RemoteAddr().String()
+	log.Printf("[galileosky] conn open %s", remote)
 	if tc, ok := conn.(*net.TCPConn); ok {
 		_ = tc.SetNoDelay(true)
 		_ = tc.SetKeepAlive(true)
@@ -76,7 +78,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[galileosky] panic on %s: %v\n%s", conn.RemoteAddr(), r, debug.Stack())
+			log.Printf("[galileosky] panic on %s: %v\n%s", remote, r, debug.Stack())
 		}
 		metrics.ConnClose()
 		boundMu.Lock()
@@ -86,6 +88,7 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 			sessions.Unbind(b)
 		}
 		_ = conn.Close()
+		log.Printf("[galileosky] conn close %s", remote)
 	}()
 
 	connWrite := func(p []byte) error {
@@ -116,7 +119,6 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		wg.Wait()
 	}()
 
-	remote := conn.RemoteAddr().String()
 	buf := make([]byte, 0, 8192)
 	tmp := make([]byte, 4096)
 	for {
@@ -124,8 +126,15 @@ func handleConn(ctx context.Context, conn net.Conn, st *store.Store, sessions *p
 		n, err := conn.Read(tmp)
 		if n > 0 {
 			buf = append(buf, tmp[:n]...)
+			log.Printf("[galileosky] recv %s +%dB buf=%dB head=%x", remote, n, len(buf), peekHead(buf))
 			var frames []frameResult
 			frames, buf = extractFrames(buf)
+			if len(frames) == 0 && len(buf) >= 3 {
+				rawLen := binary.LittleEndian.Uint16(buf[1:3])
+				need := 3 + int(rawLen&0x7fff) + 2
+				log.Printf("[galileosky] wait-frame %s have=%d need=%d hdr=0x%02x rawLen=0x%04x",
+					remote, len(buf), need, buf[0], rawLen)
+			}
 			for _, fr := range frames {
 				// Echo the exact CRC bytes from the wire (LinuxOHW buildConfirmation).
 				ackHdr := byte(0x02)
@@ -417,6 +426,13 @@ func flushPending(ctx context.Context, write func([]byte) error, st *store.Store
 		}
 		_ = st.MarkCommandSentCorr(ctx, cmd.ID, store.SoftTextCorr(cmd.PayloadText))
 	}
+}
+
+func peekHead(buf []byte) []byte {
+	if len(buf) <= 8 {
+		return buf
+	}
+	return buf[:8]
 }
 
 func writeAck(conn net.Conn, packetCRC uint16) error {
